@@ -1,0 +1,495 @@
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Book, BookStatus, ReadingState, UserProfile, WordItem, HighlightItem } from '../types';
+import { DEFAULT_BOOKS } from '../data/defaultBooks';
+import { INITIAL_WORDS } from '../data/defaultWords';
+import { normalizeV2, normalizeLegacy, parseBackup } from '../services/stateSanitizer';
+
+const STORAGE_KEY = 'readlife.v2';
+const LEGACY_KEY = 'readlife.v1';
+const RECOVERY_KEY = 'readlife.v2.recovery';
+const SAVE_DELAY_MS = 350;
+const MAX_STREAK_DAYS = 3650;
+// Things the app can download again if they are ever lost; safe to clear when storage is full
+const CACHE_KEYS = ['readlife.store1', 'readlife.store2', 'readlife.meta2', 'readlife.meta3', 'readlife.covers1', 'readlife.preload', 'readlife.loaded', 'readlife.phoneticTried'];
+
+export function getTodayKey(): string {
+  const d = new Date();
+  return d.toLocaleDateString('en-CA'); // "YYYY-MM-DD"
+}
+
+/** A brand-new install starts empty: no names, notes, highlights or reading history. */
+function buildDefaultState(): ReadingState {
+  return {
+    status: {},
+    currentPage: {},
+    totalPages: {},
+    dailyLog: {},
+    notes: {},
+    highlights: {},
+    goal: 10,
+    readingIntention: '',
+    profile: { name: '', photo: '', theme: 'auto' },
+    customBooks: [],
+    onDeviceOverrides: {},
+    hiddenBookIds: {},
+    words: [...INITIAL_WORDS],
+  };
+}
+
+export function useReadingLife() {
+  const [state, setState] = useState<ReadingState>(() => {
+    const defaults = buildDefaultState();
+
+    // 1. Try reading v2 (repaired field-by-field so bad saved data can never crash the app)
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return normalizeV2(parsed, defaults);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse state from v2 storage:', e);
+      // Keep the unreadable text so it can be recovered; the app is about to save fresh defaults over it.
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw && !localStorage.getItem(RECOVERY_KEY)) localStorage.setItem(RECOVERY_KEY, raw);
+      } catch {}
+    }
+
+    // 2. Try migrating legacy Claude v1 state
+    try {
+      const legacy = localStorage.getItem(LEGACY_KEY);
+      if (legacy) {
+        const p = JSON.parse(legacy);
+        if (p && typeof p === 'object') return normalizeLegacy(p, defaults);
+      }
+    } catch (e) {
+      console.warn('Failed to migrate from legacy storage:', e);
+    }
+
+    // 3. Fresh install: pre-seeded with your reading profile
+    return defaults;
+  });
+
+  // Save to localStorage: debounced (typing in notes no longer re-serialises everything on every keystroke)
+  // and flushed immediately when the app is hidden/closed so nothing is lost on iPad/iPhone.
+  const latestState = useRef(state);
+  const dirty = useRef(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const [saveError, setSaveError] = useState(false);
+
+  const flushSave = useCallback(() => {
+    clearTimeout(saveTimer.current);
+    if (!dirty.current) return;
+    const write = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(latestState.current));
+    try {
+      write();
+      dirty.current = false;
+      setSaveError(false);
+    } catch (e) {
+      console.error('Failed to save to localStorage:', e);
+      // Storage is full or blocked. Throw away the re-downloadable caches first, then try once more.
+      try {
+        for (const k of CACHE_KEYS) localStorage.removeItem(k);
+        write();
+        dirty.current = false;
+        setSaveError(false);
+      } catch {
+        setSaveError(true);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    latestState.current = state;
+    dirty.current = true;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(flushSave, SAVE_DELAY_MS);
+  }, [state, flushSave]);
+
+  useEffect(() => {
+    const onHide = () => { if (document.visibilityState === 'hidden') flushSave(); };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', flushSave);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', flushSave);
+      flushSave();
+    };
+  }, [flushSave]);
+
+  // Today's date key, refreshed at midnight and whenever the app comes back to the foreground,
+  // so a home-screen app left open overnight starts the new day at 0 pages.
+  const [todayKey, setTodayKey] = useState(getTodayKey);
+  useEffect(() => {
+    const refresh = () => setTodayKey(prev => {
+      const k = getTodayKey();
+      return k === prev ? prev : k;
+    });
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', refresh);
+    const timer = setInterval(refresh, 60_000);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', refresh);
+      clearInterval(timer);
+    };
+  }, []);
+
+  // Sync dark theme (also keeps the iOS status-bar colour in step with the app)
+  useEffect(() => {
+    const theme = state.profile.theme;
+    const root = document.documentElement;
+    const mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+    const apply = () => {
+      const dark = theme === 'dark' || (theme === 'auto' && !!mq?.matches);
+      for (const el of [root, document.body]) {
+        if (!el) continue;
+        el.classList.toggle('dark', dark);
+        el.setAttribute('data-theme', dark ? 'dark' : 'light');
+      }
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#181410' : '#f5f0e6');
+    };
+    apply();
+
+    if (theme === 'auto' && mq) {
+      mq.addEventListener('change', apply);
+      return () => mq.removeEventListener('change', apply);
+    }
+  }, [state.profile.theme]);
+
+  // Merge default books + custom books with overrides
+  const allBooks = useMemo<Book[]>(() => {
+    const map = new Map<string | number, Book>();
+
+    // 1. Load curated default books
+    for (const b of DEFAULT_BOOKS) {
+      if (state.hiddenBookIds[String(b.id)]) continue;
+      const onDevice = state.onDeviceOverrides[String(b.id)] !== undefined
+        ? state.onDeviceOverrides[String(b.id)]
+        : b.isOnDevice;
+      map.set(b.id, { ...b, isOnDevice: onDevice });
+    }
+
+    // 2. Load custom books
+    for (const b of state.customBooks) {
+      if (state.hiddenBookIds[String(b.id)]) continue;
+      const onDevice = state.onDeviceOverrides[String(b.id)] !== undefined
+        ? state.onDeviceOverrides[String(b.id)]
+        : b.isOnDevice;
+      map.set(b.id, { ...b, isOnDevice: onDevice });
+    }
+
+    return Array.from(map.values());
+  }, [state.customBooks, state.hiddenBookIds, state.onDeviceOverrides]);
+
+  // Daily log metrics
+  const todayPages = state.dailyLog[todayKey] || 0;
+
+  const currentStreak = useMemo(() => {
+    let streakCount = 0;
+    const checkDate = new Date();
+    const todayLog = state.dailyLog[todayKey] || 0;
+
+    // If today hasn't met the goal yet, start counting from yesterday
+    if (todayLog < state.goal) {
+      checkDate.setDate(checkDate.getDate() - 1);
+    }
+
+    while (streakCount < MAX_STREAK_DAYS) {
+      const key = checkDate.toLocaleDateString('en-CA');
+      const val = state.dailyLog[key] || 0;
+      if (val >= state.goal) {
+        streakCount++;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+    return streakCount;
+  }, [state.dailyLog, state.goal, todayKey]);
+
+  // Actions
+  // Set an exact page count for any day (used by tapping a day in the week strip)
+  const setDayPages = useCallback((dateKey: string, pages: number) => {
+    setState(prev => ({
+      ...prev,
+      dailyLog: { ...prev.dailyLog, [dateKey]: Math.max(0, pages) },
+    }));
+  }, []);
+
+  const updateBookProgress = useCallback((bookId: string | number, page: number, total?: number) => {
+    const idKey = String(bookId);
+    setState(prev => {
+      const oldPage = prev.currentPage[idKey] || 0;
+      const diff = Math.max(0, page) - oldPage; // negative when you correct a page number back down
+      const todayK = getTodayKey();
+
+      return {
+        ...prev,
+        currentPage: {
+          ...prev.currentPage,
+          [idKey]: Math.max(0, page),
+        },
+        totalPages: total ? {
+          ...prev.totalPages,
+          [idKey]: total,
+        } : prev.totalPages,
+        dailyLog: diff !== 0 ? {
+          ...prev.dailyLog,
+          [todayK]: Math.max(0, (prev.dailyLog[todayK] || 0) + diff),
+        } : prev.dailyLog,
+      };
+    });
+  }, []);
+
+  const setBookStatus = useCallback((bookId: string | number, status: BookStatus) => {
+    const idKey = String(bookId);
+    setState(prev => ({
+      ...prev,
+      status: {
+        ...prev.status,
+        [idKey]: status,
+      },
+    }));
+  }, []);
+
+  const toggleOnDevice = useCallback((bookId: string | number, targetValue?: boolean) => {
+    const idKey = String(bookId);
+    setState(prev => {
+      const base = prev.customBooks.find(b => String(b.id) === idKey) ?? DEFAULT_BOOKS.find(b => String(b.id) === idKey);
+      const current = prev.onDeviceOverrides[idKey] ?? base?.isOnDevice ?? false;
+      const nextValue = targetValue !== undefined ? targetValue : !current;
+
+      return {
+        ...prev,
+        onDeviceOverrides: {
+          ...prev.onDeviceOverrides,
+          [idKey]: nextValue,
+        },
+        customBooks: prev.customBooks.map(cb =>
+          String(cb.id) === idKey ? { ...cb, isOnDevice: nextValue } : cb
+        ),
+      };
+    });
+  }, []);
+
+  const addBook = useCallback((newBook: Book, destination: 'device' | 'library' | 'now' | 'next' = 'library') => {
+    setState(prev => {
+      const idKey = String(newBook.id);
+      const isDevice = destination === 'device';
+      const existingCustom = prev.customBooks.find(b => String(b.id) === idKey);
+
+      let updatedCustom: Book[];
+      if (existingCustom) {
+        updatedCustom = prev.customBooks.map(b =>
+          String(b.id) === idKey ? { ...b, ...newBook, isOnDevice: isDevice || b.isOnDevice } : b
+        );
+      } else {
+        const bookWithDev = { ...newBook, isOnDevice: isDevice };
+        updatedCustom = [bookWithDev, ...prev.customBooks];
+      }
+
+
+      return {
+        ...prev,
+        customBooks: updatedCustom,
+        onDeviceOverrides: {
+          ...prev.onDeviceOverrides,
+          [idKey]: isDevice ? true : (prev.onDeviceOverrides[idKey] ?? false),
+        },
+        // Adding to the library or device never promotes a book to "Up next"; that is your choice.
+        status: {
+          ...prev.status,
+          [idKey]: destination === 'now' || destination === 'next' ? destination : (prev.status[idKey] || 'list'),
+        },
+      };
+    });
+  }, []);
+
+  const removeBook = useCallback((bookId: string | number) => {
+    const idKey = String(bookId);
+    setState(prev => {
+      const isCustom = prev.customBooks.some(b => String(b.id) === idKey);
+      if (!isCustom) {
+        // Catalog books are only hidden (they can be restored with their notes intact)
+        return { ...prev, hiddenBookIds: { ...prev.hiddenBookIds, [idKey]: true } };
+      }
+      const without = <T,>(rec: Record<string, T>) => {
+        const { [idKey]: _gone, ...rest } = rec;
+        return rest;
+      };
+      return {
+        ...prev,
+        customBooks: prev.customBooks.filter(b => String(b.id) !== idKey),
+        status: without(prev.status),
+        currentPage: without(prev.currentPage),
+        totalPages: without(prev.totalPages),
+        notes: without(prev.notes),
+        highlights: without(prev.highlights),
+        onDeviceOverrides: without(prev.onDeviceOverrides),
+      };
+    });
+  }, []);
+
+  const restoreHiddenBooks = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      hiddenBookIds: {},
+    }));
+  }, []);
+
+  const updateBookNote = useCallback((bookId: string | number, note: string) => {
+    const idKey = String(bookId);
+    setState(prev => ({
+      ...prev,
+      notes: {
+        ...prev.notes,
+        [idKey]: note,
+      },
+    }));
+  }, []);
+
+  const addHighlight = useCallback((bookId: string | number, text: string, page?: number) => {
+    const idKey = String(bookId);
+    const newHighlight: HighlightItem = {
+      id: `hl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      text: text.trim(),
+      page,
+      timestamp: Date.now(),
+    };
+    setState(prev => ({
+      ...prev,
+      highlights: {
+        ...prev.highlights,
+        [idKey]: [newHighlight, ...(prev.highlights[idKey] || [])],
+      },
+    }));
+  }, []);
+
+  const deleteHighlight = useCallback((bookId: string | number, highlightId: string) => {
+    const idKey = String(bookId);
+    setState(prev => ({
+      ...prev,
+      highlights: {
+        ...prev.highlights,
+        [idKey]: (prev.highlights[idKey] || []).filter(h => h.id !== highlightId),
+      },
+    }));
+  }, []);
+
+  const updateHighlight = useCallback((bookId: string | number, highlightId: string, newText: string, newPage?: number) => {
+    const idKey = String(bookId);
+    setState(prev => ({
+      ...prev,
+      highlights: {
+        ...prev.highlights,
+        [idKey]: (prev.highlights[idKey] || []).map(h =>
+          h.id === highlightId ? { ...h, text: newText.trim(), page: newPage } : h
+        ),
+      },
+    }));
+  }, []);
+
+  const updateIntention = useCallback((readingIntention: string) => {
+    setState(prev => ({ ...prev, readingIntention }));
+  }, []);
+
+  const updateProfile = useCallback((profileUpdates: Partial<UserProfile>) => {
+    setState(prev => ({
+      ...prev,
+      profile: { ...prev.profile, ...profileUpdates },
+    }));
+  }, []);
+
+  const setGoal = useCallback((goal: number) => {
+    setState(prev => ({ ...prev, goal: Math.max(1, goal) }));
+  }, []);
+
+  const addWord = useCallback((newWord: WordItem) => {
+    setState(prev => {
+      // Remove any existing word with same spelling to avoid duplicates
+      const filtered = prev.words.filter(
+        w => w.id !== newWord.id && (w.word || '').toLowerCase() !== (newWord.word || '').toLowerCase(),
+      );
+      return {
+        ...prev,
+        words: [newWord, ...filtered],
+      };
+    });
+  }, []);
+
+  const toggleWordLearned = useCallback((wordId: string) => {
+    setState(prev => ({
+      ...prev,
+      words: prev.words.map(w => w.id === wordId ? { ...w, isLearned: !w.isLearned } : w),
+    }));
+  }, []);
+
+  const setWordLearned = useCallback((wordId: string, learned: boolean) => {
+    setState(prev => ({
+      ...prev,
+      words: prev.words.map(w => (w.id === wordId ? { ...w, isLearned: learned } : w)),
+    }));
+  }, []);
+
+  const updateWord = useCallback((wordId: string, updates: Partial<WordItem>) => {
+    setState(prev => ({
+      ...prev,
+      words: prev.words.map(w => w.id === wordId ? { ...w, ...updates } : w),
+    }));
+  }, []);
+
+  const deleteWord = useCallback((wordId: string) => {
+    setState(prev => ({
+      ...prev,
+      words: prev.words.filter(w => w.id !== wordId),
+    }));
+  }, []);
+
+  const exportBackup = useCallback(() => {
+    return JSON.stringify(state, null, 2);
+  }, [state]);
+
+  const importBackup = useCallback((jsonStr: string) => {
+    const restored = parseBackup(jsonStr, buildDefaultState());
+    if (!restored) return false;
+    setState(restored);
+    return true;
+  }, []);
+
+  return {
+    state,
+    allBooks,
+    todayKey,
+    todayPages,
+    currentStreak,
+    setDayPages,
+    updateBookProgress,
+    setBookStatus,
+    toggleOnDevice,
+    addBook,
+    removeBook,
+    restoreHiddenBooks,
+    updateBookNote,
+    addHighlight,
+    updateHighlight,
+    deleteHighlight,
+    updateIntention,
+    updateProfile,
+    setGoal,
+    addWord,
+    toggleWordLearned,
+    setWordLearned,
+    updateWord,
+    deleteWord,
+    exportBackup,
+    importBackup,
+    saveError,
+  };
+}

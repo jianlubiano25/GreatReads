@@ -1,0 +1,914 @@
+[
+ {
+  "id": "new2026",
+  "title": "New in 2026",
+  "emoji": "✨",
+  "genre": "New release",
+  "seeds": [
+   [
+    "Kin",
+    "Tayari Jones"
+   ],
+   [
+    "The Keeper",
+    "Tana French"
+   ],
+   [
+    "Exit Party",
+    "Emily St. John Mandel"
+   ],
+   [
+    "The Disappearers",
+    "Marlon James"
+   ],
+   [
+    "John of John",
+    "Douglas Stuart"
+   ],
+   [
+    "Cool Machine",
+    "Colson Whitehead"
+   ],
+   [
+    "London Falling",
+    "Patrick Radden Keefe"
+   ],
+   [
+    "Yesteryear",
+    "Caro Claire Burke"
+   ],
+   [
+    "Famesick",
+    "Lena Dunham"
+   ],
+   [
+    "Our Perfect Storm",
+    "Carley Fortune"
+   ],
+   [
+    "Half His Age",
+    "Jennette McCurdy"
+   ],
+   [
+    "Strangers",
+    "Belle Burden"
+   ]
+  ]
+ },
+ {
+  "id": "service95",
+  "title": "Dua Lipa’s Service95",
+  "emoji": "🌸",
+  "genre": "Service95 Book Club",
+  "seeds": [
+   [
+    "One Hundred Years of Solitude",
+    "Gabriel García Márquez",
+    "Service95 Pick"
+   ],
+   [
+    "Shuggie Bain",
+    "Douglas Stuart",
+    "Booker Prize Winner"
+   ],
+   [
+    "Pachinko",
+    "Min Jin Lee",
+    "Service95 Pick"
+   ],
+   [
+    "Just Kids",
+    "Patti Smith",
+    "National Book Award"
+   ],
+   [
+    "Trust",
+    "Hernan Diaz",
+    "Pulitzer Prize Winner"
+   ],
+   [
+    "Crying in H Mart",
+    "Michelle Zauner",
+    "Service95 Pick"
+   ],
+   [
+    "Half of a Yellow Sun",
+    "Chimamanda Ngozi Adichie",
+    "Women's Prize of Prizes"
+   ],
+   [
+    "A Little Life",
+    "Hanya Yanagihara",
+    "Service95 Pick"
+   ],
+   [
+    "On Earth We're Briefly Gorgeous",
+    "Ocean Vuong",
+    "Service95 Pick"
+   ],
+   [
+    "The Vanishing Half",
+    "Brit Bennett",
+    "Service95 Pick"
+   ],
+   [
+    "Open Water",
+    "Caleb Azumah Nelson",
+    "Costa First Novel Award"
+   ],
+   [
+    "Swimming in the Dark",
+    "Tomasz Jedrowski",
+    "Service95 Pick"
+   ]
+  ]
+ },
+ {
+  "id": "inklings",
+  "title": "The Inklings (Oxford Circle)",
+  "emoji": "🖋️",
+  "genre": "The Inklings",
+  "seeds": [
+   [
+    "The Hobbit",
+    "J.R.R. Tolkien",
+    "Classic Fantasy"
+   ],
+   [
+    "The Fellowship of the Ring",
+    "J.R.R. Tolkien",
+    "Lord of the Rings"
+   ],
+   [
+    "The Lion, the Witch and the Wardrobe",
+    "C.S. Lewis",
+    "Chronicles of Narnia"
+   ],
+   [
+    "The Screwtape Letters",
+    "C.S. Lewis",
+    "Oxford Classic"
+   ],
+   [
+    "Out of the Silent Planet",
+    "C.S. Lewis",
+    "Space Trilogy"
+   ],
+   [
+    "The Two Towers",
+    "J.R.R. Tolkien",
+    "Lord of the Rings"
+   ],
+   [
+    "The Return of the King",
+    "J.R.R. Tolkien",
+    "Lord of the Rings"
+   ],
+   [
+    "Till We Have Faces",
+    "C.S. Lewis",
+    "Mythological Retelling"
+   ],
+   [
+    "The Magician's Nephew",
+    "C.S. Lewis",
+    "Chronicles of Narnia"
+   ],
+   [
+    "War in Heaven",
+    "Charles Williams",
+    "Supernatural Thriller"
+   ],
+   [
+    "All Hallows' Eve",
+    "Charles Williams",
+    "Inklings Classic"
+   ],
+   [
+    "The Silmarillion",
+    "J.R.R. Tolkien",
+    "Legendarium"
+   ]
+  ]
+ },
+ {
+  "id": "oprah",
+  "title": "Oprah’s Book Club",
+  "emoji": "⭐",
+  "genre": "Oprah's Book Club",
+  "seeds": [
+   [
+    "Beloved",
+    "Toni Morrison",
+    "Pulitzer Prize Winner"
+   ],
+   [
+    "Song of Solomon",
+    "Toni Morrison",
+    "National Book Critics Circle"
+   ],
+   [
+    "The Covenant of Water",
+    "Abraham Verghese",
+    "Oprah's Book Club Pick"
+   ],
+   [
+    "Demon Copperhead",
+    "Barbara Kingsolver",
+    "Pulitzer Prize Winner"
+   ],
+   [
+    "The Underground Railroad",
+    "Colson Whitehead",
+    "Pulitzer & National Book Award"
+   ],
+   [
+    "Wild",
+    "Cheryl Strayed",
+    "Oprah's Book Club 2.0"
+   ],
+   [
+    "The Water Dancer",
+    "Ta-Nehisi Coates",
+    "Oprah's Book Club"
+   ],
+   [
+    "Lila",
+    "Marilynne Robinson",
+    "National Book Critics Circle"
+   ],
+   [
+    "Deacon King Kong",
+    "James McBride",
+    "Oprah's Book Club"
+   ],
+   [
+    "Gilead",
+    "Marilynne Robinson",
+    "Pulitzer Prize Winner"
+   ],
+   [
+    "Cane River",
+    "Lalita Tademy",
+    "Oprah's Book Club"
+   ],
+   [
+    "The Sweetness of Water",
+    "Nathan Harris",
+    "Oprah's Book Club"
+   ]
+  ]
+ },
+ {
+  "id": "reeses",
+  "title": "Reese’s Book Club",
+  "emoji": "☀️",
+  "genre": "Reese's Book Club",
+  "seeds": [
+   [
+    "Where the Crawdads Sing",
+    "Delia Owens",
+    "Reese's Book Club"
+   ],
+   [
+    "Daisy Jones & The Six",
+    "Taylor Jenkins Reid",
+    "Reese's Book Club"
+   ],
+   [
+    "Little Fires Everywhere",
+    "Celeste Ng",
+    "Reese's Book Club"
+   ],
+   [
+    "Eleanor Oliphant Is Completely Fine",
+    "Gail Honeyman",
+    "Reese's Book Club"
+   ],
+   [
+    "The Alice Network",
+    "Kate Quinn",
+    "Reese's Book Club"
+   ],
+   [
+    "Such a Fun Age",
+    "Kiley Reid",
+    "Reese's Book Club"
+   ],
+   [
+    "The Seven Husbands of Evelyn Hugo",
+    "Taylor Jenkins Reid",
+    "Reese's Favorite"
+   ],
+   [
+    "The Paper Palace",
+    "Miranda Cowley Heller",
+    "Reese's Book Club"
+   ],
+   [
+    "Next Year in Havana",
+    "Chanel Cleeton",
+    "Reese's Book Club"
+   ],
+   [
+    "The Guest List",
+    "Lucy Foley",
+    "Reese's Book Club"
+   ],
+   [
+    "Untamed",
+    "Glennon Doyle",
+    "Reese's Book Club"
+   ],
+   [
+    "The Sanatorium",
+    "Sarah Pearse",
+    "Reese's Book Club"
+   ]
+  ]
+ },
+ {
+  "id": "womens",
+  "title": "Women's Prize for Fiction",
+  "emoji": "🌷",
+  "genre": "Prize winner",
+  "seeds": [
+   [
+    "The Correspondent",
+    "Virginia Evans",
+    "Women's Prize 2026"
+   ],
+   [
+    "The Safekeep",
+    "Yael van der Wouden",
+    "Women's Prize 2025"
+   ],
+   [
+    "Brotherless Night",
+    "V. V. Ganeshananthan",
+    "Women's Prize 2024"
+   ],
+   [
+    "Demon Copperhead",
+    "Barbara Kingsolver",
+    "Women's Prize 2023"
+   ],
+   [
+    "The Book of Form and Emptiness",
+    "Ruth Ozeki",
+    "Women's Prize 2022"
+   ],
+   [
+    "Piranesi",
+    "Susanna Clarke",
+    "Women's Prize 2021"
+   ],
+   [
+    "Hamnet",
+    "Maggie O'Farrell",
+    "Women's Prize 2020"
+   ],
+   [
+    "An American Marriage",
+    "Tayari Jones",
+    "Women's Prize 2019"
+   ],
+   [
+    "Home Fire",
+    "Kamila Shamsie",
+    "Women's Prize 2018"
+   ],
+   [
+    "Flashlight",
+    "Susan Choi",
+    "Women's Prize 2026 shortlist"
+   ],
+   [
+    "Heart the Lover",
+    "Lily King",
+    "Women's Prize 2026 shortlist"
+   ],
+   [
+    "Dominion",
+    "Addie E. Citchens",
+    "Women's Prize 2026 shortlist"
+   ]
+  ]
+ },
+ {
+  "id": "intbooker",
+  "title": "International Booker Prize",
+  "emoji": "🌍",
+  "genre": "Translated fiction",
+  "seeds": [
+   [
+    "Taiwan Travelogue",
+    "Yáng Shuāng-zǐ",
+    "International Booker 2026"
+   ],
+   [
+    "Heart Lamp",
+    "Banu Mushtaq",
+    "International Booker 2025"
+   ],
+   [
+    "Kairos",
+    "Jenny Erpenbeck",
+    "International Booker 2024"
+   ],
+   [
+    "Time Shelter",
+    "Georgi Gospodinov",
+    "International Booker 2023"
+   ],
+   [
+    "Tomb of Sand",
+    "Geetanjali Shree",
+    "International Booker 2022"
+   ],
+   [
+    "At Night All Blood Is Black",
+    "David Diop",
+    "International Booker 2021"
+   ],
+   [
+    "The Discomfort of Evening",
+    "Marieke Lucas Rijneveld",
+    "International Booker 2020"
+   ],
+   [
+    "Celestial Bodies",
+    "Jokha Alharthi",
+    "International Booker 2019"
+   ],
+   [
+    "Flights",
+    "Olga Tokarczuk",
+    "International Booker 2018"
+   ],
+   [
+    "A Horse Walks into a Bar",
+    "David Grossman",
+    "International Booker 2017"
+   ],
+   [
+    "The Vegetarian",
+    "Han Kang",
+    "International Booker 2016"
+   ],
+   [
+    "The Witch",
+    "Marie NDiaye",
+    "International Booker 2026 shortlist"
+   ]
+  ]
+ },
+ {
+  "id": "romance",
+  "title": "Romance",
+  "emoji": "💕",
+  "genre": "Romance",
+  "seeds": [
+   [
+    "The Seven Husbands of Evelyn Hugo",
+    "Taylor Jenkins Reid"
+   ],
+   [
+    "It Ends with Us",
+    "Colleen Hoover"
+   ],
+   [
+    "Beach Read",
+    "Emily Henry"
+   ],
+   [
+    "Pride and Prejudice",
+    "Jane Austen"
+   ],
+   [
+    "Outlander",
+    "Diana Gabaldon"
+   ],
+   [
+    "Me Before You",
+    "Jojo Moyes"
+   ],
+   [
+    "Red, White & Royal Blue",
+    "Casey McQuiston"
+   ],
+   [
+    "The Hating Game",
+    "Sally Thorne"
+   ],
+   [
+    "Book Lovers",
+    "Emily Henry"
+   ],
+   [
+    "Normal People",
+    "Sally Rooney"
+   ],
+   [
+    "One Day",
+    "David Nicholls"
+   ],
+   [
+    "The Notebook",
+    "Nicholas Sparks"
+   ]
+  ]
+ },
+ {
+  "id": "selfhelp",
+  "title": "Self-help",
+  "emoji": "🌱",
+  "genre": "Self-help",
+  "seeds": [
+   [
+    "Atomic Habits",
+    "James Clear"
+   ],
+   [
+    "The Body Keeps the Score",
+    "Bessel van der Kolk"
+   ],
+   [
+    "Attached",
+    "Amir Levine"
+   ],
+   [
+    "Set Boundaries, Find Peace",
+    "Nedra Glover Tawwab"
+   ],
+   [
+    "The Gifts of Imperfection",
+    "Brené Brown"
+   ],
+   [
+    "Daring Greatly",
+    "Brené Brown"
+   ],
+   [
+    "Man's Search for Meaning",
+    "Viktor E. Frankl"
+   ],
+   [
+    "The Four Agreements",
+    "Don Miguel Ruiz"
+   ],
+   [
+    "Grit",
+    "Angela Duckworth"
+   ],
+   [
+    "Mindset",
+    "Carol S. Dweck"
+   ],
+   [
+    "Deep Work",
+    "Cal Newport"
+   ],
+   [
+    "How to Win Friends and Influence People",
+    "Dale Carnegie"
+   ]
+  ]
+ },
+ {
+  "id": "fantasy",
+  "title": "Fantasy",
+  "emoji": "🐉",
+  "genre": "Fantasy",
+  "seeds": [
+   [
+    "The Hobbit",
+    "J.R.R. Tolkien"
+   ],
+   [
+    "A Court of Thorns and Roses",
+    "Sarah J. Maas"
+   ],
+   [
+    "The Name of the Wind",
+    "Patrick Rothfuss"
+   ],
+   [
+    "Harry Potter and the Sorcerer's Stone",
+    "J.K. Rowling"
+   ],
+   [
+    "Mistborn: The Final Empire",
+    "Brandon Sanderson"
+   ],
+   [
+    "The Way of Kings",
+    "Brandon Sanderson"
+   ],
+   [
+    "Circe",
+    "Madeline Miller"
+   ],
+   [
+    "Fourth Wing",
+    "Rebecca Yarros"
+   ],
+   [
+    "The Night Circus",
+    "Erin Morgenstern"
+   ],
+   [
+    "A Game of Thrones",
+    "George R.R. Martin"
+   ],
+   [
+    "Piranesi",
+    "Susanna Clarke"
+   ],
+   [
+    "The Fellowship of the Ring",
+    "J.R.R. Tolkien"
+   ]
+  ]
+ },
+ {
+  "id": "memoir",
+  "title": "Memoir",
+  "emoji": "📓",
+  "genre": "Memoir",
+  "seeds": [
+   [
+    "Educated",
+    "Tara Westover"
+   ],
+   [
+    "Becoming",
+    "Michelle Obama"
+   ],
+   [
+    "I'm Glad My Mom Died",
+    "Jennette McCurdy"
+   ],
+   [
+    "When Breath Becomes Air",
+    "Paul Kalanithi"
+   ],
+   [
+    "Born a Crime",
+    "Trevor Noah"
+   ],
+   [
+    "The Glass Castle",
+    "Jeannette Walls"
+   ],
+   [
+    "Wild",
+    "Cheryl Strayed"
+   ],
+   [
+    "Crying in H Mart",
+    "Michelle Zauner"
+   ],
+   [
+    "Just Kids",
+    "Patti Smith"
+   ],
+   [
+    "Know My Name",
+    "Chanel Miller"
+   ],
+   [
+    "Maybe You Should Talk to Someone",
+    "Lori Gottlieb"
+   ],
+   [
+    "Spare",
+    "Prince Harry"
+   ]
+  ]
+ },
+ {
+  "id": "historical",
+  "title": "Historical fiction",
+  "emoji": "🏛️",
+  "genre": "Historical fiction",
+  "seeds": [
+   [
+    "All the Light We Cannot See",
+    "Anthony Doerr"
+   ],
+   [
+    "The Nightingale",
+    "Kristin Hannah"
+   ],
+   [
+    "The Book Thief",
+    "Markus Zusak"
+   ],
+   [
+    "Wolf Hall",
+    "Hilary Mantel"
+   ],
+   [
+    "Pachinko",
+    "Min Jin Lee"
+   ],
+   [
+    "The Pillars of the Earth",
+    "Ken Follett"
+   ],
+   [
+    "The Song of Achilles",
+    "Madeline Miller"
+   ],
+   [
+    "Lessons in Chemistry",
+    "Bonnie Garmus"
+   ],
+   [
+    "The Alice Network",
+    "Kate Quinn"
+   ],
+   [
+    "Atonement",
+    "Ian McEwan"
+   ],
+   [
+    "The Help",
+    "Kathryn Stockett"
+   ],
+   [
+    "Beloved",
+    "Toni Morrison"
+   ]
+  ]
+ },
+ {
+  "id": "mystery",
+  "title": "Mystery & thriller",
+  "emoji": "🔍",
+  "genre": "Mystery",
+  "seeds": [
+   [
+    "Gone Girl",
+    "Gillian Flynn"
+   ],
+   [
+    "The Girl with the Dragon Tattoo",
+    "Stieg Larsson"
+   ],
+   [
+    "And Then There Were None",
+    "Agatha Christie"
+   ],
+   [
+    "The Silent Patient",
+    "Alex Michaelides"
+   ],
+   [
+    "Big Little Lies",
+    "Liane Moriarty"
+   ],
+   [
+    "The Da Vinci Code",
+    "Dan Brown"
+   ],
+   [
+    "In the Woods",
+    "Tana French"
+   ],
+   [
+    "Rebecca",
+    "Daphne du Maurier"
+   ],
+   [
+    "The Thursday Murder Club",
+    "Richard Osman"
+   ],
+   [
+    "Sharp Objects",
+    "Gillian Flynn"
+   ],
+   [
+    "The Girl on the Train",
+    "Paula Hawkins"
+   ],
+   [
+    "The Murder of Roger Ackroyd",
+    "Agatha Christie"
+   ]
+  ]
+ },
+ {
+  "id": "scifi",
+  "title": "Science fiction",
+  "emoji": "🚀",
+  "genre": "Science fiction",
+  "seeds": [
+   [
+    "Dune",
+    "Frank Herbert"
+   ],
+   [
+    "Project Hail Mary",
+    "Andy Weir"
+   ],
+   [
+    "The Martian",
+    "Andy Weir"
+   ],
+   [
+    "Ender's Game",
+    "Orson Scott Card"
+   ],
+   [
+    "Station Eleven",
+    "Emily St. John Mandel"
+   ],
+   [
+    "The Left Hand of Darkness",
+    "Ursula K. Le Guin"
+   ],
+   [
+    "Klara and the Sun",
+    "Kazuo Ishiguro"
+   ],
+   [
+    "The Three-Body Problem",
+    "Liu Cixin"
+   ],
+   [
+    "Foundation",
+    "Isaac Asimov"
+   ],
+   [
+    "Fahrenheit 451",
+    "Ray Bradbury"
+   ],
+   [
+    "Neuromancer",
+    "William Gibson"
+   ],
+   [
+    "Nineteen Eighty-Four",
+    "George Orwell"
+   ]
+  ]
+ },
+ {
+  "id": "classics",
+  "title": "Classics",
+  "emoji": "📜",
+  "genre": "Classic",
+  "seeds": [
+   [
+    "Jane Eyre",
+    "Charlotte Brontë"
+   ],
+   [
+    "Wuthering Heights",
+    "Emily Brontë"
+   ],
+   [
+    "Little Women",
+    "Louisa May Alcott"
+   ],
+   [
+    "The Great Gatsby",
+    "F. Scott Fitzgerald"
+   ],
+   [
+    "To Kill a Mockingbird",
+    "Harper Lee"
+   ],
+   [
+    "Anna Karenina",
+    "Leo Tolstoy"
+   ],
+   [
+    "Middlemarch",
+    "George Eliot"
+   ],
+   [
+    "Frankenstein",
+    "Mary Shelley"
+   ],
+   [
+    "The Picture of Dorian Gray",
+    "Oscar Wilde"
+   ],
+   [
+    "Crime and Punishment",
+    "Fyodor Dostoevsky"
+   ],
+   [
+    "Emma",
+    "Jane Austen"
+   ],
+   [
+    "Great Expectations",
+    "Charles Dickens"
+   ]
+  ]
+ }
+]
