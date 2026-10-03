@@ -1,0 +1,220 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *, .dark, .dark *));
+
+@layer base {
+  :root {
+    --bg-paper: #f5f0e6;
+    --card-paper: #fbf7ee;
+    --ink-dark: #201a15;
+    --ink-muted: #706256;
+    --border-paper: #e3d7c3;
+    --accent-green: #2e5934;
+    --accent-clay: #925838;
+    --accent-soft: #e8efe7;
+  }
+
+  [data-theme="dark"],
+  .dark {
+    --bg-paper: #181410;
+    --card-paper: #231d17;
+    --ink-dark: #f0e6d6;
+    --ink-muted: #a89a8a;
+    --border-paper: #382f25;
+    --accent-green: #86b880;
+    --accent-clay: #d89e70;
+    --accent-soft: #243422;
+  }
+
+  html {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  @media (max-width: 640px) {
+    html {
+      font-size: 16.5px;
+    }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+    background-color: var(--bg-paper);
+    color: var(--ink-dark);
+    -webkit-tap-highlight-color: transparent;
+    line-height: 1.55;
+  }
+
+  h1, h2, h3, .font-serif-display {
+    font-family: "DM Serif Display", Georgia, serif;
+  }
+
+  /* Prevent iOS Safari from auto-zooming when focusing text fields */
+  input, textarea, select {
+    font-size: 16px;
+  }
+}
+
+/* Apple Books 3D book cover aesthetic */
+.book-cover-3d {
+  position: relative;
+  border-radius: 3px 8px 8px 3px;
+  box-shadow: 
+    inset 5px 0 0 rgba(0, 0, 0, 0.25),
+    inset 7px 0 3px rgba(255, 255, 255, 0.15),
+    2px 5px 12px rgba(0, 0, 0, 0.18),
+    0 1px 3px rgba(0, 0, 0, 0.12);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+.book-cover-3d:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 
+    inset 5px 0 0 rgba(0, 0, 0, 0.25),
+    inset 7px 0 3px rgba(255, 255, 255, 0.15),
+    4px 10px 20px rgba(0, 0, 0, 0.25),
+    0 2px 5px rgba(0, 0, 0, 0.15);
+}
+
+.book-cover-modal-3d {
+  position: relative;
+  border-radius: 4px 12px 12px 4px;
+  box-shadow: 
+    inset 8px 0 0 rgba(0, 0, 0, 0.3),
+    inset 11px 0 5px rgba(255, 255, 255, 0.18),
+    6px 16px 36px rgba(0, 0, 0, 0.35),
+    0 3px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Custom scrollbars for shelves */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ---- touch / phone comfort ---- */
+@media (hover: none) and (pointer: coarse) {
+  .text-\[9px\], .text-\[10px\], .text-\[11px\] { font-size: 12.5px !important; line-height: 1.3; }
+  button:not(.scene-book):not(.day), select { min-height: 44px; }
+  button.p-1\.5, button.p-2 { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+  input, textarea, select { font-size: 16px !important; }
+  .scene-book, .day { min-height: 0 !important; }
+  .book-cover-3d { min-height: 0 !important; }
+}
+@media (max-width: 767px) { main { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); } }
+@media (min-width: 768px) and (max-width: 1100px) { div.hidden.md\:flex button { white-space: nowrap; padding-left: .7rem; padding-right: .7rem; } }
+.day-today { outline: 2px solid #925838; outline-offset: 2px; }
+.steam-0, .steam-1, .steam-2 { animation: steam 3s ease-in-out infinite; }
+.steam-1 { animation-delay: .6s; } .steam-2 { animation-delay: 1.2s; }
+@keyframes steam { 0% { opacity: 0; transform: translateY(4px); } 50% { opacity: .7; } 100% { opacity: 0; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .steam-0, .steam-1, .steam-2 { animation: none; } }
+
+/* ---- ratings, prize badges, cover trophy ---- */
+.rl-stars { color: #d9a441; letter-spacing: 1px; }
+.rl-bdgs { display: flex; flex-wrap: wrap; gap: 6px; }
+.rl-bdg { font: 600 12px/1.3 system-ui, sans-serif; padding: 4px 10px; border-radius: 12px; border: 1px solid #e3d7c3; color: #706256; }
+.rl-bdg-w { background: #e8efe7; color: #2e5934; border-color: #2e5934; }
+.rl-bdg-c { background: #f3e7dc; color: #925838; border-color: #925838; }
+:root.dark .rl-bdg, [data-theme="dark"] .rl-bdg { border-color: #382f25; color: #a89a8a; }
+:root.dark .rl-bdg-w, [data-theme="dark"] .rl-bdg-w { background: #243422; color: #86b880; border-color: #86b880; }
+:root.dark .rl-bdg-c, [data-theme="dark"] .rl-bdg-c { background: #3a2a1e; color: #d89e70; border-color: #d89e70; }
+.rl-prize { position: absolute; top: 5px; right: 5px; z-index: 30; width: 22px; height: 22px; border-radius: 50%; background: rgba(251,247,238,.95); box-shadow: 0 1px 3px rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; font-size: 12px; line-height: 1; }
+
+/* ---- navigation: floating bar below 1000px (phones + iPad portrait), side rail on iPad landscape/desktop ---- */
+.rl-shell { padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px)); }
+
+/* Floating bar */
+.rl-nav {
+  display: flex; align-items: stretch; justify-content: space-between; gap: 4px;
+  left: 14px; right: 14px; margin-left: auto; margin-right: auto; max-width: 500px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  padding: 6px; border-radius: 9999px;
+}
+/* One tab = a centred icon + label stack. Centring on BOTH axes keeps the green pill and its contents aligned. */
+.rl-nav .rl-tab {
+  position: relative; flex: 1 1 0; min-width: 0; height: 56px; min-height: 0 !important;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  padding: 0 4px; border: 0; border-radius: 9999px; background: transparent;
+  color: var(--ink-muted); line-height: 1; transition: background-color .2s, color .2s;
+}
+.rl-nav .rl-tab-icon { width: 22px; height: 22px; flex: none; display: block; }
+.rl-nav .rl-tab-label { display: block; font: 600 11px/1 system-ui, -apple-system, sans-serif; letter-spacing: .01em; }
+.rl-nav .rl-tab.is-active { background: var(--accent-soft); color: var(--accent-green); }
+.rl-nav .rl-tab-dot {
+  position: absolute; top: 9px; left: 50%; margin-left: 9px; width: 8px; height: 8px;
+  border-radius: 9999px; background: var(--accent-green); box-shadow: 0 0 0 2px var(--card-paper);
+}
+
+/* iPad landscape / desktop: vertical rail */
+@media (min-width: 1000px) {
+  .rl-shell { padding-bottom: 48px; }
+  .rl-main { padding-left: 128px !important; padding-right: 32px !important; max-width: 1140px; }
+  .rl-nav {
+    left: 18px; right: auto; top: 50%; bottom: auto; margin: 0; max-width: none;
+    transform: translateY(-50%); flex-direction: column; width: 84px;
+    padding: 8px; gap: 6px; border-radius: 28px;
+  }
+  .rl-nav .rl-tab { flex: none; width: 100%; height: 66px; border-radius: 20px; }
+  .rl-nav .rl-tab-dot { top: 10px; left: auto; right: 14px; margin-left: 0; }
+}
+
+/* ---- Garden & Weather Cozy Animations ---- */
+@keyframes plant-sway {
+  0% { transform: rotate(0deg); }
+  20% { transform: rotate(-8deg); }
+  40% { transform: rotate(6deg); }
+  60% { transform: rotate(-4deg); }
+  80% { transform: rotate(2deg); }
+  100% { transform: rotate(0deg); }
+}
+
+.animate-plant-sway {
+  transform-origin: bottom center;
+  animation: plant-sway 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+@keyframes particle-float {
+  0% { transform: translate(-50%, 6px) scale(0.7); opacity: 0; }
+  20% { opacity: 1; transform: translate(-50%, -6px) scale(1.05); }
+  75% { opacity: 1; transform: translate(-50%, -16px) scale(1); }
+  100% { transform: translate(-50%, -24px) scale(0.95); opacity: 0; }
+}
+
+.animate-particle-float {
+  animation: particle-float 1.1s ease-out forwards;
+}
+
+@keyframes rain-fall {
+  0% { transform: translateY(-30px) translateX(0); opacity: 0; }
+  30% { opacity: 0.8; }
+  90% { opacity: 0.8; }
+  100% { transform: translateY(120px) translateX(-15px); opacity: 0; }
+}
+
+.animate-rain {
+  animation: rain-fall 0.75s linear infinite;
+}
+
+@keyframes cloud-drift {
+  0% { transform: translateX(-35px); }
+  50% { transform: translateX(35px); }
+  100% { transform: translateX(-35px); }
+}
+
+.animate-cloud {
+  animation: cloud-drift 14s ease-in-out infinite;
+}
+
+@keyframes star-twinkle {
+  0%, 100% { opacity: 0.3; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.25); }
+}
+
+.animate-twinkle {
+  animation: star-twinkle 2.4s ease-in-out infinite;
+}
+

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="GreatReads" />
+    <meta name="application-name" content="GreatReads" />
+    <meta name="theme-color" content="#f5f0e6" />
+    
+    <title>GreatReads</title>
+    <meta name="description" content="An elegant, Apple Books-inspired reading companion, bookstore, vocabulary garden, and device library for iPad, iPhone, and web." />
+    <meta property="og:title" content="GreatReads" />
+    <meta property="og:description" content="An elegant, Apple Books-inspired reading companion, bookstore, vocabulary garden, and device library for iPad, iPhone, and web." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Fonts: DM Serif Display for titles; everything else uses the device's own sans-serif -->
+    <link rel="preconnect" href="https://covers.openlibrary.org" crossorigin />
+    <link rel="dns-prefetch" href="https://openlibrary.org" />
+    <script>try{(JSON.parse(localStorage.getItem("readlife.preload")||"[]")).forEach(function(u){var i=new Image();i.src=u;})}catch(e){}</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
+
+    <!-- Apple Touch Icon & PWA Icons (using exact supplied artwork) -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/exact-apple-touch-icon.png?v=4" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/exact-icon-192.png?v=4" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/exact-icon-512.png?v=4" />
+    <link rel="apple-touch-icon" href="/exact-apple-touch-icon.png?v=4" />
+    <link rel="apple-touch-icon-precomposed" sizes="180x180" href="/exact-apple-touch-icon.png?v=4" />
+    <link rel="apple-touch-icon-precomposed" href="/exact-apple-touch-icon.png?v=4" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/exact-icon-512.png?v=4" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/exact-icon-192.png?v=4" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/exact-favicon.png?v=4" />
+    <link rel="shortcut icon" href="/exact-apple-touch-icon.png?v=4" />
+    <link rel="manifest" href="/manifest.json?v=4" />
+  </head>
+  <body class="bg-[#f5f0e6] dark:bg-[#181410] text-[#201a15] dark:text-[#f0e6d6] antialiased selection:bg-[#2e5934]/20 selection:text-[#2e5934]">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,41 @@
+{
+  "name": "GreatReads",
+  "short_name": "GreatReads",
+  "description": "An elegant, Apple Books-inspired reading companion and bookstore.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f0e6",
+  "theme_color": "#f5f0e6",
+  "icons": [
+    {
+      "src": "/exact-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/exact-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/exact-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/exact-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/exact-apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

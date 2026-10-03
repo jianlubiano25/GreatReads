@@ -1,0 +1,35 @@
+{
+  "name": "my-reading-life",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port=3000 --host=0.0.0.0",
+    "build": "vite build",
+    "start": "node server.js",
+    "preview": "vite preview --port=3000 --host=0.0.0.0",
+    "clean": "rm -rf dist",
+    "lint": "tsc --noEmit",
+    "prefetch:store": "node scripts/prefetch-store.mjs"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^6.1.1",
+    "express": "^4.21.2",
+    "lucide-react": "^0.546.0",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "vite": "^8.3.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}
