@@ -3,12 +3,12 @@ import { Book, BookStatus, ReadingState, UserProfile, WordItem, HighlightItem } 
 import { DEFAULT_BOOKS } from '../data/defaultBooks';
 import { INITIAL_WORDS } from '../data/defaultWords';
 import { normalizeV2, normalizeLegacy, parseBackup } from '../services/stateSanitizer';
+import { computeSnapshot, currentStreakFor, evaluateGarden, markCelebrated, movePlant as movePlantIn, pendingCelebrations, seedGarden } from '../services/garden';
 
 const STORAGE_KEY = 'readlife.v2';
 const LEGACY_KEY = 'readlife.v1';
 const RECOVERY_KEY = 'readlife.v2.recovery';
 const SAVE_DELAY_MS = 350;
-const MAX_STREAK_DAYS = 3650;
 // Things the app can download again if they are ever lost; safe to clear when storage is full
 const CACHE_KEYS = ['readlife.store1', 'readlife.store2', 'readlife.meta2', 'readlife.meta3', 'readlife.covers1', 'readlife.preload', 'readlife.loaded', 'readlife.phoneticTried'];
 
@@ -33,6 +33,8 @@ function buildDefaultState(): ReadingState {
     onDeviceOverrides: {},
     hiddenBookIds: {},
     words: [...INITIAL_WORDS],
+    // Starter plants are owned from the first launch (no celebration prompt for them).
+    garden: seedGarden({ dailyLog: {}, goal: 10, status: {}, todayKey: getTodayKey() }),
   };
 }
 
@@ -191,28 +193,41 @@ export function useReadingLife() {
   // Daily log metrics
   const todayPages = state.dailyLog[todayKey] || 0;
 
-  const currentStreak = useMemo(() => {
-    let streakCount = 0;
-    const checkDate = new Date();
-    const todayLog = state.dailyLog[todayKey] || 0;
+  const currentStreak = useMemo(
+    () => currentStreakFor(state.dailyLog, state.goal, todayKey),
+    [state.dailyLog, state.goal, todayKey],
+  );
 
-    // If today hasn't met the goal yet, start counting from yesterday
-    if (todayLog < state.goal) {
-      checkDate.setDate(checkDate.getDate() - 1);
-    }
+  // Garden: award newly reached milestones and record growth. This only ever adds or raises things
+  // (plants, growth, the vine), so a streak reset or an edited day can never take any of it away.
+  // evaluateGarden returns the same object when nothing changed, so this does not cause extra renders.
+  useEffect(() => {
+    setState(prev => {
+      const snap = computeSnapshot({
+        dailyLog: prev.dailyLog, goal: prev.goal, status: prev.status, todayKey,
+        highlights: prev.highlights, words: prev.words,
+      });
+      const next = evaluateGarden(prev.garden, snap);
+      return next === prev.garden ? prev : { ...prev, garden: next };
+    });
+  }, [state.dailyLog, state.goal, state.status, state.highlights, state.words, todayKey]);
 
-    while (streakCount < MAX_STREAK_DAYS) {
-      const key = checkDate.toLocaleDateString('en-CA');
-      const val = state.dailyLog[key] || 0;
-      if (val >= state.goal) {
-        streakCount++;
-        checkDate.setDate(checkDate.getDate() - 1);
-      } else {
-        break;
-      }
-    }
-    return streakCount;
-  }, [state.dailyLog, state.goal, todayKey]);
+  // Rearranging only changes where a plant stands (placements); what you own never changes
+  const movePlant = useCallback((plantId: string, areaId: string, index: number) => {
+    setState(prev => {
+      const next = movePlantIn(prev.garden, plantId, areaId, index);
+      return next === prev.garden ? prev : { ...prev, garden: next };
+    });
+  }, []);
+
+  // Plants whose "a new plant has arrived" prompt has not been shown yet
+  const newPlantIds = useMemo(() => pendingCelebrations(state.garden), [state.garden]);
+  const markPlantsCelebrated = useCallback((ids: string[]) => {
+    setState(prev => {
+      const next = markCelebrated(prev.garden, ids);
+      return next === prev.garden ? prev : { ...prev, garden: next };
+    });
+  }, []);
 
   // Actions
   // Set an exact page count for any day (used by tapping a day in the week strip)
@@ -469,6 +484,9 @@ export function useReadingLife() {
     todayKey,
     todayPages,
     currentStreak,
+    newPlantIds,
+    markPlantsCelebrated,
+    movePlant,
     setDayPages,
     updateBookProgress,
     setBookStatus,

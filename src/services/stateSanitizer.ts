@@ -1,11 +1,16 @@
 import type {
   Book,
   BookStatus,
+  GardenState,
   HighlightItem,
+  OwnedPlant,
+  PlantPlacement,
   ReadingState,
   UserProfile,
   WordItem,
 } from '../types';
+import { MILESTONE_BY_ID } from '../data/gardenCatalog';
+import { emptyGarden, seedGarden, todayKeyNow } from './garden';
 
 /**
  * Defensive normalisation for anything coming from localStorage or a pasted backup.
@@ -170,6 +175,88 @@ export function sanitizeProfile(raw: unknown, fallback: UserProfile): UserProfil
   };
 }
 
+const nonNeg = (v: unknown): number => {
+  const n = num(v);
+  return n !== undefined && n > 0 ? n : 0;
+};
+
+/**
+ * Repair a saved/backed-up garden. Returns null when there is no usable garden at all
+ * (older saves and older backups), in which case the caller seeds one from reading history.
+ * Unknown plant ids are kept (a plant you earned is never dropped just because the catalog changed).
+ */
+export function sanitizeGarden(raw: unknown): GardenState | null {
+  if (!isObj(raw) || (!isObj(raw.plants) && !isObj(raw.achievements))) return null;
+  const g = emptyGarden();
+
+  if (isObj(raw.peaks)) {
+    for (const k of Object.keys(g.peaks) as (keyof GardenState['peaks'])[]) g.peaks[k] = nonNeg(raw.peaks[k]);
+  }
+
+  if (isObj(raw.plants)) {
+    for (const id of Object.keys(raw.plants)) {
+      const p = raw.plants[id];
+      if (!isObj(p)) continue;
+      const owned: OwnedPlant = {
+        milestoneId: str(p.milestoneId),
+        earnedAt: nonNeg(p.earnedAt) || Date.now(),
+        growth: Math.min(1, nonNeg(p.growth)),
+      };
+      const done = num(p.completedAt);
+      if (done !== undefined && done > 0) owned.completedAt = done;
+      g.plants[String(id)] = owned;
+    }
+  }
+
+  if (isObj(raw.achievements)) {
+    for (const id of Object.keys(raw.achievements)) {
+      const a = raw.achievements[id];
+      if (!isObj(a) || typeof a.plantId !== 'string' || !a.plantId) continue;
+      g.achievements[String(id)] = { earnedAt: nonNeg(a.earnedAt) || Date.now(), plantId: a.plantId };
+    }
+  }
+
+  // Keep achievements and plants in step, so an interrupted/hand-edited save cannot lose either half.
+  for (const [mid, a] of Object.entries(g.achievements)) {
+    if (!g.plants[a.plantId]) g.plants[a.plantId] = { milestoneId: mid, earnedAt: a.earnedAt, growth: 0.2 };
+  }
+  for (const [pid, p] of Object.entries(g.plants)) {
+    const m = MILESTONE_BY_ID[p.milestoneId];
+    if (!p.milestoneId || (m && m.plantId !== pid)) {
+      // unknown/mismatched milestone link: re-link by catalog if possible
+      const owner = Object.values(MILESTONE_BY_ID).find(x => x.plantId === pid);
+      if (owner) p.milestoneId = owner.id;
+    }
+    if (p.milestoneId && !g.achievements[p.milestoneId]) {
+      g.achievements[p.milestoneId] = { earnedAt: p.earnedAt, plantId: pid };
+    }
+  }
+
+  if (isObj(raw.placements)) {
+    for (const id of Object.keys(raw.placements)) {
+      const p = raw.placements[id];
+      if (!isObj(p) || typeof p.areaId !== 'string' || !p.areaId || !g.plants[id]) continue;
+      const placement: PlantPlacement = { areaId: p.areaId, slot: Math.floor(nonNeg(p.slot)) };
+      g.placements[String(id)] = placement;
+    }
+  }
+
+  if (isObj(raw.celebrated)) {
+    for (const id of Object.keys(raw.celebrated)) if (raw.celebrated[id]) g.celebrated[String(id)] = true;
+  } else {
+    // No record of what was celebrated: treat everything already owned as seen so a restore never replays prompts.
+    for (const id of Object.keys(g.plants)) g.celebrated[id] = true;
+  }
+
+  g.vine = Math.min(1, nonNeg(raw.vine));
+  return g;
+}
+
+/** Garden for a state that arrived without one (fresh install, older save, older backup): built silently from history. */
+function gardenFor(raw: unknown, s: Pick<ReadingState, 'dailyLog' | 'goal' | 'status' | 'highlights' | 'words'>): GardenState {
+  return sanitizeGarden(raw) ?? seedGarden({ dailyLog: s.dailyLog, goal: s.goal, status: s.status, todayKey: todayKeyNow(), highlights: s.highlights, words: s.words });
+}
+
 /** True when the object looks like the current (v2) app format rather than Claude's old short-key format. */
 export function isV2Shape(o: Record<string, any>): boolean {
   return ['currentPage', 'totalPages', 'dailyLog', 'readingIntention', 'customBooks', 'onDeviceOverrides', 'hiddenBookIds']
@@ -187,7 +274,7 @@ export function isLegacyShape(o: Record<string, any>): boolean {
 export function normalizeV2(parsed: Record<string, any>, base: ReadingState): ReadingState {
   const has = (k: string) => k in parsed && parsed[k] != null;
   const goal = num(parsed.goal);
-  return {
+  const out: ReadingState = {
     status: has('status') ? sanitizeStatus(parsed.status) : base.status,
     currentPage: has('currentPage') ? sanitizeNumberRecord(parsed.currentPage) : base.currentPage,
     totalPages: has('totalPages') ? sanitizeNumberRecord(parsed.totalPages) : base.totalPages,
@@ -204,7 +291,11 @@ export function normalizeV2(parsed: Record<string, any>, base: ReadingState): Re
     onDeviceOverrides: has('onDeviceOverrides') ? sanitizeBoolRecord(parsed.onDeviceOverrides) : base.onDeviceOverrides,
     hiddenBookIds: has('hiddenBookIds') ? sanitizeBoolRecord(parsed.hiddenBookIds) : base.hiddenBookIds,
     words: has('words') ? sanitizeWords(parsed.words) : base.words,
+    garden: base.garden,
   };
+  // Saves and backups made before the garden existed have no `garden`: build it from their reading history.
+  out.garden = gardenFor(parsed.garden, out);
+  return out;
 }
 
 /** Convert Claude's old short-key format (st/pg/tot/log/hi/prof/...) and merge onto `base`. */
@@ -234,7 +325,7 @@ export function normalizeLegacy(p: Record<string, any>, base: ReadingState): Rea
   const words = sanitizeWords(p.words);
   const hi = sanitizeHighlights(p.hi);
 
-  return {
+  const merged: ReadingState = {
     ...base,
     status: isObj(p.st) ? { ...base.status, ...sanitizeStatus(p.st) } : base.status,
     currentPage: isObj(p.pg) ? { ...base.currentPage, ...sanitizeNumberRecord(p.pg) } : base.currentPage,
@@ -248,6 +339,8 @@ export function normalizeLegacy(p: Record<string, any>, base: ReadingState): Rea
     hiddenBookIds: isObj(p.hidden) ? { ...base.hiddenBookIds, ...sanitizeBoolRecord(p.hidden) } : base.hiddenBookIds,
     words: words.length > 0 ? words : base.words,
   };
+  merged.garden = gardenFor(p.garden, merged);
+  return merged;
 }
 
 /**

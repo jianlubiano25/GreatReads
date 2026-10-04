@@ -11,6 +11,7 @@ import { CURATED_SHELVES } from './data/storeCatalog';
 // Modals
 import { AppleBookDetailModal } from './components/AppleBookDetailModal';
 import { ReadingScene } from './components/ReadingScene';
+import { PlantCelebration } from './components/garden/PlantCelebration';
 import { DayStrip } from './components/DayStrip';
 import { NowReadingCard, UpNextCard, LibraryCard, DeviceCard, WordCard } from './components/cards';
 import { CoverFace } from './components/BookMeta';
@@ -83,6 +84,9 @@ export default function App() {
     todayKey,
     todayPages,
     currentStreak,
+    newPlantIds,
+    markPlantsCelebrated,
+    movePlant,
     setDayPages,
     updateBookProgress,
     setBookStatus,
@@ -106,6 +110,15 @@ export default function App() {
     importBackup,
     saveError,
   } = useReadingLife();
+
+  // "A new plant has arrived" prompts. A plant is marked as shown the moment it is queued (and that is saved),
+  // so reloading the app or restoring a backup never shows the same prompt again.
+  const [plantQueue, setPlantQueue] = useState<string[]>([]);
+  useEffect(() => {
+    if (!newPlantIds.length) return;
+    setPlantQueue(q => [...q, ...newPlantIds.filter(id => !q.includes(id))]);
+    markPlantsCelebrated(newPlantIds);
+  }, [newPlantIds, markPlantsCelebrated]);
 
   // Navigation tab
   const [tab, setTab] = useState<TabType>('today');
@@ -441,8 +454,6 @@ export default function App() {
           </aside>
         )}
 
-        <MissingCoversButton />
-
         {/* Reading nook: window, shelves of your real covers, coffee & growing plants */}
         {visitedTabs.has('today') && (
         <TabPane active={tab === 'today'}>
@@ -451,8 +462,7 @@ export default function App() {
           streak={currentStreak}
           todayPages={todayPages}
           goal={state.goal}
-          goalDaysThisWeek={last7Days.filter(d => d.isGoalMet).length}
-          finishedCount={finishedCount}
+          garden={state.garden}
           dailyLog={state.dailyLog}
           onOpenBook={setSelectedBookForDetail}
         />
@@ -1076,6 +1086,8 @@ export default function App() {
           goal={state.goal}
           hiddenCount={Object.keys(state.hiddenBookIds).length}
           stats={stats}
+          garden={state.garden}
+          onMovePlant={movePlant}
           onClose={() => setShowProfileModal(false)}
           onUpdateProfile={updateProfile}
           onUpdateGoal={setGoal}
@@ -1124,6 +1136,15 @@ export default function App() {
           onClose={() => setShowBackupModal(false)}
           onExportBackup={exportBackup}
           onImportBackup={importBackup}
+        />
+      )}
+
+      {/* New plant prompt (one at a time) */}
+      {plantQueue.length > 0 && (
+        <PlantCelebration
+          plantId={plantQueue[0]}
+          garden={state.garden}
+          onClose={() => setPlantQueue(q => q.slice(1))}
         />
       )}
 

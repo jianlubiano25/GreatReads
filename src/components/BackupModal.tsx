@@ -25,7 +25,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   const currentBackup = useMemo(() => (isOpen ? onExportBackup() : ''), [isOpen, onExportBackup]);
 
   const backupStats = useMemo(() => {
-    const stats = { now: 0, next: 0, highlights: 0, words: 0, customBooks: 0 };
+    const stats = { now: 0, next: 0, highlights: 0, words: 0, customBooks: 0, plants: 0 };
     if (!currentBackup) return stats;
     try {
       const parsed = JSON.parse(currentBackup);
@@ -42,6 +42,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
       }
       if (Array.isArray(parsed.words)) stats.words = parsed.words.length;
       if (Array.isArray(parsed.customBooks)) stats.customBooks = parsed.customBooks.length;
+      if (parsed.garden && parsed.garden.plants) stats.plants = Object.keys(parsed.garden.plants).length;
     } catch {}
     return stats;
   }, [currentBackup]);
@@ -140,7 +141,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
             </div>
 
             <p className="text-xs text-[#706256] dark:text-[#a89a8a] mb-2">
-              Backs up 100% of your data: active reading statuses, Up Next, personal quotes, Word Garden vocabulary, daily reading page logs, and custom books.
+              Backs up 100% of your data: active reading statuses, Up Next, personal quotes, Word Garden vocabulary, daily reading page logs, custom books, and your garden ({backupStats.plants} plant{backupStats.plants === 1 ? '' : 's'} earned, with growth and achievements).
             </p>
             <div className="relative">
               <textarea

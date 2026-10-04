@@ -218,3 +218,108 @@
   animation: star-twinkle 2.4s ease-in-out infinite;
 }
 
+
+/* ---- Garden: plants, labels and the scrollable garden ---- */
+/* Same sway as above under a second name, so tapping a plant that is already swaying restarts it. */
+@keyframes plant-sway-b {
+  0% { transform: rotate(0deg); }
+  20% { transform: rotate(-8deg); }
+  40% { transform: rotate(6deg); }
+  60% { transform: rotate(-4deg); }
+  80% { transform: rotate(2deg); }
+  100% { transform: rotate(0deg); }
+}
+.animate-plant-sway-b {
+  transform-origin: bottom center;
+  animation: plant-sway-b 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.plant-shell {
+  position: relative;
+  flex: none;
+  margin: 0 -6px; /* plants stand close together, like a garden nook */
+}
+.plant-shell:hover,
+.plant-shell:focus-within { z-index: 3; }
+.plant-btn {
+  display: block;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transform-origin: bottom center;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.15s ease;
+}
+.plant-idle:hover { transform: scale(1.05); }
+.plant-idle:active { transform: scale(0.95); }
+.plant-btn:focus-visible,
+.scene-window:focus-visible,
+.garden-scroll:focus-visible {
+  outline: 2px solid #2e5934;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.75);
+}
+.garden-scroll:focus-visible { outline-offset: -2px; }
+
+/* Plain text only: no background, pill, border or shadow. It is a sibling of the swaying button, so it never sways. */
+.plant-label {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% - 2px);
+  transform: translateX(-50%);
+  z-index: 30;
+  white-space: nowrap;
+  pointer-events: none;
+  font: 600 11px/1.2 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+/* Hanging plants hang from the rail by a short rope that does not sway with the plant */
+.hang-rope {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  width: 1.2px;
+  height: 22px;
+  margin-left: -0.6px;
+  background: #8a5a3b;
+  pointer-events: none;
+}
+
+.garden-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.garden-scroll-top { background: rgba(146, 88, 56, 0.06); }
+.garden-scroll-bottom { background: rgba(146, 88, 56, 0.06); }
+.garden-rows {
+  display: flex;
+  flex-direction: column;
+  min-width: 100%;
+  width: max-content; /* grows with the plants inside the scroller, never widens the page */
+}
+.garden-row { display: flex; gap: 0; padding: 0 18px; }
+.garden-row-shelf { align-items: flex-end; padding-top: 26px; min-height: 90px; border-bottom: 7px solid #8a5a3b; }
+.garden-hang { padding-top: 0; }
+.garden-rail { height: 6px; background: #8a5a3b; box-shadow: 0 1px 0 rgba(0, 0, 0, 0.12); }
+.garden-row-hang { align-items: flex-start; padding-top: 24px; padding-bottom: 8px; }
+
+/* ---- New-plant prompt ---- */
+@keyframes plant-arrive {
+  0% { opacity: 0; transform: translateY(8px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.plant-arrive { animation: plant-arrive 0.35s ease-out both; }
+
+/* ---- Reduced motion: no looping scene animation, no sway, no float, no grow transitions ---- */
+@media (prefers-reduced-motion: reduce) {
+  .rl-scene *,
+  .plant-arrive {
+    animation: none !important;
+    transition: none !important;
+  }
+  .rl-scene .plant-label { opacity: 1; transform: translateX(-50%); }
+}

@@ -1,15 +1,19 @@
 import React, { useState } from 'react';
-import { UserProfile } from '../types';
+import { GardenState, UserProfile } from '../types';
 import { Camera, Moon, Sun, Monitor, RefreshCw, Copy, Check, Upload, X, Download } from 'lucide-react';
 import { copyText } from '../services/clipboard';
 import { isLocationWeatherEnabled, setLocationWeatherEnabled, fetchLocalWeather } from '../services/weather';
 import { useAppUpdate, checkForUpdate, applyUpdate, restartApp, APP_BUILD } from '../services/appUpdate';
+import { AchievementsModal } from './garden/AchievementsModal';
+import { MILESTONES } from '../data/gardenCatalog';
 
 interface ProfileModalProps {
   profile: UserProfile;
   goal: number;
   hiddenCount: number;
   stats: { pagesRead: number; finished: number; toRead: number };
+  garden: GardenState;
+  onMovePlant: (plantId: string, areaId: string, index: number) => void;
   onClose: () => void;
   onUpdateProfile: (updates: Partial<UserProfile>) => void;
   onUpdateGoal: (goal: number) => void;
@@ -24,6 +28,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   goal,
   hiddenCount,
   stats,
+  garden,
+  onMovePlant,
   onClose,
   onUpdateProfile,
   onUpdateGoal,
@@ -39,6 +45,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const update = useAppUpdate();
   const [locationWeather, setLocationWeather] = useState(isLocationWeatherEnabled);
+  const [showAchievements, setShowAchievements] = useState(false);
+  const plantsEarned = MILESTONES.filter(m => garden.achievements[m.id]).length;
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -205,6 +213,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 </div>
               ))}
             </div>
+            <button
+              type="button"
+              onClick={() => setShowAchievements(true)}
+              className="mt-2 w-full py-2.5 px-3 rounded-xl text-xs font-semibold border border-[#e3d7c3] dark:border-[#382f25] bg-[#e8efe7] dark:bg-[#243422] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center gap-2 hover:opacity-90 active:scale-95 transition-all"
+            >
+              <span aria-hidden="true">🌿</span>
+              <span>Achievements &amp; garden · {plantsEarned} of {MILESTONES.length} plants</span>
+            </button>
           </div>
 
           {/* Appearance */}
@@ -394,6 +410,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             </div>
           </div>
         </div>
+
+        {showAchievements && <AchievementsModal garden={garden} onMovePlant={onMovePlant} onClose={() => setShowAchievements(false)} />}
 
         <div className="p-4 bg-[#f5f0e6] dark:bg-[#181410] border-t border-[#e3d7c3] dark:border-[#382f25]">
           <button
