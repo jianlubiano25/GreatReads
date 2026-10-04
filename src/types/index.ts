@@ -58,7 +58,7 @@ export interface UserProfile {
   theme: 'auto' | 'light' | 'dark';
 }
 
-/** High-water marks. They only ever go up, so a streak reset or an edited day can never take progress away. */
+/** Garden numbers. Books/highlights/words are high-water marks (only go up); the reading-log ones are re-worked from the log each time. */
 export interface GardenPeaks {
   bestStreak: number;
   tenPageDays: number; // days with 10+ pages

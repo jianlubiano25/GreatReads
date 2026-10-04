@@ -10,7 +10,8 @@
     "preview": "vite preview --port=3000 --host=0.0.0.0",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "prefetch:store": "node scripts/prefetch-store.mjs"
+    "prefetch:store": "node scripts/prefetch-store.mjs",
+    "test": "tsx --test src/services/garden.test.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
@@ -27,6 +28,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   },
   "engines": {

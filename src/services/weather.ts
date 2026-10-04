@@ -118,51 +118,64 @@ export async function fetchLocalWeather(): Promise<WeatherData | null> {
     geoBlocked = geoBlocked || Date.now() - Number(sessionStorage.getItem(GEO_FAIL_KEY) || 0) < GEO_RETRY_MS;
   } catch {}
   if ('geolocation' in navigator && !geoBlocked) {
+    // 1) ask the device where it is. Only a refusal/timeout here blocks asking again for an hour.
+    let pos: GeolocationPosition | null = null;
     try {
-      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+      pos = await new Promise<GeolocationPosition>((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(resolve, reject, {
           timeout: 4000,
           maximumAge: 15 * 60 * 1000,
         });
       });
-
-      const { latitude, longitude } = pos.coords;
-      const res = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${latitude.toFixed(2)}&longitude=${longitude.toFixed(2)}&current=weather_code,is_day,precipitation,temperature_2m`,
-        { headers: { Accept: 'application/json' } }
-      );
-
-      // The device/network can take seconds. If you tapped the window meanwhile, your choice must win.
-      const tappedMeanwhile = manualWeather();
-      if (tappedMeanwhile) return tappedMeanwhile;
-
-      if (res.ok) {
-        const json = await res.json();
-        const current = json.current;
-        const timeData = getTimePeriod(new Date());
-
-        // Open-Meteo returns current.is_day (1 for day, 0 for night calculated for user coordinates)
-        const isNight = typeof current.is_day === 'number' ? current.is_day === 0 : timeData.isNight;
-        const period: TimePeriod = isNight ? 'night' : timeData.period;
-        const { condition, label } = parseWmoCode(current.weather_code || 0);
-
-        const data: WeatherData = {
-          condition: current.precipitation > 0.2 ? 'rain' : condition,
-          period,
-          isNight,
-          temperature: Math.round(current.temperature_2m),
-          description: isNight && condition === 'clear' ? 'Starlit Night' : label,
-          source: 'location',
-        };
-
-        try {
-          sessionStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data }));
-        } catch {}
-
-        return data;
-      }
     } catch {
       try { sessionStorage.setItem(GEO_FAIL_KEY, String(Date.now())); } catch {}
+    }
+
+    // 2) ask the weather service. A network hiccup here must NOT count as "location refused", and it must not hang.
+    if (pos) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 6000);
+      try {
+        const { latitude, longitude } = pos.coords;
+        const res = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${latitude.toFixed(2)}&longitude=${longitude.toFixed(2)}&current=weather_code,is_day,precipitation,temperature_2m`,
+          { headers: { Accept: 'application/json' }, signal: controller.signal },
+        );
+
+        // The device/network can take seconds. If you tapped the window meanwhile, your choice must win.
+        const tappedMeanwhile = manualWeather();
+        if (tappedMeanwhile) return tappedMeanwhile;
+
+        if (res.ok) {
+          const json = await res.json();
+          const current = json.current;
+          const timeData = getTimePeriod(new Date());
+
+          // Open-Meteo returns current.is_day (1 for day, 0 for night calculated for user coordinates)
+          const isNight = typeof current.is_day === 'number' ? current.is_day === 0 : timeData.isNight;
+          const period: TimePeriod = isNight ? 'night' : timeData.period;
+          const { condition, label } = parseWmoCode(current.weather_code || 0);
+
+          const data: WeatherData = {
+            condition: current.precipitation > 0.2 ? 'rain' : condition,
+            period,
+            isNight,
+            temperature: Math.round(current.temperature_2m),
+            description: isNight && condition === 'clear' ? 'Starlit Night' : label,
+            source: 'location',
+          };
+
+          try {
+            sessionStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data }));
+          } catch {}
+
+          return data;
+        }
+      } catch {
+        // offline / slow / bad answer: use the time-of-day window for now and try again on the next refresh
+      } finally {
+        clearTimeout(timeout);
+      }
     }
   }
 

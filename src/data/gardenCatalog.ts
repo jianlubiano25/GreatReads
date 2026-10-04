@@ -114,6 +114,13 @@ export const metricValue = (peaks: GardenPeaks, metric: MetricKey): number => {
   }
 };
 
+/**
+ * Reading-log metrics are worked out fresh from the pages you logged, so correcting a page count takes back what it
+ * earned. The other metrics (books, highlights, words) are high-water marks that only go up.
+ */
+export const isLiveMetric = (metric: MetricKey): boolean =>
+  metric === 'consistency' || metric === 'pagesInDay' || metric === 'bestWeek' || metric === 'totalPages';
+
 export interface MilestoneDef {
   id: string;
   plantId: string;

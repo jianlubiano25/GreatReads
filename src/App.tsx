@@ -5,6 +5,7 @@ import { BUILTIN_DICTIONARY } from './data/defaultWords';
 import { useReadingLife } from './hooks/useReadingLife';
 import { searchOnlineBooks, SHELF_URLS, getCoverUrl } from './services/bookSearch';
 import { lookupWord } from './services/dictionary';
+import { dateKey } from './services/dates';
 import { useAppUpdate, applyUpdate, dismissUpdate, restartApp } from './services/appUpdate';
 import { CURATED_SHELVES } from './data/storeCatalog';
 
@@ -273,22 +274,24 @@ export default function App() {
     return { pagesRead, finished, toRead };
   }, [allBooks, state.status, state.dailyLog]);
 
-  // Books shown on the scene shelves: reading now, finished, next, then the rest (covers only)
+  // Books shown on the scene shelves, taken from your Library: reading now, finished, next, then the rest (covers only)
   const sceneBooks = useMemo(() => {
     const st = state.status || {};
     const rank = (b: Book) => (st[String(b.id)] === 'now' ? 0 : st[String(b.id)] === 'done' ? 1 : st[String(b.id)] === 'next' ? 2 : 3);
-    return allBooks.filter(b => b.coverId || b.coverUrl).slice().sort((x, y) => rank(x) - rank(y)).slice(0, 24);
+    return allBooks.filter(b => b.coverId || b.coverUrl).slice().sort((x, y) => rank(x) - rank(y)).slice(0, 72); // the nook shows as many as fit (phones 14, iPad up to ~54)
   }, [allBooks, state.status]);
 
   // Remember the covers you'll see first (the nook shelves, then reading now / up next) so the next launch can start
   // loading them before the app code runs. Same 'M' size URLs the nook and cards request, so it is one shared cache.
+  // The service worker is also asked to download them in the background, so they are on the device the next time.
   useEffect(() => {
     try {
-      const urls = [...sceneBooks, ...nowReadingBooks, ...upNextBooks]
+      const urls = [...nowReadingBooks, ...upNextBooks, ...sceneBooks]
         .map(b => getCoverUrl(b.coverId, 'M', b.coverUrl))
         .filter((u, i, a) => !!u && a.indexOf(u) === i)
-        .slice(0, 30);
+        .slice(0, 60);
       localStorage.setItem('readlife.preload', JSON.stringify(urls));
+      navigator.serviceWorker?.controller?.postMessage({ type: 'WARM_COVERS', urls });
     } catch {}
   }, [sceneBooks, nowReadingBooks, upNextBooks]);
 
@@ -302,7 +305,7 @@ export default function App() {
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const k = d.toLocaleDateString('en-CA');
+      const k = dateKey(d);
       const pages = log[k] || 0;
       days.push({
         letter: dayLetters[d.getDay()],
@@ -363,6 +366,13 @@ export default function App() {
       return matchFilter && matchQuery;
     });
   }, [state.words, wordFilter, wordSearchQuery]);
+
+  // Searching for a word that is not in the garden yet offers to look it up and add it
+  const searchedWord = wordSearchQuery.trim();
+  const canAddSearchedWord =
+    searchedWord.length > 0 &&
+    searchedWord.length <= 40 &&
+    !state.words.some(w => (w.word || '').toLowerCase() === searchedWord.toLowerCase());
 
   // Handlers (stable references so the memoized cards don't redraw when something unrelated changes)
   const handleOpenCover = useCallback((book: Book) => setSelectedBookForDetail(book), []);
@@ -852,11 +862,22 @@ export default function App() {
               </div>
             </div>
 
+            {canAddSearchedWord && (
+              <button
+                type="button"
+                onClick={() => lookupAgain(searchedWord)}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-dashed border-[#2e5934] text-[#2e5934] dark:text-[#86b880] dark:border-[#86b880] bg-[#2e5934]/5 hover:bg-[#2e5934]/10 text-sm font-semibold active:scale-[0.99] transition-all"
+              >
+                <Plus className="w-4 h-4 shrink-0" />
+                <span className="truncate">Add “{searchedWord}” to Word Garden</span>
+              </button>
+            )}
+
             {/* Word Cards Grid */}
             {filteredWords.length === 0 ? (
               <div className="p-12 text-center text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-2xl border border-[#e3d7c3] dark:border-[#382f25]">
                 <Sprout className="w-8 h-8 mx-auto mb-2 text-[#2e5934] opacity-70" />
-                <p className="text-sm font-medium">No words found. Tap "Look up a word" to add your first discovery!</p>
+                <p className="text-sm font-medium">{canAddSearchedWord ? `“${searchedWord}” is not in your garden yet. Tap the button above to add it.` : 'No words found. Tap "Look up a word" to add your first discovery!'}</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

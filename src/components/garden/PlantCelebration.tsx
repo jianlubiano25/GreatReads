@@ -5,7 +5,7 @@ import { PlantArt } from './PlantArt';
 
 const withArticle = (name: string) => `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name}`;
 
-/** Small prompt shown once, when a plant is newly earned. Reloading never brings it back. */
+/** Small prompt shown once, when a plant is newly earned. Reloading or restoring a backup never brings it back. */
 export function PlantCelebration({ plantId, garden, onClose }: { plantId: string; garden: GardenState; onClose: () => void }) {
   const def = getPlantDef(plantId);
   const owned = garden.plants[plantId];
@@ -29,13 +29,14 @@ export function PlantCelebration({ plantId, garden, onClose }: { plantId: string
         onClick={e => e.stopPropagation()}
       >
         <div className="flex justify-center mb-2">
-          <PlantArt def={def} growth={owned?.growth ?? 0.2} width={72} title={def.name} />
+          <PlantArt def={def} growth={owned?.growth ?? 0.2} width={84} title={def.name} />
         </div>
-        <h3 id="new-plant-title" className="font-serif-display text-lg leading-snug">
-          ✨ A new plant has arrived! {def.emoji}
+        <h3 id="new-plant-title" className="font-serif-display text-xl leading-snug">
+          🎉 Congratulations!
         </h3>
+        <p className="font-serif-display text-lg text-[#2e5934] dark:text-[#86b880] mt-0.5">{def.name}</p>
         <p className="text-sm text-[#706256] dark:text-[#a89a8a] mt-1.5">
-          You received {withArticle(def.name)}{m ? ` for achieving ${m.reason}` : ''}.
+          You got {withArticle(def.name)}{m ? ` for achieving ${m.reason}` : ''}.
         </p>
         <button
           ref={btn}

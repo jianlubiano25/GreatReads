@@ -1,16 +1,21 @@
 /**
  * Garden logic. Pure functions only (no React, no storage) so it is easy to test and reuse.
  *
- * The one rule everything here follows: PROGRESS ONLY GOES UP.
- * Plants, achievements, growth and the vine are stored as high-water marks, so a streak reset,
- * an edited day or a deleted book can never take anything away.
+ * Two kinds of progress:
+ *  - READING-LOG progress (best streak, 10+ page days, biggest day, best week, total pages) is always worked out
+ *    from the pages you have logged. A streak that ended still counts (it is your best), but if you correct a page
+ *    count (say a typo of 500 pages) the plants and growth it earned are taken back, because that reading never happened.
+ *  - Everything else (books finished, highlights, words) is a high-water mark that only goes up, so removing a
+ *    word or a highlight never takes a plant away.
  */
+import { dateKey, dayNumber } from './dates';
 import type { BookStatus, GardenPeaks, GardenState, HighlightItem, PlantPlacement, WordItem } from '../types';
 import { INITIAL_WORDS } from '../data/defaultWords';
 import {
   MILESTONES,
   MILESTONE_BY_ID,
   GARDEN_AREAS,
+  isLiveMetric,
   canPlaceIn,
   defaultAreaFor,
   getPlantDef,
@@ -20,9 +25,8 @@ import {
 
 const MAX_STREAK_DAYS = 3650;
 const BASE_GROWTH = 0.2; // a freshly earned plant is never fully grown
-const DAY_MS = 86_400_000;
 
-export const todayKeyNow = (): string => new Date().toLocaleDateString('en-CA');
+export const todayKeyNow = (): string => dateKey();
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
@@ -49,7 +53,7 @@ export function currentStreakFor(dailyLog: Record<string, number>, goal: number,
   const check = keyToLocalDate(todayKey);
   if ((dailyLog[todayKey] || 0) < goal) check.setDate(check.getDate() - 1);
   while (count < MAX_STREAK_DAYS) {
-    const k = check.toLocaleDateString('en-CA');
+    const k = dateKey(check);
     if ((dailyLog[k] || 0) >= goal) {
       count++;
       check.setDate(check.getDate() - 1);
@@ -58,16 +62,21 @@ export function currentStreakFor(dailyLog: Record<string, number>, goal: number,
   return count;
 }
 
+/** Sorted day numbers of every day that met the goal. */
+function metDays(dailyLog: Record<string, number>, goal: number): number[] {
+  return Object.keys(dailyLog)
+    .filter(k => (Number(dailyLog[k]) || 0) >= goal)
+    .map(dayNumber)
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+}
+
 /** Longest run of consecutive goal-met days anywhere in the log. */
 export function bestStreakFor(dailyLog: Record<string, number>, goal: number): number {
-  const days = Object.keys(dailyLog)
-    .filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k) && (dailyLog[k] || 0) >= goal)
-    .map(k => Math.round(Date.UTC(+k.slice(0, 4), +k.slice(5, 7) - 1, +k.slice(8, 10)) / DAY_MS))
-    .sort((a, b) => a - b);
   let best = 0;
   let run = 0;
   let prev = NaN;
-  for (const d of days) {
+  for (const d of metDays(dailyLog, goal)) {
     run = d === prev + 1 ? run + 1 : d === prev ? run : 1;
     prev = d;
     if (run > best) best = run;
@@ -75,15 +84,16 @@ export function bestStreakFor(dailyLog: Record<string, number>, goal: number): n
   return best;
 }
 
-/** Goal-met days among the last 7 days (today included), matching the 7-day dots in the app. */
-export function goalDaysInLast7(dailyLog: Record<string, number>, goal: number, todayKey: string): number {
-  let n = 0;
-  const d = keyToLocalDate(todayKey);
-  for (let i = 0; i < 7; i++) {
-    if ((dailyLog[d.toLocaleDateString('en-CA')] || 0) >= goal) n++;
-    d.setDate(d.getDate() - 1);
+/** Most goal-met days inside any 7-day window of the log (so it reflects real history, not only this week). */
+export function bestWeekFor(dailyLog: Record<string, number>, goal: number): number {
+  const days = metDays(dailyLog, goal);
+  let best = 0;
+  let lo = 0;
+  for (let hi = 0; hi < days.length; hi++) {
+    while (days[hi] - days[lo] > 6) lo++;
+    if (hi - lo + 1 > best) best = hi - lo + 1;
   }
-  return n;
+  return best;
 }
 
 export interface GardenSnapshot {
@@ -91,7 +101,7 @@ export interface GardenSnapshot {
   bestStreak: number;
   tenPageDays: number;
   maxPagesInDay: number;
-  weekGoalDays: number;
+  weekGoalDays: number; // best 7-day window in the whole log
   booksFinished: number;
   totalPages: number;
   highlights: number;
@@ -118,7 +128,7 @@ export function computeSnapshot(input: {
   let maxPagesInDay = 0;
   let totalPages = 0;
   for (const k of Object.keys(dailyLog)) {
-    const n = Number(dailyLog[k]) || 0;
+    const n = Math.max(0, Number(dailyLog[k]) || 0);
     if (n >= 10) tenPageDays++;
     if (n > maxPagesInDay) maxPagesInDay = n;
     totalPages += n;
@@ -128,7 +138,7 @@ export function computeSnapshot(input: {
     bestStreak: bestStreakFor(dailyLog, goal),
     tenPageDays,
     maxPagesInDay,
-    weekGoalDays: goalDaysInLast7(dailyLog, goal, todayKey),
+    weekGoalDays: bestWeekFor(dailyLog, goal),
     booksFinished: Object.values(status).filter(s => s === 'done').length,
     totalPages,
     highlights,
@@ -167,11 +177,12 @@ function nextSlot(placements: Record<string, PlantPlacement>, areaId: string): n
 
 /**
  * Bring the garden up to date with the reading history.
- *  - raises the high-water marks, awards every milestone that is now reached (each only once),
- *    grows owned plants, completes them, and grows the vine;
- *  - never removes or lowers anything;
+ *  - reading-log numbers are taken as they are NOW (so fixing a typo'd page count takes its plants and growth back);
+ *    book / highlight / word numbers are high-water marks that only go up;
+ *  - awards every milestone that is reached (each once), and removes a plant ONLY when the logged pages that
+ *    earned it no longer exist;
  *  - returns the SAME object when nothing changed, so callers can skip a state update.
- * `silent` awards without queuing the "new plant" prompt (first-time seeding from old data).
+ * `silent` awards without queuing the "new plant" prompt (first-time seeding, restoring a backup).
  */
 export function evaluateGarden(
   garden: GardenState,
@@ -181,12 +192,14 @@ export function evaluateGarden(
 ): GardenState {
   const prevPeaks = garden.peaks;
   const peaks: GardenPeaks = {
-    bestStreak: Math.max(prevPeaks.bestStreak, snap.bestStreak, snap.streak),
-    tenPageDays: Math.max(prevPeaks.tenPageDays, snap.tenPageDays),
-    maxPagesInDay: Math.max(prevPeaks.maxPagesInDay, snap.maxPagesInDay),
-    bestWeekGoalDays: Math.max(prevPeaks.bestWeekGoalDays, snap.weekGoalDays),
+    // from the reading log: exactly what the log says today
+    bestStreak: Math.max(snap.bestStreak, snap.streak),
+    tenPageDays: snap.tenPageDays,
+    maxPagesInDay: snap.maxPagesInDay,
+    bestWeekGoalDays: snap.weekGoalDays,
+    totalPages: snap.totalPages,
+    // everything else only goes up
     booksFinished: Math.max(prevPeaks.booksFinished, snap.booksFinished),
-    totalPages: Math.max(prevPeaks.totalPages, snap.totalPages),
     highlights: Math.max(prevPeaks.highlights, snap.highlights),
     wordsAdded: Math.max(prevPeaks.wordsAdded, snap.wordsAdded),
     wordsLearned: Math.max(prevPeaks.wordsLearned, snap.wordsLearned),
@@ -199,7 +212,26 @@ export function evaluateGarden(
   let celebrated = garden.celebrated;
   let changed = peaksChanged;
 
-  // 1) award newly reached milestones (idempotent: keyed by milestone id and plant id)
+  // 1) take back plants whose reading-log milestone is no longer reached (a corrected page count)
+  for (const [mid, award] of Object.entries(achievements)) {
+    const m = MILESTONE_BY_ID[mid];
+    if (!m || !isLiveMetric(m.unlock.metric)) continue; // unknown or sticky milestone: it stays
+    if (metricValue(peaks, m.unlock.metric) >= m.unlock.at) continue;
+    changed = true;
+    const { [mid]: _gone, ...rest } = achievements;
+    achievements = rest;
+    const stillOwned = Object.values(achievements).some(a => a.plantId === award.plantId);
+    if (!stillOwned && plants[award.plantId]) {
+      const { [award.plantId]: _p, ...restPlants } = plants;
+      plants = restPlants;
+      const { [award.plantId]: _pl, ...restPlacements } = placements;
+      placements = restPlacements;
+      const { [award.plantId]: _c, ...restCelebrated } = celebrated;
+      celebrated = restCelebrated;
+    }
+  }
+
+  // 2) award newly reached milestones (idempotent: keyed by milestone id and plant id)
   for (const m of MILESTONES) {
     if (achievements[m.id]) continue;
     if (metricValue(peaks, m.unlock.metric) < m.unlock.at) continue;
@@ -215,20 +247,25 @@ export function evaluateGarden(
     }
   }
 
-  // 2) grow / complete owned plants (monotone)
+  // 3) grow / shrink / complete owned plants. Growth that comes from the reading log follows the log;
+  //    growth that comes from books, highlights or words never goes down.
   for (const [plantId, owned] of Object.entries(plants)) {
     const m = MILESTONE_BY_ID[owned.milestoneId];
     if (!m) continue; // milestone removed from the catalog later: the plant simply stays as it is
-    const g = Math.max(owned.growth, growthFor(m, peaks));
+    const target = growthFor(m, peaks);
+    const g = isLiveMetric(m.grow.metric) ? target : Math.max(owned.growth, target);
     const completeNow = g >= 1 && !owned.completedAt;
-    if (g !== owned.growth || completeNow) {
+    const reopen = g < 1 && !!owned.completedAt && isLiveMetric(m.grow.metric);
+    if (g !== owned.growth || completeNow || reopen) {
       changed = true;
-      plants = { ...plants, [plantId]: { ...owned, growth: g, ...(completeNow ? { completedAt: now } : {}) } };
+      const { completedAt: _done, ...base } = owned;
+      const keepDone = owned.completedAt && !reopen ? { completedAt: owned.completedAt } : {};
+      plants = { ...plants, [plantId]: { ...base, growth: g, ...keepDone, ...(completeNow ? { completedAt: now } : {}) } };
     }
   }
 
-  // 3) the window vine
-  const vine = Math.max(garden.vine, vineFor(peaks));
+  // 4) the window vine follows the same rules (log-based part is live)
+  const vine = vineFor(peaks);
   if (vine !== garden.vine) changed = true;
 
   if (!changed) return garden;

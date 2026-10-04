@@ -33,7 +33,9 @@ export const useAppUpdate = (): UpdateState => useSyncExternalStore(subscribe, g
 
 let reg: ServiceWorkerRegistration | undefined;
 let applying = false;
-let dismissedBuild = '';
+// Remembered for this session, so "Not now" is not undone by a reload.
+let dismissedBuild = (() => { try { return sessionStorage.getItem('rl-dismissed-build') || ''; } catch { return ''; } })();
+let reloading = false;
 let lastCheck = 0;
 const CHECK_EVERY = 10 * 60 * 1000;
 
@@ -121,7 +123,7 @@ export function registerServiceWorker() {
 
     // Only reload when YOU asked for the update (the very first install also changes the controller)
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (applying) window.location.reload();
+      if (applying && !reloading) { reloading = true; window.location.reload(); }
     });
 
     // iOS home-screen apps stay alive for days; look for updates whenever you come back to the app
@@ -140,7 +142,7 @@ export function applyUpdate() {
   const waiting = reg?.waiting;
   if (waiting) {
     waiting.postMessage({ type: 'SKIP_WAITING' });
-    setTimeout(() => window.location.reload(), 3000); // safety net if the browser never reports the switch
+    setTimeout(() => { if (!reloading) { reloading = true; window.location.reload(); } }, 3000); // safety net if the browser never reports the switch
   } else {
     window.location.reload();
   }
@@ -150,7 +152,11 @@ export function applyUpdate() {
 export function dismissUpdate() {
   const w = reg?.waiting;
   if (w) {
-    void askBuild(w).then(b => { if (b) dismissedBuild = b; });
+    void askBuild(w).then(b => {
+      if (!b) return;
+      dismissedBuild = b;
+      try { sessionStorage.setItem('rl-dismissed-build', b); } catch {}
+    });
   }
   set({ available: false });
 }

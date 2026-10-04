@@ -146,7 +146,8 @@ export const CoverFace = React.memo(function CoverFace({ book, size = 'md', imgS
   const failed = cur.dead;
   const won = awardsFor(book).some(a => a.type === 'w');
   const isEager = eager || size === 'lg' || size === 'xl';
-  const isReady = (url ? loadedCovers.has(url) : false) || imgLoaded;
+  const wasKnown = url ? loadedCovers.has(url) : false; // seen before on this device: appears with no fade
+  const isReady = wasKnown || imgLoaded;
 
   return (
     <>
@@ -159,7 +160,7 @@ export const CoverFace = React.memo(function CoverFace({ book, size = 'md', imgS
           loading={isEager ? 'eager' : 'lazy'}
           fetchPriority={isEager ? 'high' : undefined}
           decoding="async"
-          className={`absolute inset-0 w-full h-full object-cover z-20 transition-opacity duration-150 ${isReady ? 'opacity-100' : 'opacity-0'}`}
+          className={`absolute inset-0 w-full h-full object-cover z-20 ${wasKnown ? '' : 'transition-opacity duration-150'} ${isReady ? 'opacity-100' : 'opacity-0'}`}
           referrerPolicy="no-referrer"
           onLoad={e => {
             // A 1x1 placeholder counts as a failure; a real image clears any earlier miss

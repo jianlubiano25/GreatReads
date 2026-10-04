@@ -4,6 +4,7 @@ import { DEFAULT_BOOKS } from '../data/defaultBooks';
 import { INITIAL_WORDS } from '../data/defaultWords';
 import { normalizeV2, normalizeLegacy, parseBackup } from '../services/stateSanitizer';
 import { computeSnapshot, currentStreakFor, evaluateGarden, markCelebrated, movePlant as movePlantIn, pendingCelebrations, seedGarden } from '../services/garden';
+import { dateKey } from '../services/dates';
 
 const STORAGE_KEY = 'readlife.v2';
 const LEGACY_KEY = 'readlife.v1';
@@ -13,8 +14,7 @@ const SAVE_DELAY_MS = 350;
 const CACHE_KEYS = ['readlife.store1', 'readlife.store2', 'readlife.meta2', 'readlife.meta3', 'readlife.covers1', 'readlife.preload', 'readlife.loaded', 'readlife.phoneticTried'];
 
 export function getTodayKey(): string {
-  const d = new Date();
-  return d.toLocaleDateString('en-CA'); // "YYYY-MM-DD"
+  return dateKey(); // "YYYY-MM-DD" in local time
 }
 
 /** A brand-new install starts empty: no names, notes, highlights or reading history. */
@@ -198,8 +198,8 @@ export function useReadingLife() {
     [state.dailyLog, state.goal, todayKey],
   );
 
-  // Garden: award newly reached milestones and record growth. This only ever adds or raises things
-  // (plants, growth, the vine), so a streak reset or an edited day can never take any of it away.
+  // Garden: award newly reached milestones and keep plants in step with the pages you have logged.
+  // A streak that ended still counts, but fixing a wrongly typed page count takes back what it earned.
   // evaluateGarden returns the same object when nothing changed, so this does not cause extra renders.
   useEffect(() => {
     setState(prev => {
@@ -474,7 +474,14 @@ export function useReadingLife() {
   const importBackup = useCallback((jsonStr: string) => {
     const restored = parseBackup(jsonStr, buildDefaultState());
     if (!restored) return false;
-    setState(restored);
+    // A restore never shows "new plant" prompts: bring the garden up to date silently and mark everything as seen.
+    const snap = computeSnapshot({
+      dailyLog: restored.dailyLog, goal: restored.goal, status: restored.status, todayKey: getTodayKey(),
+      highlights: restored.highlights, words: restored.words,
+    });
+    let garden = evaluateGarden(restored.garden, snap, Date.now(), { silent: true });
+    garden = markCelebrated(garden, Object.keys(garden.plants));
+    setState({ ...restored, garden });
     return true;
   }, []);
 

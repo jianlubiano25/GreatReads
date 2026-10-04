@@ -70,16 +70,16 @@ function skyFor(period: TimePeriod, cond: WeatherCondition): string {
 const STAR5 = 'M0 -1 L0.294 -0.405 L0.951 -0.309 L0.476 0.155 L0.588 0.809 L0 0.5 L-0.588 0.809 L-0.476 0.155 L-0.951 -0.309 L-0.294 -0.405 Z';
 const STAR4 = 'M0 -1 C0.1 -0.3 0.3 -0.1 1 0 C0.3 0.1 0.1 0.3 0 1 C-0.1 0.3 -0.3 0.1 -1 0 C-0.3 -0.1 -0.1 -0.3 0 -1 Z';
 const NIGHT_STARS: { x: string; y: string; k: 5 | 4; s: number; d: string; c: string }[] = [
-  { x: '17%', y: '14%', k: 5, s: 9, d: '0s', c: '#fff1a8' },
-  { x: '37%', y: '11%', k: 4, s: 9, d: '0.7s', c: '#ffffff' },
-  { x: '28%', y: '31%', k: 5, s: 7, d: '1.3s', c: '#fff6c8' },
-  { x: '10%', y: '40%', k: 4, s: 7, d: '0.3s', c: '#ffffff' },
-  { x: '90%', y: '55%', k: 5, s: 8, d: '1.0s', c: '#fff1a8' },
-  { x: '67%', y: '60%', k: 4, s: 10, d: '1.6s', c: '#ffffff' },
-  { x: '22%', y: '66%', k: 5, s: 8, d: '0.5s', c: '#fff6c8' },
-  { x: '42%', y: '80%', k: 4, s: 7, d: '1.9s', c: '#ffffff' },
-  { x: '78%', y: '83%', k: 5, s: 7, d: '0.9s', c: '#fff1a8' },
-  { x: '9%', y: '86%', k: 4, s: 6, d: '1.4s', c: '#ffffff' },
+  { x: '17%', y: '14%', k: 5, s: 6, d: '0s', c: '#fff1a8' },
+  { x: '37%', y: '11%', k: 4, s: 6, d: '0.7s', c: '#ffffff' },
+  { x: '28%', y: '31%', k: 5, s: 5, d: '1.3s', c: '#fff6c8' },
+  { x: '10%', y: '40%', k: 4, s: 5, d: '0.3s', c: '#ffffff' },
+  { x: '90%', y: '55%', k: 5, s: 5.5, d: '1.0s', c: '#fff1a8' },
+  { x: '67%', y: '60%', k: 4, s: 6.5, d: '1.6s', c: '#ffffff' },
+  { x: '22%', y: '66%', k: 5, s: 5.5, d: '0.5s', c: '#fff6c8' },
+  { x: '42%', y: '80%', k: 4, s: 5, d: '1.9s', c: '#ffffff' },
+  { x: '78%', y: '83%', k: 5, s: 5, d: '0.9s', c: '#fff1a8' },
+  { x: '9%', y: '86%', k: 4, s: 4.5, d: '1.4s', c: '#ffffff' },
 ];
 
 const SNOWFLAKES = [
@@ -158,16 +158,32 @@ export function ReadingScene({
     // prefsVersion: re-read the weather when "Match weather to my location" is switched
   }, [prefsVersion]);
 
-  // Screen width & shelves
-  const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 640);
+  // Screen width & shelves. Phones keep the compact 7-books-wide, 2-shelf nook. On wider screens (iPad, desktop) the
+  // shelves are measured, so every row is filled with as many books as really fit, and iPad-size screens get a third shelf.
+  const [viewW, setViewW] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 390));
   useEffect(() => {
-    const onResize = () => setWide(window.innerWidth >= 640);
+    const onResize = () => setViewW(window.innerWidth);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+  const wide = viewW >= 640;
+  const shelfRef = useRef<HTMLDivElement>(null);
+  const [shelfW, setShelfW] = useState(0);
+  useEffect(() => {
+    const el = shelfRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(entries => setShelfW(Math.round(entries[0].contentRect.width)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
-  const perShelf = wide ? 12 : 7;
-  const shelves = [0, 1].map(i => books.slice(i * perShelf, (i + 1) * perShelf));
+  const SPINE_W = 44;
+  const SPINE_GAP = 3;
+  const SHELF_PAD = 8; // px-1 on each side
+  const fit = shelfW > 0 ? Math.floor((shelfW - SHELF_PAD + SPINE_GAP) / (SPINE_W + SPINE_GAP)) : 12;
+  const perShelf = wide ? Math.min(24, Math.max(8, fit)) : 7;
+  const shelfRows = viewW >= 768 ? 3 : 2;
+  const shelves = Array.from({ length: shelfRows }, (_, i) => books.slice(i * perShelf, (i + 1) * perShelf));
 
   // Count total days with 10+ pages
   const tenPageDays = useMemo(() => {
@@ -266,7 +282,7 @@ export function ReadingScene({
                       width={st.s * 2}
                       height={st.s * 2}
                       aria-hidden="true"
-                      style={{ left: st.x, top: st.y, marginLeft: -st.s, marginTop: -st.s, animationDelay: st.d, overflow: 'visible', filter: `drop-shadow(0 0 2px ${st.c})` }}
+                      style={{ left: st.x, top: st.y, marginLeft: -st.s, marginTop: -st.s, animationDelay: st.d, overflow: 'visible', filter: `drop-shadow(0 0 1.5px ${st.c})` }}
                     >
                       <path d={st.k === 5 ? STAR5 : STAR4} fill={st.c} stroke={st.k === 5 ? st.c : undefined} strokeWidth={st.k === 5 ? 0.08 : 0} strokeLinejoin="round" />
                     </svg>
@@ -447,7 +463,7 @@ export function ReadingScene({
         </div>
 
         {/* Bookshelves */}
-        <div className="flex-1 min-w-0 flex flex-col">
+        <div ref={shelfRef} className="flex-1 min-w-0 flex flex-col">
           {shelves.map((row, i) => (
             <div key={i} className="flex items-end gap-[3px] justify-start px-1" style={{ borderBottom: '7px solid #8a5a3b', minHeight: 66 }}>
               {row.map(b => (
@@ -459,8 +475,8 @@ export function ReadingScene({
                   aria-label={b.title}
                   className="scene-book shrink-0 relative overflow-hidden flex flex-col justify-between p-0.5 text-white"
                   style={{
-                    width: perShelf === 7 ? 'calc((100% - 18px) / 7)' : 44,
-                    maxWidth: 44,
+                    width: !wide ? 'calc((100% - 18px) / 7)' : SPINE_W,
+                    maxWidth: SPINE_W,
                     aspectRatio: '2/3',
                     borderRadius: 2,
                     background: b.spineColor || '#2e5934',

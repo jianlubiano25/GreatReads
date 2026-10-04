@@ -19,7 +19,8 @@ const IMG = 'rl-img-v3'; // v3 guarantees all OpenLibrary, Apple, and Google cov
 const API = 'rl-api-v1';
 const FONT = 'rl-font-v1';
 const KEEP = [SHELL, IMG, API, FONT];
-const LIMITS = { [IMG]: 1000, [API]: 250, [FONT]: 40 };
+// Covers are cross-origin, and Chromium counts each one it cannot read as several MB of storage quota, so keep this modest.
+const LIMITS = { [IMG]: 400, [API]: 250, [FONT]: 40 };
 
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
@@ -44,8 +45,25 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
   } else if (type === 'GET_BUILD' && event.ports && event.ports[0]) {
     event.ports[0].postMessage({ build: BUILD });
+  } else if (type === 'WARM_COVERS' && Array.isArray(event.data.urls)) {
+    // The app tells us which covers it will show first; fetch the missing ones now so they are on the device next time.
+    event.waitUntil(warmCovers(event.data.urls.filter((u) => typeof u === 'string' && u.startsWith('https://')).slice(0, 80)));
   }
 });
+
+async function warmCovers(urls) {
+  const cache = await caches.open(IMG);
+  const todo = [];
+  for (const u of urls) if (!(await cache.match(u, MATCH))) todo.push(u);
+  let next = 0;
+  const worker = async () => {
+    while (next < todo.length) {
+      const u = todo[next++];
+      try { await coverImage(new Request(u, { mode: 'no-cors', credentials: 'omit' })); } catch (e) { /* offline or missing: skip */ }
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {

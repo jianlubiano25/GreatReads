@@ -11,6 +11,7 @@ import type {
 } from '../types';
 import { MILESTONE_BY_ID } from '../data/gardenCatalog';
 import { emptyGarden, seedGarden, todayKeyNow } from './garden';
+import { DATE_KEY_RE } from './dates';
 
 /**
  * Defensive normalisation for anything coming from localStorage or a pasted backup.
@@ -39,6 +40,17 @@ export function sanitizeNumberRecord(raw: unknown): Record<string, number> {
   for (const k of Object.keys(raw)) {
     const n = num(raw[k]);
     if (n !== undefined) out[String(k)] = n;
+  }
+  return out;
+}
+
+/** Pages per day: only real "YYYY-MM-DD" keys, whole non-negative numbers (a bad value can never skew totals or streaks). */
+export function sanitizeDailyLog(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!isObj(raw)) return out;
+  for (const k of Object.keys(raw)) {
+    const n = num(raw[k]);
+    if (n !== undefined && DATE_KEY_RE.test(k)) out[k] = Math.max(0, Math.round(n));
   }
   return out;
 }
@@ -278,7 +290,7 @@ export function normalizeV2(parsed: Record<string, any>, base: ReadingState): Re
     status: has('status') ? sanitizeStatus(parsed.status) : base.status,
     currentPage: has('currentPage') ? sanitizeNumberRecord(parsed.currentPage) : base.currentPage,
     totalPages: has('totalPages') ? sanitizeNumberRecord(parsed.totalPages) : base.totalPages,
-    dailyLog: has('dailyLog') ? sanitizeNumberRecord(parsed.dailyLog) : base.dailyLog,
+    dailyLog: has('dailyLog') ? sanitizeDailyLog(parsed.dailyLog) : base.dailyLog,
     notes: has('notes') ? sanitizeNotes(parsed.notes) : base.notes,
     highlights: has('highlights') ? sanitizeHighlights(parsed.highlights) : base.highlights,
     goal: goal && goal > 0 ? goal : base.goal,
@@ -330,7 +342,7 @@ export function normalizeLegacy(p: Record<string, any>, base: ReadingState): Rea
     status: isObj(p.st) ? { ...base.status, ...sanitizeStatus(p.st) } : base.status,
     currentPage: isObj(p.pg) ? { ...base.currentPage, ...sanitizeNumberRecord(p.pg) } : base.currentPage,
     totalPages: isObj(p.tot) ? { ...base.totalPages, ...sanitizeNumberRecord(p.tot) } : base.totalPages,
-    dailyLog: isObj(p.log) ? { ...base.dailyLog, ...sanitizeNumberRecord(p.log) } : base.dailyLog,
+    dailyLog: isObj(p.log) ? { ...base.dailyLog, ...sanitizeDailyLog(p.log) } : base.dailyLog,
     notes: isObj(p.note) ? { ...base.notes, ...sanitizeNotes(p.note) } : base.notes,
     highlights: { ...base.highlights, ...hi },
     readingIntention: typeof p.intent === 'string' && p.intent.trim() ? p.intent : base.readingIntention,
