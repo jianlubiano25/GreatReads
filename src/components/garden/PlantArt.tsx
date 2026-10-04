@@ -736,12 +736,12 @@ const STANDING: Record<string, React.FC<P>> = {
 // Trailing plants (pot at the top, growth hangs below)
 // ---------------------------------------------------------------------------------------------
 const VINES = [{ x: 15, len: 38 }, { x: 33, len: 32 }, { x: 24, len: 44 }, { x: 19, len: 26 }, { x: 29, len: 22 }];
+const POTHOS_LEAF = 'M0 0 C-3 3 -11 2 -11 -6 C-11 -14 -4 -17 0 -25 C4 -17 11 -14 11 -6 C11 2 3 3 0 0Z';
 function Trailing({ g, d }: P) {
   const n = count(g, 5, 2);
   const shape = String(d.opt?.shape ?? 'heart');
   const potY = TRAIL_POT_Y;
-  const sparse = shape === 'heart'; // pothos: fewer, bigger leaves so the vine stays visible
-  const stem = shape === 'heart' ? d.leaf : d.leaf2;
+  const pothos = shape === 'heart';
   return (
     <g>
       {VINES.slice(0, n).map((v, i) => {
@@ -753,10 +753,9 @@ function Trailing({ g, d }: P) {
         const path = 'M' + pts.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L');
         return (
           <g key={i}>
-            <path d={path} stroke={stem} strokeWidth={shape === 'pearl' ? 0.9 : sparse ? 1.7 : 1.3} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            <path d={path} stroke={d.leaf2} strokeWidth={shape === 'pearl' ? 0.9 : pothos ? 1.6 : 1.3} fill="none" strokeLinecap="round" strokeLinejoin="round" />
             {pts.slice(1).map((p, k) => {
-              const side = k % 2 ? 1 : -1;
-              if (sparse && (k % 2 === 1 || p.y < potY + 22)) return null; // every other node, and none hiding behind the pot
+              const side = (k + i) % 2 ? 1 : -1; // alternate left / right all the way down (offset per vine so neighbours differ)
               if (shape === 'pearl') return <circle key={k} cx={p.x} cy={p.y} r={2.6} fill={k % 2 ? d.leaf : '#9ad6a6'} />;
               if (shape === 'ivy') {
                 return (
@@ -766,23 +765,27 @@ function Trailing({ g, d }: P) {
                   </g>
                 );
               }
-              // pothos: a short leaf stalk off the vine, then a pointed heart leaf with a lighter marbling stripe
-              const sx = p.x + side * 4.5;
-              const sy = p.y + 1.5;
+              // pothos: the fuller heart leaves from before, but they fan out to both sides and vary in angle and size,
+              // each on a short stalk so the vine itself still shows between them
+              if (k % 4 === 3 && k < 7) return null; // a small gap now and then lets the vine show
+              const tilt = 32 + ((k * 7 + i * 5) % 4) * 7; // 32..53 degrees out from straight down
+              const sz = 0.52 - k * 0.012 + (((k + i) % 3) - 1) * 0.03;
+              const sx = p.x + side * 2.2;
               return (
                 <g key={k}>
-                  <path d={`M${p.x.toFixed(1)} ${p.y.toFixed(1)} Q${(p.x + side * 3).toFixed(1)} ${(p.y - 0.5).toFixed(1)} ${sx.toFixed(1)} ${sy.toFixed(1)}`} stroke={stem} strokeWidth={1} fill="none" strokeLinecap="round" />
-                  <g transform={`translate(${sx.toFixed(1)} ${sy.toFixed(1)}) rotate(${180 + side * 40}) scale(0.46)`}>
-                    <path d="M0 0 C-3 3 -11 2 -11 -6 C-11 -14 -4 -17 0 -25 C4 -17 11 -14 11 -6 C11 2 3 3 0 0Z" fill={k % 4 === 0 ? d.leaf2 : d.leaf} />
-                    <path d="M0 -2 L0 -20" stroke="#cfe9a6" strokeWidth={1.6} opacity={0.7} />
+                  <path d={`M${p.x.toFixed(1)} ${p.y.toFixed(1)} L${sx.toFixed(1)} ${(p.y + 0.8).toFixed(1)}`} stroke={d.leaf2} strokeWidth={0.9} strokeLinecap="round" />
+                  <g transform={`translate(${sx.toFixed(1)} ${(p.y + 0.8).toFixed(1)}) rotate(${180 + side * tilt}) scale(${sz.toFixed(2)})`}>
+                    <path d={POTHOS_LEAF} fill={(k + i) % 3 === 0 ? d.leaf2 : d.leaf} />
+                    <path d="M0 -2 L0 -20" stroke="#cfe9a6" strokeWidth={1.5} opacity={0.7} />
                   </g>
                 </g>
               );
             })}
-            {sparse && (
-              <g transform={`translate(${pts[8].x.toFixed(1)} ${(pts[8].y + 1).toFixed(1)}) rotate(180) scale(0.42)`}>
-                <path d="M0 0 C-3 3 -11 2 -11 -6 C-11 -14 -4 -17 0 -25 C4 -17 11 -14 11 -6 C11 2 3 3 0 0Z" fill={d.leaf} />
-                <path d="M0 -2 L0 -20" stroke="#cfe9a6" strokeWidth={1.6} opacity={0.7} />
+            {pothos && (
+              // a young leaf at the very tip, pointing down
+              <g transform={`translate(${pts[8].x.toFixed(1)} ${(pts[8].y + 0.5).toFixed(1)}) rotate(${180 + (i % 2 ? 14 : -14)}) scale(0.4)`}>
+                <path d={POTHOS_LEAF} fill={d.leaf} />
+                <path d="M0 -2 L0 -20" stroke="#cfe9a6" strokeWidth={1.5} opacity={0.7} />
               </g>
             )}
           </g>
@@ -792,35 +795,79 @@ function Trailing({ g, d }: P) {
   );
 }
 
+/**
+ * One arching spider-plant leaf, drawn as a FILLED tapered shape along a curve (not a thick stroke), so it keeps its green
+ * body on a light nook just like on a dark one. A pale stripe runs down the middle, fully inside the green.
+ */
+function ArchLeaf({ x0, y0, cx, cy, x1, y1, w, fill, edge, stripe }: { x0: number; y0: number; cx: number; cy: number; x1: number; y1: number; w: number; fill: string; edge: string; stripe: string }) {
+  const at = (t: number) => ({
+    x: (1 - t) * (1 - t) * x0 + 2 * (1 - t) * t * cx + t * t * x1,
+    y: (1 - t) * (1 - t) * y0 + 2 * (1 - t) * t * cy + t * t * y1,
+  });
+  const N = 12;
+  const L: string[] = [];
+  const R: string[] = [];
+  const SL: string[] = [];
+  const SR: string[] = [];
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    const a = at(t);
+    const b = at(Math.min(1, t + 0.02));
+    const c = at(Math.max(0, t - 0.02));
+    const len = Math.hypot(b.x - c.x, b.y - c.y) || 1;
+    const nx = -(b.y - c.y) / len;
+    const ny = (b.x - c.x) / len;
+    const h = w * (0.35 + 0.65 * Math.sin(Math.PI * Math.min(1, 0.18 + 0.82 * t))) * (1 - Math.pow(t, 3.2) * 0.96);
+    const sh = h * 0.34;
+    L.push(`${(a.x + nx * h).toFixed(1)} ${(a.y + ny * h).toFixed(1)}`);
+    R.push(`${(a.x - nx * h).toFixed(1)} ${(a.y - ny * h).toFixed(1)}`);
+    if (t > 0.04 && t < 0.88) {
+      SL.push(`${(a.x + nx * sh).toFixed(1)} ${(a.y + ny * sh).toFixed(1)}`);
+      SR.push(`${(a.x - nx * sh).toFixed(1)} ${(a.y - ny * sh).toFixed(1)}`);
+    }
+  }
+  const body = 'M' + L.join(' L') + ' L' + R.slice().reverse().join(' L') + ' Z';
+  const mid = 'M' + SL.join(' L') + ' L' + SR.slice().reverse().join(' L') + ' Z';
+  return (
+    <g>
+      <path d={body} fill={fill} stroke={edge} strokeWidth={0.7} strokeLinejoin="round" />
+      <path d={mid} fill={stripe} />
+    </g>
+  );
+}
+
 /** Spider plant: arching striped blades with little plantlets on runners. */
 function Spider({ g, d }: P) {
   const n = count(g, 8, 4);
   const potY = TRAIL_POT_Y;
   const blades = [
-    { x: -17, y: 34, c: 0 }, { x: 17, y: 36, c: 0 }, { x: -24, y: 22, c: 0 }, { x: 24, y: 24, c: 0 },
-    { x: -8, y: 48, c: 0 }, { x: 8, y: 50, c: 0 }, { x: -21, y: 44, c: 0 }, { x: 21, y: 46, c: 0 },
+    { x: -17, y: 34 }, { x: 17, y: 36 }, { x: -24, y: 22 }, { x: 24, y: 24 },
+    { x: -8, y: 48 }, { x: 8, y: 50 }, { x: -21, y: 44 }, { x: 21, y: 46 },
   ].slice(0, n);
+  const sc = 0.65 + 0.35 * g;
   return (
     <g>
       {blades.map((b, i) => {
-        const sc = 0.65 + 0.35 * g;
         const ex = 24 + b.x * sc;
         const ey = potY + 8 + b.y * sc;
         const cx = 24 + b.x * 0.6 * sc;
-        const cy = potY - 7 - Math.abs(b.x) * 0.1;
-        const path = `M24 ${potY + 2} Q${cx} ${cy} ${ex} ${ey}`;
+        const cy = potY - 9 - Math.abs(b.x) * 0.1;
         return (
-          <g key={i}>
-            <path d={path} stroke={i % 2 ? d.leaf : d.leaf2} strokeWidth={3.4} fill="none" strokeLinecap="round" />
-            <path d={path} stroke={d.bloom} strokeWidth={1} fill="none" strokeLinecap="round" opacity={0.85} />
-          </g>
+          <ArchLeaf
+            key={i}
+            x0={24 + b.x * 0.08} y0={potY + 3} cx={cx} cy={cy} x1={ex} y1={ey}
+            w={3.1}
+            fill={i % 2 ? d.leaf : '#5fae58'}
+            edge={d.leaf2}
+            stripe="#eef5bd"
+          />
         );
       })}
       {g >= 0.8 && (
         <g>
-          <path d={`M24 ${potY + 3} Q40 ${potY + 6} 41 ${potY + 28}`} stroke={d.leaf2} strokeWidth={0.9} fill="none" />
+          <path d={`M24 ${potY + 3} Q40 ${potY + 6} 41 ${potY + 28}`} stroke={d.leaf2} strokeWidth={1} fill="none" strokeLinecap="round" />
           <g transform={`translate(41 ${potY + 29})`}>
-            {[-40, -15, 15, 40].map(r => <Blade key={r} x={0} y={0} len={8} w={1.8} rot={180 + r} fill={d.leaf} />)}
+            {[-40, -15, 15, 40].map(r => <Blade key={r} x={0} y={0} len={9} w={2.2} rot={180 + r} fill={d.leaf} edge={d.leaf2} />)}
           </g>
         </g>
       )}

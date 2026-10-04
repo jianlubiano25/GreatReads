@@ -324,8 +324,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               <span>
                 <span className="text-xs font-semibold text-[#706256] dark:text-[#a89a8a] block">Window follows the real time of day</span>
                 <span className="text-[11px] text-[#706256] dark:text-[#a89a8a] block mt-0.5">
-                  On by default. Turn it off to get a small button on the window that steps through morning, daytime, sunset and night.
-                  Turn it back on to return to the real time.
+                  On by default. Turn it off to get small buttons on the window that step through morning, daytime, sunset and night, and (at night) through the moon phases.
+                  Turn it back on to return to the real time and today's moon.
                 </span>
               </span>
               <input

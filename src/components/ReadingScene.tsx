@@ -5,7 +5,7 @@ import { CoverFace } from './BookMeta';
 import { fetchLocalWeather, setWeatherOverride, getTimePeriod, describeWeather, PERIOD_LABEL, TIME_PERIODS, WEATHER_MODES, WeatherData, WeatherCondition, TimePeriod } from '../services/weather';
 import { subscribeNookPrefs, getNookPrefsVersion, getNookMatchesTheme, getWindowFollowsTime } from '../services/nookPrefs';
 import { GardenArea } from './garden/GardenView';
-import { MoonPhase, moonPhase } from './MoonPhase';
+import { MoonPhase, moonPhase, MOON_PHASE_NAMES, MOON_PHASE_EMOJI } from './MoonPhase';
 
 interface Props {
   books: Book[];
@@ -65,6 +65,23 @@ function skyFor(period: TimePeriod, cond: WeatherCondition): string {
   return 'linear-gradient(180deg, #68b3e8 0%, #d6edfc 100%)';
 }
 
+// Night-sky stars: classic 5-point stars and 4-point sparkles. The moon sits in the top-right
+// (about x 54-87%, y 15-40% of the window), so none of these are placed there.
+const STAR5 = 'M0 -1 L0.294 -0.405 L0.951 -0.309 L0.476 0.155 L0.588 0.809 L0 0.5 L-0.588 0.809 L-0.476 0.155 L-0.951 -0.309 L-0.294 -0.405 Z';
+const STAR4 = 'M0 -1 C0.1 -0.3 0.3 -0.1 1 0 C0.3 0.1 0.1 0.3 0 1 C-0.1 0.3 -0.3 0.1 -1 0 C-0.3 -0.1 -0.1 -0.3 0 -1 Z';
+const NIGHT_STARS: { x: string; y: string; k: 5 | 4; s: number; d: string; c: string }[] = [
+  { x: '17%', y: '14%', k: 5, s: 9, d: '0s', c: '#fff1a8' },
+  { x: '37%', y: '11%', k: 4, s: 9, d: '0.7s', c: '#ffffff' },
+  { x: '28%', y: '31%', k: 5, s: 7, d: '1.3s', c: '#fff6c8' },
+  { x: '10%', y: '40%', k: 4, s: 7, d: '0.3s', c: '#ffffff' },
+  { x: '90%', y: '55%', k: 5, s: 8, d: '1.0s', c: '#fff1a8' },
+  { x: '67%', y: '60%', k: 4, s: 10, d: '1.6s', c: '#ffffff' },
+  { x: '22%', y: '66%', k: 5, s: 8, d: '0.5s', c: '#fff6c8' },
+  { x: '42%', y: '80%', k: 4, s: 7, d: '1.9s', c: '#ffffff' },
+  { x: '78%', y: '83%', k: 5, s: 7, d: '0.9s', c: '#fff1a8' },
+  { x: '9%', y: '86%', k: 4, s: 6, d: '1.4s', c: '#ffffff' },
+];
+
 const SNOWFLAKES = [
   { l: '8%', d: '0s', dur: '4.4s', s: 3 }, { l: '20%', d: '1.1s', dur: '3.8s', s: 2 }, { l: '32%', d: '2.2s', dur: '4.8s', s: 4 },
   { l: '45%', d: '0.5s', dur: '4s', s: 2.5 }, { l: '58%', d: '1.7s', dur: '4.6s', s: 3.5 }, { l: '70%', d: '2.9s', dur: '3.9s', s: 2 },
@@ -115,8 +132,12 @@ export function ReadingScene({
   const followTime = useSyncExternalStore(subscribeNookPrefs, getWindowFollowsTime, () => true);
   const appDark = useSyncExternalStore(subscribeTheme, isAppDark, () => false);
   const [previewPeriod, setPreviewPeriod] = useState<TimePeriod | null>(null);
+  const [previewMoon, setPreviewMoon] = useState<number | null>(null); // 0..7, a moon phase you stepped to
   useEffect(() => {
-    if (followTime) setPreviewPeriod(null); // back to the real time of day
+    if (followTime) {
+      setPreviewPeriod(null); // back to the real time of day...
+      setPreviewMoon(null); // ...and today's real moon
+    }
   }, [followTime]);
 
   useEffect(() => {
@@ -162,7 +183,9 @@ export function ReadingScene({
   // Time of day actually shown in the window: the real one, unless you are previewing other times
   const period: TimePeriod = !followTime && previewPeriod ? previewPeriod : weather.period;
   const windowNight = period === 'night';
-  const moonName = moonPhase(new Date()).name;
+  const todaysMoon = moonPhase(new Date());
+  const shownMoon = !followTime && previewMoon != null ? previewMoon : todaysMoon.index;
+  const moonName = MOON_PHASE_NAMES[shownMoon];
   const describe = (cond: WeatherCondition, per: TimePeriod) =>
     `${describeWeather(cond, per)}${per === 'night' && cond === 'clear' ? ` · ${moonName}` : ''}`;
 
@@ -178,6 +201,12 @@ export function ReadingScene({
     const next = TIME_PERIODS[(TIME_PERIODS.indexOf(period) + 1) % TIME_PERIODS.length];
     setPreviewPeriod(next);
     showTip(`${PERIOD_LABEL[next]} · ${describe(weather.condition, next)}`);
+  };
+
+  const handleCycleMoon = () => {
+    const next = (shownMoon + 1) % MOON_PHASE_NAMES.length;
+    setPreviewMoon(next);
+    showTip(MOON_PHASE_NAMES[next]);
   };
 
   // The window shows the sky; the nook (wall, shelves, plants) is dark either by the theme or by the time of day
@@ -226,22 +255,21 @@ export function ReadingScene({
                 transition: 'background .6s ease',
               }}
             >
-              {/* Stars at night */}
+              {/* Stars at night: 5-point stars and 4-point sparkles, kept clear of the moon */}
               {windowNight && (
-                <div className="absolute inset-0 pointer-events-none" style={{ opacity: weather.condition === 'clear' ? 1 : 0.45 }}>
-                  {[
-                    { x: '18%', y: '15%', d: '0s', s: 3 },
-                    { x: '72%', y: '22%', d: '0.4s', s: 2.5 },
-                    { x: '35%', y: '32%', d: '0.8s', s: 2 },
-                    { x: '82%', y: '45%', d: '1.2s', s: 3 },
-                    { x: '24%', y: '60%', d: '0.6s', s: 2 },
-                    { x: '65%', y: '70%', d: '1.5s', s: 2.8 },
-                  ].map((st, i) => (
-                    <div
+                <div className="absolute inset-0 pointer-events-none" style={{ opacity: weather.condition === 'clear' ? 1 : 0.4 }}>
+                  {NIGHT_STARS.map((st, i) => (
+                    <svg
                       key={i}
-                      className="absolute bg-white rounded-full animate-twinkle"
-                      style={{ left: st.x, top: st.y, width: st.s, height: st.s, animationDelay: st.d, boxShadow: '0 0 4px #ffffff' }}
-                    />
+                      className="absolute animate-twinkle"
+                      viewBox="-1.2 -1.2 2.4 2.4"
+                      width={st.s * 2}
+                      height={st.s * 2}
+                      aria-hidden="true"
+                      style={{ left: st.x, top: st.y, marginLeft: -st.s, marginTop: -st.s, animationDelay: st.d, overflow: 'visible', filter: `drop-shadow(0 0 2px ${st.c})` }}
+                    >
+                      <path d={st.k === 5 ? STAR5 : STAR4} fill={st.c} stroke={st.k === 5 ? st.c : undefined} strokeWidth={st.k === 5 ? 0.08 : 0} strokeLinejoin="round" />
+                    </svg>
                   ))}
                 </div>
               )}
@@ -249,16 +277,16 @@ export function ReadingScene({
               {/* The real moon phase at night, otherwise the sun (low and rosy at sunrise and sunset) */}
               {windowNight ? (
                 <div style={{ opacity: weather.condition === 'clear' ? 1 : 0.6 }}>
-                  <MoonPhase date={new Date()} />
+                  <MoonPhase date={new Date()} phase={!followTime ? previewMoon : null} />
                 </div>
               ) : (
                 <div
                   className="absolute"
                   style={{
-                    top: period === 'day' ? '12%' : period === 'morning' ? '34%' : '46%',
-                    right: period === 'morning' ? 'auto' : '16%',
-                    left: period === 'morning' ? '14%' : 'auto',
-                    width: '26%',
+                    top: period === 'day' ? '12%' : period === 'morning' ? '32%' : '44%',
+                    right: period === 'morning' ? 'auto' : '13%',
+                    left: period === 'morning' ? '12%' : 'auto',
+                    width: '35%',
                     aspectRatio: '1',
                     borderRadius: '50%',
                     background: period === 'day' ? '#ffd152' : period === 'morning' ? '#ffcf8a' : '#ff9a4d',
@@ -388,18 +416,33 @@ export function ReadingScene({
             )}
           </div>
 
-          {/* Only when "Window follows the real time of day" is off in Settings: step through morning, day, sunset, night */}
+          {/* Only when "Window follows the real time of day" is off in Settings: step through morning, day, sunset, night
+              and (at night) through the moon phases */}
           {!followTime && (
-            <button
-              type="button"
-              onClick={handleCycleTime}
-              className="scene-time absolute z-20 flex items-center justify-center rounded-full bg-black/55 text-white shadow-md active:scale-90 transition-transform"
-              style={{ bottom: 7, right: 7, width: 26, height: 26, fontSize: 14, lineHeight: 1 }}
-              aria-label={`Showing ${PERIOD_LABEL[period]}. Press to change the time of day.`}
-              title="Change the time of day in the window"
-            >
-              <span aria-hidden="true">{PERIOD_ICON[period]}</span>
-            </button>
+            <div className="absolute z-20 flex items-center gap-1.5" style={{ bottom: 7, right: 7 }}>
+              {windowNight && (
+                <button
+                  type="button"
+                  onClick={handleCycleMoon}
+                  className="scene-time flex items-center justify-center rounded-full bg-black/55 text-white shadow-md active:scale-90 transition-transform"
+                  style={{ width: 26, height: 26, fontSize: 14, lineHeight: 1 }}
+                  aria-label={`Moon: ${moonName}. Press to change the moon phase.`}
+                  title="Change the moon phase"
+                >
+                  <span aria-hidden="true">{MOON_PHASE_EMOJI[shownMoon]}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleCycleTime}
+                className="scene-time flex items-center justify-center rounded-full bg-black/55 text-white shadow-md active:scale-90 transition-transform"
+                style={{ width: 26, height: 26, fontSize: 14, lineHeight: 1 }}
+                aria-label={`Showing ${PERIOD_LABEL[period]}. Press to change the time of day.`}
+                title="Change the time of day in the window"
+              >
+                <span aria-hidden="true">{PERIOD_ICON[period]}</span>
+              </button>
+            </div>
           )}
         </div>
 

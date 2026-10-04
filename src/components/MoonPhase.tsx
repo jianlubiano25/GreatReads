@@ -10,6 +10,8 @@ const SYNODIC_DAYS = 29.530588853;
 const KNOWN_NEW_MOON = Date.UTC(2000, 0, 6, 18, 14);
 export const MOON_PHASE_NAMES = ['New Moon', 'Waxing Crescent', 'First Quarter', 'Waxing Gibbous', 'Full Moon', 'Waning Gibbous', 'Last Quarter', 'Waning Crescent'];
 
+export const MOON_PHASE_EMOJI = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'];
+
 export function moonPhase(date: Date): { frac: number; index: number; name: string } {
   const days = (date.getTime() - KNOWN_NEW_MOON) / 86400000;
   const frac = (((days % SYNODIC_DAYS) + SYNODIC_DAYS) % SYNODIC_DAYS) / SYNODIC_DAYS; // 0 = new, 0.5 = full
@@ -28,15 +30,16 @@ function litShape(frac: number): string | null {
   return `M12 ${12 - R} A${R} ${R} 0 0 1 12 ${12 + R} A${Math.abs(c) * R} ${R} 0 0 ${c > 0 ? 0 : 1} 12 ${12 - R} Z`;
 }
 
-export const MoonPhase = React.memo(function MoonPhase({ date }: { date: Date }) {
-  const { frac } = moonPhase(date);
+/** `phase` (0..7, same order as MOON_PHASE_NAMES) shows that phase instead of the one for `date`. */
+export const MoonPhase = React.memo(function MoonPhase({ date, phase }: { date: Date; phase?: number | null }) {
+  const frac = phase == null ? moonPhase(date).frac : phase / 8;
   const waning = frac >= 0.5;
   const lit = litShape(frac);
   const glow = (1 - Math.cos(frac * 2 * Math.PI)) / 2; // 0 new .. 1 full
   return (
     <div
       className="absolute pointer-events-none"
-      style={{ top: '14%', right: '18%', width: '24%', aspectRatio: '1' }}
+      style={{ top: '15%', right: '13%', width: '33%', aspectRatio: '1' }}
     >
       <svg
         viewBox="0 0 24 24"
