@@ -24,11 +24,11 @@ const frac = (g: number) => Math.min(1, Math.max(0, (g - 0.2) / 0.8)); // 0 when
 // ---------------------------------------------------------------------------------------------
 
 /** A pointed leaf blade from (x,y) pointing up, rotated `rot` degrees clockwise. `bend` curls the tip sideways. */
-function Blade({ x, y, len, w, rot = 0, bend = 0, fill, vein }: { x: number; y: number; len: number; w: number; rot?: number; bend?: number; fill: string; vein?: string }) {
+function Blade({ x, y, len, w, rot = 0, bend = 0, fill, vein, edge }: { x: number; y: number; len: number; w: number; rot?: number; bend?: number; fill: string; vein?: string; edge?: string }) {
   const d = `M0 0 C${w + bend * 0.2} ${-len * 0.28} ${w * 0.7 + bend * 0.7} ${-len * 0.78} ${bend} ${-len} C${-w * 0.7 + bend * 0.7} ${-len * 0.78} ${-w + bend * 0.2} ${-len * 0.28} 0 0Z`;
   return (
     <g transform={`translate(${x} ${y}) rotate(${rot})`}>
-      <path d={d} fill={fill} />
+      <path d={d} fill={fill} stroke={edge} strokeWidth={edge ? 0.6 : 0} strokeLinejoin="round" />
       {vein && <path d={`M0 -1 Q${bend * 0.5} ${-len * 0.5} ${bend} ${-len * 0.9}`} stroke={vein} strokeWidth={0.8} fill="none" opacity={0.55} />}
     </g>
   );
@@ -56,7 +56,7 @@ const Petal5 = ({ r, ry, rx, fill, n = 5, offset = 0 }: { r: number; ry: number;
 // Pots
 // ---------------------------------------------------------------------------------------------
 function Pot({ pot, y, basket }: { pot: PotStyle; y: number; basket?: boolean }) {
-  const st = pot.stroke ? { stroke: pot.stroke, strokeWidth: 1 } : {};
+  const st = pot.stroke ? { stroke: pot.stroke, strokeWidth: 1.2 } : {};
   if (pot.shape === 'cylinder') {
     return (
       <g>
@@ -202,6 +202,7 @@ const SPEARS = [
   { x0: 19, tx: 11, ty: 22 }, { x0: 29, tx: 37, ty: 22 },
 ];
 function Spears({ g, d }: P) {
+  if (d.opt?.trim) return <SnakePlant g={g} d={d} />;
   const n = count(g, 5, 2);
   const w = d.opt?.fat ? 3.6 : 1.9;
   const tones = [d.leaf2, d.leaf, d.leaf, '#4d9462', '#4d9462'];
@@ -222,6 +223,72 @@ function Spears({ g, d }: P) {
           </g>
         );
       }).reverse()}
+    </g>
+  );
+}
+
+/** One snake-plant sword leaf: a tapered blade along a curved spine, with darker cross bands and a golden edge. */
+function SwordLeaf({ x0, tx, ty, w, fill, band, edge }: { x0: number; tx: number; ty: number; w: number; fill: string; band: string; edge?: string }) {
+  const cx = x0 + (tx - x0) * 0.25;
+  const cy = 48 + (ty - 48) * 0.55;
+  const spine = (t: number) => ({
+    x: (1 - t) * (1 - t) * x0 + 2 * (1 - t) * t * cx + t * t * tx,
+    y: (1 - t) * (1 - t) * 48 + 2 * (1 - t) * t * cy + t * t * ty,
+  });
+  const half = (t: number) => w * (0.4 + 0.6 * Math.sin(Math.PI * Math.pow(t, 0.7))) * (1 - Math.pow(t, 3));
+  const N = 14;
+  const L: string[] = [];
+  const R: string[] = [];
+  const bands: React.ReactNode[] = [];
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    const a = spine(t);
+    const b = spine(Math.min(1, t + 0.01));
+    const c = spine(Math.max(0, t - 0.01));
+    const dx = b.x - c.x;
+    const dy = b.y - c.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+    const h = half(t);
+    L.push(`${(a.x + nx * h).toFixed(1)} ${(a.y + ny * h).toFixed(1)}`);
+    R.push(`${(a.x - nx * h).toFixed(1)} ${(a.y - ny * h).toFixed(1)}`);
+    if (i >= 2 && i <= N - 3 && i % 2 === 0) {
+      bands.push(
+        <path
+          key={i}
+          d={`M${(a.x + nx * h * 0.8).toFixed(1)} ${(a.y + ny * h * 0.8).toFixed(1)} L${(a.x - nx * h * 0.8).toFixed(1)} ${(a.y - ny * h * 0.8).toFixed(1)}`}
+          stroke={band}
+          strokeWidth={0.9}
+          strokeLinecap="round"
+          opacity={0.45}
+        />,
+      );
+    }
+  }
+  const d = 'M' + L.join(' L') + ' L' + R.reverse().join(' L') + ' Z';
+  return (
+    <g>
+      <path d={d} fill={fill} stroke={edge} strokeWidth={edge ? 1 : 0} strokeLinejoin="round" />
+      {bands}
+    </g>
+  );
+}
+
+const SWORDS = [
+  { x0: 24, tx: 24, ty: 3, w: 4.6 }, { x0: 21, tx: 14, ty: 9, w: 4.2 }, { x0: 27, tx: 34, ty: 9, w: 4.2 },
+  { x0: 19, tx: 9, ty: 19, w: 3.8 }, { x0: 29, tx: 39, ty: 19, w: 3.8 }, { x0: 23, tx: 19, ty: 15, w: 3.4 }, { x0: 25, tx: 29, ty: 15, w: 3.4 },
+];
+function SnakePlant({ g, d }: P) {
+  const n = count(g, 7, 3);
+  const order = [0, 1, 2, 3, 4, 5, 6].slice(0, n);
+  const tones = [d.leaf, d.leaf2, d.leaf, d.leaf2, d.leaf, '#4d9462', '#4d9462'];
+  // outer leaves first so the tall centre leaf is in front
+  return (
+    <g>
+      {order.slice().reverse().map(i => (
+        <SwordLeaf key={i} {...SWORDS[i]} fill={tones[i]} band="#173d28" edge={d.bloom} />
+      ))}
     </g>
   );
 }
@@ -361,7 +428,7 @@ function Daisy({ g, d }: P) {
       {stem}
       <g transform={`translate(24 ${top - 2}) scale(${s})`}>
         {Array.from({ length: 14 }, (_, i) => (
-          <Blade key={i} x={0} y={0} len={13} w={2.6} rot={i * (360 / 14)} fill={d.bloom!} />
+          <Blade key={i} x={0} y={0} len={13} w={2.6} rot={i * (360 / 14)} fill={d.bloom!} edge="#cfc3a3" />
         ))}
         {Array.from({ length: 14 }, (_, i) => (
           <path key={'l' + i} d="M0 -3 L0 -10" transform={`rotate(${i * (360 / 14)})`} stroke="#e8dec3" strokeWidth={0.6} />
@@ -376,8 +443,8 @@ function Daisy({ g, d }: P) {
 /** The tulip: long pointed blade leaves and a big cup flower. */
 function Tulip({ g, d }: P) {
   const f = frac(g);
-  const top = 48 - (14 + f * 16);
-  const s = 0.7 + f * 0.55;
+  const top = 48 - (12 + f * 13);
+  const s = 0.56 + f * 0.42; // a smaller cup than before (fully grown is about 80% of the old size)
   return (
     <g>
       <Blade x={24} y={48} len={22 + f * 12} w={6.4} rot={-26} bend={-6} fill={d.leaf} vein={d.leaf2} />
@@ -488,9 +555,9 @@ function Orchid({ g, d }: P) {
       <path d="M24 48 C22 34 26 22 34 12" stroke="#5a8a54" strokeWidth={1.8} fill="none" strokeLinecap="round" />
       {pts.map((p, i) => (
         <g key={i} transform={`translate(${p.x} ${p.y}) rotate(${i * 18 - 20}) scale(${0.72 + 0.3 * f})`}>
-          <ellipse cx={-5} cy={-3} rx={6} ry={4.4} transform="rotate(-24 -5 -3)" fill={d.bloom} stroke="#e1c9e6" strokeWidth={0.5} />
-          <ellipse cx={5} cy={-3} rx={6} ry={4.4} transform="rotate(24 5 -3)" fill={d.bloom} stroke="#e1c9e6" strokeWidth={0.5} />
-          <ellipse cx={0} cy={-6} rx={3.4} ry={5} fill={d.bloom} stroke="#e1c9e6" strokeWidth={0.5} />
+          <ellipse cx={-5} cy={-3} rx={6} ry={4.4} transform="rotate(-24 -5 -3)" fill={d.bloom} stroke="#cfa9d6" strokeWidth={0.7} />
+          <ellipse cx={5} cy={-3} rx={6} ry={4.4} transform="rotate(24 5 -3)" fill={d.bloom} stroke="#cfa9d6" strokeWidth={0.7} />
+          <ellipse cx={0} cy={-6} rx={3.4} ry={5} fill={d.bloom} stroke="#cfa9d6" strokeWidth={0.7} />
           <path d="M-3.6 0 C-2 6 2 6 3.6 0 C2 -2 -2 -2 -3.6 0Z" fill={d.bloom2} />
           <circle cx={0} cy={-1} r={1.3} fill="#f2d96b" />
         </g>
@@ -510,7 +577,7 @@ function Lily({ g, d }: P) {
         <g>
           <path d="M26 48 C27 38 29 28 29 20" stroke={d.leaf2} strokeWidth={1.8} fill="none" strokeLinecap="round" />
           <g transform="translate(29 21) rotate(8)">
-            <path d="M0 3 C-8 0 -9 -13 0 -21 C9 -13 8 0 0 3Z" fill={d.bloom} stroke="#e4e0cf" strokeWidth={0.6} />
+            <path d="M0 3 C-8 0 -9 -13 0 -21 C9 -13 8 0 0 3Z" fill={d.bloom} stroke="#c9c3a6" strokeWidth={0.8} />
             <path d="M0 -1 L0 -14" stroke="#e1ddc8" strokeWidth={0.8} />
             <rect x={-1.6} y={-13} width={3.2} height={10} rx={1.6} fill={d.bloom2} />
           </g>
@@ -520,7 +587,7 @@ function Lily({ g, d }: P) {
         <g>
           <path d="M22 48 C20 40 17 33 16 27" stroke={d.leaf2} strokeWidth={1.6} fill="none" strokeLinecap="round" />
           <g transform="translate(16 28) rotate(-10) scale(0.75)">
-            <path d="M0 3 C-8 0 -9 -13 0 -21 C9 -13 8 0 0 3Z" fill={d.bloom} stroke="#e4e0cf" strokeWidth={0.6} />
+            <path d="M0 3 C-8 0 -9 -13 0 -21 C9 -13 8 0 0 3Z" fill={d.bloom} stroke="#c9c3a6" strokeWidth={0.8} />
             <rect x={-1.6} y={-13} width={3.2} height={10} rx={1.6} fill={d.bloom2} />
           </g>
         </g>
@@ -673,20 +740,23 @@ function Trailing({ g, d }: P) {
   const n = count(g, 5, 2);
   const shape = String(d.opt?.shape ?? 'heart');
   const potY = TRAIL_POT_Y;
+  const sparse = shape === 'heart'; // pothos: fewer, bigger leaves so the vine stays visible
+  const stem = shape === 'heart' ? d.leaf : d.leaf2;
   return (
     <g>
       {VINES.slice(0, n).map((v, i) => {
         const len = v.len * (0.55 + 0.45 * g);
         const pts = Array.from({ length: 9 }, (_, k) => {
           const t = k / 8;
-          return { x: v.x + Math.sin(t * 3 + i) * 3, y: potY + 14 + t * len };
+          return { x: v.x + Math.sin(t * 3 + i) * 3, y: potY + 12 + t * len };
         });
         const path = 'M' + pts.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L');
         return (
           <g key={i}>
-            <path d={path} stroke={d.leaf2} strokeWidth={shape === 'pearl' ? 0.9 : 1.3} fill="none" strokeLinecap="round" />
+            <path d={path} stroke={stem} strokeWidth={shape === 'pearl' ? 0.9 : sparse ? 1.7 : 1.3} fill="none" strokeLinecap="round" strokeLinejoin="round" />
             {pts.slice(1).map((p, k) => {
               const side = k % 2 ? 1 : -1;
+              if (sparse && (k % 2 === 1 || p.y < potY + 22)) return null; // every other node, and none hiding behind the pot
               if (shape === 'pearl') return <circle key={k} cx={p.x} cy={p.y} r={2.6} fill={k % 2 ? d.leaf : '#9ad6a6'} />;
               if (shape === 'ivy') {
                 return (
@@ -696,14 +766,25 @@ function Trailing({ g, d }: P) {
                   </g>
                 );
               }
-              // pothos: pointed heart leaves with a lighter marbling stripe
+              // pothos: a short leaf stalk off the vine, then a pointed heart leaf with a lighter marbling stripe
+              const sx = p.x + side * 4.5;
+              const sy = p.y + 1.5;
               return (
-                <g key={k} transform={`translate(${p.x + side * 2} ${p.y}) rotate(${180 + side * 34}) scale(0.5)`}>
-                  <path d="M0 0 C-3 3 -11 2 -11 -6 C-11 -14 -4 -17 0 -25 C4 -17 11 -14 11 -6 C11 2 3 3 0 0Z" fill={k % 2 ? d.leaf : d.leaf2} />
-                  <path d="M0 -2 L0 -20" stroke="#cfe9a6" strokeWidth={1.4} opacity={0.7} />
+                <g key={k}>
+                  <path d={`M${p.x.toFixed(1)} ${p.y.toFixed(1)} Q${(p.x + side * 3).toFixed(1)} ${(p.y - 0.5).toFixed(1)} ${sx.toFixed(1)} ${sy.toFixed(1)}`} stroke={stem} strokeWidth={1} fill="none" strokeLinecap="round" />
+                  <g transform={`translate(${sx.toFixed(1)} ${sy.toFixed(1)}) rotate(${180 + side * 40}) scale(0.46)`}>
+                    <path d="M0 0 C-3 3 -11 2 -11 -6 C-11 -14 -4 -17 0 -25 C4 -17 11 -14 11 -6 C11 2 3 3 0 0Z" fill={k % 4 === 0 ? d.leaf2 : d.leaf} />
+                    <path d="M0 -2 L0 -20" stroke="#cfe9a6" strokeWidth={1.6} opacity={0.7} />
+                  </g>
                 </g>
               );
             })}
+            {sparse && (
+              <g transform={`translate(${pts[8].x.toFixed(1)} ${(pts[8].y + 1).toFixed(1)}) rotate(180) scale(0.42)`}>
+                <path d="M0 0 C-3 3 -11 2 -11 -6 C-11 -14 -4 -17 0 -25 C4 -17 11 -14 11 -6 C11 2 3 3 0 0Z" fill={d.leaf} />
+                <path d="M0 -2 L0 -20" stroke="#cfe9a6" strokeWidth={1.6} opacity={0.7} />
+              </g>
+            )}
           </g>
         );
       })}

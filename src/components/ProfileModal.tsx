@@ -3,6 +3,7 @@ import { GardenState, UserProfile } from '../types';
 import { Camera, Moon, Sun, Monitor, RefreshCw, Copy, Check, Upload, X, Download } from 'lucide-react';
 import { copyText } from '../services/clipboard';
 import { isLocationWeatherEnabled, setLocationWeatherEnabled, fetchLocalWeather } from '../services/weather';
+import { getNookMatchesTheme, setNookMatchesTheme, getWindowFollowsTime, setWindowFollowsTime } from '../services/nookPrefs';
 import { useAppUpdate, checkForUpdate, applyUpdate, restartApp, APP_BUILD } from '../services/appUpdate';
 import { AchievementsModal } from './garden/AchievementsModal';
 import { MILESTONES } from '../data/gardenCatalog';
@@ -45,6 +46,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const update = useAppUpdate();
   const [locationWeather, setLocationWeather] = useState(isLocationWeatherEnabled);
+  const [nookMatchesTheme, setNookTheme] = useState(getNookMatchesTheme);
+  const [windowFollowsTime, setWindowTime] = useState(getWindowFollowsTime);
   const [showAchievements, setShowAchievements] = useState(false);
   const plantsEarned = MILESTONES.filter(m => garden.achievements[m.id]).length;
 
@@ -275,16 +278,33 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 <span>Night</span>
               </button>
             </div>
+            <label className="flex items-start justify-between gap-3 cursor-pointer mt-3">
+              <span>
+                <span className="text-xs font-semibold text-[#706256] dark:text-[#a89a8a] block">Match the reading nook to the theme</span>
+                <span className="text-[11px] text-[#706256] dark:text-[#a89a8a] block mt-0.5">
+                  The nook's wall, shelves and plants follow Parchment / Night. Off: they follow the time of day shown in the window.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={nookMatchesTheme}
+                onChange={e => {
+                  setNookTheme(e.target.checked);
+                  setNookMatchesTheme(e.target.checked);
+                }}
+                className="mt-0.5 w-4 h-4 accent-[#2e5934] shrink-0"
+              />
+            </label>
           </div>
 
           {/* Scene weather (location is optional) */}
-          <div>
+          <div className="space-y-3">
             <label className="flex items-start justify-between gap-3 cursor-pointer">
               <span>
                 <span className="text-xs font-semibold text-[#706256] dark:text-[#a89a8a] block">Match weather to my location</span>
                 <span className="text-[11px] text-[#706256] dark:text-[#a89a8a] block mt-0.5">
-                  Off by default. The reading nook already follows the time of day; tap its window to pick sun, clouds or rain.
-                  Turning this on asks your device for approximate location, used only to look up the local weather.
+                  Off by default. Tap the window to pick sun, clouds, rain or snow. With this on, the window goes back to your real local weather
+                  whenever the app is refreshed. Turning it on asks your device for approximate location, used only to look up the local weather.
                 </span>
               </span>
               <input
@@ -295,6 +315,25 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   setLocationWeather(on);
                   setLocationWeatherEnabled(on);
                   if (on) void fetchLocalWeather(); // shows the device's permission question now, not later
+                }}
+                className="mt-0.5 w-4 h-4 accent-[#2e5934] shrink-0"
+              />
+            </label>
+
+            <label className="flex items-start justify-between gap-3 cursor-pointer">
+              <span>
+                <span className="text-xs font-semibold text-[#706256] dark:text-[#a89a8a] block">Window follows the real time of day</span>
+                <span className="text-[11px] text-[#706256] dark:text-[#a89a8a] block mt-0.5">
+                  On by default. Turn it off to get a small button on the window that steps through morning, daytime, sunset and night.
+                  Turn it back on to return to the real time.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={windowFollowsTime}
+                onChange={e => {
+                  setWindowTime(e.target.checked);
+                  setWindowFollowsTime(e.target.checked);
                 }}
                 className="mt-0.5 w-4 h-4 accent-[#2e5934] shrink-0"
               />

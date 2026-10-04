@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useSyncExternalStore } from 'react';
+import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import { Book } from '../types';
 import { BOOK_AWARDS } from '../data/defaultBooks';
 import { getCoverUrl, findFallbackCover } from '../services/bookSearch';
@@ -47,6 +47,8 @@ export function AwardBadges({ book }: { book: Book }) {
 
 const SIZES = {
   xs: { t: 'relative z-10 line-clamp-3 leading-tight text-[9px]', a: 'relative z-10 text-[7px] truncate opacity-80' },
+  // The reading-nook shelf: tiny spines, so the placeholder title is small and the author is left out until the real cover loads
+  nook: { t: 'relative z-10 line-clamp-4 leading-[1.1] text-[5.5px] font-semibold break-words', a: 'hidden' },
   md: { t: 'relative z-10 font-serif-display text-xs line-clamp-3', a: 'relative z-10 text-[9px] truncate' },
   lg: { t: 'relative z-10 font-serif-display text-xs sm:text-sm leading-tight line-clamp-4', a: 'relative z-10 text-[10px] font-sans opacity-85 truncate' },
   xl: { t: 'relative z-10 font-serif-display text-base sm:text-lg leading-tight line-clamp-4 drop-shadow-md', a: 'relative z-10 text-[11px] font-sans opacity-90 truncate' },
@@ -106,6 +108,17 @@ export const CoverFace = React.memo(function CoverFace({ book, size = 'md', imgS
     }
   }, [src]);
 
+  // A cover the browser already has (HTTP cache) is complete the moment the <img> exists: show it straight away instead of
+  // flashing the title placeholder first. (onLoad can fire before React attaches it, or not at all for cached images.)
+  const imgRef = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    const im = imgRef.current;
+    if (im && im.complete && im.naturalWidth >= 8) {
+      recordLoadedCover(src);
+      setImgLoaded(true);
+    }
+  }, [src]);
+
   const giveUp = () => {
     findFallbackCover(book.title, book.author).then(u => setSt(u ? { ...cur, alt: u } : { ...cur, dead: true }));
   };
@@ -140,6 +153,7 @@ export const CoverFace = React.memo(function CoverFace({ book, size = 'md', imgS
       {url && !failed ? (
         <img
           key={url}
+          ref={imgRef}
           src={url}
           alt=""
           loading={isEager ? 'eager' : 'lazy'}

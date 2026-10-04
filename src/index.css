@@ -102,7 +102,7 @@
   button:not(.scene-book):not(.day), select { min-height: 44px; }
   button.p-1\.5, button.p-2 { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
   input, textarea, select { font-size: 16px !important; }
-  .scene-book, .day { min-height: 0 !important; }
+  .scene-book, .day, .scene-time { min-height: 0 !important; }
   .book-cover-3d { min-height: 0 !important; }
 }
 @media (max-width: 767px) { main { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); } }
@@ -199,6 +199,15 @@
   animation: rain-fall 0.75s linear infinite;
 }
 
+@keyframes snow-fall {
+  0% { transform: translate(0, -14px); opacity: 0; }
+  12% { opacity: 0.95; }
+  50% { transform: translate(7px, 90px); }
+  90% { opacity: 0.95; }
+  100% { transform: translate(-5px, 215px); opacity: 0; }
+}
+.animate-snow { animation: snow-fall 4.2s linear infinite; }
+
 @keyframes cloud-drift {
   0% { transform: translateX(-35px); }
   50% { transform: translateX(35px); }
@@ -275,13 +284,33 @@
   pointer-events: none;
   font: 600 11px/1.2 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
-/* Hanging plants hang from the rail by a short rope that does not sway with the plant */
+/* Hanging plants swing like a pendulum: the rope and the plant move together, pivoting at the rail (rope top). */
+.hang-swing { position: relative; transform-origin: 50% -24px; }
+@keyframes hang-sway {
+  0% { transform: rotate(0deg); }
+  18% { transform: rotate(-7deg); }
+  38% { transform: rotate(5.5deg); }
+  58% { transform: rotate(-3.5deg); }
+  78% { transform: rotate(1.8deg); }
+  100% { transform: rotate(0deg); }
+}
+@keyframes hang-sway-b {
+  0% { transform: rotate(0deg); }
+  18% { transform: rotate(-7deg); }
+  38% { transform: rotate(5.5deg); }
+  58% { transform: rotate(-3.5deg); }
+  78% { transform: rotate(1.8deg); }
+  100% { transform: rotate(0deg); }
+}
+.animate-hang-sway { animation: hang-sway 1.3s cubic-bezier(0.3, 0.7, 0.4, 1); }
+.animate-hang-sway-b { animation: hang-sway-b 1.3s cubic-bezier(0.3, 0.7, 0.4, 1); }
+/* Hanging plants hang from the rail by a short rope (it lives inside .hang-swing, so it swings too) */
 .hang-rope {
   position: absolute;
   left: 50%;
   bottom: 100%;
   width: 1.2px;
-  height: 22px;
+  height: 24px;
   margin-left: -0.6px;
   background: #8a5a3b;
   pointer-events: none;

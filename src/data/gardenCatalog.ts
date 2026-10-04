@@ -42,8 +42,8 @@ export interface PlantDef {
 }
 
 const TERRA: PotStyle = { shape: 'taper', body: '#c26d45', rim: '#ad5933' };
-const CREAM: PotStyle = { shape: 'taper', body: '#e8dcc6', rim: '#3a7d80', stroke: '#cfbe9f', text: '#5c4a35' };
-const IVORY: PotStyle = { shape: 'cylinder', body: '#f4efe6', rim: '#4a7c59', stroke: '#cfbe9f', text: '#335940' };
+const CREAM: PotStyle = { shape: 'taper', body: '#e2d3b6', rim: '#3a7d80', stroke: '#b5a17d', text: '#5c4a35' };
+const IVORY: PotStyle = { shape: 'cylinder', body: '#ebe2cf', rim: '#4a7c59', stroke: '#b5a17d', text: '#335940' };
 const BASKET: PotStyle = { shape: 'bowl', body: '#b88c5a', rim: '#8a5a3b' };
 
 export const PLANTS: PlantDef[] = [

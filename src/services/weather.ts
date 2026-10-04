@@ -1,5 +1,10 @@
+import { notifyNookPrefs } from './nookPrefs';
+
 export type WeatherCondition = 'clear' | 'clouds' | 'rain' | 'snow';
 export type TimePeriod = 'morning' | 'day' | 'sunset' | 'night';
+export const TIME_PERIODS: TimePeriod[] = ['morning', 'day', 'sunset', 'night'];
+export const WEATHER_MODES: WeatherCondition[] = ['clear', 'clouds', 'rain', 'snow'];
+
 
 export interface WeatherData {
   condition: WeatherCondition;
@@ -15,6 +20,37 @@ const OVERRIDE_KEY = 'greatreads_weather_override';
 const GEO_FAIL_KEY = 'greatreads_geo_failed';
 const GEO_OPT_KEY = 'greatreads_weather_location'; // '1' only if you switched on "Match weather to my location"
 const GEO_RETRY_MS = 60 * 60 * 1000; // after a refusal/timeout, don't ask the device for its location again for an hour
+
+// With "Match weather to my location" on, a window tap is only a temporary peek: opening / refreshing the app goes
+// back to the real local weather. (With it off, your chosen ambiance is remembered, as before.)
+try {
+  if (localStorage.getItem(GEO_OPT_KEY) === '1') localStorage.removeItem(OVERRIDE_KEY);
+} catch {}
+
+/** What the window says for a weather + time of day (the moon phase is added by the scene). */
+export function describeWeather(cond: WeatherCondition, period: TimePeriod): string {
+  if (cond === 'rain') return 'Cozy Rain';
+  if (cond === 'clouds') return 'Drifting Clouds';
+  if (cond === 'snow') return 'Gentle Snowfall';
+  if (period === 'night') return 'Starlit Night';
+  if (period === 'sunset') return 'Golden Twilight';
+  if (period === 'morning') return 'Quiet Morning';
+  return 'Sunny Reading Day';
+}
+
+export const PERIOD_LABEL: Record<TimePeriod, string> = { morning: 'Morning', day: 'Daytime', sunset: 'Sunset', night: 'Night' };
+
+function manualWeather(): WeatherData | null {
+  try {
+    const override = localStorage.getItem(OVERRIDE_KEY);
+    if (override && override !== 'auto') {
+      const { period, isNight } = getTimePeriod();
+      const cond = override as WeatherCondition;
+      return { condition: cond, period, isNight, description: describeWeather(cond, period), source: 'manual' };
+    }
+  } catch {}
+  return null;
+}
 
 /**
  * Window daylight & celestial schedule:
@@ -61,27 +97,8 @@ export async function fetchLocalWeather(): Promise<WeatherData | null> {
   if (typeof window === 'undefined') return null;
 
   // Check manual override first (if user tapped window to choose a specific ambiance)
-  try {
-    const override = localStorage.getItem(OVERRIDE_KEY);
-    if (override && override !== 'auto') {
-      const { period, isNight } = getTimePeriod();
-      const cond = override as WeatherCondition;
-      return {
-        condition: cond,
-        period,
-        isNight,
-        description:
-          cond === 'rain'
-            ? 'Cozy Rain'
-            : cond === 'clouds'
-            ? 'Drifting Clouds'
-            : isNight
-            ? 'Starlit Night'
-            : 'Sunny Reading Day',
-        source: 'manual',
-      };
-    }
-  } catch {}
+  const manual = manualWeather();
+  if (manual) return manual;
 
   // Check cache (10 minutes)
   try {
@@ -114,6 +131,10 @@ export async function fetchLocalWeather(): Promise<WeatherData | null> {
         `https://api.open-meteo.com/v1/forecast?latitude=${latitude.toFixed(2)}&longitude=${longitude.toFixed(2)}&current=weather_code,is_day,precipitation,temperature_2m`,
         { headers: { Accept: 'application/json' } }
       );
+
+      // The device/network can take seconds. If you tapped the window meanwhile, your choice must win.
+      const tappedMeanwhile = manualWeather();
+      if (tappedMeanwhile) return tappedMeanwhile;
 
       if (res.ok) {
         const json = await res.json();
@@ -151,7 +172,7 @@ export async function fetchLocalWeather(): Promise<WeatherData | null> {
     condition: 'clear',
     period: timeData.period,
     isNight: timeData.isNight,
-    description: timeData.isNight ? 'Starlit Night' : timeData.period === 'sunset' ? 'Golden Twilight' : 'Pleasant Day',
+    description: describeWeather('clear', timeData.period),
     source: 'time',
   };
 }
@@ -187,9 +208,12 @@ export function isLocationWeatherEnabled(): boolean {
 
 export function setLocationWeatherEnabled(on: boolean) {
   try {
-    if (on) localStorage.setItem(GEO_OPT_KEY, '1');
-    else localStorage.removeItem(GEO_OPT_KEY);
+    if (on) {
+      localStorage.setItem(GEO_OPT_KEY, '1');
+      localStorage.removeItem(OVERRIDE_KEY); // show the real local weather now, not an old tap
+    } else localStorage.removeItem(GEO_OPT_KEY);
     sessionStorage.removeItem(CACHE_KEY);
     sessionStorage.removeItem(GEO_FAIL_KEY);
   } catch {}
+  notifyNookPrefs(); // the window re-reads the weather right away
 }

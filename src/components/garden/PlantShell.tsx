@@ -60,15 +60,27 @@ export const PlantShell = React.memo(function PlantShell({ label, ariaLabel, tit
     onTap?.();
   }, [onTap]);
 
-  const swayClass = swayRun === 1 ? 'animate-plant-sway' : swayRun === 2 ? 'animate-plant-sway-b' : 'plant-idle';
+  const standSway = swayRun === 1 ? 'animate-plant-sway' : swayRun === 2 ? 'animate-plant-sway-b' : 'plant-idle';
+  const hangSway = swayRun === 1 ? 'animate-hang-sway' : swayRun === 2 ? 'animate-hang-sway-b' : '';
+
+  const button = (
+    <button type="button" onClick={handleTap} title={title} aria-label={ariaLabel} className={`plant-btn ${hanging ? 'plant-idle' : standSway}`}>
+      {children}
+    </button>
+  );
 
   return (
     <div className={`plant-shell${hanging ? ' plant-shell-hang' : ''}`}>
-      {hanging && <span className="hang-rope" aria-hidden="true" />}
       {labelRun > 0 && <PlantLabel key={labelRun} night={night}>{label}</PlantLabel>}
-      <button type="button" onClick={handleTap} title={title} aria-label={ariaLabel} className={`plant-btn ${swayClass}`}>
-        {children}
-      </button>
+      {hanging ? (
+        // Rope and plant are ONE swinging unit, pivoting from where the rope meets the rail (see .hang-swing)
+        <div className={`hang-swing ${hangSway}`}>
+          <span className="hang-rope" aria-hidden="true" />
+          {button}
+        </div>
+      ) : (
+        button
+      )}
     </div>
   );
 });

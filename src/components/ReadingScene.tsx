@@ -1,9 +1,11 @@
-import React, { useEffect, useState, useSyncExternalStore, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore, useMemo } from 'react';
 import { Book, GardenState } from '../types';
 import { subscribeCovers, getCoversVersion } from '../services/coverRepair';
 import { CoverFace } from './BookMeta';
-import { fetchLocalWeather, setWeatherOverride, getTimePeriod, WeatherData, WeatherCondition } from '../services/weather';
+import { fetchLocalWeather, setWeatherOverride, getTimePeriod, describeWeather, PERIOD_LABEL, TIME_PERIODS, WEATHER_MODES, WeatherData, WeatherCondition, TimePeriod } from '../services/weather';
+import { subscribeNookPrefs, getNookPrefsVersion, getNookMatchesTheme, getWindowFollowsTime } from '../services/nookPrefs';
 import { GardenArea } from './garden/GardenView';
+import { MoonPhase, moonPhase } from './MoonPhase';
 
 interface Props {
   books: Book[];
@@ -34,6 +36,42 @@ const grow = (on: boolean, visible: boolean, extra = ''): React.CSSProperties =>
   ...(extra ? { transformOrigin: extra } : {}),
 });
 
+// Is the app itself in its dark (Night) appearance? Watches the class the theme code puts on <html>.
+const subscribeTheme = (cb: () => void) => {
+  const mo = new MutationObserver(cb);
+  mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+  return () => mo.disconnect();
+};
+const isAppDark = () => document.documentElement.classList.contains('dark');
+
+const PERIOD_ICON: Record<TimePeriod, string> = { morning: '🌅', day: '☀️', sunset: '🌇', night: '🌙' };
+
+/** Sky behind the window for a time of day and weather. */
+function skyFor(period: TimePeriod, cond: WeatherCondition): string {
+  if (period === 'night') {
+    return cond === 'clear' ? 'linear-gradient(180deg, #0f1629 0%, #202644 100%)'
+      : cond === 'snow' ? 'linear-gradient(180deg, #1c2540 0%, #3b4766 100%)'
+      : 'linear-gradient(180deg, #141b30 0%, #2a3150 100%)';
+  }
+  if (period === 'sunset') {
+    return cond === 'clear' ? 'linear-gradient(180deg, #e76f51 0%, #f4a261 50%, #fde2b4 100%)'
+      : cond === 'snow' ? 'linear-gradient(180deg, #b98a9a 0%, #e3b9a8 55%, #f3e3df 100%)'
+      : 'linear-gradient(180deg, #b6694f 0%, #d79a73 55%, #ecc9a4 100%)';
+  }
+  if (cond === 'rain') return 'linear-gradient(180deg, #6c7c8c 0%, #9cb2c4 100%)';
+  if (cond === 'snow') return 'linear-gradient(180deg, #9fb0c2 0%, #e8eff5 100%)';
+  if (cond === 'clouds') return 'linear-gradient(180deg, #8ba8b7 0%, #d8e6ed 100%)';
+  if (period === 'morning') return 'linear-gradient(180deg, #f2b5a0 0%, #f9d9b4 45%, #cfe6f3 100%)';
+  return 'linear-gradient(180deg, #68b3e8 0%, #d6edfc 100%)';
+}
+
+const SNOWFLAKES = [
+  { l: '8%', d: '0s', dur: '4.4s', s: 3 }, { l: '20%', d: '1.1s', dur: '3.8s', s: 2 }, { l: '32%', d: '2.2s', dur: '4.8s', s: 4 },
+  { l: '45%', d: '0.5s', dur: '4s', s: 2.5 }, { l: '58%', d: '1.7s', dur: '4.6s', s: 3.5 }, { l: '70%', d: '2.9s', dur: '3.9s', s: 2 },
+  { l: '82%', d: '0.9s', dur: '4.2s', s: 3 }, { l: '92%', d: '2.4s', dur: '5s', s: 2.5 }, { l: '14%', d: '3.3s', dur: '4.5s', s: 2 },
+  { l: '64%', d: '3.6s', dur: '4.1s', s: 3 },
+];
+
 export function ReadingScene({
   books,
   streak,
@@ -62,27 +100,42 @@ export function ReadingScene({
       condition: 'clear',
       period: tp.period,
       isNight: tp.isNight,
-      description: tp.isNight ? 'Starlit Night' : tp.period === 'sunset' ? 'Golden Twilight' : 'Pleasant Day',
+      description: describeWeather('clear', tp.period),
       source: 'time',
     };
   });
-  const [showWeatherTip, setShowWeatherTip] = useState(false);
+  const [tip, setTip] = useState<string | null>(null);
+  const tipTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Every lookup gets a number. A tap bumps it, so a slow location lookup that started earlier can never overwrite the tap.
+  const reqId = useRef(0);
+
+  // Nook preferences from Settings (they re-render the scene the moment they change)
+  const prefsVersion = useSyncExternalStore(subscribeNookPrefs, getNookPrefsVersion, getNookPrefsVersion);
+  const matchTheme = useSyncExternalStore(subscribeNookPrefs, getNookMatchesTheme, () => false);
+  const followTime = useSyncExternalStore(subscribeNookPrefs, getWindowFollowsTime, () => true);
+  const appDark = useSyncExternalStore(subscribeTheme, isAppDark, () => false);
+  const [previewPeriod, setPreviewPeriod] = useState<TimePeriod | null>(null);
+  useEffect(() => {
+    if (followTime) setPreviewPeriod(null); // back to the real time of day
+  }, [followTime]);
 
   useEffect(() => {
     let mounted = true;
-    fetchLocalWeather().then(w => {
-      if (mounted && w) setWeather(w);
-    });
-    const interval = setInterval(() => {
+    const load = () => {
+      const id = ++reqId.current;
       fetchLocalWeather().then(w => {
-        if (mounted && w) setWeather(w);
+        if (mounted && w && id === reqId.current) setWeather(w);
       });
-    }, 60_000); // 1 min refresh for time and light transitions
+    };
+    load();
+    const interval = setInterval(load, 60_000); // 1 min refresh for time and light transitions
     return () => {
       mounted = false;
       clearInterval(interval);
+      clearTimeout(tipTimer.current);
     };
-  }, []);
+    // prefsVersion: re-read the weather when "Match weather to my location" is switched
+  }, [prefsVersion]);
 
   // Screen width & shelves
   const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 640);
@@ -100,230 +153,253 @@ export function ReadingScene({
     return Object.values(dailyLog).filter(pages => Number(pages) >= 10).length;
   }, [dailyLog]);
 
-  const handleCycleWeather = () => {
-    const modes: WeatherCondition[] = ['clear', 'clouds', 'rain'];
-    const curIdx = modes.indexOf(weather.condition);
-    const nextCond = modes[(curIdx + 1) % modes.length];
-    setWeatherOverride(nextCond);
-    setWeather(prev => ({
-      ...prev,
-      condition: nextCond,
-      description: nextCond === 'rain' ? 'Cozy Rain' : nextCond === 'clouds' ? 'Drifting Clouds' : prev.isNight ? 'Starlit Night' : 'Sunny Reading Day',
-      source: 'manual',
-    }));
-    setShowWeatherTip(true);
-    setTimeout(() => setShowWeatherTip(false), 2400);
+  const showTip = (text: string) => {
+    setTip(text);
+    clearTimeout(tipTimer.current);
+    tipTimer.current = setTimeout(() => setTip(null), 2400);
   };
 
-  const night = weather.isNight;
-  const isRain = weather.condition === 'rain';
-  const isCloudy = weather.condition === 'clouds';
+  // Time of day actually shown in the window: the real one, unless you are previewing other times
+  const period: TimePeriod = !followTime && previewPeriod ? previewPeriod : weather.period;
+  const windowNight = period === 'night';
+  const moonName = moonPhase(new Date()).name;
+  const describe = (cond: WeatherCondition, per: TimePeriod) =>
+    `${describeWeather(cond, per)}${per === 'night' && cond === 'clear' ? ` · ${moonName}` : ''}`;
 
-  // Sky gradient styling
-  const skyBackground = night
-    ? 'linear-gradient(180deg, #0f1629 0%, #202644 100%)'
-    : weather.period === 'sunset'
-    ? 'linear-gradient(180deg, #e76f51 0%, #f4a261 50%, #fde2b4 100%)'
-    : isRain
-    ? 'linear-gradient(180deg, #6c7c8c 0%, #9cb2c4 100%)'
-    : isCloudy
-    ? 'linear-gradient(180deg, #8ba8b7 0%, #d8e6ed 100%)'
-    : 'linear-gradient(180deg, #68b3e8 0%, #d6edfc 100%)';
+  const handleCycleWeather = () => {
+    const nextCond = WEATHER_MODES[(WEATHER_MODES.indexOf(weather.condition) + 1) % WEATHER_MODES.length];
+    reqId.current++; // any lookup still in flight is now out of date
+    setWeatherOverride(nextCond);
+    setWeather(prev => ({ ...prev, condition: nextCond, description: describeWeather(nextCond, prev.period), source: 'manual' }));
+    showTip(describe(nextCond, period));
+  };
+
+  const handleCycleTime = () => {
+    const next = TIME_PERIODS[(TIME_PERIODS.indexOf(period) + 1) % TIME_PERIODS.length];
+    setPreviewPeriod(next);
+    showTip(`${PERIOD_LABEL[next]} · ${describe(weather.condition, next)}`);
+  };
+
+  // The window shows the sky; the nook (wall, shelves, plants) is dark either by the theme or by the time of day
+  const nookDark = matchTheme ? appDark : windowNight;
+  const isRain = weather.condition === 'rain';
+  const isSnow = weather.condition === 'snow';
+  const isCloudy = weather.condition === 'clouds';
+  const showClouds = isCloudy || isRain || isSnow;
+  const skyBackground = skyFor(period, weather.condition);
 
   return (
     <div
       className="rl-scene relative rounded-2xl overflow-hidden border border-[#e3d7c3] dark:border-[#382f25] shadow-sm select-none"
       style={{
-        background: night ? 'linear-gradient(#2b2233,#3a2c2c)' : 'linear-gradient(#f7ecd6,#efdcbc)',
+        background: nookDark ? 'linear-gradient(#2b2233,#3a2c2c)' : 'linear-gradient(#f7ecd6,#efdcbc)',
       }}
     >
       {/* Hanging plants: a rail above the window and bookshelf (scrolls sideways; hidden until something hangs) */}
-      <GardenArea garden={garden} night={night} areaId="hanging" />
+      <GardenArea garden={garden} night={nookDark} areaId="hanging" />
 
       <div className="flex items-end gap-2 sm:gap-4 px-3 pt-3">
-        {/* Cozy Arched Window with Weather, Sun, Moon, Stars, Clouds & Rain */}
-        <div
-          className="relative shrink-0 cursor-pointer group scene-window"
-          style={{ width: '28%', maxWidth: 155 }}
-          onClick={handleCycleWeather}
-          onKeyDown={e => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              handleCycleWeather();
-            }
-          }}
-          title="Tap window to switch cozy weather ambiance (Sun, Clouds, Rain)"
-          role="button"
-          tabIndex={0}
-          aria-label={`Window showing ${weather.description}. Press to change the weather.`}
-        >
+        {/* Cozy Arched Window with Weather, Sun, Moon, Stars, Clouds, Rain & Snow */}
+        <div className="relative shrink-0" style={{ width: '28%', maxWidth: 155 }}>
           <div
-            style={{
-              border: '5px solid #8a5a3b',
-              borderRadius: '60px 60px 4px 4px',
-              aspectRatio: '3/4',
-              position: 'relative',
-              overflow: 'hidden',
-              background: skyBackground,
+            className="relative cursor-pointer group scene-window"
+            onClick={handleCycleWeather}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleCycleWeather();
+              }
             }}
+            title="Tap the window to switch the weather (sun, clouds, rain, snow)"
+            role="button"
+            tabIndex={0}
+            aria-label={`Window showing ${describe(weather.condition, period)}. Press to change the weather.`}
           >
-            {/* Stars at night */}
-            {night && (
-              <div className="absolute inset-0 pointer-events-none">
-                {[
-                  { x: '18%', y: '15%', d: '0s', s: 3 },
-                  { x: '72%', y: '22%', d: '0.4s', s: 2.5 },
-                  { x: '35%', y: '32%', d: '0.8s', s: 2 },
-                  { x: '82%', y: '45%', d: '1.2s', s: 3 },
-                  { x: '24%', y: '60%', d: '0.6s', s: 2 },
-                  { x: '65%', y: '70%', d: '1.5s', s: 2.8 },
-                ].map((st, i) => (
-                  <div
-                    key={i}
-                    className="absolute bg-white rounded-full animate-twinkle"
-                    style={{
-                      left: st.x,
-                      top: st.y,
-                      width: st.s,
-                      height: st.s,
-                      animationDelay: st.d,
-                      boxShadow: '0 0 4px #ffffff',
-                    }}
-                  />
-                ))}
-              </div>
-            )}
+            <div
+              style={{
+                border: '5px solid #8a5a3b',
+                borderRadius: '60px 60px 4px 4px',
+                aspectRatio: '3/4',
+                position: 'relative',
+                overflow: 'hidden',
+                background: skyBackground,
+                transition: 'background .6s ease',
+              }}
+            >
+              {/* Stars at night */}
+              {windowNight && (
+                <div className="absolute inset-0 pointer-events-none" style={{ opacity: weather.condition === 'clear' ? 1 : 0.45 }}>
+                  {[
+                    { x: '18%', y: '15%', d: '0s', s: 3 },
+                    { x: '72%', y: '22%', d: '0.4s', s: 2.5 },
+                    { x: '35%', y: '32%', d: '0.8s', s: 2 },
+                    { x: '82%', y: '45%', d: '1.2s', s: 3 },
+                    { x: '24%', y: '60%', d: '0.6s', s: 2 },
+                    { x: '65%', y: '70%', d: '1.5s', s: 2.8 },
+                  ].map((st, i) => (
+                    <div
+                      key={i}
+                      className="absolute bg-white rounded-full animate-twinkle"
+                      style={{ left: st.x, top: st.y, width: st.s, height: st.s, animationDelay: st.d, boxShadow: '0 0 4px #ffffff' }}
+                    />
+                  ))}
+                </div>
+              )}
 
-            {/* Sun or Moon */}
-            {night ? (
-              // Glowing Moon with crater detail
-              <div
-                className="absolute"
-                style={{
-                  top: '14%',
-                  right: '18%',
-                  width: '24%',
-                  aspectRatio: '1',
-                  borderRadius: '50%',
-                  background: '#f8f4db',
-                  boxShadow: '0 0 16px rgba(248, 244, 219, 0.85), inset -3px -3px 4px rgba(200, 190, 150, 0.4)',
-                }}
-              >
-                {/* Subtle moon crater */}
-                <div style={{ position: 'absolute', top: '28%', left: '26%', width: '22%', height: '22%', borderRadius: '50%', background: 'rgba(215, 205, 175, 0.35)' }} />
-              </div>
-            ) : (
-              // Glowing Sun with warmth
-              <div
-                className="absolute"
-                style={{
-                  top: '12%',
-                  right: '16%',
-                  width: '26%',
-                  aspectRatio: '1',
-                  borderRadius: '50%',
-                  background: '#ffd152',
-                  boxShadow: '0 0 22px #ffc107, 0 0 38px rgba(255, 214, 107, 0.65)',
-                }}
+              {/* The real moon phase at night, otherwise the sun (low and rosy at sunrise and sunset) */}
+              {windowNight ? (
+                <div style={{ opacity: weather.condition === 'clear' ? 1 : 0.6 }}>
+                  <MoonPhase date={new Date()} />
+                </div>
+              ) : (
+                <div
+                  className="absolute"
+                  style={{
+                    top: period === 'day' ? '12%' : period === 'morning' ? '34%' : '46%',
+                    right: period === 'morning' ? 'auto' : '16%',
+                    left: period === 'morning' ? '14%' : 'auto',
+                    width: '26%',
+                    aspectRatio: '1',
+                    borderRadius: '50%',
+                    background: period === 'day' ? '#ffd152' : period === 'morning' ? '#ffcf8a' : '#ff9a4d',
+                    boxShadow:
+                      period === 'day'
+                        ? '0 0 22px #ffc107, 0 0 38px rgba(255, 214, 107, 0.65)'
+                        : '0 0 20px rgba(255, 154, 77, 0.9), 0 0 34px rgba(255, 190, 120, 0.6)',
+                    opacity: weather.condition === 'clear' ? 1 : 0.5,
+                    transition: 'top .6s ease, opacity .6s ease',
+                  }}
+                />
+              )}
+
+              {/* Drifting Clouds */}
+              {showClouds && (
+                <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                  <div className="absolute animate-cloud" style={{ top: '24%', left: '10%' }}>
+                    <svg width="48" height="24" viewBox="0 0 48 24" fill="none">
+                      <path
+                        d="M10 20 H38 C42 20 45 17 45 13 C45 9.5 42 6.5 38.5 6.5 C37.8 3.5 35 1 31.5 1 C28.5 1 26 2.8 25 5 C24 3.8 22.5 3 20.8 3 C17.5 3 15 5.5 15 8.8 C12.5 9 10 11.5 10 14.5 C7.5 14.8 5 17 5 19.5 C5 19.8 5.2 20 10 20 Z"
+                        fill={windowNight ? 'rgba(180,195,220,0.35)' : isRain ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.85)'}
+                      />
+                    </svg>
+                  </div>
+                  <div className="absolute animate-cloud" style={{ top: '48%', left: '35%', animationDuration: '18s', animationDelay: '-6s' }}>
+                    <svg width="40" height="20" viewBox="0 0 48 24" fill="none">
+                      <path
+                        d="M10 20 H38 C42 20 45 17 45 13 C45 9.5 42 6.5 38.5 6.5 C37.8 3.5 35 1 31.5 1 C28.5 1 26 2.8 25 5 C24 3.8 22.5 3 20.8 3 C17.5 3 15 5.5 15 8.8 C12.5 9 10 11.5 10 14.5 C7.5 14.8 5 17 5 19.5 Z"
+                        fill={windowNight ? 'rgba(140,160,190,0.3)' : 'rgba(255,255,255,0.65)'}
+                      />
+                    </svg>
+                  </div>
+                </div>
+              )}
+
+              {/* Falling Animated Rain */}
+              {isRain && (
+                <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                  {[
+                    { l: '15%', d: '0s', dur: '0.65s' },
+                    { l: '35%', d: '0.2s', dur: '0.7s' },
+                    { l: '55%', d: '0.4s', dur: '0.6s' },
+                    { l: '75%', d: '0.1s', dur: '0.8s' },
+                    { l: '25%', d: '0.5s', dur: '0.68s' },
+                    { l: '65%', d: '0.35s', dur: '0.72s' },
+                    { l: '85%', d: '0.25s', dur: '0.62s' },
+                  ].map((drop, i) => (
+                    <div
+                      key={i}
+                      className="absolute animate-rain"
+                      style={{
+                        left: drop.l,
+                        top: 0,
+                        width: 1.5,
+                        height: 12,
+                        background: 'linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(200,230,255,0.9) 100%)',
+                        borderRadius: 1,
+                        transform: 'rotate(15deg)',
+                        animationDelay: drop.d,
+                        animationDuration: drop.dur,
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Gently falling snow, settling on the sill */}
+              {isSnow && (
+                <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                  {SNOWFLAKES.map((f, i) => (
+                    <div
+                      key={i}
+                      className="absolute animate-snow rounded-full bg-white"
+                      style={{ left: f.l, top: 0, width: f.s, height: f.s, animationDelay: f.d, animationDuration: f.dur, boxShadow: '0 0 3px rgba(255,255,255,0.9)' }}
+                    />
+                  ))}
+                  <div
+                    className="absolute left-[-6%] right-[-6%] bottom-0"
+                    style={{ height: 11, background: 'linear-gradient(180deg, #ffffff 0%, #dfe9f2 100%)', borderRadius: '60% 60% 0 0 / 100% 100% 0 0' }}
+                  />
+                </div>
+              )}
+
+              {/* Wooden Window Grids / Mullions */}
+              <div style={{ position: 'absolute', left: 0, right: 0, top: '50%', height: 4, background: '#8a5a3b' }} />
+              <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', width: 4, background: '#8a5a3b' }} />
+            </div>
+
+            {/* Creeping Window Vine */}
+            <svg
+              viewBox="0 0 100 133"
+              preserveAspectRatio="xMinYMax meet"
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              fill="none"
+              aria-label="Window vine, grows as you read and keeps what it has grown"
+            >
+              <path
+                d={VINE_D}
+                stroke="#2e5934"
+                strokeWidth={2.6}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                pathLength={100}
+                strokeDasharray={`${Math.round(vineG * 100)} 100`}
+                style={{ transition: 'stroke-dasharray 1.4s ease' }}
               />
-            )}
+              {VINE_LEAVES.map((l, i) => (
+                <g key={i} style={grow(true, vineG >= l.t - 0.02, `${l.x}px ${l.y}px`)}>
+                  <Leaf x={l.x + l.side * 6} y={l.y} r={l.side * 35} c={i % 2 ? '#4e7f55' : '#71ab7a'} s={1.5} />
+                </g>
+              ))}
+              {VINE_FLOWERS.map((f, i) => (
+                <g key={`f${i}`} style={grow(true, vineG >= f.t + 0.04, `${f.x}px ${f.y}px`)}>
+                  {[0, 72, 144, 216, 288].map(a => (
+                    <ellipse key={a} cx={f.x} cy={f.y - 2.3} rx={1.5} ry={2.2} transform={`rotate(${a} ${f.x} ${f.y})`} fill={f.c} />
+                  ))}
+                  <circle cx={f.x} cy={f.y} r={1.1} fill="#ffd66b" />
+                </g>
+              ))}
+            </svg>
 
-            {/* Drifting Clouds */}
-            {(isCloudy || isRain) && (
-              <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                <div className="absolute animate-cloud" style={{ top: '24%', left: '10%' }}>
-                  <svg width="48" height="24" viewBox="0 0 48 24" fill="none">
-                    <path
-                      d="M10 20 H38 C42 20 45 17 45 13 C45 9.5 42 6.5 38.5 6.5 C37.8 3.5 35 1 31.5 1 C28.5 1 26 2.8 25 5 C24 3.8 22.5 3 20.8 3 C17.5 3 15 5.5 15 8.8 C12.5 9 10 11.5 10 14.5 C7.5 14.8 5 17 5 19.5 C5 19.8 5.2 20 10 20 Z"
-                      fill={night ? 'rgba(180,195,220,0.35)' : isRain ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.85)'}
-                    />
-                  </svg>
-                </div>
-                <div className="absolute animate-cloud" style={{ top: '48%', left: '35%', animationDuration: '18s', animationDelay: '-6s' }}>
-                  <svg width="40" height="20" viewBox="0 0 48 24" fill="none">
-                    <path
-                      d="M10 20 H38 C42 20 45 17 45 13 C45 9.5 42 6.5 38.5 6.5 C37.8 3.5 35 1 31.5 1 C28.5 1 26 2.8 25 5 C24 3.8 22.5 3 20.8 3 C17.5 3 15 5.5 15 8.8 C12.5 9 10 11.5 10 14.5 C7.5 14.8 5 17 5 19.5 Z"
-                      fill={night ? 'rgba(140,160,190,0.3)' : 'rgba(255,255,255,0.65)'}
-                    />
-                  </svg>
-                </div>
+            {/* Quick weather / time indicator pill on tap */}
+            {tip && (
+              <div role="status" className="absolute top-2 left-1/2 -translate-x-1/2 z-20 px-2 py-0.5 rounded-full bg-black/75 text-white text-[10px] font-sans whitespace-nowrap shadow-md">
+                {tip}
               </div>
             )}
-
-            {/* Falling Animated Rain */}
-            {isRain && (
-              <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                {[
-                  { l: '15%', d: '0s', dur: '0.65s' },
-                  { l: '35%', d: '0.2s', dur: '0.7s' },
-                  { l: '55%', d: '0.4s', dur: '0.6s' },
-                  { l: '75%', d: '0.1s', dur: '0.8s' },
-                  { l: '25%', d: '0.5s', dur: '0.68s' },
-                  { l: '65%', d: '0.35s', dur: '0.72s' },
-                  { l: '85%', d: '0.25s', dur: '0.62s' },
-                ].map((drop, i) => (
-                  <div
-                    key={i}
-                    className="absolute animate-rain"
-                    style={{
-                      left: drop.l,
-                      top: 0,
-                      width: 1.5,
-                      height: 12,
-                      background: 'linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(200,230,255,0.9) 100%)',
-                      borderRadius: 1,
-                      transform: 'rotate(15deg)',
-                      animationDelay: drop.d,
-                      animationDuration: drop.dur,
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Wooden Window Grids / Mullions */}
-            <div style={{ position: 'absolute', left: 0, right: 0, top: '50%', height: 4, background: '#8a5a3b' }} />
-            <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', width: 4, background: '#8a5a3b' }} />
           </div>
 
-          {/* Creeping Window Vine */}
-          <svg
-            viewBox="0 0 100 133"
-            preserveAspectRatio="xMinYMax meet"
-            className="absolute inset-0 w-full h-full pointer-events-none"
-            fill="none"
-            aria-label="Window vine, grows as you read and keeps what it has grown"
-          >
-            <path
-              d={VINE_D}
-              stroke="#2e5934"
-              strokeWidth={2.6}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              pathLength={100}
-              strokeDasharray={`${Math.round(vineG * 100)} 100`}
-              style={{ transition: 'stroke-dasharray 1.4s ease' }}
-            />
-            {VINE_LEAVES.map((l, i) => (
-              <g key={i} style={grow(true, vineG >= l.t - 0.02, `${l.x}px ${l.y}px`)}>
-                <Leaf x={l.x + l.side * 6} y={l.y} r={l.side * 35} c={i % 2 ? '#4e7f55' : '#71ab7a'} s={1.5} />
-              </g>
-            ))}
-            {VINE_FLOWERS.map((f, i) => (
-              <g key={`f${i}`} style={grow(true, vineG >= f.t + 0.04, `${f.x}px ${f.y}px`)}>
-                {[0, 72, 144, 216, 288].map(a => (
-                  <ellipse key={a} cx={f.x} cy={f.y - 2.3} rx={1.5} ry={2.2} transform={`rotate(${a} ${f.x} ${f.y})`} fill={f.c} />
-                ))}
-                <circle cx={f.x} cy={f.y} r={1.1} fill="#ffd66b" />
-              </g>
-            ))}
-          </svg>
-
-          {/* Quick weather indicator pill on tap */}
-          {showWeatherTip && (
-            <div role="status" className="absolute top-2 left-1/2 -translate-x-1/2 z-20 px-2 py-0.5 rounded-full bg-black/75 text-white text-[10px] font-sans whitespace-nowrap shadow-md">
-              {weather.description}
-            </div>
+          {/* Only when "Window follows the real time of day" is off in Settings: step through morning, day, sunset, night */}
+          {!followTime && (
+            <button
+              type="button"
+              onClick={handleCycleTime}
+              className="scene-time absolute z-20 flex items-center justify-center rounded-full bg-black/55 text-white shadow-md active:scale-90 transition-transform"
+              style={{ bottom: 7, right: 7, width: 26, height: 26, fontSize: 14, lineHeight: 1 }}
+              aria-label={`Showing ${PERIOD_LABEL[period]}. Press to change the time of day.`}
+              title="Change the time of day in the window"
+            >
+              <span aria-hidden="true">{PERIOD_ICON[period]}</span>
+            </button>
           )}
         </div>
 
@@ -349,7 +425,7 @@ export function ReadingScene({
                     transform: i === 0 && Number(b.id) % 5 === 0 ? 'rotate(-4deg)' : 'none',
                   }}
                 >
-                  <CoverFace book={b} size="xs" badge={false} eager={true} />
+                  <CoverFace book={b} size="nook" badge={false} eager={true} />
                 </button>
               ))}
             </div>
@@ -358,14 +434,14 @@ export function ReadingScene({
       </div>
 
       {/* Garden shelf below the window and bookshelf: every standing plant you have earned, scrolling sideways */}
-      <GardenArea garden={garden} night={night} areaId="shelf" />
+      <GardenArea garden={garden} night={nookDark} areaId="shelf" />
 
       {/* Garden Status & Encouragement Bar */}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 pb-3 pt-2" style={{ background: 'rgba(146,88,56,.12)' }}>
-        <span className="italic text-sm" style={{ color: night ? '#e8dcc6' : '#706256' }}>
+        <span className="italic text-sm" style={{ color: nookDark ? '#e8dcc6' : '#706256' }}>
           {met ? '🌿 Your garden is thriving today' : `🌱 ${Math.max(0, goal - todayPages)} more pages to water your plants`}
         </span>
-        <span className="text-sm font-semibold flex items-center gap-2" style={{ color: night ? '#a9d8a3' : '#2e5934' }}>
+        <span className="text-sm font-semibold flex items-center gap-2" style={{ color: nookDark ? '#a9d8a3' : '#2e5934' }}>
           <span>{streak > 0 ? `🔥 ${streak}-day streak` : 'Start your streak today'}</span>
           <span className="text-xs opacity-75">· {tenPageDays} days of 10+ pages</span>
         </span>

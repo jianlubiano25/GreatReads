@@ -273,20 +273,25 @@ export default function App() {
     return { pagesRead, finished, toRead };
   }, [allBooks, state.status, state.dailyLog]);
 
-  // Remember the covers you'll see first so the next launch can start loading them before the app code runs
-  useEffect(() => {
-    try {
-      const urls = [...nowReadingBooks, ...upNextBooks].map(b => getCoverUrl(b.coverId, 'M', b.coverUrl)).filter(Boolean).slice(0, 14);
-      localStorage.setItem('readlife.preload', JSON.stringify(urls));
-    } catch {}
-  }, [nowReadingBooks, upNextBooks]);
-
   // Books shown on the scene shelves: reading now, finished, next, then the rest (covers only)
   const sceneBooks = useMemo(() => {
     const st = state.status || {};
     const rank = (b: Book) => (st[String(b.id)] === 'now' ? 0 : st[String(b.id)] === 'done' ? 1 : st[String(b.id)] === 'next' ? 2 : 3);
     return allBooks.filter(b => b.coverId || b.coverUrl).slice().sort((x, y) => rank(x) - rank(y)).slice(0, 24);
   }, [allBooks, state.status]);
+
+  // Remember the covers you'll see first (the nook shelves, then reading now / up next) so the next launch can start
+  // loading them before the app code runs. Same 'M' size URLs the nook and cards request, so it is one shared cache.
+  useEffect(() => {
+    try {
+      const urls = [...sceneBooks, ...nowReadingBooks, ...upNextBooks]
+        .map(b => getCoverUrl(b.coverId, 'M', b.coverUrl))
+        .filter((u, i, a) => !!u && a.indexOf(u) === i)
+        .slice(0, 30);
+      localStorage.setItem('readlife.preload', JSON.stringify(urls));
+    } catch {}
+  }, [sceneBooks, nowReadingBooks, upNextBooks]);
+
 
   // 7-day dots for streak
   const last7Days = useMemo(() => {
