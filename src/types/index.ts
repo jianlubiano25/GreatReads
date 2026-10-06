@@ -103,6 +103,7 @@ export interface ReadingState {
   notes: Record<string, string>;
   highlights: Record<string, HighlightItem[]>;
   goal: number;
+  goalHistory: Record<string, number>;
   readingIntention: string;
   profile: UserProfile;
   customBooks: Book[];

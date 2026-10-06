@@ -1,3 +1,9 @@
+# Applies to every file
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), payment=(), geolocation=(self)
+
 # Cloudflare Pages: page shell and service worker are always re-checked, so updates are noticed
 /index.html
   Cache-Control: no-cache

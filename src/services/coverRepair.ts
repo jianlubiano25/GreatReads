@@ -1,4 +1,5 @@
 import type { Book } from '../types';
+import { sameBook } from './bookMatch';
 
 /**
  * Missing-cover repair.
@@ -13,8 +14,8 @@ import type { Book } from '../types';
  *   this device (localStorage) so it keeps working after a reload.
  */
 
-const FIX_KEY = 'readlife.coverFix1';   // key -> { url, t }  (covers we repaired)
-const NONE_KEY = 'readlife.coverNone1'; // key -> time        (searched everywhere, nothing found)
+const FIX_KEY = 'readlife.coverFix2';
+const NONE_KEY = 'readlife.coverNone2';
 const NONE_TTL = 7 * 24 * 60 * 60 * 1000;
 const MAX_FIXES = 400;
 
@@ -89,18 +90,8 @@ export function clearMissingCover(book: { title?: string; author?: string }) {
 
 /* ---------- finding a cover ---------- */
 
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
-
-/** Is `got` plausibly the same book as `want`? (avoids pinning the wrong cover on a book) */
-function sameBook(want: string, got: string): boolean {
-  const a = norm(want), b = norm(got);
-  if (!a || !b) return false;
-  if (a === b || a.includes(b) || b.includes(a)) return true;
-  const ta = new Set(a.split(' ').filter(w => w.length > 2));
-  const tb = b.split(' ').filter(w => w.length > 2);
-  if (!ta.size || !tb.length) return false;
-  return tb.filter(w => ta.has(w)).length / Math.min(ta.size, tb.length) >= 0.7;
-}
+const isSame = (book: MissingBook, title: string, author?: string | string[]) =>
+  sameBook(book.title, book.author || '', title, author);
 
 /** Does this image actually load (and isn't a 1×1 placeholder)? */
 export function probeImage(url: string, ms = 9000): Promise<boolean> {
@@ -161,7 +152,7 @@ async function findWorkingCover(b: MissingBook): Promise<string | null> {
     if (!r.ok) netTrouble = true;
     for (const it of (r.data?.results || []).slice(0, 6)) {
       const small: string | undefined = it.artworkUrl100 || it.artworkUrl60;
-      if (!small || !sameBook(b.title, it.trackName || '')) continue;
+      if (!small || !isSame(b, it.trackName || '', it.artistName)) continue;
       const big = small.replace(/\/\d+x\d+bb\.(jpg|png)/, '/600x900bb.$1');
       if (await probeImage(big)) return big;
       if (await probeImage(small)) return small;
@@ -174,7 +165,7 @@ async function findWorkingCover(b: MissingBook): Promise<string | null> {
     if (firstAuthor) q.set('author', firstAuthor);
     const r = await getJson(`https://openlibrary.org/search.json?${q}`);
     if (!r.ok) netTrouble = true;
-    const docs: any[] = (r.data?.docs || []).filter((d: any) => d.cover_i && d.cover_i !== b.coverId && sameBook(b.title, d.title || ''));
+    const docs: any[] = (r.data?.docs || []).filter((d: any) => d.cover_i && d.cover_i !== b.coverId && isSame(b, d.title || '', d.author_name));
     for (const d of docs.slice(0, 3)) {
       const u = `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg`;
       if (await probeImage(u)) return u;
@@ -184,12 +175,12 @@ async function findWorkingCover(b: MissingBook): Promise<string | null> {
   // 4. Google Books
   {
     const q = encodeURIComponent(`intitle:${b.title}${firstAuthor ? ` inauthor:${firstAuthor}` : ''}`);
-    const r = await getJson(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=6&printType=books&fields=items(volumeInfo(title,imageLinks))`);
+    const r = await getJson(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=6&printType=books&fields=items(volumeInfo(title,authors,imageLinks))`);
     if (!r.ok) netTrouble = true;
     for (const it of (r.data?.items || []).slice(0, 6)) {
       const v = it.volumeInfo || {};
       const raw = v.imageLinks?.thumbnail || v.imageLinks?.smallThumbnail;
-      if (raw && sameBook(b.title, v.title || '')) {
+      if (raw && isSame(b, v.title || '', v.authors)) {
         const u = https(raw);
         if (await probeImage(u)) return u;
       }

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useModalA11y } from '../hooks/useModalA11y';
 import { Book, HighlightItem } from '../types';
 import { Bookmark, Plus, Trash2, Search, X, Check, Edit3, Save } from 'lucide-react';
 
@@ -19,6 +20,7 @@ export const HighlightsModal: React.FC<HighlightsModalProps> = ({
   onUpdateHighlight,
   onDeleteHighlight,
 }) => {
+  useModalA11y(onClose);
   const [newText, setNewText] = useState('');
   const [newPage, setNewPage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -31,7 +33,8 @@ export const HighlightsModal: React.FC<HighlightsModalProps> = ({
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newText.trim()) return;
-    onAddHighlight(newText.trim(), newPage ? Number(newPage) : undefined);
+    const page = Math.round(Number(newPage));
+    onAddHighlight(newText.trim(), newPage && Number.isFinite(page) && page >= 1 ? page : undefined);
     setNewText('');
     setNewPage('');
   };
@@ -122,6 +125,8 @@ export const HighlightsModal: React.FC<HighlightsModalProps> = ({
             </div>
           </div>
           <button
+            type="button"
+            aria-label="Close"
             onClick={onClose}
             className="p-1.5 rounded-full text-[#706256] dark:text-[#a89a8a] hover:bg-black/10 dark:hover:bg-white/10"
           >
@@ -267,7 +272,8 @@ export const HighlightsModal: React.FC<HighlightsModalProps> = ({
                           type="button"
                           onClick={() => {
                             if (onUpdateHighlight && editText.trim()) {
-                              onUpdateHighlight(h.id, editText.trim(), editPage ? Number(editPage) : undefined);
+                              const page = Math.round(Number(editPage));
+                              onUpdateHighlight(h.id, editText.trim(), editPage && Number.isFinite(page) && page >= 1 ? page : undefined);
                             }
                             setEditingId(null);
                           }}

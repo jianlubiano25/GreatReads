@@ -16,7 +16,6 @@ const BASKET_SHIFT = 16;
 type P = { g: number; d: PlantDef };
 
 const count = (g: number, max: number, min = 1) => Math.max(min, Math.min(max, Math.round(g * max)));
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const frac = (g: number) => Math.min(1, Math.max(0, (g - 0.2) / 0.8)); // 0 when just earned, 1 when fully grown
 
 // ---------------------------------------------------------------------------------------------

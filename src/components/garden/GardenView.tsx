@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import type { GardenState } from '../../types';
 import { GARDEN_AREAS, MILESTONE_BY_ID, defaultAreaFor, getPlantDef } from '../../data/gardenCatalog';
-import { milestoneProgress, nextMilestone, plantsByArea } from '../../services/garden';
+import { growingMilestones, milestoneProgress, plantsByArea } from '../../services/garden';
 import { PlantArt } from './PlantArt';
 import { PlantShell } from './PlantShell';
 
@@ -29,19 +29,18 @@ function Coffee() {
 export function GardenArea({ garden, night, areaId }: { garden: GardenState; night: boolean; areaId: string }) {
   const area = GARDEN_AREAS.find(a => a.id === areaId);
   const byArea = useMemo(() => plantsByArea(garden), [garden.plants, garden.placements]);
+  const items = byArea[areaId] ?? [];
+  const hanging = area?.kind === 'hanging';
+  const growing = useMemo(
+    () => growingMilestones(garden)
+      .map(milestone => ({ milestone, def: getPlantDef(milestone.plantId), progress: milestoneProgress(milestone, garden.peaks) }))
+      .filter(item => item.def && defaultAreaFor(item.def) === area?.id),
+    [garden.achievements, garden.peaks, area?.id],
+  );
   if (!area) return null;
 
-  const items = byArea[area.id] ?? [];
-  const hanging = area.kind === 'hanging';
-
-  // The plant that is "growing" next stands (as a seedling) in the area it will live in
-  const next = nextMilestone(garden);
-  const nextDef = next ? getPlantDef(next.plantId) : undefined;
-  const showSeedling = !!next && !!nextDef && defaultAreaFor(nextDef) === area.id;
-  const progress = next ? milestoneProgress(next, garden.peaks) : undefined;
-
   // Keep the scene clean: the rail only appears once something hangs from it
-  if (hanging && items.length === 0 && !showSeedling) return null;
+  if (hanging && items.length === 0 && growing.length === 0) return null;
 
   const cells = items.map(it => {
     const def = getPlantDef(it.plantId);
@@ -62,18 +61,18 @@ export function GardenArea({ garden, night, areaId }: { garden: GardenState; nig
     );
   });
 
-  if (showSeedling && next && nextDef && progress) {
+  for (const { milestone, def, progress } of growing) {
     cells.push(
       <PlantShell
-        key={`next-${next.id}`}
+        key={`next-${milestone.id}`}
         night={night}
         hanging={hanging}
-        label={`${nextDef.emoji} ${nextDef.name} · ${Math.min(progress.value, progress.target).toLocaleString()}/${progress.target.toLocaleString()}`}
-        ariaLabel={`${nextDef.name} is growing. Unlocks at ${next.unlockLabel}.`}
-        title={`${nextDef.name}: unlocks at ${next.unlockLabel}`}
+        label={`${def.emoji} ${def.name} · ${Math.min(progress.value, progress.target).toLocaleString()}/${progress.target.toLocaleString()}`}
+        ariaLabel={`${def.name} is growing. Unlocks at ${milestone.unlockLabel}.`}
+        title={`${def.name}: unlocks at ${milestone.unlockLabel}`}
       >
         <div style={{ opacity: 0.55 + 0.4 * progress.fraction }}>
-          <PlantArt def={nextDef} growth={0.2} mount={area.kind} seedling badge={next.badge} title={`${nextDef.name} (growing)`} />
+          <PlantArt def={def} growth={0.2} mount={area.kind} seedling badge={milestone.badge} title={`${def.name} (growing)`} />
         </div>
       </PlantShell>,
     );

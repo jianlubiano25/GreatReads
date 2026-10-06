@@ -1,4 +1,5 @@
 import { Book } from '../types';
+import { sameBook } from './bookMatch';
 import type { CuratedShelf } from '../data/storeCatalog';
 import resolvedData from '../data/storeResolved.json';
 
@@ -349,7 +350,7 @@ async function fetchJson(url: string, ms = 8000, retries = 1): Promise<any | nul
   return null;
 }
 
-const COVER_KEY = 'readlife.covers1';
+const COVER_KEY = 'readlife.covers2';
 const coverInFlight = new Map<string, Promise<string>>();
 let coverActive = 0;
 const coverWaiting: Array<() => void> = [];
@@ -392,9 +393,7 @@ export function findFallbackCover(title: string, author = ''): Promise<string> {
       try {
         const q = encodeURIComponent(`${title} ${author}`.trim());
         const data = await fetchJson(`https://itunes.apple.com/search?media=ebook&entity=ebook&limit=4&term=${q}`, 4500, 0);
-        const want = title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 12);
-        const match = (data?.results || []).find((it: any) =>
-          String(it.trackName || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').includes(want));
+        const match = (data?.results || []).find((it: any) => sameBook(title, author, String(it.trackName || ''), it.artistName));
         const art = match?.artworkUrl100 ? String(match.artworkUrl100).replace(/100x100bb\.(jpg|png)/, '600x900bb.$1') : '';
         if (art) {
           rememberCover(key, art);
@@ -404,9 +403,11 @@ export function findFallbackCover(title: string, author = ''): Promise<string> {
 
       // 2. Google Books
       const q = encodeURIComponent(`intitle:${title}${author ? ` inauthor:${author}` : ''}`);
-      const data = await fetchJson(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=4&printType=books&fields=items(volumeInfo(imageLinks))`);
+      const data = await fetchJson(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=4&printType=books&fields=items(volumeInfo(title,authors,imageLinks))`);
       if (data === null) return ''; // network trouble: don't remember a miss
-      const raw: string = (data.items || []).map((i: any) => i.volumeInfo?.imageLinks?.thumbnail || i.volumeInfo?.imageLinks?.smallThumbnail).find(Boolean) || '';
+      const raw: string = (data.items || [])
+        .filter((i: any) => sameBook(title, author, String(i.volumeInfo?.title || ''), i.volumeInfo?.authors))
+        .map((i: any) => i.volumeInfo?.imageLinks?.thumbnail || i.volumeInfo?.imageLinks?.smallThumbnail).find(Boolean) || '';
       const url = raw.replace(/^http:/, 'https:').replace('&edge=curl', '');
       rememberCover(key, url);
       return url;
@@ -494,7 +495,7 @@ export async function fetchBookMeta(book: Book): Promise<Partial<Book> | null> {
 /* Hand-picked store shelves: show instantly, fill in covers/ratings   */
 /* ------------------------------------------------------------------ */
 
-const CURATED_KEY = 'readlife.store2';
+const CURATED_KEY = 'readlife.store3';
 const CURATED_TTL = 7 * 24 * 60 * 60 * 1000;
 const SEED_COLORS = ['#6b6f80', '#8a5a3b', '#2e5934', '#925838', '#3a7d80', '#7a4a6a'];
 
@@ -502,8 +503,7 @@ const SEED_COLORS = ['#6b6f80', '#8a5a3b', '#2e5934', '#925838', '#3a7d80', '#7a
 export function seedPlaceholders(shelf: CuratedShelf): Book[] {
   return shelf.seeds.map(([t, a], i) => {
     const rec = (RESOLVED[shelf.id]?.[i] || {}) as Partial<Book> & { olKey?: string; title?: string };
-    // Prefetched data is matched by position, so ignore it if the shelf was edited and this slot now holds another book
-    const r = !rec.title || rec.title === t ? rec : {};
+    const r = rec.title === t ? rec : {};
     const pages = r.pageCount || 0;
     return {
     id: r.olKey ? `ol_${r.olKey.replace(/\W/g, '_')}` : `seed_${shelf.id}_${i}`,
@@ -542,7 +542,7 @@ export function getCachedCurated(shelf: CuratedShelf): Book[] | null {
 
 async function resolveSeed(t: string, a: string, genre: string): Promise<Book | null> {
   const data = await fetchJson(`${OL}/search.json?${new URLSearchParams({ title: t, author: a, limit: '5', fields: `${SHELF_FIELDS},subject` })}`);
-  const docs: SearchDoc[] = ((data && data.docs) || []).filter((d: SearchDoc) => d.cover_i);
+  const docs: SearchDoc[] = ((data && data.docs) || []).filter((d: SearchDoc) => d.cover_i && sameBook(t, a, d.title || '', d.author_name));
   if (!docs.length) {
     // New releases often have no Open Library cover yet: borrow one from Google Books
     const alt = await findFallbackCover(t, a);
