@@ -1,3 +1,5 @@
+import type { BookCanon } from '../services/bookIdentity';
+
 export type ShelfKey = 'heal' | 'love' | 'life' | 'joy' | 'prize' | 'world' | 'art' | 'mine';
 
 export type BookStatus = 'list' | 'next' | 'now' | 'done' | 'skip';
@@ -25,6 +27,8 @@ export interface Book {
   source?: 'curated' | 'openlibrary' | 'google' | 'manual';
   addedAt?: number;
   awardLabel?: string; // e.g. "International Booker 2026" or "Service95 Pick"
+  /** Behind-the-scenes identity (work/ISBN/volume ids) used only to match the same book across sources. Never replaces `id`. */
+  canon?: BookCanon;
 }
 
 export interface WordItem {

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { Book, ShelfKey } from '../types';
-import { searchOnlineBooks, getCoverUrl } from '../services/bookSearch';
+import { searchOnlineBooks, getCoverUrl, fillMissingCovers } from '../services/bookSearch';
 import { SHELF_LABELS } from '../data/defaultBooks';
 import { Search, Plus, Smartphone, BookOpen, Check, X, Loader2 } from 'lucide-react';
 
@@ -63,6 +63,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
         setSearchError('No matching books found. Try checking the spelling or use Manual Entry.');
       }
       setSearchResults(results);
+      fillMissingCovers(results, r => { if (!controller.signal.aborted) setSearchResults(r); }, controller.signal); // covers fill in after the list is already showing
     } catch {
       if (controller.signal.aborted) return;
       setSearchError('Search failed. Switch to Manual Entry to add your book directly.');

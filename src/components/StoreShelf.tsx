@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Book } from '../types';
 import { loadShelf, getCachedShelf, getCachedCurated, seedPlaceholders, resolveCuratedShelf } from '../services/bookSearch';
+import { loadTrendingShelf } from '../services/trending';
 import type { CuratedShelf } from '../data/storeCatalog';
 import { CoverFace, RatingLine, AwardBadges } from './BookMeta';
 
@@ -20,7 +21,7 @@ interface Props {
  * One horizontally scrolling store shelf.
  * - books: a ready-made list
  * - curated: titles draw instantly from the built-in list; covers/ratings fill in (and are cached for a week)
- * - url: a live Open Library list (e.g. weekly trending), cached for a few hours
+ * - url: a live Open Library list (e.g. weekly trending), cached for a few hours; `ranked` lists are re-ranked with Apple/Google data
  */
 export const StoreShelf = React.memo(function StoreShelf({ id, title, url, curated, books: fixedBooks, ranked, minRatings, onOpen }: Props) {
   const [loaded, setLoaded] = useState<Book[] | null>(() => {
@@ -56,7 +57,11 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, url, curat
     }
     if (!url) return;
     setFailed(false);
-    loadShelf(id, url, { limit: ranked ? 15 : 12, minRatings, onUpdate: b => live && setLoaded(b) })
+    // The ranked shelves (Trending Today, Top 15 this week) use the multi-source pipeline; the rest stay plain Open Library lists
+    const load = ranked
+      ? loadTrendingShelf(id, url, { limit: 15, onUpdate: b => live && setLoaded(b) })
+      : loadShelf(id, url, { limit: 12, minRatings, onUpdate: b => live && setLoaded(b) });
+    load
       .then(b => live && setLoaded(prev => (prev === b ? prev : b)))
       .catch(() => live && setFailed(true));
     return () => { live = false; };

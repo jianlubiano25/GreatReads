@@ -1,6 +1,7 @@
 import { Book } from '../types';
 import type { CuratedShelf } from '../data/storeCatalog';
 import resolvedData from '../data/storeResolved.json';
+import { authorListMatches, canonFromGoogle, isbnPair, makeCanon, mergeCanon, sameCanon, titlesMatch, workIdFromKey, type BookCanon } from './bookIdentity';
 
 /** Output of `npm run prefetch:store`: covers + combined ratings bundled with the app. */
 const RESOLVED = resolvedData as unknown as Record<string, (Partial<Book> | null)[]>;
@@ -16,6 +17,7 @@ export interface SearchDoc {
   number_of_pages_median?: number;
   subject?: string[];
   author_key?: string[];
+  cover_edition_key?: string;
 }
 
 export function getCoverUrl(coverId?: number, size: 'S' | 'M' | 'L' = 'M', customUrl?: string): string {
@@ -24,7 +26,7 @@ export function getCoverUrl(coverId?: number, size: 'S' | 'M' | 'L' = 'M', custo
   return `https://covers.openlibrary.org/b/id/${coverId}-${size}.jpg`;
 }
 
-const SEARCH_FIELDS = 'key,title,author_name,author_key,first_publish_year,cover_i,ratings_average,ratings_count,number_of_pages_median,subject';
+const SEARCH_FIELDS = 'key,title,author_name,author_key,first_publish_year,cover_i,cover_edition_key,ratings_average,ratings_count,number_of_pages_median,subject';
 const SEARCH_TIMEOUT_MS = 6500;
 
 /** Lower-case, accent-free, letters and digits only: "Brontë!" and "bronte" compare equal. */
@@ -48,6 +50,10 @@ async function searchJson(url: string, outer?: AbortSignal): Promise<any | null>
     outer?.removeEventListener('abort', onAbort);
   }
 }
+
+/** Identity for an Open Library search/trending doc (work id + the cover edition when the index knows one). */
+export const canonFromDoc = (doc: SearchDoc, title: string, author: string): BookCanon =>
+  makeCanon({ title, author, olWork: workIdFromKey(doc.key), olEdition: doc.cover_edition_key });
 
 const difficultyFor = (pages: number) => (!pages ? 0 : pages > 450 ? 3 : pages > 250 ? 2 : 1);
 
@@ -74,6 +80,7 @@ function openLibraryBooks(data: any): Book[] {
       spineColor: '#6b6f80',
       source: 'openlibrary',
       addedAt: Date.now(),
+      canon: canonFromDoc(doc, doc.title, authorName),
     } as Book;
   });
 }
@@ -102,11 +109,27 @@ function googleBooks(data: any, fallbackTitle: string): Book[] {
       spineColor: '#8a5a3b',
       source: 'google',
       addedAt: Date.now(),
+      canon: canonFromGoogle(item, info.title || fallbackTitle, authorName),
     } as Book;
   });
 }
 
-/** How well a result fits what was typed: exact title first, then title starts/contains it, then author name matches. */
+const GENERIC_SUMMARY = /^(A distinguished work by|A book by) |^.+ by .+\.$/;
+const GENERIC_GENRE = new Set(['', 'book', 'general']);
+
+/** Rating quality that cannot be gamed by a handful of votes: the average is pulled toward a typical 3.8 until there are plenty of ratings. */
+export function shrunkRating(avg?: number, count?: number, prior = 3.8, weight = 40): number {
+  if (!avg) return 0;
+  const n = Math.max(0, count || 0);
+  return (avg * n + prior * weight) / (n + weight);
+}
+
+/**
+ * How well a result fits what was typed, in this order of importance:
+ * exact/strong title match -> popularity (rating count) -> rating quality -> metadata completeness -> cover -> a small recency nudge.
+ * The title tier is worth up to 100; everything after it adds only a few points each, so a better title match nearly always wins,
+ * and among similar title matches the established, well-documented book comes first.
+ */
 export function searchRelevance(b: Book, qTitle: string, qAuthor = ''): number {
   const q = normQ(qTitle);
   const t = normQ(b.title || '');
@@ -128,15 +151,29 @@ export function searchRelevance(b: Book, qTitle: string, qAuthor = ''): number {
     const last = normQ(qAuthor).split(' ').pop();
     if (last && ` ${a} `.includes(` ${last} `)) score += 50;
   }
+  const count = b.ratingCount || 0;
+  score += Math.min(14, Math.log10(count + 1) * 3.2); // popularity: 100 ratings ~6, 10k ~13
+  if (b.ratingAverage) score += Math.max(-3, Math.min(9, (shrunkRating(b.ratingAverage, count) - 3.5) * 6)); // quality, shrunk for small samples
+  let meta = 0;
+  if (b.pageCount) meta += 1.5;
+  if (b.year) meta += 1;
+  if (b.summary && !GENERIC_SUMMARY.test(b.summary)) meta += 1.5;
+  if (!GENERIC_GENRE.has((b.genre || '').toLowerCase())) meta += 1;
+  if (b.author && !/^(Unknown|Featured) Author$/.test(b.author)) meta += 1;
+  score += meta; // up to 6
   if (b.coverId || b.coverUrl) score += 4;
-  score += Math.min(5, Math.log10((b.ratingCount || 0) + 1));
   const year = Number(b.year);
-  if (year && year >= new Date().getFullYear() - 2) score += 3; // brand-new releases are often what people look for
+  const thisYear = new Date().getFullYear();
+  if (year && year >= thisYear - 1) score += 2; // a small nudge for brand-new releases
+  else if (year && year >= thisYear - 5) score += 1;
   return score;
 }
 
 const sameResult = (a: Book, b: Book) =>
-  normQ(a.title || '') === normQ(b.title || '') && (normQ(a.author || '').split(' ').pop() || '') === (normQ(b.author || '').split(' ').pop() || '');
+  sameCanon(a.canon, b.canon) ||
+  (!a.canon || !b.canon
+    ? normQ(a.title || '') === normQ(b.title || '') && (normQ(a.author || '').split(' ').pop() || '') === (normQ(b.author || '').split(' ').pop() || '')
+    : false);
 
 /** The same book from two places becomes one result that keeps the best of both (a cover, page count, rating, synopsis). */
 function mergeResult(a: Book, b: Book): Book {
@@ -147,9 +184,14 @@ function mergeResult(a: Book, b: Book): Book {
   }
   if (!out.pageCount && b.pageCount) { out.pageCount = b.pageCount; out.difficulty = b.difficulty; }
   if (!out.year && b.year) out.year = b.year;
-  if (!out.ratingAverage && b.ratingAverage) { out.ratingAverage = b.ratingAverage; out.ratingCount = b.ratingCount; }
+  // keep whichever rating rests on clearly more readers
+  if ((!out.ratingAverage && b.ratingAverage) || (b.ratingAverage && (b.ratingCount || 0) > (out.ratingCount || 0) * 1.5)) {
+    out.ratingAverage = b.ratingAverage;
+    out.ratingCount = b.ratingCount;
+  }
   if (/^A distinguished work by/.test(out.summary || '') && b.summary && !/^A book by/.test(b.summary)) out.summary = b.summary;
   if ((out.genre === 'Book' || out.genre === 'General') && b.genre && b.genre !== 'General') out.genre = b.genre;
+  out.canon = mergeCanon(out.canon, b.canon);
   return out;
 }
 
@@ -163,10 +205,12 @@ export async function searchOnlineBooks(title: string, author: string = '', limi
   const qAuthor = author.trim();
   if (!qTitle) return [];
 
-  const olBase = { limit: String(Math.max(limit, 10)), fields: SEARCH_FIELDS };
+  // Look at a slightly larger candidate set than we show, so ranking can pick the best ones (bulk import asks for 1 and stays small)
+  const candidates = limit <= 1 ? 10 : Math.min(24, Math.max(16, limit * 2));
+  const olBase = { limit: String(candidates), fields: SEARCH_FIELDS };
   const ol = (extra: Record<string, string>) => `https://openlibrary.org/search.json?${new URLSearchParams({ ...olBase, ...extra })}`;
   const gbQuery = qAuthor ? `intitle:"${qTitle}" inauthor:"${qAuthor}"` : `intitle:"${qTitle}"`;
-  const gb = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(gbQuery)}&maxResults=10&printType=books`;
+  const gb = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(gbQuery)}&maxResults=${candidates}&printType=books`;
 
   const requests: Promise<Book[]>[] = qAuthor
     ? [searchJson(ol({ title: qTitle, author: qAuthor }), outerSignal).then(openLibraryBooks)]
@@ -261,10 +305,12 @@ export function docToBook(doc: SearchDoc & { subject?: string[] }, idx = 0, genr
     spineColor: '#6b6f80',
     source: 'openlibrary',
     addedAt: Date.now(),
+    canon: canonFromDoc(doc, doc.title, authorName),
   };
 }
 
-const SHELF_CACHE_KEY = 'readlife.store1';
+const SHELF_CACHE_KEY = 'readlife.store3'; // store1 held plain Open Library trending lists; the ranked shelves are now re-ranked, so start fresh
+try { localStorage.removeItem('readlife.store1'); } catch {}
 const SHELF_TTL = 6 * 60 * 60 * 1000;
 const memCache: Record<string, Book[]> = {};
 
@@ -286,7 +332,7 @@ export function getCachedShelf(id: string): Book[] | null {
   return readShelfCache(id);
 }
 
-function writeShelfCache(id: string, books: Book[]) {
+export function writeShelfCache(id: string, books: Book[]) {
   memCache[id] = books;
   try {
     const all = JSON.parse(localStorage.getItem(SHELF_CACHE_KEY) || '{}');
@@ -296,8 +342,8 @@ function writeShelfCache(id: string, books: Book[]) {
 }
 
 export const SHELF_URLS = {
-  top: `${OL}/trending/weekly.json?limit=15`,
-  daily: `${OL}/trending/daily.json?limit=15`,
+  top: `${OL}/trending/weekly.json?limit=40`,
+  daily: `${OL}/trending/daily.json?limit=30`,
   subject: (s: string) => `${OL}/search.json?sort=rating&limit=40&fields=${SHELF_FIELDS}&q=${encodeURIComponent(`subject:"${s}"`)}`,
 };
 
@@ -374,7 +420,7 @@ export function genreFromSubjects(subjects: string[] = []): string {
   return '';
 }
 
-async function fetchJson(url: string, ms = 8000, retries = 1): Promise<any | null> {
+export async function fetchJson(url: string, ms = 8000, retries = 1): Promise<any | null> {
   for (let i = 0; i <= retries; i++) {
     try {
       const controller = new AbortController();
@@ -390,6 +436,8 @@ async function fetchJson(url: string, ms = 8000, retries = 1): Promise<any | nul
 }
 
 const COVER_KEY = 'readlife.covers1';
+const COVER_MISS_KEY = 'readlife.coverMiss1'; // key -> time of the last miss (a miss is retried after a few days, never forever)
+const COVER_MISS_TTL = 3 * 24 * 60 * 60 * 1000;
 const coverInFlight = new Map<string, Promise<string>>();
 let coverActive = 0;
 const coverWaiting: Array<() => void> = [];
@@ -402,39 +450,64 @@ const coverRelease = () => {
   coverWaiting.shift()?.();
 };
 
-const rememberCover = (key: string, url: string) => {
+const readMap = (key: string): Record<string, any> => {
   try {
-    const c = JSON.parse(localStorage.getItem(COVER_KEY) || '{}');
-    c[key] = url;
+    const v = JSON.parse(localStorage.getItem(key) || '{}');
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
+};
+const writeMap = (key: string, c: Record<string, any>) => {
+  try {
     const ks = Object.keys(c);
     if (ks.length > 400) ks.slice(0, ks.length - 400).forEach(k => delete c[k]);
-    localStorage.setItem(COVER_KEY, JSON.stringify(c));
+    localStorage.setItem(key, JSON.stringify(c));
   } catch {}
 };
+const rememberCover = (key: string, url: string) => {
+  const c = readMap(COVER_KEY);
+  c[key] = url;
+  writeMap(COVER_KEY, c);
+  if (url) {
+    const m = readMap(COVER_MISS_KEY);
+    if (key in m) { delete m[key]; writeMap(COVER_MISS_KEY, m); }
+  }
+};
+const rememberCoverMiss = (key: string) => {
+  const m = readMap(COVER_MISS_KEY);
+  m[key] = Date.now();
+  writeMap(COVER_MISS_KEY, m);
+};
+
+export type CoverHint = Pick<BookCanon, 'isbn10' | 'isbn13' | 'gbId'>;
+
+/** Google's thumbnail link -> https, no page-curl effect. */
+const cleanGoogleThumb = (raw: string) => raw.replace(/^http:/, 'https:').replace('&edge=curl', '');
 
 /**
- * Fallback cover: Apple Books first (fast CDN, 600x900 art), then Google Books. Remembered on the device.
- * Many covers can ask at once, so the same book is only looked up once and at most 2 lookups run at a time.
+ * Fallback cover after the Open Library one: Apple Books first (fast CDN, 600x900 art), then Google Books.
+ * A cover is only accepted when the result's title (and author, when we know it) really match, so a wrong jacket is never
+ * pinned on a book. Successful finds are remembered on the device. Many covers can ask at once, so the same book is only
+ * looked up once and at most 2 lookups run at a time. Callers never wait on this: it runs after results are already on screen.
  */
-export function findFallbackCover(title: string, author = ''): Promise<string> {
+export function findFallbackCover(title: string, author = '', hint?: CoverHint): Promise<string> {
   const key = `${title}|${author}`.toLowerCase();
-  try {
-    const c = JSON.parse(localStorage.getItem(COVER_KEY) || '{}');
-    if (key in c) return Promise.resolve(c[key]);
-  } catch {}
+  const cached = readMap(COVER_KEY);
+  if (cached[key]) return Promise.resolve(cached[key]);
+  const missAt = readMap(COVER_MISS_KEY)[key];
+  if (missAt && Date.now() - missAt < COVER_MISS_TTL) return Promise.resolve('');
   const running = coverInFlight.get(key);
   if (running) return running;
 
   const job = (async () => {
     await coverSlot();
     try {
-      // 1. Apple Books (iTunes): only accept a result whose title really matches
+      // 1. Apple Books (iTunes)
       try {
         const q = encodeURIComponent(`${title} ${author}`.trim());
-        const data = await fetchJson(`https://itunes.apple.com/search?media=ebook&entity=ebook&limit=4&term=${q}`, 4500, 0);
-        const want = title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 12);
-        const match = (data?.results || []).find((it: any) =>
-          String(it.trackName || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').includes(want));
+        const data = await fetchJson(`https://itunes.apple.com/search?media=ebook&entity=ebook&limit=6&term=${q}`, 4500, 0);
+        const match = (data?.results || []).find((it: any) => it.artworkUrl100 && titlesMatch(String(it.trackName || ''), title) && authorListMatches(it.artistName, author));
         const art = match?.artworkUrl100 ? String(match.artworkUrl100).replace(/100x100bb\.(jpg|png)/, '600x900bb.$1') : '';
         if (art) {
           rememberCover(key, art);
@@ -442,14 +515,37 @@ export function findFallbackCover(title: string, author = ''): Promise<string> {
         }
       } catch {}
 
-      // 2. Google Books
-      const q = encodeURIComponent(`intitle:${title}${author ? ` inauthor:${author}` : ''}`);
-      const data = await fetchJson(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=4&printType=books&fields=items(volumeInfo(imageLinks))`);
-      if (data === null) return ''; // network trouble: don't remember a miss
-      const raw: string = (data.items || []).map((i: any) => i.volumeInfo?.imageLinks?.thumbnail || i.volumeInfo?.imageLinks?.smallThumbnail).find(Boolean) || '';
-      const url = raw.replace(/^http:/, 'https:').replace('&edge=curl', '');
-      rememberCover(key, url);
-      return url;
+      // 2. Google Books: by volume id or ISBN when we know them (exact), otherwise by title/author with the same match check
+      const fields = 'items(id,volumeInfo(title,authors,imageLinks))';
+      const thumbOf = (info: any): string => info?.imageLinks?.thumbnail || info?.imageLinks?.smallThumbnail || '';
+      let networkTrouble = false;
+      if (hint?.gbId) {
+        const v = await fetchJson(`https://www.googleapis.com/books/v1/volumes/${encodeURIComponent(hint.gbId)}?fields=volumeInfo(title,authors,imageLinks)`);
+        if (v === null) networkTrouble = true;
+        const raw = thumbOf(v?.volumeInfo);
+        if (raw) {
+          const url = cleanGoogleThumb(raw);
+          rememberCover(key, url);
+          return url;
+        }
+      }
+      const queries = [
+        hint?.isbn13 ? `isbn:${hint.isbn13}` : hint?.isbn10 ? `isbn:${hint.isbn10}` : '',
+        `intitle:${title}${author ? ` inauthor:${author}` : ''}`,
+      ].filter(Boolean);
+      for (const qs of queries) {
+        const data = await fetchJson(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(qs)}&maxResults=6&printType=books&fields=${encodeURIComponent(fields)}`);
+        if (data === null) { networkTrouble = true; continue; }
+        const isIsbnQuery = qs.startsWith('isbn:');
+        const hit = (data.items || []).find((i: any) => thumbOf(i.volumeInfo) && (isIsbnQuery || (titlesMatch(String(i.volumeInfo?.title || ''), title) && authorListMatches(i.volumeInfo?.authors, author))));
+        if (hit) {
+          const url = cleanGoogleThumb(thumbOf(hit.volumeInfo));
+          rememberCover(key, url);
+          return url;
+        }
+      }
+      if (!networkTrouble) rememberCoverMiss(key); // searched everywhere, nothing reliable: try again in a few days
+      return '';
     } finally {
       coverRelease();
       coverInFlight.delete(key);
@@ -457,6 +553,23 @@ export function findFallbackCover(title: string, author = ''): Promise<string> {
   })();
   coverInFlight.set(key, job);
   return job;
+}
+
+/**
+ * After search results are already showing, quietly look for covers the search did not return (Open Library -> Apple -> Google)
+ * and hand back the updated list as they arrive. Never blocks the search. The cover is stored on the result, so a book added
+ * from it keeps its cover.
+ */
+export function fillMissingCovers(books: Book[], onUpdate: (books: Book[]) => void, signal?: AbortSignal): void {
+  const out = [...books];
+  books.forEach((b, i) => {
+    if (b.coverId || b.coverUrl || !b.title) return;
+    void findFallbackCover(b.title, b.author, b.canon).then(url => {
+      if (!url || signal?.aborted) return;
+      out[i] = { ...out[i], coverUrl: url };
+      onUpdate([...out]);
+    });
+  });
 }
 
 /** Median page count across a work's editions (used when the search index has no page count). */

@@ -3,7 +3,7 @@ import { Book, BookStatus, TabType, WordItem } from './types';
 import { BOOK_AWARDS } from './data/defaultBooks';
 import { BUILTIN_DICTIONARY } from './data/defaultWords';
 import { useReadingLife } from './hooks/useReadingLife';
-import { searchOnlineBooks, SHELF_URLS, getCoverUrl } from './services/bookSearch';
+import { searchOnlineBooks, SHELF_URLS, getCoverUrl, fillMissingCovers } from './services/bookSearch';
 import { lookupWord } from './services/dictionary';
 import { dateKey } from './services/dates';
 import { useAppUpdate, applyUpdate, dismissUpdate, restartApp } from './services/appUpdate';
@@ -225,7 +225,10 @@ export default function App() {
       setIsStoreSearching(true);
       try {
         const results = await searchOnlineBooks(storeSearchQuery, '', 10, controller.signal);
-        if (!controller.signal.aborted) setStoreSearchResults(results);
+        if (!controller.signal.aborted) {
+          setStoreSearchResults(results);
+          fillMissingCovers(results, r => { if (!controller.signal.aborted) setStoreSearchResults(r); }, controller.signal);
+        }
       } catch {
         if (!controller.signal.aborted) setStoreSearchResults([]);
       } finally {

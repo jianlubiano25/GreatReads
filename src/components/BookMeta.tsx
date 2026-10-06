@@ -124,7 +124,7 @@ export const CoverFace = React.memo(function CoverFace({ book, size = 'md', imgS
   }, [src]);
 
   const giveUp = () => {
-    findFallbackCover(book.title, book.author).then(u => setSt(u ? { ...cur, alt: u } : { ...cur, dead: true }));
+    findFallbackCover(book.title, book.author, book.canon).then(u => setSt(u ? { ...cur, alt: u } : { ...cur, dead: true }));
   };
   useEffect(() => {
     if (!baseUrl && !cur.alt && !cur.dead) giveUp();
