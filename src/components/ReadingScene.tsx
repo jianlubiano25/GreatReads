@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useSyncExternalStore, useMemo } from 'react';
 import { Book, GardenState } from '../types';
-import { subscribeCovers, getCoversVersion } from '../services/coverRepair';
+import { subscribeCovers, getCoversVersion } from '../services/books';
 import { CoverFace } from './BookMeta';
 import { fetchLocalWeather, setWeatherOverride, getTimePeriod, describeWeather, PERIOD_LABEL, TIME_PERIODS, WEATHER_MODES, WeatherData, WeatherCondition, TimePeriod } from '../services/weather';
 import { subscribeNookPrefs, getNookPrefsVersion, getNookMatchesTheme, getWindowFollowsTime } from '../services/nookPrefs';

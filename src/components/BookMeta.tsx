@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import { Book } from '../types';
 import { BOOK_AWARDS } from '../data/defaultBooks';
-import { getCoverUrl, findFallbackCover } from '../services/bookSearch';
-import { subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, reportMissingCover, clearMissingCover } from '../services/coverRepair';
+import { getCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, reportMissingCover, clearMissingCover } from '../services/books';
 
 export type AwardKind = 'w' | 's' | 'c'; // winner, shortlist, other pick (book club, series...)
 
@@ -124,7 +123,7 @@ export const CoverFace = React.memo(function CoverFace({ book, size = 'md', imgS
   }, [src]);
 
   const giveUp = () => {
-    findFallbackCover(book.title, book.author, book.canon).then(u => setSt(u ? { ...cur, alt: u } : { ...cur, dead: true }));
+    resolveCover(book).then(u => setSt(u ? { ...cur, alt: u } : { ...cur, dead: true }));
   };
   useEffect(() => {
     if (!baseUrl && !cur.alt && !cur.dead) giveUp();

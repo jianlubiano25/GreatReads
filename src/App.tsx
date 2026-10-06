@@ -3,7 +3,10 @@ import { Book, BookStatus, TabType, WordItem } from './types';
 import { BOOK_AWARDS } from './data/defaultBooks';
 import { BUILTIN_DICTIONARY } from './data/defaultWords';
 import { useReadingLife } from './hooks/useReadingLife';
-import { searchOnlineBooks, SHELF_URLS, getCoverUrl, fillMissingCovers } from './services/bookSearch';
+import { searchBooks, getCoverUrl, fillMissingCovers } from './services/books';
+import { NYT_SHELVES, bestsellerSource } from './services/store/bestsellers';
+import { trendingSource } from './services/store/trending';
+import { curatedSource } from './services/store/curated';
 import { lookupWord } from './services/dictionary';
 import { dateKey } from './services/dates';
 import { useAppUpdate, applyUpdate, dismissUpdate, restartApp } from './services/appUpdate';
@@ -63,6 +66,9 @@ const AppleLookUpModal = lazyModal<typeof import('./components/AppleLookUpModal'
 const AddBookModal = lazyModal<typeof import('./components/AddBookModal').AddBookModal>(() => import('./components/AddBookModal'), 'AddBookModal');
 const HighlightsModal = lazyModal<typeof import('./components/HighlightsModal').HighlightsModal>(() => import('./components/HighlightsModal'), 'HighlightsModal');
 const ProfileModal = lazyModal<typeof import('./components/ProfileModal').ProfileModal>(() => import('./components/ProfileModal'), 'ProfileModal');
+// One source object per shelf, created once (shelves compare their source to know when to reload)
+const NYT_SHELF_SOURCES = NYT_SHELVES.map(shelf => ({ shelf, source: bestsellerSource(shelf) }));
+const CURATED_SOURCES = Object.fromEntries(CURATED_SHELVES.map(sh => [sh.id, curatedSource(sh)]));
 const BackupModal = lazyModal<typeof import('./components/BackupModal').BackupModal>(() => import('./components/BackupModal'), 'BackupModal');
 const WordPracticeModal = lazyModal<typeof import('./components/WordPracticeModal').WordPracticeModal>(() => import('./components/WordPracticeModal'), 'WordPracticeModal');
 const BulkImportModal = lazyModal<typeof import('./components/BulkImportModal').BulkImportModal>(() => import('./components/BulkImportModal'), 'BulkImportModal');
@@ -224,7 +230,7 @@ export default function App() {
     const timer = setTimeout(async () => {
       setIsStoreSearching(true);
       try {
-        const results = await searchOnlineBooks(storeSearchQuery, '', 10, controller.signal);
+        const results = await searchBooks(storeSearchQuery, '', 10, controller.signal);
         if (!controller.signal.aborted) {
           setStoreSearchResults(results);
           fillMissingCovers(results, r => { if (!controller.signal.aborted) setStoreSearchResults(r); }, controller.signal);
@@ -703,10 +709,12 @@ export default function App() {
             )}
 
             {/* Top 15 this week */}
-            <StoreShelf id="top" title="Top 15 this week" url={SHELF_URLS.top} ranked onOpen={handleOpenCover} />
+            {NYT_SHELF_SOURCES.map(({ shelf, source }) => (
+              <StoreShelf key={shelf.id} id={shelf.id} title={shelf.title} source={source} ranked onOpen={handleOpenCover} />
+            ))}
 
             {/* Trending Today (Updates Daily) */}
-            <StoreShelf id="daily" title="🔥 Trending Today" url={SHELF_URLS.daily} ranked onOpen={handleOpenCover} />
+            <StoreShelf id="trending" title="🔥 Trending Today" source={trendingSource} ranked onOpen={handleOpenCover} />
 
             {/* Prize winners and easy starts from your own catalog (no loading needed) */}
             <StoreShelf
@@ -724,9 +732,9 @@ export default function App() {
 
             {/* Hand-picked genre shelves: titles show instantly, covers and ratings fill in */}
             {CURATED_SHELVES.map(sh => (
-              <StoreShelf key={sh.id} id={sh.id} title={`${sh.emoji} ${sh.title}`} curated={sh} onOpen={handleOpenCover} />
+              <StoreShelf key={sh.id} id={sh.id} title={`${sh.emoji} ${sh.title}`} source={CURATED_SOURCES[sh.id]} lazy onOpen={handleOpenCover} />
             ))}
-            <p className="text-xs text-[#706256] dark:text-[#a89a8a]">Covers and ratings come from Open Library readers.</p>
+            <p className="text-xs text-[#706256] dark:text-[#a89a8a]">Bestsellers from The New York Times. Covers and ratings from Open Library, Google Books and Apple Books readers.</p>
           </div>
         </TabPane>
         )}

@@ -89,7 +89,7 @@ self.addEventListener('fetch', (event) => {
 
   // ---- same origin ----
   if (url.origin === self.location.origin) {
-    if (url.pathname === '/sw.js' || url.pathname.endsWith('.zip')) return;
+    if (url.pathname === '/sw.js' || url.pathname.endsWith('.zip') || url.pathname.startsWith('/api/')) return;
     if (req.mode === 'navigate') return event.respondWith(navigate(req));
     if (url.pathname.startsWith('/assets/')) return event.respondWith(cacheFirst(req, SHELL));
     if (url.pathname === '/' || url.pathname.endsWith('.html')) return event.respondWith(networkFirst(req, SHELL, 4000));

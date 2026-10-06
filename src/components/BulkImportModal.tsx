@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { Book } from '../types';
-import { searchOnlineBooks } from '../services/bookSearch';
+import { searchBooks } from '../services/books';
 import { X, Loader2 } from 'lucide-react';
 
 interface BulkImportModalProps {
@@ -76,7 +76,7 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
           });
 
           try {
-            const results = await searchOnlineBooks(title, author, 1, controller.signal);
+            const results = await searchBooks(title, author, 1, controller.signal);
             if (controller.signal.aborted) return;
             added.push(results.length > 0 ? { ...results[0], isOnDevice: isDevice } : placeholder());
           } catch {

@@ -6,7 +6,7 @@ import {
   getMissingCount,
   repairMissingCovers,
   type RepairResult,
-} from '../services/coverRepair';
+} from '../services/books';
 
 /**
  * Appears only when some book covers failed to load. One tap re-fetches just those covers.

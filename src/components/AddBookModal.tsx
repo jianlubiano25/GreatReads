@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { Book, ShelfKey } from '../types';
-import { searchOnlineBooks, getCoverUrl, fillMissingCovers } from '../services/bookSearch';
+import { searchBooks, getCoverUrl, fillMissingCovers } from '../services/books';
 import { SHELF_LABELS } from '../data/defaultBooks';
 import { Search, Plus, Smartphone, BookOpen, Check, X, Loader2 } from 'lucide-react';
 
@@ -57,7 +57,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
     setIsSearching(true);
     setSearchError('');
     try {
-      const results = await searchOnlineBooks(searchTitle, searchAuthor, 10, controller.signal);
+      const results = await searchBooks(searchTitle, searchAuthor, 10, controller.signal);
       if (controller.signal.aborted) return;
       if (results.length === 0) {
         setSearchError('No matching books found. Try checking the spelling or use Manual Entry.');

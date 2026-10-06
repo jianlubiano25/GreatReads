@@ -1,44 +1,32 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Book } from '../types';
-import { loadShelf, getCachedShelf, getCachedCurated, seedPlaceholders, resolveCuratedShelf } from '../services/bookSearch';
-import { loadTrendingShelf } from '../services/trending';
-import type { CuratedShelf } from '../data/storeCatalog';
+import type { ShelfSource } from '../services/store/shelves';
 import { CoverFace, RatingLine, AwardBadges } from './BookMeta';
 
 interface Props {
   id: string;
   title: React.ReactNode;
-  url?: string;
-  curated?: CuratedShelf;
+  /** Where the books come from (a curated list, the NYT list, Trending...). The shelf does not care which. */
+  source?: ShelfSource;
   /** A ready-made list (e.g. prize winners from your own catalog): no loading at all */
   books?: Book[];
+  /** Show 1, 2, 3... on the covers (the order is the source's ranking) */
   ranked?: boolean;
-  minRatings?: number;
+  /** Only start loading when the shelf is about to scroll into view (long lists of curated shelves) */
+  lazy?: boolean;
   onOpen: (b: Book) => void;
 }
 
-/**
- * One horizontally scrolling store shelf.
- * - books: a ready-made list
- * - curated: titles draw instantly from the built-in list; covers/ratings fill in (and are cached for a week)
- * - url: a live Open Library list (e.g. weekly trending), cached for a few hours; `ranked` lists are re-ranked with Apple/Google data
- */
-export const StoreShelf = React.memo(function StoreShelf({ id, title, url, curated, books: fixedBooks, ranked, minRatings, onOpen }: Props) {
-  const [loaded, setLoaded] = useState<Book[] | null>(() => {
-    if (fixedBooks) return null;
-    if (!curated) return getCachedShelf(id);
-    const seeded = seedPlaceholders(curated);
-    // Fully prefetched shelves need no lookups and no cache at all
-    return seeded.every(b => b.coverId || b.coverUrl) ? seeded : getCachedCurated(curated) || seeded;
-  });
+/** One horizontally scrolling store shelf, fed by a ShelfSource. */
+export const StoreShelf = React.memo(function StoreShelf({ id, title, source, books: fixedBooks, ranked, lazy, onOpen }: Props) {
+  const [loaded, setLoaded] = useState<Book[] | null>(() => (fixedBooks || !source ? null : source.cached()));
   const [failed, setFailed] = useState(false);
-  const [visible, setVisible] = useState(!curated);
+  const [visible, setVisible] = useState(!lazy);
   const holder = useRef<HTMLDivElement>(null);
   const books = fixedBooks ?? loaded;
 
-  // Curated shelves only start looking things up when they're about to scroll into view
   useEffect(() => {
-    if (fixedBooks || !curated || visible) return;
+    if (fixedBooks || !lazy || visible) return;
     const el = holder.current;
     if (!el || !('IntersectionObserver' in window)) { setVisible(true); return; }
     const io = new IntersectionObserver(es => {
@@ -46,26 +34,17 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, url, curat
     }, { rootMargin: '500px' });
     io.observe(el);
     return () => io.disconnect();
-  }, [fixedBooks, curated, visible]);
+  }, [fixedBooks, lazy, visible]);
 
   useEffect(() => {
-    if (fixedBooks || !visible) return;
+    if (fixedBooks || !visible || !source) return;
     let live = true;
-    if (curated) {
-      resolveCuratedShelf(curated, loaded || seedPlaceholders(curated), b => live && setLoaded(b));
-      return () => { live = false; };
-    }
-    if (!url) return;
     setFailed(false);
-    // The ranked shelves (Trending Today, Top 15 this week) use the multi-source pipeline; the rest stay plain Open Library lists
-    const load = ranked
-      ? loadTrendingShelf(id, url, { limit: 15, onUpdate: b => live && setLoaded(b) })
-      : loadShelf(id, url, { limit: 12, minRatings, onUpdate: b => live && setLoaded(b) });
-    load
-      .then(b => live && setLoaded(prev => (prev === b ? prev : b)))
+    source.load(b => live && setLoaded(b))
+      .then(b => live && setLoaded(prev => prev ?? b))
       .catch(() => live && setFailed(true));
     return () => { live = false; };
-  }, [id, url, visible, curated, fixedBooks]);
+  }, [id, visible, source, fixedBooks]);
 
   if (fixedBooks && fixedBooks.length === 0) return null;
 

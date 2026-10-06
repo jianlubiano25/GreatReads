@@ -1,5 +1,6 @@
 import type {
   Book,
+  BookIdentity,
   BookStatus,
   GardenState,
   HighlightItem,
@@ -53,7 +54,7 @@ const hexColor = (v: unknown): string | undefined =>
   typeof v === 'string' && /^#[0-9a-f]{3,8}$/i.test(v.trim()) ? v.trim() : undefined;
 
 const VALID_SHELVES: ShelfKey[] = ['heal', 'love', 'life', 'joy', 'prize', 'world', 'art', 'mine'];
-const VALID_SOURCES = ['curated', 'openlibrary', 'google', 'manual'] as const;
+const VALID_SOURCES = ['curated', 'openlibrary', 'google', 'apple', 'nyt', 'manual'] as const;
 
 export function sanitizeNumberRecord(raw: unknown): Record<string, number> {
   const out: Record<string, number> = {};
@@ -173,6 +174,28 @@ export function sanitizeWords(raw: unknown): WordItem[] {
 const GENERIC_BIO = /is an author published worldwide|is the author of this work|wrote this book\.?$|^No author info found\.?$/i;
 const GENERIC_SUMMARY = /^(No summary found\.?|Imported book by .*\.|A book by .*\.)$/i;
 
+const ID_PATTERNS: Record<keyof BookIdentity, RegExp> = {
+  olWork: /^OL\d+W$/,
+  olEdition: /^OL\d+M$/,
+  gbVolume: /^[\w-]{4,24}$/,
+  isbn13: /^\d{13}$/,
+  isbn10: /^\d{9}[\dX]$/,
+};
+
+/**
+ * Keep a book's work/edition identity through every save and restore. Also reads the earlier `canon` field (same ids, with
+ * the Google volume called `gbId`), so books saved by the previous version keep theirs.
+ */
+export function sanitizeIdentity(raw: unknown, legacyCanon?: unknown): BookIdentity | undefined {
+  const src: Record<string, unknown> = { ...(isObj(legacyCanon) ? { ...legacyCanon, gbVolume: (legacyCanon as any).gbId } : {}), ...(isObj(raw) ? raw : {}) };
+  const out: BookIdentity = {};
+  for (const k of Object.keys(ID_PATTERNS) as (keyof BookIdentity)[]) {
+    const v = src[k];
+    if (typeof v === 'string' && ID_PATTERNS[k].test(v)) out[k] = v;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 export function sanitizeCustomBooks(raw: unknown): Book[] {
   if (!Array.isArray(raw)) return [];
   const out: Book[] = [];
@@ -215,6 +238,7 @@ export function sanitizeCustomBooks(raw: unknown): Book[] {
       source: (VALID_SOURCES as readonly string[]).includes(b.source) ? b.source : undefined,
       addedAt: num(b.addedAt),
       awardLabel: typeof b.awardLabel === 'string' ? b.awardLabel : undefined,
+      identity: sanitizeIdentity(b.identity, b.canon),
     });
   }
   return out;

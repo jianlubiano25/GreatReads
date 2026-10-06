@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { Book } from '../types';
 import { BOOK_AWARDS, DIFFICULTY_LABELS, SHELF_LABELS } from '../data/defaultBooks';
-import { getCoverUrl, searchOnlineBooks, enrichBookDetails, fetchBookMeta } from '../services/bookSearch';
+import { getCoverUrl, enrichBookDetails, fetchBookMeta } from '../services/books';
 import { CoverFace, stars, compactCount, awardsFor } from './BookMeta';
 import { X, BookOpen, Smartphone, Star, Award, ChevronDown, Check, Plus, Bookmark } from 'lucide-react';
 

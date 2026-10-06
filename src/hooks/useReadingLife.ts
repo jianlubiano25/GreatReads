@@ -5,13 +5,14 @@ import { INITIAL_WORDS } from '../data/defaultWords';
 import { normalizeV2, normalizeLegacy, parseBackup } from '../services/stateSanitizer';
 import { computeSnapshot, currentStreakFor, evaluateGarden, markCelebrated, movePlant as movePlantIn, pendingCelebrations, seedGarden } from '../services/garden';
 import { dateKey } from '../services/dates';
+import { mergeBooks, sameWork } from '../services/books';
 
 const STORAGE_KEY = 'readlife.v2';
 const LEGACY_KEY = 'readlife.v1';
 const RECOVERY_KEY = 'readlife.v2.recovery';
 const SAVE_DELAY_MS = 350;
 // Things the app can download again if they are ever lost; safe to clear when storage is full
-const CACHE_KEYS = ['readlife.store1', 'readlife.store2', 'readlife.store3', 'readlife.meta2', 'readlife.meta3', 'readlife.covers1', 'readlife.covers2', 'readlife.preload', 'readlife.loaded', 'readlife.phoneticTried', 'readlife.coverFix1', 'readlife.coverNone1', 'readlife.coverFix2', 'readlife.coverNone2'];
+const CACHE_KEYS = ['readlife.shelves1', 'readlife.curated1', 'readlife.resolved1', 'readlife.meta4', 'readlife.nyt1', 'readlife.coverFix1', 'readlife.coverNone2', 'readlife.preload', 'readlife.loaded', 'readlife.phoneticTried', 'readlife.store1', 'readlife.store2', 'readlife.store3', 'readlife.meta3', 'readlife.covers1', 'readlife.coverMiss1', 'readlife.coverNone1'];
 
 export function getTodayKey(): string {
   return dateKey(); // "YYYY-MM-DD" in local time
@@ -35,6 +36,15 @@ function buildDefaultState(): ReadingState {
     words: [...INITIAL_WORDS],
     // Starter plants are owned from the first launch (no celebration prompt for them).
     garden: seedGarden({ dailyLog: {}, goal: 10, status: {}, todayKey: getTodayKey() }),
+  };
+}
+
+/** Everything blank: no books (catalog books hidden), no words, no highlights, no reading history, fresh garden. */
+function buildEmptyState(): ReadingState {
+  return {
+    ...buildDefaultState(),
+    words: [],
+    hiddenBookIds: Object.fromEntries(DEFAULT_BOOKS.map(b => [String(b.id), true as const])),
   };
 }
 
@@ -295,22 +305,23 @@ export function useReadingLife() {
     });
   }, []);
 
-  const addBook = useCallback((newBook: Book, destination: 'device' | 'library' | 'now' | 'next' = 'library') => {
+  const addBook = useCallback((incoming: Book, destination: 'device' | 'library' | 'now' | 'next' = 'library') => {
     setState(prev => {
-      const idKey = String(newBook.id);
+      // The same book arriving under a different record id (search vs Store vs NYT) is the book you already have, not a second copy
+      const dupe = [...DEFAULT_BOOKS, ...prev.customBooks].find(b =>
+        String(b.id) !== String(incoming.id) && !prev.hiddenBookIds[String(b.id)] && sameWork(b, incoming, true));
+      const idKey = String(dupe ? dupe.id : incoming.id);
       const isDevice = destination === 'device';
       const existingCustom = prev.customBooks.find(b => String(b.id) === idKey);
+      const isCatalogDupe = !!dupe && !existingCustom; // a built-in book: nothing to store, only its status changes
 
-      let updatedCustom: Book[];
+      let updatedCustom: Book[] = prev.customBooks;
       if (existingCustom) {
-        updatedCustom = prev.customBooks.map(b =>
-          String(b.id) === idKey ? { ...b, ...newBook, isOnDevice: isDevice || b.isOnDevice } : b
-        );
-      } else {
-        const bookWithDev = { ...newBook, isOnDevice: isDevice };
-        updatedCustom = [bookWithDev, ...prev.customBooks];
+        const merged = dupe ? mergeBooks(existingCustom, incoming) : { ...existingCustom, ...incoming };
+        updatedCustom = prev.customBooks.map(b => (String(b.id) === idKey ? { ...merged, id: existingCustom.id, isOnDevice: isDevice || existingCustom.isOnDevice } : b));
+      } else if (!isCatalogDupe) {
+        updatedCustom = [{ ...incoming, isOnDevice: isDevice }, ...prev.customBooks];
       }
-
 
       return {
         ...prev,
@@ -493,9 +504,9 @@ export function useReadingLife() {
     }));
   }, []);
 
-  /** Erase everything this app keeps on the device (reading data, caches, settings) and start fresh. */
+  /** Erase everything this app keeps on the device (library, device books, words, quotes, reading history, garden, caches, settings) and start blank. */
   const resetEverything = useCallback(() => {
-    resetting.current = true;
+    resetting.current = true; // nothing may be written back while we wipe
     clearTimeout(saveTimer.current);
     try {
       const mine: string[] = [];
@@ -504,6 +515,8 @@ export function useReadingLife() {
         if (k && /^(readlife|greatreads)/i.test(k)) mine.push(k);
       }
       mine.forEach(k => localStorage.removeItem(k));
+      // Start from a truly empty state rather than "no save", which would bring back the built-in books and starter words
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(buildEmptyState()));
     } catch {}
     window.location.reload();
   }, []);
