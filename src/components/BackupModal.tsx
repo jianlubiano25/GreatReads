@@ -1,13 +1,16 @@
 import React, { useMemo, useState } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { copyText } from '../services/clipboard';
-import { X, Copy, Upload, Check, AlertCircle, RefreshCw } from 'lucide-react';
+import { X, Copy, Upload, Check, AlertCircle, RefreshCw, Download, Trash2 } from 'lucide-react';
 
 interface BackupModalProps {
   isOpen: boolean;
   onClose: () => void;
   onExportBackup: () => string;
   onImportBackup: (jsonStr: string) => boolean;
+  onClearLibrary: () => void;
+  onClearOnDevice: () => void;
+  onResetEverything: () => void;
 }
 
 export const BackupModal: React.FC<BackupModalProps> = ({
@@ -15,6 +18,9 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   onClose,
   onExportBackup,
   onImportBackup,
+  onClearLibrary,
+  onClearOnDevice,
+  onResetEverything,
 }) => {
   useModalA11y(onClose);
   const [pasteText, setPasteText] = useState('');
@@ -22,6 +28,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   const [copyFailed, setCopyFailed] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+  const [resetNote, setResetNote] = useState('');
 
   // Built once per open (not on every keystroke in the paste box).
   const currentBackup = useMemo(() => (isOpen ? onExportBackup() : ''), [isOpen, onExportBackup]);
@@ -61,6 +68,40 @@ export const BackupModal: React.FC<BackupModalProps> = ({
       setCopied(false);
       setCopyFailed(true);
     }
+  };
+
+  // Saves the backup as a file (Files app on iPhone/iPad, Downloads on a computer)
+  const handleDownload = () => {
+    try {
+      const url = URL.createObjectURL(new Blob([currentBackup], { type: 'application/json' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `greatreads-backup-${new Date().toLocaleDateString('en-CA')}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch {
+      setCopyFailed(true);
+    }
+  };
+
+  // Fills the restore box from a saved backup file (you still confirm before anything is replaced)
+  const handleFile = async (file?: File | null) => {
+    if (!file) return;
+    try {
+      setPasteText(await file.text());
+      setStatus('idle');
+    } catch {
+      setStatus('error');
+      setErrorMessage('Could not read that file.');
+    }
+  };
+
+  const confirmReset = (message: string, run: () => void, done: string) => {
+    if (!window.confirm(`${message}\n\nThis cannot be undone. Tip: download a backup first.`)) return;
+    run();
+    setResetNote(done);
   };
 
   const handleRestore = () => {
@@ -165,9 +206,17 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                 <span>{copied ? 'Copied!' : 'Copy Backup'}</span>
               </button>
             </div>
+            <button
+              type="button"
+              onClick={handleDownload}
+              className="mt-3 w-full py-2.5 rounded-xl text-xs font-semibold border border-[#2e5934] dark:border-[#86b880] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center gap-2 active:scale-95 transition-all"
+            >
+              <Download className="w-4 h-4" />
+              <span>Download Backup File</span>
+            </button>
             {copyFailed && (
               <p className="text-xs text-red-700 dark:text-red-400 mt-2" role="alert">
-                Your browser blocked copying. Tap inside the box above to select everything, then choose Copy.
+                Your browser blocked copying or saving. Tap inside the box above to select everything, then choose Copy.
               </p>
             )}
           </div>
@@ -180,6 +229,11 @@ export const BackupModal: React.FC<BackupModalProps> = ({
             <p className="text-xs text-[#706256] dark:text-[#a89a8a] mb-2">
               Paste your saved backup text from Claude or any previous session below:
             </p>
+            <label className="mb-2 flex items-center justify-center gap-2 w-full py-2 rounded-xl text-xs font-semibold border border-dashed border-[#c9b99f] dark:border-[#4a3f33] text-[#706256] dark:text-[#a89a8a] cursor-pointer">
+              <Upload className="w-4 h-4" />
+              <span>Choose a backup file…</span>
+              <input type="file" accept=".json,application/json,text/plain" className="sr-only" onChange={e => { void handleFile(e.target.files?.[0]); e.target.value = ''; }} />
+            </label>
             <textarea
               value={pasteText}
               onChange={e => {
@@ -212,6 +266,45 @@ export const BackupModal: React.FC<BackupModalProps> = ({
               <Upload className="w-4 h-4" />
               <span>Restore Backup Data</span>
             </button>
+          </div>
+
+          {/* Section 3: Reset data */}
+          <div className="pt-2 border-t border-[#e3d7c3] dark:border-[#382f25]">
+            <label className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] block mb-1">
+              Reset Data
+            </label>
+            <p className="text-xs text-[#706256] dark:text-[#a89a8a] mb-3">
+              Handing this device to someone else, or starting over? Download a backup first, then pick what to clear.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => confirmReset('Remove every book from the Library? Your words, reading history and garden stay.', onClearLibrary, 'Library cleared.')}
+                className="w-full py-2.5 rounded-xl text-xs font-semibold border border-red-300 dark:border-red-900 text-red-800 dark:text-red-300 flex items-center justify-center gap-2 active:scale-95 transition-all"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Clear Library</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => confirmReset('Take every book off This Device? Books stay in the Library.', onClearOnDevice, 'On Device cleared.')}
+                className="w-full py-2.5 rounded-xl text-xs font-semibold border border-red-300 dark:border-red-900 text-red-800 dark:text-red-300 flex items-center justify-center gap-2 active:scale-95 transition-all"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Clear On Device</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => confirmReset('Erase EVERYTHING on this device: books, reading history, notes, highlights, words, garden and settings?', onResetEverything, 'Erasing everything…')}
+                className="w-full py-2.5 rounded-xl text-xs font-semibold bg-red-700 text-white flex items-center justify-center gap-2 shadow active:scale-95 transition-all"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Reset Everything</span>
+              </button>
+            </div>
+            {resetNote && (
+              <p className="mt-2 text-xs text-emerald-800 dark:text-emerald-300" role="status">{resetNote}</p>
+            )}
           </div>
         </div>
       </div>

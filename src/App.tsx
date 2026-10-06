@@ -110,6 +110,9 @@ export default function App() {
     deleteWord,
     exportBackup,
     importBackup,
+    clearLibrary,
+    clearOnDevice,
+    resetEverything,
     saveError,
   } = useReadingLife();
 
@@ -1209,6 +1212,9 @@ export default function App() {
           onClose={() => setShowBackupModal(false)}
           onExportBackup={exportBackup}
           onImportBackup={importBackup}
+          onClearLibrary={clearLibrary}
+          onClearOnDevice={clearOnDevice}
+          onResetEverything={resetEverything}
         />
       )}
 

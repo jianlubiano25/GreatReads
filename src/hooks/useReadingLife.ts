@@ -83,9 +83,10 @@ export function useReadingLife() {
 
   const [saveError, setSaveError] = useState(false);
 
+  const resetting = useRef(false); // true while "Reset everything" is wiping the device: nothing may be written back
   const flushSave = useCallback(() => {
     clearTimeout(saveTimer.current);
-    if (!dirty.current) return;
+    if (!dirty.current || resetting.current) return;
     const write = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(latestState.current));
     try {
       write();
@@ -468,6 +469,45 @@ export function useReadingLife() {
     }));
   }, []);
 
+  /** Remove every book from the library (catalog books are only hidden, so "Restore hidden books" can bring them back). */
+  const clearLibrary = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      customBooks: [],
+      hiddenBookIds: { ...prev.hiddenBookIds, ...Object.fromEntries(DEFAULT_BOOKS.map(b => [String(b.id), true as const])) },
+      status: {},
+      currentPage: {},
+      totalPages: {},
+      notes: {},
+      highlights: {},
+      onDeviceOverrides: {},
+    }));
+  }, []);
+
+  /** Take every book off the device. Books stay in the library; nothing else changes. */
+  const clearOnDevice = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      onDeviceOverrides: Object.fromEntries([...DEFAULT_BOOKS, ...prev.customBooks].map(b => [String(b.id), false])),
+      customBooks: prev.customBooks.map(b => (b.isOnDevice ? { ...b, isOnDevice: false } : b)),
+    }));
+  }, []);
+
+  /** Erase everything this app keeps on the device (reading data, caches, settings) and start fresh. */
+  const resetEverything = useCallback(() => {
+    resetting.current = true;
+    clearTimeout(saveTimer.current);
+    try {
+      const mine: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && /^(readlife|greatreads)/i.test(k)) mine.push(k);
+      }
+      mine.forEach(k => localStorage.removeItem(k));
+    } catch {}
+    window.location.reload();
+  }, []);
+
   const exportBackup = useCallback(() => {
     return JSON.stringify(state, null, 2);
   }, [state]);
@@ -516,6 +556,9 @@ export function useReadingLife() {
     deleteWord,
     exportBackup,
     importBackup,
+    clearLibrary,
+    clearOnDevice,
+    resetEverything,
     saveError,
   };
 }
