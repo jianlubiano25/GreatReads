@@ -1,5 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useModalA11y } from '../hooks/useModalA11y';
+import React, { useState } from 'react';
 import { Book, ShelfKey } from '../types';
 import { searchOnlineBooks, getCoverUrl } from '../services/bookSearch';
 import { SHELF_LABELS } from '../data/defaultBooks';
@@ -16,7 +15,6 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
   onClose,
   onAddBook,
 }) => {
-  useModalA11y(onClose);
   const [destination, setDestination] = useState<'device' | 'library'>(
     initialIsDevice ? 'device' : 'library'
   );
@@ -40,51 +38,40 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
   const [manualSummary, setManualSummary] = useState('');
   const [manualSuccess, setManualSuccess] = useState(false);
 
-  const searchAbort = useRef<AbortController | null>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => {
-    searchAbort.current?.abort();
-    clearTimeout(closeTimer.current);
-  }, []);
-
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!searchTitle.trim()) return;
 
-    searchAbort.current?.abort();
-    const controller = new AbortController();
-    searchAbort.current = controller;
     setIsSearching(true);
     setSearchError('');
     try {
-      const results = await searchOnlineBooks(searchTitle, searchAuthor, 10, controller.signal);
-      if (controller.signal.aborted) return;
+      const results = await searchOnlineBooks(searchTitle, searchAuthor);
       if (results.length === 0) {
         setSearchError('No matching books found. Try checking the spelling or use Manual Entry.');
       }
       setSearchResults(results);
-    } catch {
-      if (controller.signal.aborted) return;
+    } catch (err) {
       setSearchError('Search failed. Switch to Manual Entry to add your book directly.');
     } finally {
-      if (!controller.signal.aborted) setIsSearching(false);
+      setIsSearching(false);
     }
   };
 
   const handleAddSearchResult = (book: Book) => {
-    if (Object.keys(addedIds).length > 0) return;
     const updatedBook = {
       ...book,
       isOnDevice: destination === 'device',
     };
     onAddBook(updatedBook, destination);
     setAddedIds(prev => ({ ...prev, [String(book.id)]: true }));
-    closeTimer.current = setTimeout(onClose, 600);
+    setTimeout(() => {
+      onClose();
+    }, 600);
   };
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualTitle.trim() || manualSuccess) return;
+    if (!manualTitle.trim()) return;
 
     const newBook: Book = {
       id: `manual_${Date.now()}`,
@@ -106,7 +93,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
 
     onAddBook(newBook, destination);
     setManualSuccess(true);
-    closeTimer.current = setTimeout(onClose, 600);
+    setTimeout(() => {
+      onClose();
+    }, 600);
   };
 
   return (
@@ -134,8 +123,6 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
             </p>
           </div>
           <button
-            type="button"
-            aria-label="Close"
             onClick={onClose}
             className="p-1.5 rounded-full text-[#706256] dark:text-[#a89a8a] hover:bg-black/10 dark:hover:bg-white/10"
           >
@@ -262,12 +249,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
                 <span className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a]">
                   Matches ({searchResults.length})
                 </span>
-                {searchResults.map((b, idx) => {
+                {searchResults.map(b => {
                   const isAdded = addedIds[String(b.id)];
                   const cover = getCoverUrl(b.coverId, 'S', b.coverUrl);
                   return (
                     <div
-                      key={`${b.id}-${idx}`}
+                      key={b.id}
                       className="p-3 rounded-xl bg-[#f5f0e6] dark:bg-[#181410] border border-[#e3d7c3] dark:border-[#382f25] flex items-center gap-3"
                     >
                       <div className="w-12 h-16 rounded bg-[#2e5934] shrink-0 overflow-hidden relative shadow">
@@ -292,7 +279,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
 
                       <button
                         onClick={() => handleAddSearchResult(b)}
-                        disabled={isAdded || Object.keys(addedIds).length > 0}
+                        disabled={isAdded}
                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 shrink-0 transition-all ${
                           isAdded
                             ? 'bg-emerald-600 text-white'

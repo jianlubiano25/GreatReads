@@ -1,8 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useModalA11y } from '../hooks/useModalA11y';
+import React, { useState } from 'react';
 import { Book } from '../types';
 import { searchOnlineBooks } from '../services/bookSearch';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, Check } from 'lucide-react';
 
 interface BulkImportModalProps {
   type: 'books' | 'words';
@@ -17,28 +16,13 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
   onAddBooks,
   onAddWords,
 }) => {
-  useModalA11y(onClose);
   const [text, setText] = useState('');
   const [isDevice, setIsDevice] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [done, setDone] = useState(false);
   const [progressMsg, setProgressMsg] = useState('');
-
-  const abortRef = useRef<AbortController | null>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => {
-    abortRef.current?.abort();
-    clearTimeout(closeTimer.current);
-  }, []);
-
-  const splitBookLine = (line: string) => {
-    const match = line.match(/^(.*\S)\s+(?:-|–|—|by)\s+(\S.*)$/i);
-    return match ? { title: match[1].trim(), author: match[2].trim() } : { title: line, author: '' };
-  };
 
   const handleImport = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isProcessing || done) return;
     const lines = text
       .split('\n')
       .map(l => l.trim())
@@ -46,63 +30,58 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
 
     if (lines.length === 0) return;
     setIsProcessing(true);
-    const controller = new AbortController();
-    abortRef.current = controller;
 
-    try {
-      if (type === 'books' && onAddBooks) {
-        const added: Book[] = [];
-        const stamp = Date.now();
-        for (let i = 0; i < lines.length; i++) {
-          if (controller.signal.aborted) return;
-          const { title, author } = splitBookLine(lines[i]);
-          setProgressMsg(`Importing ${i + 1} of ${lines.length}…`);
-          const placeholder = (): Book => ({
-            id: `bulk_${stamp}_${i}`,
-            title,
-            author: author || 'Unknown Author',
-            shelf: 'mine',
-            difficulty: 0,
-            notes: 'Added via bulk list',
-            isOnDevice: isDevice,
-            year: '',
-            genre: 'Book',
-            summary: '',
-            authorBio: '',
-            pageCount: 0,
-            spineColor: '#6b6f80',
-            source: 'manual',
-            addedAt: Date.now(),
-          });
+    if (type === 'books' && onAddBooks) {
+      const added: Book[] = [];
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        setProgressMsg(`Importing ${i + 1} of ${lines.length}…`);
+        const parts = line.split(/\s+(?:-|–|—|by)\s+/i);
+        const title = parts[0];
+        const author = parts[1] || '';
 
-          try {
-            const results = await searchOnlineBooks(title, author, 1, controller.signal);
-            if (controller.signal.aborted) return;
-            added.push(results.length > 0 ? { ...results[0], isOnDevice: isDevice } : placeholder());
-          } catch {
-            if (controller.signal.aborted) return;
-            added.push(placeholder());
-          }
-        }
-        if (controller.signal.aborted) return;
-        onAddBooks(added, isDevice);
-        setProgressMsg(`Done! Added ${added.length} books.`);
-      } else if (type === 'words' && onAddWords) {
-        const parsed = lines.map(line => {
-          const parts = line.split(/\s+[-–—:]\s+/);
-          return { word: parts[0].trim(), definition: parts.slice(1).join(' - ').trim() || undefined };
+        const placeholder = (): Book => ({
+          id: `bulk_${Date.now()}_${i}`,
+          title,
+          author: author || 'Unknown Author',
+          shelf: 'mine',
+          difficulty: 0,
+          notes: 'Added via bulk list',
+          isOnDevice: isDevice,
+          year: '',
+          genre: 'Book',
+          summary: '',
+          authorBio: '',
+          pageCount: 0, // unknown: filled in from Open Library when you open the book
+          spineColor: '#6b6f80',
+          source: 'manual',
+          addedAt: Date.now(),
         });
-        onAddWords(parsed);
-        setProgressMsg(`Added ${parsed.length} words to Word Garden!`);
+
+        try {
+          const results = await searchOnlineBooks(title, author, 1);
+          added.push(results.length > 0 ? { ...results[0], isOnDevice: isDevice } : placeholder());
+        } catch {
+          added.push(placeholder());
+        }
       }
-      setDone(true);
-      closeTimer.current = setTimeout(onClose, 900);
-    } catch (error) {
-      console.error('Bulk import failed:', error);
-      setProgressMsg('Something went wrong. Nothing was lost. Please try again.');
-    } finally {
-      if (!controller.signal.aborted) setIsProcessing(false);
+      onAddBooks(added, isDevice);
+      setProgressMsg(`Done! Added ${added.length} books.`);
+    } else if (type === 'words' && onAddWords) {
+      const parsed = lines.map(line => {
+        const parts = line.split(/\s+[-–—:]\s+/);
+        return {
+          word: parts[0].trim(),
+          definition: parts.slice(1).join(' - ').trim() || undefined,
+        };
+      });
+      onAddWords(parsed);
+      setProgressMsg(`Added ${parsed.length} words to Word Garden!`);
     }
+
+    setTimeout(() => {
+      onClose();
+    }, 900);
   };
 
   return (
@@ -122,8 +101,6 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
             {type === 'books' ? 'Paste Your Book List' : 'Paste Your Words'}
           </h3>
           <button
-            type="button"
-            aria-label="Close"
             onClick={onClose}
             className="p-1 rounded-full text-[#706256] dark:text-[#a89a8a] hover:bg-black/10 dark:hover:bg-white/10"
           >
@@ -178,7 +155,7 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
 
           {progressMsg && (
             <p className="text-xs text-[#2e5934] dark:text-[#86b880] font-medium flex items-center gap-1.5">
-              {isProcessing && !done && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {isProcessing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               <span>{progressMsg}</span>
             </p>
           )}
@@ -193,7 +170,7 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={!text.trim() || isProcessing || done}
+              disabled={!text.trim() || isProcessing}
               className="flex-1 py-2.5 rounded-xl bg-[#2e5934] text-white text-xs font-semibold hover:bg-[#244729] disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {isProcessing ? (

@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useModalA11y } from '../hooks/useModalA11y';
 import { GardenState, UserProfile } from '../types';
 import { Camera, Moon, Sun, Monitor, RefreshCw, Copy, Check, Upload, X, Download } from 'lucide-react';
 import { copyText } from '../services/clipboard';
@@ -40,7 +39,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   onImportBackup,
   onOpenBackupModal,
 }) => {
-  useModalA11y(onClose);
   const [name, setName] = useState(profile.name);
   const [pageGoal, setPageGoal] = useState(String(goal));
   const [theme, setTheme] = useState(profile.theme);
@@ -54,12 +52,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const plantsEarned = MILESTONES.filter(m => garden.achievements[m.id]).length;
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const input = e.target;
-    const file = input.files?.[0];
-    input.value = '';
+    const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onerror = () => alert("That photo couldn't be read. Please try a different image.");
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
@@ -84,7 +79,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           onUpdateProfile({ photo: dataUrl });
         }
       };
-      img.onerror = () => alert("That image couldn't be opened. Try a JPG or PNG.");
       img.src = reader.result as string;
     };
     reader.readAsDataURL(file);
@@ -92,9 +86,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
   const handleSave = () => {
     onUpdateProfile({ name: name.trim(), theme });
-    const g = Math.round(Number(pageGoal));
-    if (Number.isFinite(g) && g >= 1) {
-      onUpdateGoal(Math.min(500, g));
+    const g = Number(pageGoal);
+    if (g && g > 0) {
+      onUpdateGoal(g);
     }
     onClose();
   };
@@ -113,7 +107,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const handlePasteBackup = () => {
     const jsonStr = prompt('Paste your backup JSON here:');
     if (!jsonStr) return;
-    if (!window.confirm('Replace ALL current reading data with this backup? This cannot be undone.')) return;
     const ok = onImportBackup(jsonStr);
     if (ok) {
       setImportStatus('success');
@@ -142,8 +135,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             Profile &amp; Settings
           </h3>
           <button
-            type="button"
-            aria-label="Close"
             onClick={onClose}
             className="p-1.5 rounded-full text-[#706256] dark:text-[#a89a8a] hover:bg-black/10 dark:hover:bg-white/10"
           >

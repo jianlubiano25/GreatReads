@@ -5,7 +5,6 @@ import { CoverFace } from './BookMeta';
 import { fetchLocalWeather, setWeatherOverride, getTimePeriod, describeWeather, PERIOD_LABEL, TIME_PERIODS, WEATHER_MODES, WeatherData, WeatherCondition, TimePeriod } from '../services/weather';
 import { subscribeNookPrefs, getNookPrefsVersion, getNookMatchesTheme, getWindowFollowsTime } from '../services/nookPrefs';
 import { GardenArea } from './garden/GardenView';
-import { NookClock } from './NookClock';
 import { MoonPhase, moonPhase, MOON_PHASE_NAMES, MOON_PHASE_EMOJI } from './MoonPhase';
 
 interface Props {
@@ -207,18 +206,8 @@ export function ReadingScene({
     `${describeWeather(cond, per)}${per === 'night' && cond === 'clear' ? ` · ${moonName}` : ''}`;
 
   const handleCycleWeather = () => {
-    const nextIndex = WEATHER_MODES.indexOf(weather.condition) + 1;
-    if (weather.source === 'manual' && nextIndex === WEATHER_MODES.length) {
-      const id = ++reqId.current;
-      setWeatherOverride('auto');
-      fetchLocalWeather().then(nextWeather => {
-        if (nextWeather && id === reqId.current) setWeather(nextWeather);
-      });
-      showTip('Automatic weather');
-      return;
-    }
-    const nextCond = WEATHER_MODES[nextIndex % WEATHER_MODES.length];
-    reqId.current++;
+    const nextCond = WEATHER_MODES[(WEATHER_MODES.indexOf(weather.condition) + 1) % WEATHER_MODES.length];
+    reqId.current++; // any lookup still in flight is now out of date
     setWeatherOverride(nextCond);
     setWeather(prev => ({ ...prev, condition: nextCond, description: describeWeather(nextCond, prev.period), source: 'manual' }));
     showTip(describe(nextCond, period));
@@ -474,9 +463,7 @@ export function ReadingScene({
         </div>
 
         {/* Bookshelves */}
-        <div className="flex-1 min-w-0 flex flex-col">
-          <NookClock weather={weather} dark={nookDark} />
-          <div ref={shelfRef} className="flex flex-col">
+        <div ref={shelfRef} className="flex-1 min-w-0 flex flex-col">
           {shelves.map((row, i) => (
             <div key={i} className="flex items-end gap-[3px] justify-start px-1" style={{ borderBottom: '7px solid #8a5a3b', minHeight: 66 }}>
               {row.map(b => (
@@ -502,7 +489,6 @@ export function ReadingScene({
               ))}
             </div>
           ))}
-          </div>
         </div>
       </div>
 

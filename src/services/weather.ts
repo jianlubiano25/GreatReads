@@ -13,18 +13,10 @@ export interface WeatherData {
   temperature?: number;
   description: string;
   source: 'location' | 'time' | 'manual';
-  sun?: SunTimes;
-}
-
-export interface SunTimes {
-  rise: number;
-  set: number;
-  offset: number;
 }
 
 const CACHE_KEY = 'greatreads_weather_v2';
 const OVERRIDE_KEY = 'greatreads_weather_override';
-const SUN_KEY = 'greatreads_sun_v1';
 const GEO_FAIL_KEY = 'greatreads_geo_failed';
 const GEO_OPT_KEY = 'greatreads_weather_location'; // '1' only if you switched on "Match weather to my location"
 const GEO_RETRY_MS = 60 * 60 * 1000; // after a refusal/timeout, don't ask the device for its location again for an hour
@@ -52,7 +44,7 @@ function manualWeather(): WeatherData | null {
   try {
     const override = localStorage.getItem(OVERRIDE_KEY);
     if (override && override !== 'auto') {
-      const { period, isNight } = getTimePeriod(new Date(), knownSun());
+      const { period, isNight } = getTimePeriod();
       const cond = override as WeatherCondition;
       return { condition: cond, period, isNight, description: describeWeather(cond, period), source: 'manual' };
     }
@@ -60,59 +52,33 @@ function manualWeather(): WeatherData | null {
   return null;
 }
 
-export function periodFromSun(minutes: number, rise: number, set: number): TimePeriod {
-  if (minutes < rise - 30 || minutes >= set + 30) return 'night';
-  if (minutes < rise + 90) return 'morning';
-  if (minutes >= set - 30) return 'sunset';
-  return 'day';
-}
+/**
+ * Window daylight & celestial schedule:
+ * - Morning: 05:00 - 08:30 (Dawn & gentle morning glow)
+ * - Daytime: 08:30 - 17:30 (Radiant daylight sun)
+ * - Sunset:  17:30 - 18:45 (Golden hour twilight & amber horizon)
+ * - Night:   18:45 - 05:00 (Starlit night, deep navy sky & glowing moon)
+ * (7:00 PM is 19:00, comfortably in Night mode!)
+ */
+export function getTimePeriod(now: Date = new Date()): { period: TimePeriod; isNight: boolean } {
+  const hr = now.getHours();
+  const min = now.getMinutes();
+  const totalMinutes = hr * 60 + min;
 
-function minutesAt(now: Date, offset?: number): number {
-  if (typeof offset === 'number') {
-    const local = new Date(now.getTime() + offset * 1000);
-    return local.getUTCHours() * 60 + local.getUTCMinutes();
+  // 05:00 to 08:30: Morning
+  if (totalMinutes >= 300 && totalMinutes < 510) {
+    return { period: 'morning', isNight: false };
   }
-  return now.getHours() * 60 + now.getMinutes();
-}
-
-function clockMinutes(value: unknown): number | null {
-  const match = /T(\d{2}):(\d{2})/.exec(String(value ?? ''));
-  return match ? Number(match[1]) * 60 + Number(match[2]) : null;
-}
-
-export function getTimePeriod(now: Date = new Date(), sun?: SunTimes | null): { period: TimePeriod; isNight: boolean } {
-  const minutes = minutesAt(now, sun?.offset);
-  let period: TimePeriod;
-  if (sun) period = periodFromSun(minutes, sun.rise, sun.set);
-  else if (minutes >= 300 && minutes < 510) period = 'morning';
-  else if (minutes >= 510 && minutes < 1050) period = 'day';
-  else if (minutes >= 1050 && minutes < 1125) period = 'sunset';
-  else period = 'night';
-  return { period, isNight: period === 'night' };
-}
-
-function rememberSun(sun: SunTimes) {
-  try { localStorage.setItem(SUN_KEY, JSON.stringify({ ...sun, day: new Date().toDateString() })); } catch {}
-}
-
-function knownSun(): SunTimes | null {
-  try {
-    if (!isLocationWeatherEnabled()) return null;
-    const value = JSON.parse(localStorage.getItem(SUN_KEY) || 'null');
-    if (!value || typeof value.rise !== 'number' || typeof value.set !== 'number' || typeof value.offset !== 'number') return null;
-    return { rise: value.rise, set: value.set, offset: value.offset };
-  } catch {
-    return null;
+  // 08:30 to 17:30: Daytime
+  if (totalMinutes >= 510 && totalMinutes < 1050) {
+    return { period: 'day', isNight: false };
   }
-}
-
-function withLivePeriod(weather: WeatherData, now: Date = new Date()): WeatherData {
-  const { period, isNight } = getTimePeriod(now, weather.sun ?? null);
-  if (period === weather.period && isNight === weather.isNight) return weather;
-  const description = weather.source === 'location' && weather.condition === 'clear'
-    ? describeWeather('clear', period)
-    : weather.description;
-  return { ...weather, period, isNight, description };
+  // 17:30 to 18:45: Sunset / Golden Twilight
+  if (totalMinutes >= 1050 && totalMinutes < 1125) {
+    return { period: 'sunset', isNight: false };
+  }
+  // 18:45 to 05:00: Night (Moon & Stars)
+  return { period: 'night', isNight: true };
 }
 
 export function parseWmoCode(code: number): { condition: WeatherCondition; label: string } {
@@ -140,7 +106,7 @@ export async function fetchLocalWeather(): Promise<WeatherData | null> {
     if (cached) {
       const parsed = JSON.parse(cached);
       if (Date.now() - parsed.timestamp < 10 * 60 * 1000) {
-        return withLivePeriod(parsed.data);
+        return parsed.data;
       }
     }
   } catch {}
@@ -172,7 +138,7 @@ export async function fetchLocalWeather(): Promise<WeatherData | null> {
       try {
         const { latitude, longitude } = pos.coords;
         const res = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${latitude.toFixed(2)}&longitude=${longitude.toFixed(2)}&current=weather_code,precipitation,temperature_2m&daily=sunrise,sunset&timezone=auto&forecast_days=1`,
+          `https://api.open-meteo.com/v1/forecast?latitude=${latitude.toFixed(2)}&longitude=${longitude.toFixed(2)}&current=weather_code,is_day,precipitation,temperature_2m`,
           { headers: { Accept: 'application/json' }, signal: controller.signal },
         );
 
@@ -183,22 +149,20 @@ export async function fetchLocalWeather(): Promise<WeatherData | null> {
         if (res.ok) {
           const json = await res.json();
           const current = json.current;
-          const rise = clockMinutes(json.daily?.sunrise?.[0]);
-          const set = clockMinutes(json.daily?.sunset?.[0]);
-          const offset = Number(json.utc_offset_seconds);
-          const sun: SunTimes | undefined = rise != null && set != null && Number.isFinite(offset) ? { rise, set, offset } : undefined;
-          if (sun) rememberSun(sun);
-          const { period, isNight } = getTimePeriod(new Date(), sun ?? null);
+          const timeData = getTimePeriod(new Date());
+
+          // Open-Meteo returns current.is_day (1 for day, 0 for night calculated for user coordinates)
+          const isNight = typeof current.is_day === 'number' ? current.is_day === 0 : timeData.isNight;
+          const period: TimePeriod = isNight ? 'night' : timeData.period;
           const { condition, label } = parseWmoCode(current.weather_code || 0);
 
           const data: WeatherData = {
-            condition: condition === 'snow' ? 'snow' : current.precipitation > 0.2 ? 'rain' : condition,
+            condition: current.precipitation > 0.2 ? 'rain' : condition,
             period,
             isNight,
-            temperature: Number.isFinite(Number(current.temperature_2m)) ? Math.round(current.temperature_2m) : undefined,
+            temperature: Math.round(current.temperature_2m),
             description: isNight && condition === 'clear' ? 'Starlit Night' : label,
             source: 'location',
-            sun,
           };
 
           try {
@@ -216,7 +180,7 @@ export async function fetchLocalWeather(): Promise<WeatherData | null> {
   }
 
   // Fallback based on local system time
-  const timeData = getTimePeriod(new Date(), knownSun());
+  const timeData = getTimePeriod(new Date());
   return {
     condition: 'clear',
     period: timeData.period,

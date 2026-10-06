@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useModalA11y } from '../hooks/useModalA11y';
 import { Book } from '../types';
 import { BOOK_AWARDS, DIFFICULTY_LABELS, SHELF_LABELS } from '../data/defaultBooks';
 import { getCoverUrl, searchOnlineBooks, enrichBookDetails, fetchBookMeta } from '../services/bookSearch';
@@ -37,7 +36,6 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   onUpdateProgress,
   onOpenHighlights,
 }) => {
-  useModalA11y(onClose);
   const [book, setBook] = useState<Book>(initialBook);
   const [isExpanded, setIsExpanded] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);

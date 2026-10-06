@@ -57,7 +57,7 @@ function askBuild(worker: ServiceWorker): Promise<string | null> {
 }
 
 /** Look at the waiting worker and decide: silent activation (same build) or a prompt (different build). */
-async function inspectWaiting(r: ServiceWorkerRegistration, manual = false) {
+async function inspectWaiting(r: ServiceWorkerRegistration) {
   const waiting = r.waiting;
   if (!waiting || !navigator.serviceWorker.controller) return;
   const build = await askBuild(waiting);
@@ -65,7 +65,7 @@ async function inspectWaiting(r: ServiceWorkerRegistration, manual = false) {
     waiting.postMessage({ type: 'SKIP_WAITING' }); // same code as you are running: nothing to tell you about
     return;
   }
-  if (!manual && build && build === dismissedBuild) return;
+  if (build && build === dismissedBuild) return; // you already said "later" to this one
   set({ available: true, upToDate: false });
 }
 
@@ -92,10 +92,10 @@ export async function checkForUpdate(manual = false): Promise<void> {
   try {
     await reg.update();
     await waitUntilInstalled(reg.installing);
-    await inspectWaiting(reg, manual);
+    await inspectWaiting(reg);
     if (manual) set({ upToDate: !snapshot.available });
   } catch {
-    lastCheck = 0;
+    // offline or blocked: say nothing
   } finally {
     if (manual) set({ checking: false });
   }

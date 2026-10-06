@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useModalA11y } from '../hooks/useModalA11y';
 import { Book, WordItem } from '../types';
 import { lookupWord, speakWord, LookupResult } from '../services/dictionary';
 import { Volume2, Search, ExternalLink, BookMarked, Check, Loader2, Sparkles, X } from 'lucide-react';
@@ -19,7 +18,6 @@ export const AppleLookUpModal: React.FC<AppleLookUpModalProps> = ({
   onClose,
   onSaveWord,
 }) => {
-  useModalA11y(onClose);
   const [query, setQuery] = useState(existingWordItem ? existingWordItem.word : initialWord);
   const [lookupResult, setLookupResult] = useState<LookupResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -133,12 +131,12 @@ export const AppleLookUpModal: React.FC<AppleLookUpModalProps> = ({
       word: lookupResult?.word || w,
       phonetic: lookupResult?.phonetic || ex?.phonetic || '',
       audioUrl: lookupResult?.audioUrl || ex?.audioUrl,
-      partOfSpeech: lookupResult?.partOfSpeech || ex?.partOfSpeech || 'word',
+      partOfSpeech: lookupResult?.partOfSpeech || 'word',
       definition: primaryDef,
-      definitions: lookupResult?.definitions || ex?.definitions || [primaryDef],
-      example: lookupResult?.example || ex?.example || '',
-      etymology: lookupResult?.etymology ?? ex?.etymology,
-      synonyms: lookupResult?.synonyms || ex?.synonyms || [],
+      definitions: lookupResult?.definitions || [primaryDef],
+      example: lookupResult?.example || '',
+      etymology: lookupResult?.etymology,
+      synonyms: lookupResult?.synonyms || [],
       bookId: selectedBookId || undefined,
       bookTitle: matchedBook?.title,
       quoteSentence: quoteSentence.trim() || undefined,
@@ -196,17 +194,7 @@ export const AppleLookUpModal: React.FC<AppleLookUpModalProps> = ({
             />
             {query && (
               <button
-                type="button"
-                aria-label="Clear search"
-                onClick={() => {
-                  clearTimeout(debounceTimer.current);
-                  lookupSeq.current++;
-                  setQuery('');
-                  setLookupResult(null);
-                  setWikiData(null);
-                  setErrorMsg('');
-                  setLoading(false);
-                }}
+                onClick={() => setQuery('')}
                 className="absolute right-3 p-1 text-[#706256] dark:text-[#a89a8a] hover:text-[#201a15]"
               >
                 <X className="w-4 h-4" />
@@ -240,7 +228,6 @@ export const AppleLookUpModal: React.FC<AppleLookUpModalProps> = ({
                       onClick={() => speakWord(lookupResult.word, lookupResult.audioUrl)}
                       className="p-2 rounded-full bg-[#e8efe7] dark:bg-[#243422] text-[#2e5934] dark:text-[#86b880] hover:scale-105 active:scale-95 transition-all"
                       title="Listen to pronunciation"
-                      aria-label={`Listen to pronunciation of ${lookupResult.word}`}
                     >
                       <Volume2 className="w-5 h-5" />
                     </button>

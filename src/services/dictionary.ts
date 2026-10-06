@@ -33,7 +33,7 @@ export function cleanWord(raw: string): string {
 async function fetchEntry(word: string): Promise<LookupResult | null> {
 
   // 1. Check built-in dictionary first
-  if (Object.hasOwn(BUILTIN_DICTIONARY, word)) {
+  if (BUILTIN_DICTIONARY[word]) {
     const item = BUILTIN_DICTIONARY[word];
     return {
       word,

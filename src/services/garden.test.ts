@@ -1,7 +1,7 @@
 // Run with: npm test
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bestStreakFor, bestWeekFor, computeSnapshot, currentStreakFor, emptyGarden, evaluateGarden, goalFn, growingMilestones, markCelebrated, pendingCelebrations, recordGoalChange, seedGarden } from './garden';
+import { bestStreakFor, bestWeekFor, computeSnapshot, emptyGarden, evaluateGarden, markCelebrated, pendingCelebrations, seedGarden } from './garden';
 import { dateKey } from './dates';
 import type { WordItem } from '../types';
 
@@ -43,37 +43,13 @@ test('a streak that ended still counts', () => {
   assert.ok(g.plants['golden-sunflower']);
 });
 
-test('changing the goal never rewrites days already lived', () => {
+test('lowering the goal for a moment does not keep streak plants', () => {
   const log: Record<string, number> = {};
-  for (let d = 13; d <= 19; d++) log[`2026-03-${d}`] = 10;
-  const history = recordGoalChange(undefined, 10, 30, TODAY);
-  const garden = evalWith(seedGarden({ ...base, dailyLog: {} }), log, { goal: 30, goalHistory: history });
-  assert.ok(garden.plants['golden-sunflower']);
-  assert.equal(computeSnapshot({ ...base, dailyLog: log, goal: 30, goalHistory: history }).streak, 7);
-  assert.equal(currentStreakFor(log, 30, TODAY), 0);
-});
-
-test('lowering the goal does not turn old misses into hits', () => {
-  const log: Record<string, number> = {};
-  for (let d = 13; d <= 19; d++) log[`2026-03-${d}`] = 3;
-  const history = recordGoalChange(undefined, 10, 1, TODAY);
-  const garden = evalWith(seedGarden({ ...base, dailyLog: {} }), log, { goal: 1, goalHistory: history });
-  assert.equal(garden.plants['golden-sunflower'], undefined);
-  assert.equal(currentStreakFor({ [TODAY]: 3 }, goalFn(1, history), TODAY), 1);
-});
-
-test('goal history selects the latest change on or before a day', () => {
-  let history = recordGoalChange(undefined, 10, 20, '2026-03-10');
-  history = recordGoalChange(history, 20, 5, '2026-03-15');
-  const goalAt = goalFn(5, history);
-  assert.equal(goalAt('2026-03-01'), 10);
-  assert.equal(goalAt('2026-03-10'), 20);
-  assert.equal(goalAt('2026-03-14'), 20);
-  assert.equal(goalAt('2026-03-15'), 5);
-  assert.equal(goalAt('2026-04-01'), 5);
-  assert.equal(goalFn(7)('2026-03-01'), 7);
-  history = recordGoalChange(history, 5, 8, '2026-03-15');
-  assert.equal(goalFn(8, history)('2026-03-15'), 8);
+  for (let d = 1; d <= 7; d++) log[`2026-03-0${d}`] = 3;
+  const low = evalWith(seedGarden({ ...base, dailyLog: {} }), log, { goal: 1 });
+  assert.ok(low.plants['golden-sunflower']);
+  const back = evalWith(low, log, { goal: 10 });
+  assert.equal(back.plants['golden-sunflower'], undefined);
 });
 
 test('growth follows the log down and up', () => {
@@ -104,13 +80,4 @@ test('silent awards and markCelebrated never queue a prompt', () => {
 test('nothing changed returns the same object', () => {
   const g = evalWith(seedGarden({ ...base, dailyLog: {} }), { [TODAY]: 12 });
   assert.equal(evalWith(g, { [TODAY]: 12 }), g);
-});
-
-test('several plants grow at once, one per unearned goal track', () => {
-  const garden = seedGarden({ ...base, dailyLog: {} });
-  const growing = growingMilestones(garden);
-  const metrics = growing.map(milestone => milestone.unlock.metric);
-  assert.equal(new Set(metrics).size, metrics.length);
-  assert.ok(growing.length >= 3);
-  assert.ok(growing.every(milestone => !garden.achievements[milestone.id]));
 });

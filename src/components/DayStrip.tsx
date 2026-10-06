@@ -33,8 +33,8 @@ export function DayStrip({ days, onSetPages }: Props) {
       {sel && (
         <div className="mt-3 p-3 rounded-xl bg-[#f5f0e6] dark:bg-[#181410] border border-[#e3d7c3] dark:border-[#382f25] flex items-center gap-2 flex-wrap">
           <span className="text-sm flex-1 min-w-[140px]">Pages read on {fmt(sel.key)}</span>
-          <input type="number" inputMode="numeric" min={0} max={5000} aria-label={`Pages read on ${fmt(sel.key)}`} value={val} onChange={e => setVal(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { onSetPages(sel.key, Math.min(5000, Math.max(0, parseInt(val, 10) || 0))); setSel(null); } }} className="w-20 px-2 py-2 rounded-lg border border-[#e3d7c3] dark:border-[#382f25] bg-transparent text-center font-bold" />
-          <button type="button" className="px-4 py-2 rounded-lg text-sm font-semibold bg-[#2e5934] text-white" onClick={() => { onSetPages(sel.key, Math.min(5000, Math.max(0, parseInt(val, 10) || 0))); setSel(null); }}>Save</button>
+          <input type="number" inputMode="numeric" min={0} value={val} onChange={e => setVal(e.target.value)} className="w-20 px-2 py-2 rounded-lg border border-[#e3d7c3] dark:border-[#382f25] bg-transparent text-center font-bold" />
+          <button type="button" className="px-4 py-2 rounded-lg text-sm font-semibold bg-[#2e5934] text-white" onClick={() => { onSetPages(sel.key, Math.max(0, parseInt(val, 10) || 0)); setSel(null); }}>Save</button>
           <button type="button" className="px-3 py-2 rounded-lg text-sm text-[#706256] dark:text-[#a89a8a]" onClick={() => setSel(null)}>Cancel</button>
         </div>
       )}
