@@ -58,3 +58,31 @@ export function setWindowFollowsTime(on: boolean) {
   } catch {}
   notifyNookPrefs();
 }
+
+/* ---- Clock colours: tap the wall clock to cycle through a few looks (remembered on this device) ---- */
+export const CLOCK_THEME_COUNT = 5;
+const CLOCK_KEY = 'greatreads_clock_theme';
+let clockTheme = (() => {
+  try {
+    const n = Number(localStorage.getItem(CLOCK_KEY));
+    return Number.isInteger(n) && n >= 0 && n < CLOCK_THEME_COUNT ? n : 0;
+  } catch {
+    return 0;
+  }
+})();
+const clockSubs = new Set<() => void>();
+
+export const subscribeClockTheme = (cb: () => void) => {
+  clockSubs.add(cb);
+  return () => {
+    clockSubs.delete(cb);
+  };
+};
+export const getClockTheme = () => clockTheme;
+export function cycleClockTheme() {
+  clockTheme = (clockTheme + 1) % CLOCK_THEME_COUNT;
+  try {
+    localStorage.setItem(CLOCK_KEY, String(clockTheme));
+  } catch {}
+  clockSubs.forEach(f => f());
+}

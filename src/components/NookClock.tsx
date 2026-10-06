@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import type { WeatherData } from '../services/weather';
+import { cycleClockTheme, getClockTheme, subscribeClockTheme } from '../services/nookPrefs';
 
 export function weatherIcon(condition: WeatherData['condition'], night: boolean): string {
   if (condition === 'rain') return '🌧️';
@@ -61,6 +62,16 @@ const uses12h = (() => {
   }
 })();
 
+/** Five looks, cycled by tapping the clock: digits, screen and casing colours (+ glow for the LED ones). */
+type ClockLook = { name: string; led: string; ledDark?: string; screen: string; casing: string; edge: string; glow: boolean };
+export const CLOCK_LOOKS: ClockLook[] = [
+  { name: 'Amber', led: '#ffad33', ledDark: '#ffc766', screen: '#120f14', casing: '#2a2630', edge: '#4d4658', glow: true },
+  { name: 'Green', led: '#4dff88', screen: '#06150c', casing: '#1d2b23', edge: '#3d5446', glow: true },
+  { name: 'Ice blue', led: '#6fd3ff', screen: '#08121d', casing: '#222b38', edge: '#46566b', glow: true },
+  { name: 'Rose', led: '#ff7fb8', screen: '#1a0b15', casing: '#33202d', edge: '#5e3b51', glow: true },
+  { name: 'Retro LCD', led: '#2f3a28', screen: '#c9d3a3', casing: '#5a554b', edge: '#7d776a', glow: false },
+];
+
 const MONO = "ui-monospace, 'SF Mono', Menlo, monospace";
 
 /**
@@ -79,6 +90,7 @@ export const NookClock = React.memo(function NookClock({
   now?: Date;
 }) {
   const [tick, setTick] = useState(() => new Date());
+  const look = CLOCK_LOOKS[useSyncExternalStore(subscribeClockTheme, getClockTheme, getClockTheme)] ?? CLOCK_LOOKS[0];
   useEffect(() => {
     if (fixedNow) return;
     let timer: ReturnType<typeof setTimeout>;
@@ -111,13 +123,15 @@ export const NookClock = React.memo(function NookClock({
     : '';
   const spoken = `${uses12h ? `${h}:${mm} ${ampm}` : `${hh}:${mm}`}, ${weather.description}${temp ? `, ${temp.replace('°', ' degrees')}` : ''}`;
 
-  // Amber LEDs: a touch brighter and glowier when the nook is dark
-  const led = dark ? '#ffc766' : '#ffad33';
-  const glow = dark ? 'drop-shadow(0 0 2.2px rgba(255,170,60,.85))' : 'drop-shadow(0 0 1.2px rgba(255,150,30,.55))';
+  // LEDs are a touch brighter and glowier when the nook is dark
+  const led = dark && look.ledDark ? look.ledDark : look.led;
+  const ledGlow = look.glow ? `drop-shadow(0 0 ${dark ? 2.2 : 1.2}px ${led}${dark ? 'cc' : '88'})` : 'none';
 
   return (
-    <div
-      className="self-center shrink-0"
+    <button
+      type="button"
+      onClick={cycleClockTheme}
+      className="self-center shrink-0 block p-0 border-0 bg-transparent cursor-pointer"
       style={{
         width: large ? 168 : 120,
         marginTop: 2,
@@ -125,17 +139,16 @@ export const NookClock = React.memo(function NookClock({
         // it hangs on the wall, so it casts a soft shadow behind itself
         filter: 'drop-shadow(0 2px 2px rgba(0,0,0,.35))',
       }}
-      role="img"
-      aria-label={spoken}
+      aria-label={`${spoken}. Tap to change the clock colours (${look.name})`}
       title={`${weather.description}${sun}`}
     >
       <svg viewBox="0 0 140 40" width="100%" style={{ display: 'block', overflow: 'visible' }} aria-hidden="true">
         {/* casing */}
-        <rect x={0.5} y={0.5} width={139} height={39} rx={7} fill="#2a2630" stroke="#4d4658" strokeWidth={1} />
+        <rect x={0.5} y={0.5} width={139} height={39} rx={7} fill={look.casing} stroke={look.edge} strokeWidth={1} />
         <rect x={8} y={1.6} width={124} height={1.1} rx={0.55} fill="#ffffff" opacity={0.14} />
         {/* screen */}
-        <rect x={4.5} y={4.5} width={131} height={31} rx={4} fill="#120f14" stroke="#000" strokeOpacity={0.6} />
-        <g style={{ filter: glow }}>
+        <rect x={4.5} y={4.5} width={131} height={31} rx={4} fill={look.screen} stroke="#000" strokeOpacity={0.6} />
+        <g style={{ filter: ledGlow }}>
           <Digit ch={hh[0]} x={11} y={11} color={led} />
           <Digit ch={hh[1]} x={25} y={11} color={led} />
           <g className="rl-colon" fill={led}>
@@ -145,20 +158,20 @@ export const NookClock = React.memo(function NookClock({
           <Digit ch={mm[0]} x={46} y={11} color={led} />
           <Digit ch={mm[1]} x={60} y={11} color={led} />
         </g>
-        {/* side panel: AM/PM, then weather and temperature */}
-        <line x1={78} y1={9} x2={78} y2={31} stroke={led} strokeOpacity={0.22} />
+        {/* AM/PM beside the minutes; weather icon (big) above the temperature on the right */}
+        <line x1={82} y1={9} x2={82} y2={31} stroke={led} strokeOpacity={0.22} />
         {uses12h && (
-          <text x={83} y={18.5} fill={led} fontSize={8} fontWeight={700} fontFamily={MONO} letterSpacing={0.6} style={{ filter: glow }}>
+          <text x={71.5} y={18} fill={led} fontSize={6.5} fontWeight={700} fontFamily={MONO} style={{ filter: ledGlow }}>
             {ampm}
           </text>
         )}
-        <text x={83} y={31.5} fontSize={9.5}>{icon}</text>
+        <text x={108.5} y={temp ? 22.5 : 26} textAnchor="middle" fontSize={temp ? 15 : 17}>{icon}</text>
         {temp && (
-          <text x={98} y={31} fill={led} fontSize={9} fontWeight={700} fontFamily={MONO} style={{ filter: glow }}>
+          <text x={108.5} y={32.5} textAnchor="middle" fill={led} fontSize={8.5} fontWeight={700} fontFamily={MONO} style={{ filter: ledGlow }}>
             {temp}C
           </text>
         )}
       </svg>
-    </div>
+    </button>
   );
 });
