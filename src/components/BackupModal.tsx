@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useModalA11y } from '../hooks/useModalA11y';
 import { copyText } from '../services/clipboard';
 import { X, Copy, Upload, Check, AlertCircle, RefreshCw } from 'lucide-react';
 
@@ -15,6 +16,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   onExportBackup,
   onImportBackup,
 }) => {
+  useModalA11y(onClose);
   const [pasteText, setPasteText] = useState('');
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
@@ -68,6 +70,8 @@ export const BackupModal: React.FC<BackupModalProps> = ({
       return;
     }
 
+    if (!window.confirm('Replace ALL current reading data with this backup? This cannot be undone. Tip: copy your current backup first.')) return;
+
     const ok = onImportBackup(pasteText);
     if (ok) {
       setStatus('success');
@@ -103,6 +107,8 @@ export const BackupModal: React.FC<BackupModalProps> = ({
             </h3>
           </div>
           <button
+            type="button"
+            aria-label="Close"
             onClick={onClose}
             className="p-1.5 rounded-full text-[#706256] dark:text-[#a89a8a] hover:bg-black/10 dark:hover:bg-white/10"
           >

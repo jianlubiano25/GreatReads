@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useModalA11y } from '../hooks/useModalA11y';
 import { copyText } from '../services/clipboard';
 import { Share2, Copy, Check, ExternalLink, QrCode, X, Smartphone, Globe } from 'lucide-react';
 
@@ -8,6 +9,7 @@ interface ShareModalProps {
 }
 
 export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose }) => {
+  useModalA11y(onClose);
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
 
@@ -60,6 +62,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose }) => {
             </h3>
           </div>
           <button
+            type="button"
+            aria-label="Close"
             onClick={onClose}
             className="p-1.5 rounded-full text-[#706256] dark:text-[#a89a8a] hover:bg-black/10 dark:hover:bg-white/10"
           >

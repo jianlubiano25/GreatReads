@@ -16,7 +16,6 @@ const BASKET_SHIFT = 16;
 type P = { g: number; d: PlantDef };
 
 const count = (g: number, max: number, min = 1) => Math.max(min, Math.min(max, Math.round(g * max)));
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const frac = (g: number) => Math.min(1, Math.max(0, (g - 0.2) / 0.8)); // 0 when just earned, 1 when fully grown
 
 // ---------------------------------------------------------------------------------------------
@@ -795,6 +794,103 @@ function Trailing({ g, d }: P) {
   );
 }
 
+
+// ---------------------------------------------------------------------------------------------
+// Pothos: leaves mounded on top of the basket, a few spilling over the rim, and vines cascading below.
+// It is drawn in two layers: PothosBack (behind the basket) and PothosFront (in front of it).
+// ---------------------------------------------------------------------------------------------
+/** A glossy heart leaf with a soft light half and a pale midrib. (x,y) is the stem end; the tip points up at rot=0, down at rot=180. */
+function PothosLeaf({ x, y, rot, s, fill, light }: { x: number; y: number; rot: number; s: number; fill: string; light: string }) {
+  return (
+    <g transform={`translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${rot.toFixed(0)}) scale(${s.toFixed(2)})`}>
+      <path d={POTHOS_LEAF} fill={fill} />
+      <path d="M0 0 C3 3 11 2 11 -6 C11 -14 4 -17 0 -25 C1 -14 2 -6 0 0Z" fill={light} opacity={0.3} />
+      <path d="M0 -1 Q0.6 -11 0 -22" stroke="#d9efb0" strokeWidth={1.3} opacity={0.65} fill="none" strokeLinecap="round" />
+    </g>
+  );
+}
+
+// leaves standing up out of the basket (order = the order they appear as the plant grows)
+const POTHOS_TOP = [
+  { x: 24, y: 18, rot: 0, s: 0.5 }, { x: 19, y: 18, rot: -30, s: 0.5 }, { x: 29, y: 18, rot: 32, s: 0.5 },
+  { x: 14.5, y: 18, rot: -64, s: 0.46 }, { x: 33.5, y: 18, rot: 66, s: 0.46 },
+  { x: 22, y: 18, rot: -12, s: 0.42 }, { x: 27, y: 18, rot: 14, s: 0.42 },
+];
+// leaves spilling over the rim, in front of the basket
+const POTHOS_SPILL = [
+  { x: 13.5, y: 19, rot: 208, s: 0.44 }, { x: 34.5, y: 19, rot: 152, s: 0.44 },
+  { x: 25, y: 20, rot: 176, s: 0.36 },
+];
+// each cascading vine: where it starts, how far it falls, how it sways. `front` vines hang over the basket.
+const POTHOS_VINES = [
+  { x: 12.5, y: 19, len: 52, sway: 3.2, ph: 0.4, drift: -3, front: true },
+  { x: 35.5, y: 19, len: 42, sway: 2.8, ph: 2.1, drift: 3, front: true },
+  { x: 22, y: 31, len: 44, sway: 3.4, ph: 1.2, drift: -1, front: false },
+  { x: 29, y: 31, len: 30, sway: 2.6, ph: 3.3, drift: 2, front: false },
+  { x: 17, y: 31, len: 25, sway: 2.4, ph: 4.4, drift: -2, front: false },
+];
+
+const potVine = (v: (typeof POTHOS_VINES)[number], t: number, reach: number) => ({
+  x: v.x + Math.sin(t * 3.4 + v.ph) * v.sway + v.drift * t,
+  y: v.y + t * reach,
+});
+
+function PothosVine({ v, i, g, d }: { v: (typeof POTHOS_VINES)[number]; i: number; g: number; d: PlantDef }) {
+  const reach = v.len * (0.5 + 0.5 * frac(g));
+  const pts = Array.from({ length: 13 }, (_, k) => potVine(v, k / 12, reach));
+  const path = 'M' + pts.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L');
+  const leafCount = Math.max(2, Math.round(reach / 8.2)); // fewer, well-spaced leaves so the vine itself shows between them
+  return (
+    <g>
+      <path d={path} stroke={d.leaf2} strokeWidth={1.5} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      {Array.from({ length: leafCount }, (_, k) => {
+        const t = (k + 1) / (leafCount + 0.4);
+        const p = potVine(v, t, reach);
+        const side = (k + i) % 2 ? 1 : -1;
+        const tilt = 30 + ((k * 11 + i * 7) % 5) * 7; // 30..58 degrees out from straight down, so every leaf is a little different
+        const sz = Math.max(0.3, 0.5 - t * 0.17 + (((k + i) % 3) - 1) * 0.025); // older leaves near the top are bigger
+        const sx = p.x + side * 1.8;
+        return (
+          <g key={k}>
+            <path d={`M${p.x.toFixed(1)} ${p.y.toFixed(1)} Q${(p.x + side).toFixed(1)} ${(p.y + 1.2).toFixed(1)} ${sx.toFixed(1)} ${(p.y + 1.4).toFixed(1)}`} stroke={d.leaf2} strokeWidth={0.9} fill="none" strokeLinecap="round" />
+            <PothosLeaf x={sx} y={p.y + 1.4} rot={180 + side * tilt} s={sz} fill={(k + i) % 3 === 0 ? d.leaf2 : d.leaf} light="#e4f5a8" />
+          </g>
+        );
+      })}
+      {/* a small new leaf, still curled, at the tip */}
+      <PothosLeaf x={pts[12].x} y={pts[12].y + 0.5} rot={180 + (i % 2 ? 12 : -12)} s={0.26} fill="#7fcf86" light="#e4f5a8" />
+    </g>
+  );
+}
+
+function PothosBack({ g, d }: P) {
+  const f = frac(g);
+  const top = POTHOS_TOP.slice(0, count(f, POTHOS_TOP.length, 3));
+  const vines = POTHOS_VINES.filter(v => !v.front).slice(0, count(f, 3, 2));
+  return (
+    <g>
+      {vines.map((v, i) => <PothosVine key={`b${i}`} v={v} i={i + 2} g={g} d={d} />)}
+      {top.map((l, i) => (
+        <PothosLeaf key={`t${i}`} x={l.x} y={l.y} rot={l.rot} s={l.s * (0.82 + 0.18 * f)} fill={i % 3 === 1 ? d.leaf2 : d.leaf} light="#e4f5a8" />
+      ))}
+    </g>
+  );
+}
+
+function PothosFront({ g, d }: P) {
+  const f = frac(g);
+  const spill = POTHOS_SPILL.slice(0, count(f, POTHOS_SPILL.length, 2));
+  const vines = POTHOS_VINES.filter(v => v.front).slice(0, count(f, 2, 1));
+  return (
+    <g>
+      {vines.map((v, i) => <PothosVine key={`f${i}`} v={v} i={i} g={g} d={d} />)}
+      {spill.map((l, i) => (
+        <PothosLeaf key={`s${i}`} x={l.x} y={l.y} rot={l.rot} s={l.s * (0.82 + 0.18 * f)} fill={i % 2 ? d.leaf : d.leaf2} light="#e4f5a8" />
+      ))}
+    </g>
+  );
+}
+
 /**
  * One arching spider-plant leaf, drawn as a FILLED tapered shape along a curve (not a thick stroke), so it keeps its green
  * body on a light nook just like on a dark one. A pale stripe runs down the middle, fully inside the green.
@@ -898,7 +994,9 @@ export const PlantArt = React.memo(function PlantArt({ def, growth, mount, seedl
   const h = !hanging ? STAND_H : trailing ? TRAIL_H : HANG_H;
   const shift = hanging && !trailing ? BASKET_SHIFT : 0;
   const potY = trailing ? TRAIL_POT_Y : 48 + shift;
-  const Body = def.family === 'trailing' ? Trailing : def.family === 'spider' ? Spider : STANDING[def.family] ?? Bush;
+  const rimY = trailing ? TRAIL_POT_Y : 48; // where the pot's rim is inside the (shifted) plant group
+  const isPothos = def.family === 'trailing' && String(def.opt?.shape ?? 'heart') === 'heart';
+  const Body = isPothos ? PothosBack : def.family === 'trailing' ? Trailing : def.family === 'spider' ? Spider : STANDING[def.family] ?? Bush;
   const potDef: PotStyle = hanging && def.pot.shape === 'taper' && !trailing ? { ...def.pot, shape: 'bowl' } : def.pot;
 
   return (
@@ -919,16 +1017,18 @@ export const PlantArt = React.memo(function PlantArt({ def, growth, mount, seedl
       )}
       <g transform={shift ? `translate(0 ${shift})` : undefined}>
         {seedling ? (
+          // the sprout grows out of the top of the pot: y=48 for standing pots, the rim (potY) for pots hanging at the top
           <g>
-            <path d={`M24 48 L24 38`} stroke={def.leaf2} strokeWidth={2} strokeLinecap="round" />
-            <Blade x={24} y={40} len={9} w={3.2} rot={-50} fill={def.leaf} />
-            <Blade x={24} y={40} len={9} w={3.2} rot={50} fill={def.leaf} />
+            <path d={`M24 ${rimY} L24 ${rimY - 10}`} stroke={def.leaf2} strokeWidth={2} strokeLinecap="round" />
+            <Blade x={24} y={rimY - 8} len={9} w={3.2} rot={-50} fill={def.leaf} />
+            <Blade x={24} y={rimY - 8} len={9} w={3.2} rot={50} fill={def.leaf} />
           </g>
         ) : (
           <Body g={growth} d={def} />
         )}
       </g>
       <Pot pot={potDef} y={potY} basket={hanging} />
+      {isPothos && !seedling && <PothosFront g={growth} d={def} />}
       {seedling && badge && (
         <text x={24} y={potY + 11} textAnchor="middle" fontSize={badge.length > 3 ? 7 : 9} fontWeight="bold" fill={def.pot.text ?? '#fff'}>
           {badge}

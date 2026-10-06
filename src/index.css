@@ -352,3 +352,8 @@
   }
   .rl-scene .plant-label { opacity: 1; transform: translateX(-50%); }
 }
+
+/* Blinking colon on the nook's digital clock (stays steady for people who prefer reduced motion) */
+@keyframes rl-colon-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0.12; } }
+.rl-colon { animation: rl-colon-blink 1s steps(1, end) infinite; }
+@media (prefers-reduced-motion: reduce) { .rl-colon { animation: none; } }

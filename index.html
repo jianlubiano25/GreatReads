@@ -20,7 +20,7 @@
     <!-- Fonts: DM Serif Display for titles; everything else uses the device's own sans-serif -->
     <link rel="preconnect" href="https://covers.openlibrary.org" crossorigin />
     <link rel="dns-prefetch" href="https://openlibrary.org" />
-    <script>try{window.__rlCovers=(JSON.parse(localStorage.getItem("readlife.preload")||"[]")).map(function(u){var i=new Image();i.decoding="async";i.src=u;return i;})}catch(e){}</script>
+    <script>try{window.__rlCovers=(JSON.parse(localStorage.getItem("readlife.preload")||"[]")).filter(function(u){return typeof u==="string"&&u.indexOf("https:")===0}).map(function(u){var i=new Image();i.decoding="async";i.referrerPolicy="no-referrer";i.src=u;return i;})}catch(e){}</script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" />
     <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />

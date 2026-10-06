@@ -6,6 +6,7 @@ import type {
   OwnedPlant,
   PlantPlacement,
   ReadingState,
+  ShelfKey,
   UserProfile,
   WordItem,
 } from '../types';
@@ -34,10 +35,30 @@ const num = (v: unknown): number | undefined => {
   return Number.isFinite(n) ? n : undefined;
 };
 
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const safeKeys = (o: Record<string, any>): string[] => Object.keys(o).filter(k => !UNSAFE_KEYS.has(k));
+
+const httpsUrl = (v: unknown): string | undefined => {
+  if (typeof v !== 'string') return undefined;
+  const value = v.trim();
+  if (/^https:\/\//i.test(value)) return value;
+  if (/^\/\/[^/]/.test(value)) return `https:${value}`;
+  return undefined;
+};
+
+const photoUrl = (v: unknown): string | undefined =>
+  typeof v === 'string' && /^data:image\/(png|jpe?g|webp|gif);/i.test(v.trim()) ? v.trim() : httpsUrl(v);
+
+const hexColor = (v: unknown): string | undefined =>
+  typeof v === 'string' && /^#[0-9a-f]{3,8}$/i.test(v.trim()) ? v.trim() : undefined;
+
+const VALID_SHELVES: ShelfKey[] = ['heal', 'love', 'life', 'joy', 'prize', 'world', 'art', 'mine'];
+const VALID_SOURCES = ['curated', 'openlibrary', 'google', 'manual'] as const;
+
 export function sanitizeNumberRecord(raw: unknown): Record<string, number> {
   const out: Record<string, number> = {};
   if (!isObj(raw)) return out;
-  for (const k of Object.keys(raw)) {
+  for (const k of safeKeys(raw)) {
     const n = num(raw[k]);
     if (n !== undefined) out[String(k)] = n;
   }
@@ -48,7 +69,7 @@ export function sanitizeNumberRecord(raw: unknown): Record<string, number> {
 export function sanitizeDailyLog(raw: unknown): Record<string, number> {
   const out: Record<string, number> = {};
   if (!isObj(raw)) return out;
-  for (const k of Object.keys(raw)) {
+  for (const k of safeKeys(raw)) {
     const n = num(raw[k]);
     if (n !== undefined && DATE_KEY_RE.test(k)) out[k] = Math.max(0, Math.round(n));
   }
@@ -58,7 +79,7 @@ export function sanitizeDailyLog(raw: unknown): Record<string, number> {
 export function sanitizeStatus(raw: unknown): Record<string, BookStatus> {
   const out: Record<string, BookStatus> = {};
   if (!isObj(raw)) return out;
-  for (const k of Object.keys(raw)) {
+  for (const k of safeKeys(raw)) {
     if (VALID_STATUS.includes(raw[k])) out[String(k)] = raw[k];
   }
   return out;
@@ -67,14 +88,14 @@ export function sanitizeStatus(raw: unknown): Record<string, BookStatus> {
 export function sanitizeBoolRecord(raw: unknown): Record<string, boolean> {
   const out: Record<string, boolean> = {};
   if (!isObj(raw)) return out;
-  for (const k of Object.keys(raw)) out[String(k)] = !!raw[k];
+  for (const k of safeKeys(raw)) out[String(k)] = !!raw[k];
   return out;
 }
 
 export function sanitizeNotes(raw: unknown): Record<string, string> {
   const out: Record<string, string> = {};
   if (!isObj(raw)) return out;
-  for (const k of Object.keys(raw)) {
+  for (const k of safeKeys(raw)) {
     if (typeof raw[k] === 'string') out[String(k)] = raw[k];
   }
   return out;
@@ -83,7 +104,7 @@ export function sanitizeNotes(raw: unknown): Record<string, string> {
 export function sanitizeHighlights(raw: unknown): Record<string, HighlightItem[]> {
   const out: Record<string, HighlightItem[]> = {};
   if (!isObj(raw)) return out;
-  for (const key of Object.keys(raw)) {
+  for (const key of safeKeys(raw)) {
     const list = Array.isArray(raw[key]) ? raw[key] : [];
     const items: HighlightItem[] = [];
     list.forEach((h: any, i: number) => {
@@ -106,6 +127,7 @@ export function sanitizeHighlights(raw: unknown): Record<string, HighlightItem[]
 export function sanitizeWords(raw: unknown): WordItem[] {
   if (!Array.isArray(raw)) return [];
   const seen = new Set<string>();
+  const seenIds = new Set<string>();
   const out: WordItem[] = [];
   raw.forEach((r: any, i: number) => {
     if (!isObj(r)) return;
@@ -122,11 +144,15 @@ export function sanitizeWords(raw: unknown): WordItem[] {
     const strList = (v: unknown) =>
       Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : undefined;
 
+    let id = r.id != null ? String(r.id) : String(addedAt);
+    while (seenIds.has(id)) id = `${id}_${i}`;
+    seenIds.add(id);
+
     out.push({
-      id: r.id != null ? String(r.id) : String(addedAt),
+      id,
       word,
       phonetic: str(r.phonetic ?? r.ph),
-      audioUrl: str(r.audioUrl),
+      audioUrl: httpsUrl(r.audioUrl) ?? '',
       partOfSpeech: str(r.partOfSpeech ?? r.pos),
       definition: str(r.definition ?? r.def),
       definitions: strList(r.definitions),
@@ -150,8 +176,13 @@ const GENERIC_SUMMARY = /^(No summary found\.?|Imported book by .*\.|A book by .
 export function sanitizeCustomBooks(raw: unknown): Book[] {
   if (!Array.isArray(raw)) return [];
   const out: Book[] = [];
+  const seenIds = new Set<string>();
   for (const b of raw) {
-    if (!isObj(b) || b.id == null || typeof b.title !== 'string' || !b.title.trim()) continue;
+    if (!isObj(b) || (typeof b.id !== 'string' && typeof b.id !== 'number') || b.id === '') continue;
+    if (UNSAFE_KEYS.has(String(b.id))) continue;
+    if (typeof b.title !== 'string' || !b.title.trim()) continue;
+    if (seenIds.has(String(b.id))) continue;
+    seenIds.add(String(b.id));
     let pageCount = num(b.pageCount) ?? 0;
     let year = str(b.year);
     let difficulty = num(b.difficulty) ?? 0;
@@ -160,19 +191,30 @@ export function sanitizeCustomBooks(raw: unknown): Book[] {
     if (year === 'N/A') year = '';
     const bio = str(b.authorBio);
     const summary = str(b.summary);
+    const rating = num(b.ratingAverage);
     out.push({
-      ...(b as any),
       id: b.id,
       title: b.title,
       author: str(b.author, 'Unknown author'),
-      shelf: b.shelf || 'mine',
+      shelf: VALID_SHELVES.includes(b.shelf) ? b.shelf : 'mine',
       difficulty,
+      notes: typeof b.notes === 'string' ? b.notes : undefined,
+      first12Order: num(b.first12Order),
+      isNew: typeof b.isNew === 'boolean' ? b.isNew : undefined,
       isOnDevice: !!b.isOnDevice,
       year,
       genre: str(b.genre, 'Book'),
       summary: GENERIC_SUMMARY.test(summary.trim()) ? '' : summary,
       authorBio: GENERIC_BIO.test(bio.trim()) ? '' : bio,
       pageCount,
+      coverId: num(b.coverId),
+      coverUrl: httpsUrl(b.coverUrl),
+      ratingAverage: rating !== undefined && rating >= 0 && rating <= 5 ? rating : undefined,
+      ratingCount: num(b.ratingCount),
+      spineColor: hexColor(b.spineColor),
+      source: (VALID_SOURCES as readonly string[]).includes(b.source) ? b.source : undefined,
+      addedAt: num(b.addedAt),
+      awardLabel: typeof b.awardLabel === 'string' ? b.awardLabel : undefined,
     });
   }
   return out;
@@ -182,7 +224,7 @@ export function sanitizeProfile(raw: unknown, fallback: UserProfile): UserProfil
   if (!isObj(raw)) return fallback;
   return {
     name: typeof raw.name === 'string' ? raw.name : fallback.name,
-    photo: typeof raw.photo === 'string' ? raw.photo : fallback.photo,
+    photo: typeof raw.photo === 'string' ? photoUrl(raw.photo) ?? '' : fallback.photo,
     theme: VALID_THEME.includes(raw.theme) ? raw.theme : fallback.theme,
   };
 }
@@ -206,7 +248,7 @@ export function sanitizeGarden(raw: unknown): GardenState | null {
   }
 
   if (isObj(raw.plants)) {
-    for (const id of Object.keys(raw.plants)) {
+    for (const id of safeKeys(raw.plants)) {
       const p = raw.plants[id];
       if (!isObj(p)) continue;
       const owned: OwnedPlant = {
@@ -221,9 +263,9 @@ export function sanitizeGarden(raw: unknown): GardenState | null {
   }
 
   if (isObj(raw.achievements)) {
-    for (const id of Object.keys(raw.achievements)) {
+    for (const id of safeKeys(raw.achievements)) {
       const a = raw.achievements[id];
-      if (!isObj(a) || typeof a.plantId !== 'string' || !a.plantId) continue;
+      if (!isObj(a) || typeof a.plantId !== 'string' || !a.plantId || UNSAFE_KEYS.has(a.plantId)) continue;
       g.achievements[String(id)] = { earnedAt: nonNeg(a.earnedAt) || Date.now(), plantId: a.plantId };
     }
   }
@@ -245,7 +287,7 @@ export function sanitizeGarden(raw: unknown): GardenState | null {
   }
 
   if (isObj(raw.placements)) {
-    for (const id of Object.keys(raw.placements)) {
+    for (const id of safeKeys(raw.placements)) {
       const p = raw.placements[id];
       if (!isObj(p) || typeof p.areaId !== 'string' || !p.areaId || !g.plants[id]) continue;
       const placement: PlantPlacement = { areaId: p.areaId, slot: Math.floor(nonNeg(p.slot)) };
@@ -254,7 +296,7 @@ export function sanitizeGarden(raw: unknown): GardenState | null {
   }
 
   if (isObj(raw.celebrated)) {
-    for (const id of Object.keys(raw.celebrated)) if (raw.celebrated[id]) g.celebrated[String(id)] = true;
+    for (const id of safeKeys(raw.celebrated)) if (raw.celebrated[id]) g.celebrated[String(id)] = true;
   } else {
     // No record of what was celebrated: treat everything already owned as seen so a restore never replays prompts.
     for (const id of Object.keys(g.plants)) g.celebrated[id] = true;

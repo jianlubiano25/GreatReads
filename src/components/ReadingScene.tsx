@@ -5,6 +5,7 @@ import { CoverFace } from './BookMeta';
 import { fetchLocalWeather, setWeatherOverride, getTimePeriod, describeWeather, PERIOD_LABEL, TIME_PERIODS, WEATHER_MODES, WeatherData, WeatherCondition, TimePeriod } from '../services/weather';
 import { subscribeNookPrefs, getNookPrefsVersion, getNookMatchesTheme, getWindowFollowsTime } from '../services/nookPrefs';
 import { GardenArea } from './garden/GardenView';
+import { NookClock } from './NookClock';
 import { MoonPhase, moonPhase, MOON_PHASE_NAMES, MOON_PHASE_EMOJI } from './MoonPhase';
 
 interface Props {
@@ -17,8 +18,19 @@ interface Props {
   onOpenBook: (b: Book) => void;
 }
 
-const Leaf = ({ x, y, r, c, s = 1.5 }: { x: number; y: number; r: number; c: string; s?: number }) => (
-  <ellipse cx={x} cy={y} rx={6 * s} ry={3.2 * s} transform={`rotate(${r} ${x} ${y})`} fill={c} />
+/**
+ * A pointed vine leaf: round at the stem end, drawn to a sharp tip, with a faint centre vein.
+ * (x, y) is where the stem meets the vine; `side` is -1 (left) or 1 (right); `r` tilts the tip upwards.
+ * Size is 5% smaller than the old oval leaf.
+ */
+const LEAF_LEN = 17.1;
+const LEAF_HALF = 4.6;
+const LEAF_D = `M0 0 C${(LEAF_LEN * 0.14).toFixed(1)} ${(-LEAF_HALF * 1.45).toFixed(1)} ${(LEAF_LEN * 0.62).toFixed(1)} ${(-LEAF_HALF * 1.1).toFixed(1)} ${LEAF_LEN} 0 C${(LEAF_LEN * 0.62).toFixed(1)} ${(LEAF_HALF * 1.1).toFixed(1)} ${(LEAF_LEN * 0.14).toFixed(1)} ${(LEAF_HALF * 1.45).toFixed(1)} 0 0Z`;
+const Leaf = ({ x, y, side, r, c }: { x: number; y: number; side: number; r: number; c: string }) => (
+  <g transform={`translate(${x} ${y}) scale(${side} 1) rotate(${-Math.abs(r)})`}>
+    <path d={LEAF_D} fill={c} />
+    <path d={`M1 0 L${LEAF_LEN * 0.82} 0`} stroke="rgba(255,255,255,0.28)" strokeWidth={0.7} strokeLinecap="round" />
+  </g>
 );
 
 // Window climbing vine
@@ -159,7 +171,7 @@ export function ReadingScene({
   }, [prefsVersion]);
 
   // Screen width & shelves. Phones keep the compact 7-books-wide, 2-shelf nook. On wider screens (iPad, desktop) the
-  // shelves are measured, so every row is filled with as many books as really fit, and iPad-size screens get a third shelf.
+  // shelves are measured, so every row is filled with as many books as really fit.
   const [viewW, setViewW] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 390));
   useEffect(() => {
     const onResize = () => setViewW(window.innerWidth);
@@ -177,13 +189,16 @@ export function ReadingScene({
     return () => ro.disconnect();
   }, []);
 
-  const SPINE_W = 44;
+  // iPad-size screens keep two shelves but use bigger covers, with a little air between the shelves.
+  const big = viewW >= 768;
+  const SPINE_W = big ? 56 : 44;
+  const SPINE_H = Math.round(SPINE_W * 1.5);
+  const SHELF_GAP = big ? 14 : 0; // space between the two shelves
   const SPINE_GAP = 3;
   const SHELF_PAD = 8; // px-1 on each side
-  const fit = shelfW > 0 ? Math.floor((shelfW - SHELF_PAD + SPINE_GAP) / (SPINE_W + SPINE_GAP)) : 12;
-  const perShelf = wide ? Math.min(24, Math.max(8, fit)) : 7;
-  const shelfRows = viewW >= 768 ? 3 : 2;
-  const shelves = Array.from({ length: shelfRows }, (_, i) => books.slice(i * perShelf, (i + 1) * perShelf));
+  const fit = shelfW > 0 ? Math.floor((shelfW - SHELF_PAD + SPINE_GAP) / (SPINE_W + SPINE_GAP)) : 8;
+  const perShelf = wide ? Math.min(24, Math.max(6, fit)) : 7;
+  const shelves = [0, 1].map(i => books.slice(i * perShelf, (i + 1) * perShelf));
 
   // Count total days with 10+ pages
   const tenPageDays = useMemo(() => {
@@ -206,8 +221,18 @@ export function ReadingScene({
     `${describeWeather(cond, per)}${per === 'night' && cond === 'clear' ? ` · ${moonName}` : ''}`;
 
   const handleCycleWeather = () => {
-    const nextCond = WEATHER_MODES[(WEATHER_MODES.indexOf(weather.condition) + 1) % WEATHER_MODES.length];
-    reqId.current++; // any lookup still in flight is now out of date
+    const nextIndex = WEATHER_MODES.indexOf(weather.condition) + 1;
+    if (weather.source === 'manual' && nextIndex === WEATHER_MODES.length) {
+      const id = ++reqId.current;
+      setWeatherOverride('auto');
+      fetchLocalWeather().then(nextWeather => {
+        if (nextWeather && id === reqId.current) setWeather(nextWeather);
+      });
+      showTip('Automatic weather');
+      return;
+    }
+    const nextCond = WEATHER_MODES[nextIndex % WEATHER_MODES.length];
+    reqId.current++;
     setWeatherOverride(nextCond);
     setWeather(prev => ({ ...prev, condition: nextCond, description: describeWeather(nextCond, prev.period), source: 'manual' }));
     showTip(describe(nextCond, period));
@@ -411,7 +436,7 @@ export function ReadingScene({
               />
               {VINE_LEAVES.map((l, i) => (
                 <g key={i} style={grow(true, vineG >= l.t - 0.02, `${l.x}px ${l.y}px`)}>
-                  <Leaf x={l.x + l.side * 6} y={l.y} r={l.side * 35} c={i % 2 ? '#4e7f55' : '#71ab7a'} s={1.5} />
+                  <Leaf x={l.x} y={l.y} side={l.side} r={35} c={i % 2 ? '#4e7f55' : '#71ab7a'} />
                 </g>
               ))}
               {VINE_FLOWERS.map((f, i) => (
@@ -463,9 +488,11 @@ export function ReadingScene({
         </div>
 
         {/* Bookshelves */}
-        <div ref={shelfRef} className="flex-1 min-w-0 flex flex-col">
+        <div className="flex-1 min-w-0 flex flex-col">
+          <NookClock weather={weather} dark={nookDark} large={big} />
+          <div ref={shelfRef} className="flex flex-col">
           {shelves.map((row, i) => (
-            <div key={i} className="flex items-end gap-[3px] justify-start px-1" style={{ borderBottom: '7px solid #8a5a3b', minHeight: 66 }}>
+            <div key={i} className="flex items-end gap-[3px] justify-start px-1" style={{ borderBottom: '7px solid #8a5a3b', minHeight: SPINE_H, marginTop: i > 0 ? SHELF_GAP : 0 }}>
               {row.map(b => (
                 <button
                   key={b.id}
@@ -489,6 +516,7 @@ export function ReadingScene({
               ))}
             </div>
           ))}
+          </div>
         </div>
       </div>
 

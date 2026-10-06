@@ -138,7 +138,7 @@ export const NowReadingCard = React.memo(function NowReadingCard({
               key={`${b.id}-${currentP}`}
               defaultValue={currentP}
               onBlur={e => {
-                const v = clamp(Number(e.target.value) || 0);
+                const v = clamp(Math.round(Number(e.target.value)) || 0);
                 if (v !== currentP) onProgress(b.id, v, totalP || undefined);
               }}
               onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
@@ -331,22 +331,33 @@ export const LibraryCard = React.memo(function LibraryCard({
 });
 
 export const DeviceCard = React.memo(function DeviceCard({
-  book: b, highlightCount, onOpen, onQuotes, onMoveToList, onRemoveFromDevice,
+  book: b, status, finished, highlightCount, onOpen, onQuotes, onMoveToList, onRemoveFromDevice, onReadAgain,
 }: ShelfCardProps & {
+  status: BookStatus;
+  finished?: boolean;
   onMoveToList: (id: string | number) => void;
   onRemoveFromDevice: (b: Book) => void;
+  onReadAgain: (id: string | number) => void;
 }) {
+  const inList = status === 'next' || status === 'now';
   return (
     <div className={`p-4 ${CARD} flex flex-col justify-between gap-3`} style={{ borderLeftColor: b.spineColor || '#2e5934' }}>
       <ShelfCardTop book={b} onOpen={onOpen} />
 
       <div className="flex items-center gap-2 pt-2 border-t border-[#e3d7c3] dark:border-[#382f25]">
-        <button
-          onClick={() => onMoveToList(b.id)}
-          className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] text-center"
-        >
-          Move to Reading List
-        </button>
+        {finished ? (
+          <button onClick={() => onReadAgain(b.id)} className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] text-center">
+            Read again
+          </button>
+        ) : inList ? (
+          <span className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold text-center text-[#2e5934] dark:text-[#86b880] bg-[#2e5934]/10">
+            {status === 'now' ? 'Reading now' : 'In your reading list'}
+          </span>
+        ) : (
+          <button onClick={() => onMoveToList(b.id)} className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] text-center">
+            Add to reading list
+          </button>
+        )}
 
         <button onClick={() => onQuotes(b)} className={ICON_BTN} title="View quotes & highlights" aria-label={`Quotes${highlightCount ? ` (${highlightCount})` : ''}`}>
           <Bookmark className="w-4 h-4 text-[#925838]" />
@@ -355,8 +366,8 @@ export const DeviceCard = React.memo(function DeviceCard({
         <button
           onClick={() => onRemoveFromDevice(b)}
           className="p-1.5 rounded-lg text-[#706256] dark:text-[#a89a8a] hover:text-red-500"
-          title="Remove from device (stays in Library)"
-          aria-label={`Remove ${b.title} from device`}
+          title={finished ? 'Remove from my books' : 'Remove from device (stays in Library)'}
+          aria-label={finished ? `Remove ${b.title} from my books` : `Remove ${b.title} from device`}
         >
           <Trash2 className="w-4 h-4" />
         </button>
@@ -376,7 +387,8 @@ export const WordCard = React.memo(function WordCard({
   onToggleLearned: (id: string) => void;
   onDelete: (w: WordItem) => void;
 }) {
-  const built = BUILTIN_DICTIONARY[(w.word || '').toLowerCase()];
+  const lowerWord = (w.word || '').toLowerCase();
+  const built = Object.hasOwn(BUILTIN_DICTIONARY, lowerWord) ? BUILTIN_DICTIONARY[lowerWord] : undefined;
   const phonetic = w.phonetic || built?.phonetic;
   const pos = w.partOfSpeech || built?.partOfSpeech;
 

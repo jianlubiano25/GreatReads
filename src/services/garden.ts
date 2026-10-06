@@ -47,7 +47,7 @@ const keyToLocalDate = (key: string): Date => {
   return new Date(y, (m || 1) - 1, d || 1);
 };
 
-/** Consecutive goal-met days ending today (or yesterday when today is not met yet). Same rule the app always used. */
+/** Consecutive goal-met days ending today (or yesterday when today is not met yet). */
 export function currentStreakFor(dailyLog: Record<string, number>, goal: number, todayKey: string): number {
   let count = 0;
   const check = keyToLocalDate(todayKey);
@@ -62,7 +62,7 @@ export function currentStreakFor(dailyLog: Record<string, number>, goal: number,
   return count;
 }
 
-/** Sorted day numbers of every day that met the goal. */
+/** Sorted day numbers of every day that met the goal. A goal change applies to every day, past and present. */
 function metDays(dailyLog: Record<string, number>, goal: number): number[] {
   return Object.keys(dailyLog)
     .filter(k => (Number(dailyLog[k]) || 0) >= goal)
@@ -300,6 +300,20 @@ export function markCelebrated(garden: GardenState, plantIds: string[]): GardenS
 /** The first milestone (by order) that has not been earned yet: its plant is the one "growing" next. */
 export function nextMilestone(garden: GardenState): MilestoneDef | undefined {
   return MILESTONES.find(m => !garden.achievements[m.id]);
+}
+
+export function growingMilestones(garden: GardenState): MilestoneDef[] {
+  const seen = new Set<string>();
+  const milestones: MilestoneDef[] = [];
+  for (const milestone of MILESTONES) {
+    if (garden.achievements[milestone.id] || seen.has(milestone.unlock.metric)) continue;
+    seen.add(milestone.unlock.metric);
+    milestones.push(milestone);
+  }
+  return milestones
+    .map(milestone => ({ milestone, fraction: milestoneProgress(milestone, garden.peaks).fraction }))
+    .sort((a, b) => b.fraction - a.fraction || a.milestone.order - b.milestone.order)
+    .map(entry => entry.milestone);
 }
 
 export interface PlacedPlant {

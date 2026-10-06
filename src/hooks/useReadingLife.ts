@@ -11,7 +11,7 @@ const LEGACY_KEY = 'readlife.v1';
 const RECOVERY_KEY = 'readlife.v2.recovery';
 const SAVE_DELAY_MS = 350;
 // Things the app can download again if they are ever lost; safe to clear when storage is full
-const CACHE_KEYS = ['readlife.store1', 'readlife.store2', 'readlife.meta2', 'readlife.meta3', 'readlife.covers1', 'readlife.preload', 'readlife.loaded', 'readlife.phoneticTried'];
+const CACHE_KEYS = ['readlife.store1', 'readlife.store2', 'readlife.store3', 'readlife.meta2', 'readlife.meta3', 'readlife.covers1', 'readlife.covers2', 'readlife.preload', 'readlife.loaded', 'readlife.phoneticTried', 'readlife.coverFix1', 'readlife.coverNone1', 'readlife.coverFix2', 'readlife.coverNone2'];
 
 export function getTodayKey(): string {
   return dateKey(); // "YYYY-MM-DD" in local time
@@ -423,7 +423,8 @@ export function useReadingLife() {
   }, []);
 
   const setGoal = useCallback((goal: number) => {
-    setState(prev => ({ ...prev, goal: Math.max(1, goal) }));
+    // One goal for every day: changing it re-judges your whole history (streaks, best week, plants) with the new number.
+    setState(prev => (Math.max(1, goal) === prev.goal ? prev : { ...prev, goal: Math.max(1, goal) }));
   }, []);
 
   const addWord = useCallback((newWord: WordItem) => {

@@ -18,6 +18,7 @@ import { NowReadingCard, UpNextCard, LibraryCard, DeviceCard, WordCard } from '.
 import { CoverFace } from './components/BookMeta';
 import { MissingCoversButton } from './components/MissingCoversButton';
 import { StoreShelf } from './components/StoreShelf';
+import { bookKind } from './services/bookKind';
 
 // Icons
 import {
@@ -185,7 +186,11 @@ export default function App() {
     let cancelled = false;
     (async () => {
       const todo = state.words
-        .filter(w => !w.phonetic && !BUILTIN_DICTIONARY[(w.word || '').toLowerCase()]?.phonetic && !tried.has(w.id))
+        .filter(w => {
+          const lower = (w.word || '').toLowerCase();
+          const builtinPhonetic = Object.hasOwn(BUILTIN_DICTIONARY, lower) ? BUILTIN_DICTIONARY[lower].phonetic : undefined;
+          return !w.phonetic && !builtinPhonetic && !tried.has(w.id);
+        })
         .slice(0, 12);
       for (const w of todo) {
         if (cancelled) return;
@@ -241,24 +246,32 @@ export default function App() {
     return allBooks.filter(b => statusMap[String(b.id)] === 'next');
   }, [allBooks, state.status]);
 
+  const libraryBooks = useMemo(() => {
+    const statusMap = state.status || {};
+    return allBooks.filter(b => statusMap[String(b.id)] !== 'done');
+  }, [allBooks, state.status]);
+
+  const finishedBooks = useMemo(() => {
+    const statusMap = state.status || {};
+    return allBooks.filter(b => statusMap[String(b.id)] === 'done');
+  }, [allBooks, state.status]);
+
   const onDeviceBooks = useMemo(() => {
-    return allBooks.filter(b => b.isOnDevice);
-  }, [allBooks]);
+    const statusMap = state.status || {};
+    return allBooks.filter(b => b.isOnDevice && statusMap[String(b.id)] !== 'done');
+  }, [allBooks, state.status]);
 
   const devicePages = useMemo(() => {
     let known = 0;
     let unknown = 0;
-    for (const b of onDeviceBooks) {
+    for (const b of [...onDeviceBooks, ...finishedBooks]) {
       if (b.pageCount) known += b.pageCount;
       else unknown++;
     }
     return { known, unknown };
-  }, [onDeviceBooks]);
+  }, [onDeviceBooks, finishedBooks]);
 
-  const finishedCount = useMemo(() => {
-    const statusMap = state.status || {};
-    return allBooks.filter(b => statusMap[String(b.id)] === 'done').length;
-  }, [allBooks, state.status]);
+  const finishedCount = finishedBooks.length;
 
   // Totals for the profile's Achievements card
   const stats = useMemo(() => {
@@ -274,12 +287,12 @@ export default function App() {
     return { pagesRead, finished, toRead };
   }, [allBooks, state.status, state.dailyLog]);
 
-  // Books shown on the scene shelves, taken from your Library: reading now, finished, next, then the rest (covers only)
+  // Books shown on the scene shelves: finished books are kept off the nook shelf.
   const sceneBooks = useMemo(() => {
     const st = state.status || {};
-    const rank = (b: Book) => (st[String(b.id)] === 'now' ? 0 : st[String(b.id)] === 'done' ? 1 : st[String(b.id)] === 'next' ? 2 : 3);
-    return allBooks.filter(b => b.coverId || b.coverUrl).slice().sort((x, y) => rank(x) - rank(y)).slice(0, 72); // the nook shows as many as fit (phones 14, iPad up to ~54)
-  }, [allBooks, state.status]);
+    const rank = (b: Book) => (st[String(b.id)] === 'now' ? 0 : st[String(b.id)] === 'next' ? 1 : 2);
+    return libraryBooks.filter(b => b.coverId || b.coverUrl).slice().sort((x, y) => rank(x) - rank(y)).slice(0, 72);
+  }, [libraryBooks, state.status]);
 
   // Remember the covers you'll see first (the nook shelves, then reading now / up next) so the next launch can start
   // loading them before the app code runs. Same 'M' size URLs the nook and cards request, so it is one shared cache.
@@ -327,8 +340,7 @@ export default function App() {
 
   // Library filtered books (includes all catalog challenge books + custom books)
   const filteredLibraryBooks = useMemo(() => {
-    let list = allBooks;
-    const statusMap = state.status || {};
+    const list = libraryBooks;
     if (libFilter === 'f') {
       return list.filter(b => b.first12Order && b.first12Order > 0).sort((a, b) => (a.first12Order || 0) - (b.first12Order || 0));
     }
@@ -338,14 +350,15 @@ export default function App() {
     if (libFilter === 'aw') {
       return list.filter(b => typeof b.id === 'number' && (BOOK_AWARDS[b.id] || []).length > 0);
     }
-    if (libFilter === 'done') {
-      return list.filter(b => statusMap[String(b.id)] === 'done');
+    if (libFilter === 'fic' || libFilter === 'nf') {
+      const expected = libFilter === 'fic' ? 'fiction' : 'nonfiction';
+      return list.filter(b => bookKind(b) === expected);
     }
     if (libFilter === 'all') {
       return list;
     }
     return list.filter(b => b.shelf === libFilter);
-  }, [allBooks, libFilter, state.status]);
+  }, [libraryBooks, libFilter]);
 
   // Filtered words
   const filteredWords = useMemo(() => {
@@ -379,15 +392,21 @@ export default function App() {
   const handleOpenHighlights = useCallback((book: Book) => setSelectedBookForHighlights(book), []);
   const startReading = useCallback((id: string | number) => setBookStatus(id, 'now'), [setBookStatus]);
   const moveToReadingList = useCallback((id: string | number) => {
-    toggleOnDevice(id, false);
     setBookStatus(id, 'next');
-  }, [toggleOnDevice, setBookStatus]);
+  }, [setBookStatus]);
+  const readAgain = useCallback((id: string | number) => setBookStatus(id, 'list'), [setBookStatus]);
   const confirmRemoveFromLibrary = useCallback((b: Book) => {
-    if (confirm(`Remove "${b.title}" from library?`)) removeBook(b.id);
+    const message = b.isOnDevice
+      ? `Remove "${b.title}" from your books? It is also on your device, and its notes and highlights will be removed too.`
+      : `Remove "${b.title}" from library?`;
+    if (confirm(message)) removeBook(b.id);
   }, [removeBook]);
   const confirmRemoveFromDevice = useCallback((b: Book) => {
     if (confirm(`Remove "${b.title}" from your device? It stays in your Library.`)) toggleOnDevice(b.id, false);
   }, [toggleOnDevice]);
+  const confirmRemoveFinished = useCallback((b: Book) => {
+    if (confirm(`Remove "${b.title}" from your finished books? Its notes and highlights will be removed too.`)) removeBook(b.id);
+  }, [removeBook]);
   const editWord = useCallback((w: WordItem) => setShowLookupModal({ open: true, existingWord: w }), []);
   const lookupAgain = useCallback((word: string) => setShowLookupModal({ open: true, initialWord: word }), []);
   const confirmDeleteWord = useCallback((w: WordItem) => {
@@ -716,7 +735,7 @@ export default function App() {
                   Library
                 </h2>
                 <p className="text-xs sm:text-sm text-[#706256] dark:text-[#a89a8a]">
-                  Your reading challenge lists and new suggestions. Tap any cover to see author, year &amp; page count.
+                  Your reading list. Finished books move to On my device. Tap any cover to see author, year &amp; page count.
                 </p>
               </div>
 
@@ -742,7 +761,8 @@ export default function App() {
                 ['art', '🎵 Art & music'],
                 ['aw', '🏆 Prize winners'],
                 ['s', 'New suggestions'],
-                ['done', 'Finished'],
+                ['fic', '📖 Fiction'],
+                ['nf', '🧭 Non-fiction'],
                 ['all', 'All Books'],
               ].map(([k, label]) => (
                 <button
@@ -907,7 +927,7 @@ export default function App() {
                   On my device
                 </h2>
                 <p className="text-xs sm:text-sm text-[#706256] dark:text-[#a89a8a]">
-                  Books downloaded or available on your device. Separate from your reading list until you move one over.
+                  Books you keep on your device, plus everything you've finished. A book can be here and in your Library at once.
                 </p>
               </div>
 
@@ -930,7 +950,7 @@ export default function App() {
 
             {/* Total Books on Device counter */}
             <div className="flex items-center gap-2 text-xs text-[#706256] dark:text-[#a89a8a]">
-              <span><b>{onDeviceBooks.length}</b> books on device</span>
+              <span><b>{onDeviceBooks.length + finishedBooks.length}</b> books on device{finishedBooks.length > 0 ? ` (${finishedBooks.length} finished)` : ''}</span>
               <span>·</span>
               {devicePages.known > 0 && (
                 <span>
@@ -940,7 +960,7 @@ export default function App() {
               )}
             </div>
 
-            {onDeviceBooks.length === 0 ? (
+            {onDeviceBooks.length === 0 && finishedBooks.length === 0 ? (
               <div className="p-12 text-center text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-2xl border border-[#e3d7c3] dark:border-[#382f25] flex flex-col items-center gap-3">
                 <Smartphone className="w-10 h-10 text-[#2e5934] opacity-70" />
                 <div>
@@ -959,19 +979,46 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {onDeviceBooks.map(b => (
-                  <DeviceCard
-                    key={b.id}
-                    book={b}
-                    highlightCount={(state.highlights[String(b.id)] || []).length}
-                    onOpen={handleOpenCover}
-                    onQuotes={handleOpenHighlights}
-                    onMoveToList={moveToReadingList}
-                    onRemoveFromDevice={confirmRemoveFromDevice}
-                  />
-                ))}
-              </div>
+              <>
+                {onDeviceBooks.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {onDeviceBooks.map(b => (
+                      <DeviceCard
+                        key={b.id}
+                        book={b}
+                        status={state.status[String(b.id)] || noStatus}
+                        highlightCount={(state.highlights[String(b.id)] || []).length}
+                        onOpen={handleOpenCover}
+                        onQuotes={handleOpenHighlights}
+                        onMoveToList={moveToReadingList}
+                        onRemoveFromDevice={confirmRemoveFromDevice}
+                        onReadAgain={readAgain}
+                      />
+                    ))}
+                  </div>
+                )}
+                {finishedBooks.length > 0 && (
+                  <section className="flex flex-col gap-3" aria-label="Finished books">
+                    <h3 className="font-serif-display text-xl text-[#201a15] dark:text-[#f0e6d6]">Finished ({finishedBooks.length})</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {finishedBooks.map(b => (
+                        <DeviceCard
+                          key={b.id}
+                          book={b}
+                          finished
+                          status="done"
+                          highlightCount={(state.highlights[String(b.id)] || []).length}
+                          onOpen={handleOpenCover}
+                          onQuotes={handleOpenHighlights}
+                          onMoveToList={moveToReadingList}
+                          onRemoveFromDevice={confirmRemoveFinished}
+                          onReadAgain={readAgain}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </>
             )}
           </div>
         </TabPane>
@@ -1031,7 +1078,7 @@ export default function App() {
           >
             <Icon className="rl-tab-icon" strokeWidth={tab === id ? 2.2 : 1.8} />
             <span className="rl-tab-label">{label}</span>
-            {id === 'dev' && onDeviceBooks.length > 0 && <i className="rl-tab-dot" aria-hidden="true" />}
+            {id === 'dev' && onDeviceBooks.length + finishedBooks.length > 0 && <i className="rl-tab-dot" aria-hidden="true" />}
           </button>
         ))}
       </nav>
@@ -1040,8 +1087,8 @@ export default function App() {
       {selectedBookForDetail && (
         <AppleBookDetailModal
           book={selectedBookForDetail}
-          inLibrary={!selectedBookForDetail.isOnDevice && allBooks.some(b => b.id === selectedBookForDetail.id && !b.isOnDevice)}
-          onDevice={selectedBookForDetail.isOnDevice || allBooks.some(b => b.id === selectedBookForDetail.id && b.isOnDevice)}
+          inLibrary={libraryBooks.some(b => b.id === selectedBookForDetail.id)}
+          onDevice={allBooks.some(b => b.id === selectedBookForDetail.id && (b.isOnDevice || state.status[String(b.id)] === 'done'))}
           readingStatus={state.status[String(selectedBookForDetail.id)]}
           currentPage={state.currentPage[String(selectedBookForDetail.id)]}
           totalPages={state.totalPages[String(selectedBookForDetail.id)]}

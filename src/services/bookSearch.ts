@@ -24,134 +24,174 @@ export function getCoverUrl(coverId?: number, size: 'S' | 'M' | 'L' = 'M', custo
   return `https://covers.openlibrary.org/b/id/${coverId}-${size}.jpg`;
 }
 
+const SEARCH_FIELDS = 'key,title,author_name,author_key,first_publish_year,cover_i,ratings_average,ratings_count,number_of_pages_median,subject';
+const SEARCH_TIMEOUT_MS = 6500;
+
+/** Lower-case, accent-free, letters and digits only: "Brontë!" and "bronte" compare equal. */
+const normQ = (s: string) =>
+  s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+/** One search request that gives up after a few seconds, or as soon as the caller cancels. Never throws. */
+async function searchJson(url: string, outer?: AbortSignal): Promise<any | null> {
+  if (outer?.aborted) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+  const onAbort = () => controller.abort();
+  outer?.addEventListener('abort', onAbort);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+    outer?.removeEventListener('abort', onAbort);
+  }
+}
+
+const difficultyFor = (pages: number) => (!pages ? 0 : pages > 450 ? 3 : pages > 250 ? 2 : 1);
+
+function openLibraryBooks(data: any): Book[] {
+  const docs: SearchDoc[] = (data && data.docs) || [];
+  return docs.map((doc, idx) => {
+    const authorName = (doc.author_name && doc.author_name[0]) || 'Unknown Author';
+    const pages = doc.number_of_pages_median || 0;
+    return {
+      id: `ol_${(doc.key || String(Date.now() + idx)).replace(/\W/g, '_')}`,
+      title: doc.title,
+      author: authorName,
+      shelf: 'mine',
+      difficulty: difficultyFor(pages),
+      isOnDevice: false,
+      year: doc.first_publish_year ? String(doc.first_publish_year) : '',
+      genre: genreFromSubjects(doc.subject) || 'Book',
+      summary: `A distinguished work by ${authorName}.`,
+      authorBio: '',
+      pageCount: pages,
+      coverId: doc.cover_i,
+      ratingAverage: doc.ratings_average ? Number(doc.ratings_average.toFixed(1)) : undefined,
+      ratingCount: doc.ratings_count,
+      spineColor: '#6b6f80',
+      source: 'openlibrary',
+      addedAt: Date.now(),
+    } as Book;
+  });
+}
+
+function googleBooks(data: any, fallbackTitle: string): Book[] {
+  return ((data && data.items) || []).map((item: any, idx: number) => {
+    const info = item.volumeInfo || {};
+    const authorName = (info.authors && info.authors[0]) || 'Unknown Author';
+    const pages = info.pageCount || 0;
+    const thumb = info.imageLinks?.thumbnail || info.imageLinks?.smallThumbnail || '';
+    return {
+      id: `gb_${item.id || Date.now() + idx}`,
+      title: info.title || fallbackTitle,
+      author: authorName,
+      shelf: 'mine',
+      difficulty: difficultyFor(pages),
+      isOnDevice: false,
+      year: info.publishedDate ? String(info.publishedDate).slice(0, 4) : '',
+      genre: (info.categories || []).join(', ') || 'General',
+      summary: info.description ? String(info.description).slice(0, 500) : `A book by ${authorName}.`,
+      authorBio: '',
+      pageCount: pages,
+      coverUrl: thumb.replace(/^http:\/\//i, 'https://'),
+      ratingAverage: info.averageRating || undefined,
+      ratingCount: info.ratingsCount || undefined,
+      spineColor: '#8a5a3b',
+      source: 'google',
+      addedAt: Date.now(),
+    } as Book;
+  });
+}
+
+/** How well a result fits what was typed: exact title first, then title starts/contains it, then author name matches. */
+export function searchRelevance(b: Book, qTitle: string, qAuthor = ''): number {
+  const q = normQ(qTitle);
+  const t = normQ(b.title || '');
+  const a = normQ(b.author || '');
+  let score = 0;
+  if (q && t) {
+    if (t === q) score += 100;
+    else if (t.startsWith(`${q} `)) score += 70;
+    else if (` ${t} `.includes(` ${q} `)) score += 55;
+    else {
+      const words = q.split(' ').filter(w => w.length > 1);
+      const hit = words.filter(w => ` ${t} `.includes(` ${w} `)).length;
+      score += words.length ? (40 * hit) / words.length : 0;
+    }
+    // Someone typing an author's name (e.g. "josh silver") wants that author's books
+    if (q.split(' ').every(w => ` ${a} `.includes(` ${w} `))) score += 60;
+  }
+  if (qAuthor) {
+    const last = normQ(qAuthor).split(' ').pop();
+    if (last && ` ${a} `.includes(` ${last} `)) score += 50;
+  }
+  if (b.coverId || b.coverUrl) score += 4;
+  score += Math.min(5, Math.log10((b.ratingCount || 0) + 1));
+  const year = Number(b.year);
+  if (year && year >= new Date().getFullYear() - 2) score += 3; // brand-new releases are often what people look for
+  return score;
+}
+
+const sameResult = (a: Book, b: Book) =>
+  normQ(a.title || '') === normQ(b.title || '') && (normQ(a.author || '').split(' ').pop() || '') === (normQ(b.author || '').split(' ').pop() || '');
+
+/** The same book from two places becomes one result that keeps the best of both (a cover, page count, rating, synopsis). */
+function mergeResult(a: Book, b: Book): Book {
+  const out: Book = { ...a };
+  if (!out.coverId && !out.coverUrl) {
+    if (b.coverId) out.coverId = b.coverId;
+    else if (b.coverUrl) out.coverUrl = b.coverUrl;
+  }
+  if (!out.pageCount && b.pageCount) { out.pageCount = b.pageCount; out.difficulty = b.difficulty; }
+  if (!out.year && b.year) out.year = b.year;
+  if (!out.ratingAverage && b.ratingAverage) { out.ratingAverage = b.ratingAverage; out.ratingCount = b.ratingCount; }
+  if (/^A distinguished work by/.test(out.summary || '') && b.summary && !/^A book by/.test(b.summary)) out.summary = b.summary;
+  if ((out.genre === 'Book' || out.genre === 'General') && b.genre && b.genre !== 'General') out.genre = b.genre;
+  return out;
+}
+
 /**
- * Search books via OpenLibrary with Google Books API fallback
+ * Search for books. Open Library and Google Books are asked AT THE SAME TIME and their answers are merged, because
+ * each one misses things the other has: Open Library is slow to list brand-new releases, and a plain title search can
+ * be crowded out by unrelated books. Results are de-duplicated and ranked so the closest title match comes first.
  */
 export async function searchOnlineBooks(title: string, author: string = '', limit = 10, outerSignal?: AbortSignal): Promise<Book[]> {
   const qTitle = title.trim();
   const qAuthor = author.trim();
   if (!qTitle) return [];
 
-  // Try Open Library first
-  try {
-    const params = new URLSearchParams({
-      limit: String(limit),
-      fields: 'key,title,author_name,author_key,first_publish_year,cover_i,ratings_average,ratings_count,number_of_pages_median,subject',
-    });
-    if (qAuthor) {
-      params.append('title', qTitle);
-      params.append('author', qAuthor);
-    } else {
-      params.append('q', qTitle); // title, author or keyword
-    }
+  const olBase = { limit: String(Math.max(limit, 10)), fields: SEARCH_FIELDS };
+  const ol = (extra: Record<string, string>) => `https://openlibrary.org/search.json?${new URLSearchParams({ ...olBase, ...extra })}`;
+  const gbQuery = qAuthor ? `intitle:"${qTitle}" inauthor:"${qAuthor}"` : `intitle:"${qTitle}"`;
+  const gb = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(gbQuery)}&maxResults=10&printType=books`;
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 7000);
-    const onOuterAbort = () => controller.abort();
-    outerSignal?.addEventListener('abort', onOuterAbort);
-    let res: Response;
-    try {
-      res = await fetch(`https://openlibrary.org/search.json?${params.toString()}`, {
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
-      outerSignal?.removeEventListener('abort', onOuterAbort);
-    }
+  const requests: Promise<Book[]>[] = qAuthor
+    ? [searchJson(ol({ title: qTitle, author: qAuthor }), outerSignal).then(openLibraryBooks)]
+    : [
+        searchJson(ol({ q: qTitle }), outerSignal).then(openLibraryBooks), // title, author or keyword
+        searchJson(ol({ title: qTitle }), outerSignal).then(openLibraryBooks), // titles only: far fewer unrelated hits
+      ];
+  requests.push(searchJson(gb, outerSignal).then(d => googleBooks(d, qTitle)));
 
-    if (res.ok) {
-      const data = await res.json();
-      const docs: SearchDoc[] = data.docs || [];
-      if (docs.length > 0) {
-        return docs.map((doc, idx) => {
-          const authorName = (doc.author_name && doc.author_name[0]) || 'Unknown Author';
-          const year = doc.first_publish_year ? String(doc.first_publish_year) : '';
-          const pages = doc.number_of_pages_median || 0;
-          const genre = genreFromSubjects(doc.subject) || 'Book';
-
-          const bookId = `ol_${(doc.key || String(Date.now() + idx)).replace(/\W/g, '_')}`;
-
-          return {
-            id: bookId,
-            title: doc.title,
-            author: authorName,
-            shelf: 'mine',
-            difficulty: !pages ? 0 : pages > 450 ? 3 : pages > 250 ? 2 : 1,
-            isOnDevice: false,
-            year,
-            genre,
-            summary: `A distinguished work by ${authorName}.`,
-            authorBio: '',
-            pageCount: pages,
-            coverId: doc.cover_i,
-            ratingAverage: doc.ratings_average ? Number(doc.ratings_average.toFixed(1)) : undefined,
-            ratingCount: doc.ratings_count,
-            spineColor: '#6b6f80',
-            source: 'openlibrary',
-            addedAt: Date.now(),
-          };
-        });
-      }
-    }
-  } catch (err) {
-    console.warn('Open Library search failed, attempting Google Books fallback...', err);
-  }
-
+  const lists = await Promise.all(requests);
   if (outerSignal?.aborted) return [];
 
-  // Fallback: Google Books API
-  try {
-    const q = encodeURIComponent(`${qTitle} ${qAuthor}`.trim());
-    const gController = new AbortController();
-    const gTimeout = setTimeout(() => gController.abort(), 7000);
-    const onOuterAbort = () => gController.abort();
-    outerSignal?.addEventListener('abort', onOuterAbort);
-    let res: Response;
-    try {
-      res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=8`, { signal: gController.signal });
-    } finally {
-      clearTimeout(gTimeout);
-      outerSignal?.removeEventListener('abort', onOuterAbort);
-    }
-    if (res.ok) {
-      const data = await res.json();
-      const items = data.items || [];
-      return items.map((item: any, idx: number) => {
-        const info = item.volumeInfo || {};
-        const authorName = (info.authors && info.authors[0]) || 'Unknown Author';
-        const year = info.publishedDate ? info.publishedDate.slice(0, 4) : '';
-        const pages = info.pageCount || 0;
-        const categories = (info.categories || []).join(', ') || 'General';
-        const thumb = info.imageLinks?.thumbnail || info.imageLinks?.smallThumbnail || '';
-        // Ensure https
-        const secureThumb = thumb.replace(/^http:\/\//i, 'https://');
-
-        return {
-          id: `gb_${item.id || Date.now() + idx}`,
-          title: info.title || qTitle,
-          author: authorName,
-          shelf: 'mine',
-          difficulty: !pages ? 0 : pages > 450 ? 3 : pages > 250 ? 2 : 1,
-          isOnDevice: false,
-          year,
-          genre: categories,
-          summary: info.description ? info.description.slice(0, 500) : `A book by ${authorName}.`,
-          authorBio: '',
-          pageCount: pages,
-          coverUrl: secureThumb,
-          ratingAverage: info.averageRating || undefined,
-          ratingCount: info.ratingsCount || undefined,
-          spineColor: '#8a5a3b',
-          source: 'google',
-          addedAt: Date.now(),
-        };
-      });
-    }
-  } catch (err) {
-    console.warn('Google Books fallback failed:', err);
+  const merged: Book[] = [];
+  for (const book of lists.flat()) {
+    if (!book.title) continue;
+    const i = merged.findIndex(m => sameResult(m, book));
+    if (i >= 0) merged[i] = mergeResult(merged[i], book);
+    else merged.push(book);
   }
 
-  return [];
+  return merged
+    .map((book, order) => ({ book, order, score: searchRelevance(book, qTitle, qAuthor) }))
+    .sort((x, y) => y.score - x.score || x.order - y.order)
+    .slice(0, limit)
+    .map(x => x.book);
 }
 
 /**

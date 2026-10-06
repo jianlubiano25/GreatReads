@@ -1,7 +1,7 @@
 // Run with: npm test
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bestStreakFor, bestWeekFor, computeSnapshot, emptyGarden, evaluateGarden, markCelebrated, pendingCelebrations, seedGarden } from './garden';
+import { bestStreakFor, bestWeekFor, computeSnapshot, currentStreakFor, emptyGarden, evaluateGarden, growingMilestones, markCelebrated, pendingCelebrations, seedGarden } from './garden';
 import { dateKey } from './dates';
 import type { WordItem } from '../types';
 
@@ -43,13 +43,25 @@ test('a streak that ended still counts', () => {
   assert.ok(g.plants['golden-sunflower']);
 });
 
-test('lowering the goal for a moment does not keep streak plants', () => {
+test('a higher goal re-judges the past: old days no longer count, and lowering it again brings them back', () => {
   const log: Record<string, number> = {};
-  for (let d = 1; d <= 7; d++) log[`2026-03-0${d}`] = 3;
-  const low = evalWith(seedGarden({ ...base, dailyLog: {} }), log, { goal: 1 });
-  assert.ok(low.plants['golden-sunflower']);
-  const back = evalWith(low, log, { goal: 10 });
-  assert.equal(back.plants['golden-sunflower'], undefined);
+  for (let d = 13; d <= 19; d++) log[`2026-03-${d}`] = 5; // under 10 pages, so only the goal decides
+  const seeded = seedGarden({ ...base, dailyLog: {} });
+  const met = evalWith(seeded, log, { goal: 5 }); // goal 5: seven days in a row
+  assert.ok(met.plants['golden-sunflower']);
+  const raised = evalWith(met, log, { goal: 30 }); // goal 30: none of those days count any more
+  assert.equal(raised.plants['golden-sunflower'], undefined);
+  assert.equal(currentStreakFor(log, 30, TODAY), 0);
+  const lowered = evalWith(raised, log, { goal: 5 });
+  assert.ok(lowered.plants['golden-sunflower']);
+});
+
+test('a lower goal re-judges the past: old misses count while it is low', () => {
+  const log: Record<string, number> = {};
+  for (let d = 13; d <= 19; d++) log[`2026-03-${d}`] = 3;
+  const garden = evalWith(seedGarden({ ...base, dailyLog: {} }), log, { goal: 1 });
+  assert.ok(garden.plants['golden-sunflower']);
+  assert.equal(currentStreakFor({ [TODAY]: 3 }, 1, TODAY), 1);
 });
 
 test('growth follows the log down and up', () => {
@@ -80,4 +92,13 @@ test('silent awards and markCelebrated never queue a prompt', () => {
 test('nothing changed returns the same object', () => {
   const g = evalWith(seedGarden({ ...base, dailyLog: {} }), { [TODAY]: 12 });
   assert.equal(evalWith(g, { [TODAY]: 12 }), g);
+});
+
+test('several plants grow at once, one per unearned goal track', () => {
+  const garden = seedGarden({ ...base, dailyLog: {} });
+  const growing = growingMilestones(garden);
+  const metrics = growing.map(milestone => milestone.unlock.metric);
+  assert.equal(new Set(metrics).size, metrics.length);
+  assert.ok(growing.length >= 3);
+  assert.ok(growing.every(milestone => !garden.achievements[milestone.id]));
 });

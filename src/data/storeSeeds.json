@@ -56,6 +56,46 @@
   ]
  },
  {
+  "id": "topfiction",
+  "title": "Top Fiction",
+  "emoji": "📖",
+  "genre": "Fiction",
+  "seeds": [
+   ["Where the Crawdads Sing", "Delia Owens", "Bestseller"],
+   ["The Seven Husbands of Evelyn Hugo", "Taylor Jenkins Reid", "Bestseller"],
+   ["It Ends with Us", "Colleen Hoover", "Bestseller"],
+   ["Project Hail Mary", "Andy Weir", "Bestseller"],
+   ["Tomorrow, and Tomorrow, and Tomorrow", "Gabrielle Zevin", "Bestseller"],
+   ["Lessons in Chemistry", "Bonnie Garmus", "Bestseller"],
+   ["The Midnight Library", "Matt Haig", "Bestseller"],
+   ["Fourth Wing", "Rebecca Yarros", "Bestseller"],
+   ["The Song of Achilles", "Madeline Miller", "Bestseller"],
+   ["A Little Life", "Hanya Yanagihara", "Bestseller"],
+   ["The Thursday Murder Club", "Richard Osman", "Bestseller"],
+   ["Normal People", "Sally Rooney", "Bestseller"]
+  ]
+ },
+ {
+  "id": "topnonfiction",
+  "title": "Top Non-fiction",
+  "emoji": "🧭",
+  "genre": "Non-fiction",
+  "seeds": [
+   ["Atomic Habits", "James Clear", "Bestseller"],
+   ["Sapiens", "Yuval Noah Harari", "Bestseller"],
+   ["Educated", "Tara Westover", "Bestseller"],
+   ["The Body Keeps the Score", "Bessel van der Kolk", "Bestseller"],
+   ["Thinking, Fast and Slow", "Daniel Kahneman", "Bestseller"],
+   ["Braiding Sweetgrass", "Robin Wall Kimmerer", "Bestseller"],
+   ["Born a Crime", "Trevor Noah", "Bestseller"],
+   ["Quiet", "Susan Cain", "Bestseller"],
+   ["Man's Search for Meaning", "Viktor E. Frankl", "Bestseller"],
+   ["Becoming", "Michelle Obama", "Bestseller"],
+   ["Four Thousand Weeks", "Oliver Burkeman", "Bestseller"],
+   ["Why We Sleep", "Matthew Walker", "Bestseller"]
+  ]
+ },
+ {
   "id": "service95",
   "title": "Dua Lipa’s Service95",
   "emoji": "🌸",
@@ -124,8 +164,29 @@
   ]
  },
  {
+  "id": "inklingsclub",
+  "title": "Inklings Book Club (Jack Edwards)",
+  "emoji": "🪶",
+  "genre": "Inklings Book Club",
+  "seeds": [
+   ["East of Eden", "John Steinbeck", "Reading now"],
+   ["Madonna in a Fur Coat", "Sabahattin Ali", "Inklings Pick"],
+   ["She Who Remains", "René Karabash", "Inklings Pick"],
+   ["The Emperor of Gladness", "Ocean Vuong", "Inklings Pick"],
+   ["Rejection", "Tony Tulathimutte", "Inklings Pick"],
+   ["Nova Scotia House", "Charlie Porter", "Inklings Pick"],
+   ["Martyr!", "Kaveh Akbar", "Inklings Pick"],
+   ["Wuthering Heights", "Emily Brontë", "Inklings Pick"],
+   ["The Safekeep", "Yael van der Wouden", "Inklings Pick"],
+   ["Hamnet", "Maggie O'Farrell", "Inklings Pick"],
+   ["Frankenstein", "Mary Shelley", "Inklings Pick"],
+   ["The Coin", "Yasmin Zaher", "Inklings Pick"],
+   ["Evenings and Weekends", "Oisín McKenna", "Inklings Pick"]
+  ]
+ },
+ {
   "id": "inklings",
-  "title": "The Inklings (Oxford Circle)",
+  "title": "The Original Inklings (Tolkien & Lewis)",
   "emoji": "🖋️",
   "genre": "The Inklings",
   "seeds": [
