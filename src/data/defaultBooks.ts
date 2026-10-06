@@ -396,7 +396,9 @@ export const DEFAULT_BOOKS: Book[] = [
     summary: 'Grieving her mother and buried in student debt, a 31-year-old waitress in Cambridge races to finish her novel while pulled between two men.',
     authorBio: 'Lily King is an American author and winner of the Kirkus Prize.',
     spineColor: '#a8506a',
-    coverId: 7884139,
+    // The old Open Library cover id showed another edition's (film-style) art. The Grove Press hardcover ISBN gives the real jacket;
+    // if that image is ever missing, CoverFace falls back to Apple Books / Google Books.
+    coverUrl: 'https://covers.openlibrary.org/b/isbn/9780802148537-L.jpg?default=false',
     ratingAverage: 4.2,
     ratingCount: 35000,
     source: 'curated',
