@@ -27,6 +27,10 @@ export interface ResolveQuery {
 export interface Resolved {
   book: Book;
   flags: ContentFlags;
+  /** Each source's OWN rating count (they are different audiences, so scoring normalises them separately). Absent on older cached results. */
+  readers?: { ol?: number; google?: number; apple?: number };
+  /** Category words from every source that answered (used to tell fiction from non-fiction). */
+  words?: string[];
 }
 
 const cache = persistentCache<Resolved | null>('readlife.resolved1', { ttl: 14 * 24 * 60 * 60 * 1000, max: 250 });
@@ -65,7 +69,12 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
       googleMaturity: hits.map(h => h.flags.googleMaturity).find(Boolean),
       appleAdvisory: hits.map(h => h.flags.appleAdvisory).find(Boolean),
     };
-    const out: Resolved = { book, flags };
+    const out: Resolved = {
+      book,
+      flags,
+      readers: { ol: ol?.book.ratingCount, google: gb?.book.ratingCount, apple: ap?.book.ratingCount },
+      words: hits.flatMap(h => [...(h.flags.subjects || []), h.book.genre]),
+    };
     if (!opts.signal?.aborted) cache.set(key, out);
     return { ...out, book: { ...out.book, id: pickId(out.book, q) } };
   });

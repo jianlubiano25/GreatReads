@@ -50,7 +50,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
 
   return (
     <div ref={holder} className="flex flex-col gap-3">
-      <h3 className="font-serif-display text-xl text-[#201a15] dark:text-[#f0e6d6] flex items-center gap-2">{title}</h3>
+      <h3 className="font-serif-display text-xl text-[#201a15] dark:text-[#f0e6d6] flex items-center gap-2">{source?.label?.() ?? title}</h3>
       {failed ? (
         <p className="text-sm text-[#706256] dark:text-[#a89a8a]">Couldn't load this shelf. The store needs an internet connection.</p>
       ) : !books ? (

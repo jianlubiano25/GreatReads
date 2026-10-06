@@ -2,11 +2,13 @@
 
 export interface Cache<T> {
   get(key: string): T | undefined;
+  /** Even an expired entry, with its age: for showing something when a fresh load fails. Entries older than `keepStale` are gone. */
+  peek(key: string): { value: T; ageMs: number } | undefined;
   set(key: string, value: T): void;
   delete(key: string): void;
 }
 
-export function persistentCache<T>(storageKey: string, opts: { ttl: number; max: number }): Cache<T> {
+export function persistentCache<T>(storageKey: string, opts: { ttl: number; max: number; keepStale?: number }): Cache<T> {
   type Entry = { t: number; v: T };
   const mem = new Map<string, Entry>();
   let loaded = false;
@@ -36,8 +38,16 @@ export function persistentCache<T>(storageKey: string, opts: { ttl: number; max:
       load();
       const e = mem.get(key);
       if (!e) return undefined;
-      if (Date.now() - e.t > opts.ttl) { mem.delete(key); return undefined; }
+      if (Date.now() - e.t > opts.ttl) return undefined; // expired (kept for peek until keepStale)
       return e.v;
+    },
+    peek(key) {
+      load();
+      const e = mem.get(key);
+      if (!e) return undefined;
+      const ageMs = Date.now() - e.t;
+      if (ageMs > Math.max(opts.ttl, opts.keepStale ?? opts.ttl)) { mem.delete(key); return undefined; }
+      return { value: e.v, ageMs };
     },
     set(key, value) {
       load();

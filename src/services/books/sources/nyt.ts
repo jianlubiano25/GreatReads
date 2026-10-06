@@ -1,4 +1,4 @@
-import { dedupeInflight, getJson } from '../http';
+import { dedupeInflight, getJsonDetailed } from '../http';
 import { persistentCache } from '../cache';
 import { cleanIsbn, isbnPair } from '../identity';
 import type { CallOpts } from './types';
@@ -21,7 +21,9 @@ export interface NytEntry {
 }
 
 const LIST_TTL = 3 * 60 * 60 * 1000;
-const cache = persistentCache<NytEntry[]>('readlife.nyt1', { ttl: LIST_TTL, max: 6 });
+/** The NYT publishes weekly, so a list up to this old is still "the latest official list" when a refresh fails. */
+export const NYT_STALE_OK_MS = 10 * 24 * 60 * 60 * 1000;
+const cache = persistentCache<NytEntry[]>('readlife.nyt1', { ttl: LIST_TTL, max: 6, keepStale: NYT_STALE_OK_MS });
 
 /**
  * With VITE_NYT_API_KEY set (local dev only) the key is used directly. In production the request goes to this site's own
@@ -67,17 +69,70 @@ export function parseNytList(data: any): NytEntry[] {
 }
 
 export const getCachedNytList = (list: string): NytEntry[] | undefined => cache.get(list);
+/** Forget a saved list (used by tests, and handy when switching lists). */
+export const forgetNytList = (list: string) => cache.delete(list);
 
-/** The current list in NYT order. Returns null when it cannot be fetched (no key/proxy, offline, rate limit). */
-const inflight = new Map<string, Promise<NytEntry[] | null>>();
-export async function fetchNytList(list: string, opts: CallOpts = {}): Promise<NytEntry[] | null> {
+/** Why the NYT list could not be loaded (the Cloudflare function reports these; see functions/api/nyt.js). */
+export type NytFailure = 'not_configured' | 'unauthorized' | 'rate_limited' | 'no_function' | 'upstream_error' | 'offline' | 'empty';
+
+export interface NytResult {
+  entries: NytEntry[] | null;
+  /** true when `entries` is the last list we saved because a fresh one could not be loaded (never older than 10 days) */
+  stale: boolean;
+  failure?: NytFailure;
+}
+
+export function classifyNytFailure(r: { status: number; failure?: string; data?: any }): NytFailure {
+  const err = r.data?.error;
+  if (err === 'not_configured' || r.status === 503) return 'not_configured';
+  if (err === 'unauthorized' || r.status === 401 || r.status === 403) return 'unauthorized';
+  if (err === 'rate_limited' || r.status === 429) return 'rate_limited';
+  if (r.failure === 'not-json' || r.status === 404) return 'no_function'; // the site answered with a web page: the function isn't deployed
+  if (r.failure === 'network' || r.failure === 'timeout') return 'offline';
+  return 'upstream_error';
+}
+
+let warned = false;
+const warnOnce = (list: string, f: NytFailure) => {
+  if (warned) return;
+  warned = true;
+  const hint: Record<NytFailure, string> = {
+    not_configured: 'NYT_API_KEY is not set for this deployment (set it for Production in Cloudflare Pages, then redeploy)',
+    unauthorized: 'the NYT rejected the key (enable the Books API for it in the NYT developer portal)',
+    rate_limited: 'the NYT rate limit was hit; it will retry later',
+    no_function: '/api/nyt returned a web page: the Pages Function is not deployed (needs a Git-connected Pages project, not a plain upload)',
+    upstream_error: 'the NYT API had an error',
+    offline: 'no network',
+    empty: 'the NYT list came back empty',
+  };
+  try { console.warn(`[GreatReads] NYT list "${list}" unavailable: ${hint[f]}`); } catch {}
+};
+
+const inflight = new Map<string, Promise<NytResult>>();
+
+/**
+ * The current list in NYT order. Never throws. When a fresh load fails, the last saved list (up to 10 days old) is returned with
+ * `stale: true`; with nothing saved, `entries` is null and `failure` says why.
+ */
+export async function loadNytList(list: string, opts: CallOpts = {}): Promise<NytResult> {
   const hit = cache.get(list);
-  if (hit) return hit;
+  if (hit) return { entries: hit, stale: false };
   return dedupeInflight(inflight, list, async () => {
-    const data = await getJson(listUrl(list), { timeout: 10000, retries: 1, signal: opts.signal });
-    const entries = parseNytList(data);
-    if (!entries.length) return null;
-    cache.set(list, entries);
-    return entries;
+    const r = await getJsonDetailed(listUrl(list), { timeout: 10000, retries: 1, signal: opts.signal });
+    const entries = r.data ? parseNytList(r.data) : [];
+    if (entries.length) {
+      cache.set(list, entries);
+      return { entries, stale: false };
+    }
+    if (opts.signal?.aborted) return { entries: null, stale: false, failure: 'offline' as const };
+    const failure: NytFailure = r.data ? 'empty' : classifyNytFailure(r);
+    warnOnce(list, failure);
+    const old = cache.peek(list);
+    return old ? { entries: old.value, stale: true, failure } : { entries: null, stale: false, failure };
   });
+}
+
+/** The current list in NYT order, or null when it cannot be had at all. (A saved list up to 10 days old still counts.) */
+export async function fetchNytList(list: string, opts: CallOpts = {}): Promise<NytEntry[] | null> {
+  return (await loadNytList(list, opts)).entries;
 }
