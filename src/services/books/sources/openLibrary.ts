@@ -103,4 +103,3 @@ export async function openLibraryWorkRecord(workId: string, opts: CallOpts = {})
   const hits = await searchOpenLibrary({ q: `key:/works/${workId}` }, 1, opts);
   return hits[0] ?? null;
 }
-

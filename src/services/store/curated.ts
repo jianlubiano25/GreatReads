@@ -82,4 +82,3 @@ export function curatedSource(shelf: CuratedShelf): ShelfSource & { seeded: () =
     },
   };
 }
-
