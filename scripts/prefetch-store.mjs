@@ -6,27 +6,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SEEDS = path.join(root, 'src/data/storeSeeds.json');
 const OUT = path.join(root, 'src/data/storeResolved.json');
 
-const norm = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
-
-function sameTitle(want, got) {
-  const expected = norm(want), actual = norm(got);
-  if (!expected || !actual) return false;
-  if (expected === actual || expected.includes(actual) || actual.includes(expected)) return true;
-  const expectedWords = new Set(expected.split(' ').filter(word => word.length > 2));
-  const actualWords = actual.split(' ').filter(word => word.length > 2);
-  if (!expectedWords.size || !actualWords.length) return false;
-  return actualWords.filter(word => expectedWords.has(word)).length / Math.min(expectedWords.size, actualWords.length) >= 0.7;
-}
-
-const surname = name => norm(name).split(' ').filter(Boolean).pop() || '';
-function sameAuthor(want, got) {
-  const expected = String(want).split(/,|&| and /i).map(surname).filter(Boolean);
-  if (!expected.length) return true;
-  const actual = (Array.isArray(got) ? got : [got || ''])
-    .flatMap(author => String(author).split(/,|&| and /i)).map(surname).filter(Boolean);
-  return actual.some(author => expected.includes(author));
-}
-const sameBook = (title, author, gotTitle, gotAuthor) => sameTitle(title, gotTitle) && sameAuthor(author, gotAuthor);
+const norm = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 async function getJson(url, timeoutMs = 5000) {
   try {
@@ -46,8 +26,7 @@ async function fromAppleBooks(title, author) {
     const data = await getJson(`https://itunes.apple.com/search?media=ebook&entity=ebook&limit=4&term=${q}`);
     const results = data?.results || [];
     if (!results.length) return null;
-    const match = results.find(item => sameBook(title, author, item.trackName || '', item.artistName));
-    if (!match) return null;
+    const match = results.find(item => norm(item.trackName || '').includes(norm(title).slice(0, 10))) || results[0];
     const art = match.artworkUrl100?.replace(/100x100bb\.(jpg|png)/, '600x900bb.$1');
     return {
       coverUrl: art,
@@ -64,12 +43,11 @@ async function fromAppleBooks(title, author) {
 /** 2. Open Library — covers and page counts */
 async function fromOpenLibrary(title, author) {
   try {
-    const q = new URLSearchParams({ title, author, limit: '4', fields: 'key,title,author_name,cover_i,first_publish_year,ratings_average,ratings_count,number_of_pages_median' });
+    const q = new URLSearchParams({ title, author, limit: '4', fields: 'key,title,cover_i,first_publish_year,ratings_average,ratings_count,number_of_pages_median' });
     const data = await getJson(`https://openlibrary.org/search.json?${q}`);
     const docs = data?.docs || [];
     if (!docs.length) return null;
-    const best = docs.filter(d => sameBook(title, author, d.title || '', d.author_name)).find(d => d.cover_i);
-    if (!best) return null;
+    const best = docs.find(d => d.cover_i) || docs[0];
     return {
       coverId: best.cover_i,
       ratingAverage: best.ratings_average ? Math.round(best.ratings_average * 10) / 10 : undefined,
@@ -87,8 +65,8 @@ async function fromOpenLibrary(title, author) {
 async function fromGoogleBooks(title, author) {
   try {
     const q = encodeURIComponent(`intitle:${title} inauthor:${author}`);
-    const data = await getJson(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=5&printType=books`);
-    const item = (data?.items || []).map(i => i.volumeInfo).find(v => v && sameBook(title, author, v.title || '', v.authors));
+    const data = await getJson(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=3&printType=books`);
+    const item = data?.items?.[0]?.volumeInfo;
     if (!item) return null;
     const thumb = (item.imageLinks?.thumbnail || item.imageLinks?.smallThumbnail || '').replace(/^http:/, 'https:').replace('&edge=curl', '');
     return {

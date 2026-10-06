@@ -47,41 +47,14 @@ const keyToLocalDate = (key: string): Date => {
   return new Date(y, (m || 1) - 1, d || 1);
 };
 
-export type GoalHistory = Record<string, number>;
-export type GoalSpec = number | ((dayKey: string) => number);
-export const BASE_GOAL_KEY = '0000-00-00';
-
-export function goalFn(goal: number, history?: GoalHistory): (dayKey: string) => number {
-  const keys = Object.keys(history ?? {}).filter(k => Number(history![k]) > 0).sort();
-  if (!keys.length) return () => goal;
-  return (dayKey: string) => {
-    let hit = '';
-    for (const key of keys) {
-      if (key <= dayKey) hit = key;
-      else break;
-    }
-    return hit ? Number(history![hit]) : goal;
-  };
-}
-
-export function recordGoalChange(history: GoalHistory | undefined, prevGoal: number, next: number, todayKey: string): GoalHistory {
-  const out: GoalHistory = { ...(history ?? {}) };
-  if (!Object.keys(out).length) out[BASE_GOAL_KEY] = prevGoal;
-  out[todayKey] = next;
-  return out;
-}
-
-const asFn = (goal: GoalSpec) => typeof goal === 'function' ? goal : () => goal;
-
-/** Consecutive goal-met days ending today (or yesterday when today is not met yet). */
-export function currentStreakFor(dailyLog: Record<string, number>, goal: GoalSpec, todayKey: string): number {
-  const goalOf = asFn(goal);
+/** Consecutive goal-met days ending today (or yesterday when today is not met yet). Same rule the app always used. */
+export function currentStreakFor(dailyLog: Record<string, number>, goal: number, todayKey: string): number {
   let count = 0;
   const check = keyToLocalDate(todayKey);
-  if ((dailyLog[todayKey] || 0) < goalOf(todayKey)) check.setDate(check.getDate() - 1);
+  if ((dailyLog[todayKey] || 0) < goal) check.setDate(check.getDate() - 1);
   while (count < MAX_STREAK_DAYS) {
     const k = dateKey(check);
-    if ((dailyLog[k] || 0) >= goalOf(k)) {
+    if ((dailyLog[k] || 0) >= goal) {
       count++;
       check.setDate(check.getDate() - 1);
     } else break;
@@ -89,18 +62,17 @@ export function currentStreakFor(dailyLog: Record<string, number>, goal: GoalSpe
   return count;
 }
 
-/** Sorted day numbers of every day that met the goal in force that day. */
-function metDays(dailyLog: Record<string, number>, goal: GoalSpec): number[] {
-  const goalOf = asFn(goal);
+/** Sorted day numbers of every day that met the goal. */
+function metDays(dailyLog: Record<string, number>, goal: number): number[] {
   return Object.keys(dailyLog)
-    .filter(k => (Number(dailyLog[k]) || 0) >= goalOf(k))
+    .filter(k => (Number(dailyLog[k]) || 0) >= goal)
     .map(dayNumber)
     .filter(Number.isFinite)
     .sort((a, b) => a - b);
 }
 
 /** Longest run of consecutive goal-met days anywhere in the log. */
-export function bestStreakFor(dailyLog: Record<string, number>, goal: GoalSpec): number {
+export function bestStreakFor(dailyLog: Record<string, number>, goal: number): number {
   let best = 0;
   let run = 0;
   let prev = NaN;
@@ -113,7 +85,7 @@ export function bestStreakFor(dailyLog: Record<string, number>, goal: GoalSpec):
 }
 
 /** Most goal-met days inside any 7-day window of the log (so it reflects real history, not only this week). */
-export function bestWeekFor(dailyLog: Record<string, number>, goal: GoalSpec): number {
+export function bestWeekFor(dailyLog: Record<string, number>, goal: number): number {
   const days = metDays(dailyLog, goal);
   let best = 0;
   let lo = 0;
@@ -143,14 +115,12 @@ const BUILTIN_WORD_IDS = new Set(INITIAL_WORDS.map(w => w.id));
 export function computeSnapshot(input: {
   dailyLog: Record<string, number>;
   goal: number;
-  goalHistory?: GoalHistory;
   status: Record<string, BookStatus>;
   todayKey: string;
   highlights?: Record<string, HighlightItem[]>;
   words?: WordItem[];
 }): GardenSnapshot {
-  const { dailyLog, status, todayKey } = input;
-  const goal = goalFn(input.goal, input.goalHistory);
+  const { dailyLog, goal, status, todayKey } = input;
   let highlights = 0;
   for (const list of Object.values(input.highlights ?? {})) if (Array.isArray(list)) highlights += list.length;
   const mine = (input.words ?? []).filter(w => !BUILTIN_WORD_IDS.has(w.id));
@@ -330,20 +300,6 @@ export function markCelebrated(garden: GardenState, plantIds: string[]): GardenS
 /** The first milestone (by order) that has not been earned yet: its plant is the one "growing" next. */
 export function nextMilestone(garden: GardenState): MilestoneDef | undefined {
   return MILESTONES.find(m => !garden.achievements[m.id]);
-}
-
-export function growingMilestones(garden: GardenState): MilestoneDef[] {
-  const seen = new Set<string>();
-  const milestones: MilestoneDef[] = [];
-  for (const milestone of MILESTONES) {
-    if (garden.achievements[milestone.id] || seen.has(milestone.unlock.metric)) continue;
-    seen.add(milestone.unlock.metric);
-    milestones.push(milestone);
-  }
-  return milestones
-    .map(milestone => ({ milestone, fraction: milestoneProgress(milestone, garden.peaks).fraction }))
-    .sort((a, b) => b.fraction - a.fraction || a.milestone.order - b.milestone.order)
-    .map(entry => entry.milestone);
 }
 
 export interface PlacedPlant {

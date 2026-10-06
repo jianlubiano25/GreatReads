@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useModalA11y } from '../hooks/useModalA11y';
 import { WordItem } from '../types';
 import { speakWord } from '../services/dictionary';
 import { Volume2, Check, RotateCcw, X, Sparkles } from 'lucide-react';
@@ -15,7 +14,6 @@ export const WordPracticeModal: React.FC<WordPracticeModalProps> = ({
   onClose,
   onMarkLearned,
 }) => {
-  useModalA11y(onClose);
   const [index, setIndex] = useState(0);
   const [isRevealed, setIsRevealed] = useState(false);
   const [sessionCount, setSessionCount] = useState(0);
@@ -48,8 +46,6 @@ export const WordPracticeModal: React.FC<WordPracticeModalProps> = ({
         aria-label="Practice Words"
       >
         <button
-          type="button"
-          aria-label="Close"
           onClick={onClose}
           className="absolute top-4 right-4 p-1.5 rounded-full text-[#706256] dark:text-[#a89a8a] hover:bg-black/10 dark:hover:bg-white/10"
         >
@@ -97,7 +93,6 @@ export const WordPracticeModal: React.FC<WordPracticeModalProps> = ({
                   onClick={() => speakWord(currentWord.word, currentWord.audioUrl)}
                   className="p-1.5 rounded-full text-[#706256] dark:text-[#a89a8a] hover:text-[#2e5934]"
                   title="Pronounce"
-                  aria-label={`Pronounce ${currentWord.word}`}
                 >
                   <Volume2 className="w-5 h-5" />
                 </button>

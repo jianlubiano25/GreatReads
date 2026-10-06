@@ -16,15 +16,12 @@ export const awardsFor = (b: Book): { type: AwardKind; label: string }[] => {
   return [...base, { type, label: b.awardLabel }];
 };
 
-export const stars = (r: number) => {
-  const count = Math.max(0, Math.min(5, Math.round(r) || 0));
-  return '★'.repeat(count) + '☆'.repeat(5 - count);
-};
+export const stars = (r: number) => '★'.repeat(Math.round(r)) + '☆'.repeat(5 - Math.round(r));
 export const compactCount = (n?: number) => (!n ? '' : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
 /** ★★★★☆ 4.2 · 11k ratings (renders nothing if the book has no rating) */
 export function RatingLine({ book, className = '', compact = false }: { book: Book; className?: string; compact?: boolean }) {
-  if (typeof book.ratingAverage !== 'number' || !book.ratingAverage) return null;
+  if (!book.ratingAverage) return null;
   return (
     <div className={`text-xs text-[#706256] dark:text-[#a89a8a] ${className}`}>
       <span className="rl-stars">{stars(book.ratingAverage)}</span> {book.ratingAverage.toFixed(1)}
@@ -62,8 +59,7 @@ const SIZES = {
 const LOADED_KEY = 'readlife.loaded';
 const loadedCovers = new Set<string>((() => {
   try {
-    const saved = JSON.parse(localStorage.getItem(LOADED_KEY) || '[]');
-    return Array.isArray(saved) ? saved : [];
+    return JSON.parse(localStorage.getItem(LOADED_KEY) || '[]');
   } catch {
     return [];
   }
@@ -86,8 +82,8 @@ export function warmBookCover(book: Book, imgSize: 'S' | 'M' | 'L' = 'M') {
   const url = getCoverFix(book) || getCoverUrl(book.coverId, imgSize, book.coverUrl);
   if (!url || loadedCovers.has(url)) return;
   const im = new Image();
-  im.onload = () => recordLoadedCover(url);
   im.src = url;
+  im.onload = () => recordLoadedCover(url);
 }
 
 /**

@@ -3,7 +3,7 @@ import { Book, BookStatus, ReadingState, UserProfile, WordItem, HighlightItem } 
 import { DEFAULT_BOOKS } from '../data/defaultBooks';
 import { INITIAL_WORDS } from '../data/defaultWords';
 import { normalizeV2, normalizeLegacy, parseBackup } from '../services/stateSanitizer';
-import { computeSnapshot, currentStreakFor, evaluateGarden, goalFn, markCelebrated, movePlant as movePlantIn, pendingCelebrations, recordGoalChange, seedGarden } from '../services/garden';
+import { computeSnapshot, currentStreakFor, evaluateGarden, markCelebrated, movePlant as movePlantIn, pendingCelebrations, seedGarden } from '../services/garden';
 import { dateKey } from '../services/dates';
 
 const STORAGE_KEY = 'readlife.v2';
@@ -11,7 +11,7 @@ const LEGACY_KEY = 'readlife.v1';
 const RECOVERY_KEY = 'readlife.v2.recovery';
 const SAVE_DELAY_MS = 350;
 // Things the app can download again if they are ever lost; safe to clear when storage is full
-const CACHE_KEYS = ['readlife.store1', 'readlife.store2', 'readlife.store3', 'readlife.meta2', 'readlife.meta3', 'readlife.covers1', 'readlife.covers2', 'readlife.preload', 'readlife.loaded', 'readlife.phoneticTried', 'readlife.coverFix1', 'readlife.coverNone1', 'readlife.coverFix2', 'readlife.coverNone2'];
+const CACHE_KEYS = ['readlife.store1', 'readlife.store2', 'readlife.meta2', 'readlife.meta3', 'readlife.covers1', 'readlife.preload', 'readlife.loaded', 'readlife.phoneticTried'];
 
 export function getTodayKey(): string {
   return dateKey(); // "YYYY-MM-DD" in local time
@@ -27,7 +27,6 @@ function buildDefaultState(): ReadingState {
     notes: {},
     highlights: {},
     goal: 10,
-    goalHistory: {},
     readingIntention: '',
     profile: { name: '', photo: '', theme: 'auto' },
     customBooks: [],
@@ -195,8 +194,8 @@ export function useReadingLife() {
   const todayPages = state.dailyLog[todayKey] || 0;
 
   const currentStreak = useMemo(
-    () => currentStreakFor(state.dailyLog, goalFn(state.goal, state.goalHistory), todayKey),
-    [state.dailyLog, state.goal, state.goalHistory, todayKey],
+    () => currentStreakFor(state.dailyLog, state.goal, todayKey),
+    [state.dailyLog, state.goal, todayKey],
   );
 
   // Garden: award newly reached milestones and keep plants in step with the pages you have logged.
@@ -205,13 +204,13 @@ export function useReadingLife() {
   useEffect(() => {
     setState(prev => {
       const snap = computeSnapshot({
-        dailyLog: prev.dailyLog, goal: prev.goal, goalHistory: prev.goalHistory, status: prev.status, todayKey,
+        dailyLog: prev.dailyLog, goal: prev.goal, status: prev.status, todayKey,
         highlights: prev.highlights, words: prev.words,
       });
       const next = evaluateGarden(prev.garden, snap);
       return next === prev.garden ? prev : { ...prev, garden: next };
     });
-  }, [state.dailyLog, state.goal, state.goalHistory, state.status, state.highlights, state.words, todayKey]);
+  }, [state.dailyLog, state.goal, state.status, state.highlights, state.words, todayKey]);
 
   // Rearranging only changes where a plant stands (placements); what you own never changes
   const movePlant = useCallback((plantId: string, areaId: string, index: number) => {
@@ -424,11 +423,7 @@ export function useReadingLife() {
   }, []);
 
   const setGoal = useCallback((goal: number) => {
-    setState(prev => {
-      const next = Math.max(1, goal);
-      if (next === prev.goal) return prev;
-      return { ...prev, goal: next, goalHistory: recordGoalChange(prev.goalHistory, prev.goal, next, getTodayKey()) };
-    });
+    setState(prev => ({ ...prev, goal: Math.max(1, goal) }));
   }, []);
 
   const addWord = useCallback((newWord: WordItem) => {
@@ -481,7 +476,7 @@ export function useReadingLife() {
     if (!restored) return false;
     // A restore never shows "new plant" prompts: bring the garden up to date silently and mark everything as seen.
     const snap = computeSnapshot({
-      dailyLog: restored.dailyLog, goal: restored.goal, goalHistory: restored.goalHistory, status: restored.status, todayKey: getTodayKey(),
+      dailyLog: restored.dailyLog, goal: restored.goal, status: restored.status, todayKey: getTodayKey(),
       highlights: restored.highlights, words: restored.words,
     });
     let garden = evaluateGarden(restored.garden, snap, Date.now(), { silent: true });
