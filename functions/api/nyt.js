@@ -18,13 +18,13 @@ export async function onRequestGet({ request, env }) {
     res = await fetch(
       `https://api.nytimes.com/svc/books/v3/lists/current/${list}.json?api-key=${encodeURIComponent(env.NYT_API_KEY)}`,
       // Cache only 2xx at Cloudflare's edge. (cf.cacheTtl alone would cache EVERY status, including errors.)
-      { cf: { cacheEverything: true, cacheTtlByStatus: { '200-299': 3600, '400-599': -1 } } },
+      { cf: { cacheEverything: true, cacheTtlByStatus: { '200-299': 21600, '400-599': -1 } } },
     );
   } catch {
     return json({ error: 'upstream_error' }, 502);
   }
   if (res.ok) {
-    return new Response(res.body, { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=1800' } });
+    return new Response(res.body, { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=3600' } });
   }
   const error = res.status === 401 || res.status === 403 ? 'unauthorized' : res.status === 429 ? 'rate_limited' : 'upstream_error';
   return json({ error, upstream: res.status }, res.status === 429 ? 429 : 502);

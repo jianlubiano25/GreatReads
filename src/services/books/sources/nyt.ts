@@ -20,10 +20,10 @@ export interface NytEntry {
   publishedDate: string;
 }
 
-const LIST_TTL = 3 * 60 * 60 * 1000;
+const LIST_TTL = 6 * 60 * 60 * 1000; // the NYT updates weekly: re-asking more often only spends the API quota
 /** The NYT publishes weekly, so a list up to this old is still "the latest official list" when a refresh fails. */
 export const NYT_STALE_OK_MS = 10 * 24 * 60 * 60 * 1000;
-const cache = persistentCache<NytEntry[]>('readlife.nyt1', { ttl: LIST_TTL, max: 6, keepStale: NYT_STALE_OK_MS });
+const cache = persistentCache<NytEntry[]>('readlife.nyt1', { ttl: LIST_TTL, max: 10, keepStale: NYT_STALE_OK_MS });
 
 /**
  * With VITE_NYT_API_KEY set (local dev only) the key is used directly. In production the request goes to this site's own

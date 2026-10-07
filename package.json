@@ -11,6 +11,7 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "prefetch:store": "node scripts/prefetch-store.mjs",
+    "check:shelves": "tsx scripts/check-shelves.ts",
     "test": "tsx --test src/services/*.test.ts src/services/*/*.test.ts"
   },
   "dependencies": {

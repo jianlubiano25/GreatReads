@@ -14,11 +14,13 @@ interface Props {
   ranked?: boolean;
   /** Only start loading when the shelf is about to scroll into view (long lists of curated shelves) */
   lazy?: boolean;
+  /** Draw nothing (instead of an error box) when the source can't load: for optional shelves such as the extra NYT lists */
+  hideIfUnavailable?: boolean;
   onOpen: (b: Book) => void;
 }
 
 /** One horizontally scrolling store shelf, fed by a ShelfSource. */
-export const StoreShelf = React.memo(function StoreShelf({ id, title, source, books: fixedBooks, ranked, lazy, onOpen }: Props) {
+export const StoreShelf = React.memo(function StoreShelf({ id, title, source, books: fixedBooks, ranked, lazy, hideIfUnavailable, onOpen }: Props) {
   const [loaded, setLoaded] = useState<Book[] | null>(() => (fixedBooks || !source ? null : source.cached()));
   const [failed, setFailed] = useState(false);
   const [visible, setVisible] = useState(!lazy);
@@ -47,6 +49,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
   }, [id, visible, source, fixedBooks]);
 
   if (fixedBooks && fixedBooks.length === 0) return null;
+  if (failed && hideIfUnavailable) return null;
 
   return (
     <div ref={holder} className="flex flex-col gap-3">

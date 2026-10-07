@@ -4,9 +4,9 @@ import { BOOK_AWARDS } from './data/defaultBooks';
 import { BUILTIN_DICTIONARY } from './data/defaultWords';
 import { useReadingLife } from './hooks/useReadingLife';
 import { searchBooks, getCoverUrl, fillMissingCovers } from './services/books';
-import { NYT_SHELVES, bestsellerSource } from './services/store/bestsellers';
+import { NYT_EXTRA_SHELVES, NYT_SHELVES, bestsellerSource } from './services/store/bestsellers';
 import { trendingSource } from './services/store/trending';
-import { curatedSource } from './services/store/curated';
+import { shelfSourceFor } from './services/store/dynamic';
 import { lookupWord } from './services/dictionary';
 import { dateKey } from './services/dates';
 import { useAppUpdate, applyUpdate, dismissUpdate, restartApp } from './services/appUpdate';
@@ -68,7 +68,9 @@ const HighlightsModal = lazyModal<typeof import('./components/HighlightsModal').
 const ProfileModal = lazyModal<typeof import('./components/ProfileModal').ProfileModal>(() => import('./components/ProfileModal'), 'ProfileModal');
 // One source object per shelf, created once (shelves compare their source to know when to reload)
 const NYT_SHELF_SOURCES = NYT_SHELVES.map(shelf => ({ shelf, source: bestsellerSource(shelf) }));
-const CURATED_SOURCES = Object.fromEntries(CURATED_SHELVES.map(sh => [sh.id, curatedSource(sh)]));
+const NYT_EXTRA_SOURCES = NYT_EXTRA_SHELVES.map(shelf => ({ shelf, source: bestsellerSource(shelf) }));
+// Self-refreshing where a shelf has a public source (see services/store/dynamic.ts), hand-picked otherwise
+const CURATED_SOURCES = Object.fromEntries(CURATED_SHELVES.map(sh => [sh.id, shelfSourceFor(sh)]));
 const BackupModal = lazyModal<typeof import('./components/BackupModal').BackupModal>(() => import('./components/BackupModal'), 'BackupModal');
 const WordPracticeModal = lazyModal<typeof import('./components/WordPracticeModal').WordPracticeModal>(() => import('./components/WordPracticeModal'), 'WordPracticeModal');
 const BulkImportModal = lazyModal<typeof import('./components/BulkImportModal').BulkImportModal>(() => import('./components/BulkImportModal'), 'BulkImportModal');
@@ -715,6 +717,11 @@ export default function App() {
 
             {/* Trending Today (Updates Daily) */}
             <StoreShelf id="trending" title="🔥 Trending Today" source={trendingSource} ranked onOpen={handleOpenCover} />
+
+            {/* More NYT lists (official only: a shelf hides itself when its list can't be loaded) */}
+            {NYT_EXTRA_SOURCES.map(({ shelf, source }) => (
+              <StoreShelf key={shelf.id} id={shelf.id} title={shelf.title} source={source} ranked lazy hideIfUnavailable onOpen={handleOpenCover} />
+            ))}
 
             {/* Prize winners and easy starts from your own catalog (no loading needed) */}
             <StoreShelf

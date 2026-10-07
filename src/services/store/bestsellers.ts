@@ -4,11 +4,11 @@ import { persistentCache } from '../books/cache';
 import { resolveBook } from '../books/resolve';
 import { loadNytList } from '../books/sources/nyt';
 import { enrichPool, gatherPool, rankPool } from './collate';
-import { NYT_SHELVES, type NytShelf } from './lists';
+import { NYT_EXTRA_SHELVES, NYT_SHELVES, type NytShelf } from './lists';
 import { combineWithNyt, nytEntryToBook, nytLabel } from './nytBooks';
 import type { ShelfSource } from './shelves';
 
-export { NYT_SHELVES, type NytShelf, combineWithNyt, nytEntryToBook, nytLabel };
+export { NYT_SHELVES, NYT_EXTRA_SHELVES, type NytShelf, combineWithNyt, nytEntryToBook, nytLabel };
 
 /**
  * "Top 15 this week".
@@ -25,9 +25,9 @@ export { NYT_SHELVES, type NytShelf, combineWithNyt, nytEntryToBook, nytLabel };
 type Mode = 'nyt' | 'collated';
 interface Saved { mode: Mode; books: Book[]; at: number }
 
-/** An official list is good for 3 hours; the fallback only 20 minutes, so the official list returns soon after the NYT does. */
-export const FRESH_MS: Record<Mode, number> = { nyt: 3 * 60 * 60 * 1000, collated: 20 * 60 * 1000 };
-const saved = persistentCache<Saved>('readlife.top15', { ttl: 14 * 24 * 60 * 60 * 1000, max: 4 });
+/** An official list is good for 6 hours (the NYT publishes weekly); the fallback only 20 minutes, so the official list returns soon after the NYT does. */
+export const FRESH_MS: Record<Mode, number> = { nyt: 6 * 60 * 60 * 1000, collated: 20 * 60 * 1000 };
+const saved = persistentCache<Saved>('readlife.top15', { ttl: 14 * 24 * 60 * 60 * 1000, max: 10 });
 
 /** The heading for a shelf: the official title, or marked as GreatReads' own when it is the collated fallback. */
 export const shelfHeading = (shelf: Pick<NytShelf, 'title'>, mode: Mode | null) => (mode === 'collated' ? `GreatReads · ${shelf.title}` : shelf.title);
@@ -43,7 +43,7 @@ export function bestsellerSource(shelf: NytShelf): ShelfSource {
 
   /** The official NYT path. Slot i stays slot i: the rank never moves. */
   async function official(entries: NonNullable<Awaited<ReturnType<typeof loadNytList>>['entries']>, onUpdate: (b: Book[]) => void): Promise<Book[]> {
-    const top = entries.slice(0, 15);
+    const top = entries.slice(0, shelf.limit ?? 15);
     const provisional = top.map(e => nytEntryToBook(e, shelf.genre));
     remember('nyt', provisional);
     if (!refining.has(shelf.id)) {
@@ -105,9 +105,11 @@ export function bestsellerSource(shelf: NytShelf): ShelfSource {
       const nyt = await loadNytList(shelf.list);
       if (nyt.entries?.length) return official(nyt.entries, onUpdate);
 
-      // 2. GreatReads' own collated list, labelled as such
-      const own = await collated(onUpdate);
-      if (own?.length) return own;
+      // 2. GreatReads' own collated list, labelled as such (not for the niche lists, which are official-or-nothing)
+      if (shelf.fallback !== false) {
+        const own = await collated(onUpdate);
+        if (own?.length) return own;
+      }
 
       // 3. nothing answered at all: show the last thing we showed, if we have one, instead of an empty error
       if (s?.books.length) { mode = s.mode; return s.books; }
