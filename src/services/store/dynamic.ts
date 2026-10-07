@@ -1,7 +1,7 @@
 import type { Book } from '../../types';
 import { CURATED_SHELVES, type CuratedShelf } from '../../data/storeCatalog';
 import { persistentCache } from '../books/cache';
-import { dedupeInflight } from '../books/http';
+import { dedupeInflight, pool } from '../books/http';
 import { authorKey, isUnknownAuthor, titleKey } from '../books/identity';
 import { shrunkRating } from '../books/model';
 import { isExplicit } from '../books/quality';
@@ -41,6 +41,13 @@ export interface DynamicSpec {
   title?: (now: Date) => string;
   /** What kind of data this is, for Customize Store: a public record standing in for an official list, or GreatReads' own discovery */
   kind?: 'fallback' | 'generated';
+  /**
+   * 'append': a refresh ADDS the newly published picks in front of what the shelf already has (book clubs and prizes keep
+   * their history and grow). Default: the fresh list replaces the old one (discovery shelves, which show what is popular now).
+   */
+  merge?: 'append';
+  /** The most books an appending shelf keeps (the oldest fall off the end) */
+  cap?: number;
 }
 
 interface Saved { seeds: Seed[]; title?: string; /** last SUCCESSFUL refresh */ at: number; /** last attempt, successful or not (only used to space retries) */ tried: number }
@@ -67,16 +74,28 @@ export const isDue = (s: Saved | undefined, spec: Pick<DynamicSpec, 'refreshMs'>
 
 const withSeeds = (shelf: CuratedShelf, s?: Saved): CuratedShelf => (s ? { ...shelf, seeds: s.seeds } : shelf);
 
+/** At most two source requests at once across every shelf, so refreshing several shelves in a row cannot trip a rate limit. */
+const politely = pool(2);
+export const APPEND_CAP = 36;
+
+/** What an appending shelf becomes: the source's newest picks first, then everything the shelf already had. */
+export function mergeAppend(found: Seed[], existing: Seed[], cap = APPEND_CAP): Seed[] {
+  return cleanSeeds([...found, ...existing]).slice(0, cap); // a pick the source dates again keeps its fresh label (first wins)
+}
+
 /** Ask the source for a fresh list and save it. Returns the saved list, or null when nothing better than before was found. */
 export async function refreshShelf(shelf: CuratedShelf, spec: DynamicSpec, now = Date.now()): Promise<Saved | null> {
   const old = saved.get(shelf.id);
   let fresh: Fresh | null = null;
-  try { fresh = await spec.fetch(shelf); } catch { /* a source failing is routine */ }
-  const seeds = fresh ? cleanSeeds(fresh.seeds).slice(0, Math.max(shelf.seeds.length, 12)) : [];
-  if (seeds.length < spec.minSeeds) {
+  try { fresh = await politely(() => spec.fetch(shelf)); } catch { /* a source failing is routine */ }
+  const found = fresh ? cleanSeeds(fresh.seeds) : [];
+  if (found.length < spec.minSeeds) {
     if (old) saved.set(shelf.id, { ...old, tried: now }); // keep the stale list; try again in an hour
     return null;
   }
+  const seeds = spec.merge === 'append'
+    ? mergeAppend(found, old?.seeds ?? shelf.seeds, spec.cap)
+    : found.slice(0, Math.max(shelf.seeds.length, 12));
   const next: Saved = { seeds, title: fresh?.title, at: now, tried: now };
   saved.set(shelf.id, next);
   return next;
@@ -92,7 +111,8 @@ export const everyLabel = (ms: number) => {
 export const dynamicInfo = (base: CuratedShelf, spec: DynamicSpec): ShelfInfo => ({
   updatedAt: saved.get(base.id)?.at,
   schedule: `Refreshes ${everyLabel(spec.refreshMs)}`,
-  source: spec.kind === 'generated' ? `${spec.source} · GreatReads discovery, not an official list` : `${spec.source} · public record, not the official list`,
+  source: (spec.kind === 'generated' ? `${spec.source} · GreatReads discovery, not an official list` : `${spec.source} · public record, not the official list`)
+    + (spec.merge === 'append' ? ' · new picks are added to the top, earlier ones stay' : ''),
   kind: spec.kind ?? 'fallback',
 });
 
@@ -124,15 +144,18 @@ export function dynamicCuratedSource(base: CuratedShelf, spec: DynamicSpec): She
 
       if (!isDue(have, spec)) return curatedSource(withSeeds(base, have)).load(show);
 
-      if (!have) {
-        // First visit: wait (briefly) for the source; on failure the hand-picked list is the shelf
+      // A replacing shelf with nothing saved waits (briefly) for the source: its hand-picked list is not what it should show.
+      // On failure the hand-picked list is the shelf.
+      if (!have && spec.merge !== 'append') {
         const fresh = await refresh();
         return curatedSource(withSeeds(base, fresh ?? undefined)).load(show);
       }
 
-      // A list is saved but due: show it now and swap in the fresh one when (and only if) it differs
+      // Otherwise show what the shelf has right now and swap the refreshed list in when (and only if) it differs.
+      // An appending shelf's current list is the floor it grows from, so it never has to wait.
+      const before = have?.seeds ?? base.seeds;
       void refresh().then(fresh => {
-        if (!fresh || sameSeeds(fresh.seeds, have.seeds) || mine !== generation) return;
+        if (!fresh || sameSeeds(fresh.seeds, before) || mine !== generation) return;
         const next = curatedSource(withSeeds(base, fresh));
         show(next.seeded());
         void next.load(show);
@@ -154,6 +177,9 @@ const wikiSpec = (pages: string[], rule: ColumnRule, label: (when: string) => st
     return picks ? { seeds: picks.slice(0, limit).map(p => [p.title, p.author, label(p.when)] as Seed) } : null;
   },
 });
+
+/** A book club or prize: its published picks accumulate, so a refresh adds the newest ones in front of what the shelf has. */
+const history = (spec: DynamicSpec): DynamicSpec => ({ ...spec, merge: 'append' });
 
 /* ------------------------------ source: Open Library discovery ------------------------------ */
 
@@ -207,8 +233,8 @@ const olSpec = (d: Discovery): DynamicSpec => ({
     const year = new Date().getFullYear();
     const q = d.query(year);
     // OL's reader-activity sort; if it is ever refused, the default order still gives a usable pool
-    let hits = await searchOpenLibrary({ q, sort: 'want_to_read' }, 60);
-    if (!hits.length) hits = await searchOpenLibrary({ q }, 60);
+    let hits = await searchOpenLibrary({ q, sort: 'want_to_read' }, 60, { retries: 1 });
+    if (!hits.length) hits = await searchOpenLibrary({ q }, 60, { retries: 1 });
     const keep = d.keep ?? 0;
     const found = rankDiscovery(hits, { year, limit: 12 - keep });
     return found.length ? { seeds: keep ? withStaples(found, base, keep) : found } : null;
@@ -227,27 +253,44 @@ export const DYNAMIC_SPECS: Record<string, DynamicSpec> = {
   new2026: { ...olSpec({ query: y => `language:eng AND first_publish_year:${y}` }), title: now => `New in ${now.getFullYear()}`, refreshMs: 7 * DAY },
 
   // Published picks, from Wikipedia's lists (see wikiLists.ts). The shelf's labels show each pick's own date.
-  oprah: wikiSpec(
+  oprah: history(wikiSpec(
     ["Oprah's Book Club", "List of Oprah's Book Club selections"],
     { title: /^(title|book|selection)/i, author: /^author/i, when: /(date|month|year|selected|announced)/i },
     when => `Oprah's Book Club · ${when}`,
     3 * DAY,
     "Wikipedia: Oprah's Book Club (the picks table)",
-  ),
-  womens: wikiSpec(
+  )),
+  womens: history(wikiSpec(
     ["Women's Prize for Fiction"],
     { ...prize(), result: /^(result|status|outcome)/i, winner: /winner/i, onePerYear: true },
     when => `Women's Prize ${when}`,
     7 * DAY,
     "Wikipedia: Women's Prize for Fiction (winners)",
-  ),
-  intbooker: wikiSpec(
+  )),
+  intbooker: history(wikiSpec(
     ['International Booker Prize'],
     { ...prize(), result: /^(result|status|outcome)/i, winner: /winner/i, onePerYear: true },
     when => `International Booker ${when}`,
     7 * DAY,
     'Wikipedia: International Booker Prize (winners)',
-  ),
+  )),
+
+  // Book clubs with a published list of every monthly pick (Wikipedia keeps these tables current)
+  reeses: history(wikiSpec(
+    ["Reese's Book Club"],
+    // The page has two tables: adult picks (dated "Year and Month") and YA picks (dated "Date"); the shelf is the adult picks
+    { title: /^title/i, author: /^author/i, when: /^year and month/i },
+    when => `Reese's Book Club · ${when}`,
+    7 * DAY,
+    "Wikipedia: Reese's Book Club (adult Book Club Picks table)",
+  )),
+  service95: history(wikiSpec(
+    ['Service95'],
+    { title: /^(title|book)/i, author: /^(author|writer)/i, when: /(month|date|year|read|pick|selected)/i },
+    when => `Service95 Monthly Read · ${when}`,
+    7 * DAY,
+    'Wikipedia: Service95 (the Book Club list)',
+  )),
 
   // Recent, widely read books in the genre (Open Library), with the shelf's first four hand-picked staples kept at the end
   romance: genre('subject:romance'),

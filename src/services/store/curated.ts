@@ -1,6 +1,6 @@
 import type { Book } from '../../types';
 import resolvedData from '../../data/storeResolved.json';
-import type { CuratedShelf } from '../../data/storeCatalog';
+import { CURATED_SHELVES, type CuratedShelf } from '../../data/storeCatalog';
 import { mapPool } from '../books/http';
 import { persistentCache } from '../books/cache';
 import { workIdFromKey } from '../books/identity';
@@ -18,12 +18,25 @@ const cache = persistentCache<{ sig: string; books: Book[] }>('readlife.curated1
 /** Changes whenever the shelf's books or pick labels change, so an edited shelf never shows an old cached one. */
 const shelfSig = (shelf: CuratedShelf) => shelf.seeds.map(s => `${s[0]}|${s[1]}|${s[2] || ''}`).join('~');
 
+/**
+ * Prefetched cover/rating data is stored BY POSITION, so it may only be used for the book it was fetched for. A self-refreshing
+ * shelf has a different list from the bundled one, and slot 3 of the new list is not slot 3 of the old: using the old slot's
+ * cover would put the wrong cover (and rating, year, Open Library link) on the new book.
+ * The record's own title settles it when it has one; older data has none, so the slot must still hold the same book as the
+ * bundled seed list the data was fetched for.
+ */
+export function prefetchedFor(shelfId: string, i: number, title: string, author: string): Partial<Book> & { olKey?: string; title?: string } {
+  const rec = PREFETCHED[shelfId]?.[i];
+  if (!rec) return {};
+  if (rec.title) return rec.title === title ? rec : {};
+  const bundled = CURATED_SHELVES.find(s => s.id === shelfId)?.seeds[i];
+  return bundled && bundled[0] === title && bundled[1] === author ? rec : {};
+}
+
 /** Title-only books so a shelf can draw right away, before any network call (plus whatever was prefetched at build time). */
 export function seedPlaceholders(shelf: CuratedShelf): Book[] {
   return shelf.seeds.map(([t, a, award], i) => {
-    const rec = PREFETCHED[shelf.id]?.[i] || {};
-    // Prefetched data is matched by position, so ignore it if the shelf was edited and this slot now holds another book
-    const r = !rec.title || rec.title === t ? rec : {};
+    const r = prefetchedFor(shelf.id, i, t, a);
     const olWork = r.olKey ? workIdFromKey(r.olKey) : undefined;
     return makeBook({
       id: r.olKey ? `ol_${r.olKey.replace(/\W/g, '_')}` : `seed_${shelf.id}_${i}`,

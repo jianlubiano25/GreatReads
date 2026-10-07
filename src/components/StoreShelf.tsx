@@ -65,7 +65,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
       ) : (
         <div className="flex gap-4 overflow-x-auto pb-3 no-scrollbar">
           {books.map((b, i) => (
-            <div key={b.id} className="w-[125px] sm:w-[140px] shrink-0 flex flex-col gap-1.5">
+            <div key={`${b.id}|${b.title}`} className="w-[125px] sm:w-[140px] shrink-0 flex flex-col gap-1.5">
               <div className="relative">
                 {ranked && (
                   <span className="absolute top-2 left-2 z-30 px-2 py-0.5 rounded-md text-xs font-bold bg-[#fbf7ee] dark:bg-[#231d17] text-[#201a15] dark:text-[#f0e6d6] shadow">

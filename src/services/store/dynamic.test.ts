@@ -273,8 +273,8 @@ test('the registry only names shelves that exist, and every dynamic shelf has a 
     assert.ok(sp.refreshMs >= 24 * 3600_000 && sp.source && sp.minSeeds >= 5, id);
   }
   assert.equal(DYNAMIC_SPECS.new2026.title?.(new Date(2027, 0, 5)), 'New in 2027');
-  // hand-picked on purpose: no reliable public source
-  for (const id of ['service95', 'reeses', 'inklingsclub', 'inklings', 'classics']) assert.equal(DYNAMIC_SPECS[id], undefined, id);
+  // hand-picked on purpose: no reliable public source (Reese's and Service95 now have one: Wikipedia's tables of every pick)
+  for (const id of ['inklingsclub', 'inklings', 'classics']) assert.equal(DYNAMIC_SPECS[id], undefined, id);
 });
 
 /* ------------------------------ extra NYT lists ------------------------------ */
