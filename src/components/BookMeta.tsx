@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import { Book } from '../types';
 import { BOOK_AWARDS } from '../data/defaultBooks';
-import { getCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, reportMissingCover, clearMissingCover } from '../services/books';
+import { coverKey, getCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, reportMissingCover, clearMissingCover } from '../services/books';
 
 export type AwardKind = 'w' | 's' | 'c'; // winner, shortlist, other pick (book club, series...)
 
@@ -93,7 +93,17 @@ export function warmBookCover(book: Book, imgSize: 'S' | 'M' | 'L' = 'M') {
  * Cover contents. The real cover image is shown on its own; the title/author text
  * appears gracefully as the book jacket while loading or when no cover exists.
  */
-export const CoverFace = React.memo(function CoverFace({ book, size = 'md', imgSize = 'M', badge = true, eager = false }: { book: Book; size?: keyof typeof SIZES; imgSize?: 'S' | 'M' | 'L'; badge?: boolean; eager?: boolean }) {
+type CoverFaceProps = { book: Book; size?: keyof typeof SIZES; imgSize?: 'S' | 'M' | 'L'; badge?: boolean; eager?: boolean };
+
+/**
+ * Cover state belongs to one book. Keying the inner component ensures that when a different book takes a reused shelf slot,
+ * retries and replacement covers from the previous book are discarded.
+ */
+export const CoverFace = React.memo(function CoverFace(props: CoverFaceProps) {
+  return <CoverFaceFor key={coverKey(props.book)} {...props} />;
+});
+
+function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = false }: CoverFaceProps) {
   // Re-render when "Reload missing covers" repairs one; a repaired cover wins over the original link
   useSyncExternalStore(subscribeCovers, getCoversVersion, getCoversVersion);
   const baseUrl = getCoverFix(book) || getCoverUrl(book.coverId, imgSize, book.coverUrl);
@@ -187,4 +197,4 @@ export const CoverFace = React.memo(function CoverFace({ book, size = 'md', imgS
       ) : null}
     </>
   );
-});
+}
