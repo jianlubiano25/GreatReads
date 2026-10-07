@@ -172,6 +172,16 @@ export function parseWhen(text: string): { at: number; year: number; label: stri
   return { at: year * 12 + (m ? m - 1 : 0), year, label: m ? `${MONTH_SHORT[m - 1]} ${year}` : String(year) };
 }
 
+/**
+ * "The Vegetarian 채식주의자" -> "The Vegetarian". Wikipedia's prize tables add the original-language title after the English one;
+ * a trailing run of words in another script is dropped (a Latin-script original title cannot be told apart, and is kept).
+ */
+export function stripNativeTitle(title: string): string {
+  const t = title.replace(/[\u200e\u200f\u202a-\u202e]/g, '').trim();
+  const out = t.replace(/\s+[^\u0000-\u024f\u1e00-\u1eff\u2000-\u206f]+(?:\s+[^\u0000-\u024f\u1e00-\u1eff\u2000-\u206f]+)*\s*$/, '').replace(/[,;\s]+$/, '').trim(); // a <br> between the two titles leaves a comma behind
+  return out || t;
+}
+
 const NO_PICK = /^(?:—|–|-|n\/a|tba|tbd|none|no award|not awarded|no prize|unknown|\?)$/i;
 
 /** The newest picks first. Returns null unless the page gave dated picks in useful numbers (so a layout change cannot reorder the shelf wrongly). */
@@ -186,7 +196,7 @@ export function picksFromTables(tables: WikiTable[], rule: ColumnRule, minPicks 
     if (iTitle < 0 || iAuthor < 0 || iWhen < 0 || iTitle === iAuthor || t.rows.length < (rule.minRows ?? 5)) continue;
     const seenYear = new Set<number>();
     for (const r of t.rows) {
-      const title = (r[iTitle] || '').trim();
+      const title = stripNativeTitle((r[iTitle] || '').trim());
       const author = (r[iAuthor] || '').trim();
       const when = parseWhen(r[iWhen] || '');
       if (!title || !author || !when || NO_PICK.test(title) || NO_PICK.test(author)) continue;

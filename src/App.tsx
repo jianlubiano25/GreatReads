@@ -681,6 +681,19 @@ export default function App() {
                 />
               </div>
 
+              {/* Customize Store, also reachable from the footer */}
+              <div className="flex justify-end -mt-2">
+                <button
+                  type="button"
+                  onClick={() => setCustomizing(true)}
+                  className="w-10 h-10 rounded-full border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880]"
+                  title="Customize Store: reorder, hide and refresh shelves"
+                  aria-label="Customize Store"
+                >
+                  <SlidersHorizontal className="w-4 h-4" />
+                </button>
+              </div>
+
               {/* Search Results if query present */}
               {storeSearchQuery.trim() && (
                 <div className="flex flex-col gap-3">

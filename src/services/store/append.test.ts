@@ -64,13 +64,18 @@ test('an appending shelf shows its saved/hand-picked list at once (no waiting fo
 
 const REESE_RULE = DYNAMIC_SPECS.reeses;
 
-test('Reese\'s and Service95 are dynamic, append, and say where they come from', () => {
-  for (const id of ['reeses', 'service95', 'oprah', 'womens', 'intbooker']) {
+test('Reese\'s, Oprah and the prizes are dynamic, append, and say they are a Wikipedia stand-in; Service95 is official', () => {
+  for (const id of ['reeses', 'service95', 'oprah', 'womens', 'intbooker']) assert.equal(DYNAMIC_SPECS[id].merge, 'append', id);
+  for (const id of ['reeses', 'oprah', 'womens', 'intbooker']) {
     const sp = DYNAMIC_SPECS[id];
-    assert.equal(sp.merge, 'append', id);
     assert.ok(sp.source.startsWith('Wikipedia'), id);
     assert.equal(dynamicInfo(CURATED_SHELVES.find(s => s.id === id)!, sp).kind, 'fallback', id); // never presented as the official list
   }
+  // Service95 reads the club's own page; Wikipedia is only its labelled fallback
+  const s95 = DYNAMIC_SPECS.service95;
+  assert.equal(s95.source, 'service95.com/book-club');
+  assert.ok(s95.fallbackSource?.startsWith('Wikipedia'));
+  assert.equal(dynamicInfo(CURATED_SHELVES.find(s => s.id === 'service95')!, s95).kind, 'official');
   assert.equal(DYNAMIC_SPECS.reeses.refreshMs, 7 * 24 * 3600_000);
   assert.equal(DYNAMIC_SPECS.inklingsclub, undefined, 'no reliable public source for the Inklings Book Club: it stays hand-picked');
 });

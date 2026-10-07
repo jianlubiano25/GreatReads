@@ -1,7 +1,7 @@
 import type { Book } from '../../types';
 import { CURATED_SHELVES, type CuratedShelf } from '../../data/storeCatalog';
 import { persistentCache } from '../books/cache';
-import { dedupeInflight, pool } from '../books/http';
+import { dedupeInflight, getJson, pool } from '../books/http';
 import { authorKey, isUnknownAuthor, titleKey } from '../books/identity';
 import { shrunkRating } from '../books/model';
 import { isExplicit } from '../books/quality';
@@ -28,7 +28,13 @@ import { fetchWikiPicks, type ColumnRule } from './wikiLists';
  */
 
 type Seed = [string, string, string?];
-export interface Fresh { seeds: Seed[]; /** replaces the shelf title (e.g. "New in 2027") */ title?: string }
+export interface Fresh {
+  seeds: Seed[];
+  /** replaces the shelf title (e.g. "New in 2027") */
+  title?: string;
+  /** The club's / prize's own page answered (as opposed to a public-record stand-in). Only a spec that has both sets it. */
+  official?: boolean;
+}
 
 export interface DynamicSpec {
   /** Where the list comes from (for the docs and the check script) */
@@ -40,7 +46,9 @@ export interface DynamicSpec {
   /** The heading, when it depends on the date */
   title?: (now: Date) => string;
   /** What kind of data this is, for Customize Store: a public record standing in for an official list, or GreatReads' own discovery */
-  kind?: 'fallback' | 'generated';
+  kind?: 'official' | 'fallback' | 'generated';
+  /** For an 'official' spec that falls back to a public record: where that fallback reads from (shown when it was used) */
+  fallbackSource?: string;
   /**
    * 'append': a refresh ADDS the newly published picks in front of what the shelf already has (book clubs and prizes keep
    * their history and grow). Default: the fresh list replaces the old one (discovery shelves, which show what is popular now).
@@ -50,7 +58,7 @@ export interface DynamicSpec {
   cap?: number;
 }
 
-interface Saved { seeds: Seed[]; title?: string; /** last SUCCESSFUL refresh */ at: number; /** last attempt, successful or not (only used to space retries) */ tried: number }
+interface Saved { seeds: Seed[]; title?: string; /** the last refresh came from the official page (specs that have a fallback) */ official?: boolean; /** last SUCCESSFUL refresh */ at: number; /** last attempt, successful or not (only used to space retries) */ tried: number }
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -96,7 +104,7 @@ export async function refreshShelf(shelf: CuratedShelf, spec: DynamicSpec, now =
   const seeds = spec.merge === 'append'
     ? mergeAppend(found, old?.seeds ?? shelf.seeds, spec.cap)
     : found.slice(0, Math.max(shelf.seeds.length, 12));
-  const next: Saved = { seeds, title: fresh?.title, at: now, tried: now };
+  const next: Saved = { seeds, title: fresh?.title, official: fresh?.official, at: now, tried: now };
   saved.set(shelf.id, next);
   return next;
 }
@@ -108,13 +116,22 @@ export const everyLabel = (ms: number) => {
 };
 
 /** Customize Store's facts about a self-refreshing shelf. `updatedAt` is the last SUCCESSFUL refresh, never a failed try. */
-export const dynamicInfo = (base: CuratedShelf, spec: DynamicSpec): ShelfInfo => ({
-  updatedAt: saved.get(base.id)?.at,
-  schedule: `Refreshes ${everyLabel(spec.refreshMs)}`,
-  source: (spec.kind === 'generated' ? `${spec.source} · GreatReads discovery, not an official list` : `${spec.source} · public record, not the official list`)
-    + (spec.merge === 'append' ? ' · new picks are added to the top, earlier ones stay' : ''),
-  kind: spec.kind ?? 'fallback',
-});
+export const dynamicInfo = (base: CuratedShelf, spec: DynamicSpec): ShelfInfo => {
+  const s = saved.get(base.id);
+  const viaFallback = spec.kind === 'official' && !!s && s.official !== true; // saved from the stand-in (or before this flag existed): only a refresh that the official page answered counts as official
+  const kind = spec.kind === 'official' ? (viaFallback ? 'fallback' : 'official') : spec.kind ?? 'fallback';
+  const source =
+    kind === 'official' ? `${spec.source} · the club's own page (official)`
+    : viaFallback ? `${spec.fallbackSource ?? 'a public record'} · public record, not the official list (the official page could not be read)`
+    : spec.kind === 'generated' ? `${spec.source} · GreatReads discovery, not an official list`
+    : `${spec.source} · public record, not the official list`;
+  return {
+    updatedAt: s?.at,
+    schedule: `Refreshes ${everyLabel(spec.refreshMs)}`,
+    source: source + (spec.merge === 'append' ? ' · new picks are added to the top, earlier ones stay' : ''),
+    kind,
+  };
+};
 
 const sameSeeds = (a: Seed[], b: Seed[]) => a.length === b.length && a.every((s, i) => s[0] === b[i][0] && s[1] === b[i][1] && s[2] === b[i][2]);
 const refreshing = new Map<string, Promise<Saved | null>>();
@@ -181,6 +198,39 @@ const wikiSpec = (pages: string[], rule: ColumnRule, label: (when: string) => st
 /** A book club or prize: its published picks accumulate, so a refresh adds the newest ones in front of what the shelf has. */
 const history = (spec: DynamicSpec): DynamicSpec => ({ ...spec, merge: 'append' });
 
+/* ------------------------------ source: Service95's own Book Club page ------------------------------ */
+
+/**
+ * The club's own list, read by the /api/service95 function (the browser cannot read another site's pages). When that cannot be
+ * read (no function in a local dev server, the site down, its layout changed), Wikipedia's list is used instead and the shelf says
+ * so in Customize Store. Either way a failure changes nothing: the saved list stays.
+ */
+const serviceSpec = (): DynamicSpec => {
+  const wiki = wikiSpec(
+    ['Service95'],
+    { title: /^(title|book)/i, author: /^(author|writer)/i, when: /(month|date|year|read|pick|selected)/i },
+    when => `Service95 Monthly Read · ${when}`,
+    7 * DAY,
+    'Wikipedia: Service95 (the Book Club list)',
+  );
+  return {
+    source: 'service95.com/book-club',
+    kind: 'official',
+    fallbackSource: wiki.source,
+    refreshMs: 7 * DAY, // a new pick appears at the start of a month; weekly means it is on the shelf within days, not up to a month late
+    minSeeds: 8,
+    fetch: async (shelf, signal) => {
+      const j = await getJson('/api/service95', { timeout: 20000, signal });
+      const seeds = (Array.isArray(j?.books) ? j.books : [])
+        .filter((b: any) => b && typeof b.title === 'string' && b.title.trim() && typeof b.author === 'string' && b.author.trim() && typeof b.when === 'string')
+        .map((b: any) => [b.title.trim(), b.author.trim(), `Service95 Monthly Read · ${b.when}`] as Seed);
+      if (seeds.length >= 8) return { seeds, official: true };
+      const fallback = await wiki.fetch(shelf, signal);
+      return fallback && { ...fallback, official: false };
+    },
+  };
+};
+
 /* ------------------------------ source: Open Library discovery ------------------------------ */
 
 const JUNK = /\b(box(ed)? set|collection|omnibus|study guide|summary of|summary &|workbook|analysis of|sparknotes|cliffsnotes|bundle|\d+ books?)\b/i;
@@ -246,7 +296,7 @@ const genre = (subjects: string, keep = 4): DynamicSpec => olSpec({ query: y => 
 
 /* ------------------------------ the registry ------------------------------ */
 
-const prize = (): Pick<ColumnRule, 'title' | 'author' | 'when'> => ({ title: /^(title|novel|book|winning (book|work))/i, author: /^(author|writer|winner)/i, when: /^(year|date)/i });
+const prize = (): Pick<ColumnRule, 'title' | 'author' | 'when'> => ({ title: /^(title|novel|book|work|winning (book|work))/i, author: /^(author|writer|winner)/i, when: /^(year|date)/i });
 
 export const DYNAMIC_SPECS: Record<string, DynamicSpec> = {
   // Newest books of the year, by reader interest. Heading follows the calendar year.
@@ -261,7 +311,8 @@ export const DYNAMIC_SPECS: Record<string, DynamicSpec> = {
     "Wikipedia: Oprah's Book Club (the picks table)",
   )),
   womens: history(wikiSpec(
-    ["Women's Prize for Fiction"],
+    // Pages are tried in turn; one without a readable winners table is skipped. (The winners may live on a list page of their own.)
+    ["Women's Prize for Fiction", "List of Women's Prize for Fiction winners"],
     { ...prize(), result: /^(result|status|outcome)/i, winner: /winner/i, onePerYear: true },
     when => `Women's Prize ${when}`,
     7 * DAY,
@@ -284,13 +335,9 @@ export const DYNAMIC_SPECS: Record<string, DynamicSpec> = {
     7 * DAY,
     "Wikipedia: Reese's Book Club (adult Book Club Picks table)",
   )),
-  service95: history(wikiSpec(
-    ['Service95'],
-    { title: /^(title|book)/i, author: /^(author|writer)/i, when: /(month|date|year|read|pick|selected)/i },
-    when => `Service95 Monthly Read · ${when}`,
-    7 * DAY,
-    'Wikipedia: Service95 (the Book Club list)',
-  )),
+  // Service95 publishes its own list: the Book Club page is read server-side by /api/service95 (functions/api/service95.js).
+  // Wikipedia's list stays as the fallback, used (and labelled as such) only when the official page can't be read.
+  service95: history(serviceSpec()),
 
   // Recent, widely read books in the genre (Open Library), with the shelf's first four hand-picked staples kept at the end
   romance: genre('subject:romance'),

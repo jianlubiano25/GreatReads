@@ -340,3 +340,10 @@ test('refreshing shelves (manual, including a hidden one and a failing one) neve
     delete (globalThis as any).localStorage;
   }
 });
+
+test('NYT list names are the API\'s encoded names (from list_name), not the display names', () => {
+  const lists = [...NYT_SHELVES, ...NYT_EXTRA_SHELVES].map(s => s.list);
+  assert.ok(lists.includes('trade-fiction-paperback'));
+  assert.ok(!lists.includes('paperback-trade-fiction'), 'that is the display name; the API would not know it');
+  for (const l of lists) assert.match(l, /^[a-z0-9]+(-[a-z0-9]+)*$/, l);
+});
