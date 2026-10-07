@@ -75,6 +75,7 @@ export function curatedSource(shelf: CuratedShelf): ShelfSource & { seeded: () =
     id: shelf.id,
     seeded,
     cached: seeded,
+    info: () => ({ schedule: 'Hand-picked · no automatic updates', source: 'Hand-picked by GreatReads (no trustworthy public source to refresh from)', kind: 'curated' }),
     load: async onUpdate => {
       const start = seeded();
       await resolveCuratedShelf(shelf, start, onUpdate);

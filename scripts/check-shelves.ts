@@ -4,7 +4,8 @@
  *
  *   npm run check:shelves            (needs internet; nothing is saved or changed)
  *
- * The NYT lists are not checked here: they need the server-side NYT_API_KEY (see functions/api/nyt.js).
+ * The NYT lists are not checked here: they need the server-side NYT_API_KEY (see functions/api/nyt.js). `npm run check:nyt` checks
+ * that their list names are real NYT list names.
  */
 import { CURATED_SHELVES } from '../src/data/storeCatalog';
 import { DYNAMIC_SPECS } from '../src/services/store/dynamic';

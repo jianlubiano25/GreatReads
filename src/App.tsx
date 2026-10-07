@@ -4,13 +4,11 @@ import { BOOK_AWARDS } from './data/defaultBooks';
 import { BUILTIN_DICTIONARY } from './data/defaultWords';
 import { useReadingLife } from './hooks/useReadingLife';
 import { searchBooks, getCoverUrl, fillMissingCovers } from './services/books';
-import { NYT_EXTRA_SHELVES, NYT_SHELVES, bestsellerSource } from './services/store/bestsellers';
-import { trendingSource } from './services/store/trending';
-import { shelfSourceFor } from './services/store/dynamic';
+import { DEFAULT_SHELF_ORDER, SHELF_BY_ID } from './services/store/registry';
+import { loadStorePrefs, moveItem, NO_PREFS, orderShelves, saveStorePrefs, toggleHidden, type StorePrefs } from './services/store/prefs';
 import { lookupWord } from './services/dictionary';
 import { dateKey } from './services/dates';
 import { useAppUpdate, applyUpdate, dismissUpdate, restartApp } from './services/appUpdate';
-import { CURATED_SHELVES } from './data/storeCatalog';
 
 // Modals
 import { AppleBookDetailModal } from './components/AppleBookDetailModal';
@@ -21,6 +19,7 @@ import { NowReadingCard, UpNextCard, LibraryCard, DeviceCard, WordCard } from '.
 import { CoverFace } from './components/BookMeta';
 import { MissingCoversButton } from './components/MissingCoversButton';
 import { StoreShelf } from './components/StoreShelf';
+import { StoreCustomize } from './components/StoreCustomize';
 import { bookKind } from './services/bookKind';
 
 // Icons
@@ -38,6 +37,7 @@ import {
   Share2,
   Download,
   AlertTriangle,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 /**
@@ -66,11 +66,6 @@ const AppleLookUpModal = lazyModal<typeof import('./components/AppleLookUpModal'
 const AddBookModal = lazyModal<typeof import('./components/AddBookModal').AddBookModal>(() => import('./components/AddBookModal'), 'AddBookModal');
 const HighlightsModal = lazyModal<typeof import('./components/HighlightsModal').HighlightsModal>(() => import('./components/HighlightsModal'), 'HighlightsModal');
 const ProfileModal = lazyModal<typeof import('./components/ProfileModal').ProfileModal>(() => import('./components/ProfileModal'), 'ProfileModal');
-// One source object per shelf, created once (shelves compare their source to know when to reload)
-const NYT_SHELF_SOURCES = NYT_SHELVES.map(shelf => ({ shelf, source: bestsellerSource(shelf) }));
-const NYT_EXTRA_SOURCES = NYT_EXTRA_SHELVES.map(shelf => ({ shelf, source: bestsellerSource(shelf) }));
-// Self-refreshing where a shelf has a public source (see services/store/dynamic.ts), hand-picked otherwise
-const CURATED_SOURCES = Object.fromEntries(CURATED_SHELVES.map(sh => [sh.id, shelfSourceFor(sh)]));
 const BackupModal = lazyModal<typeof import('./components/BackupModal').BackupModal>(() => import('./components/BackupModal'), 'BackupModal');
 const WordPracticeModal = lazyModal<typeof import('./components/WordPracticeModal').WordPracticeModal>(() => import('./components/WordPracticeModal'), 'WordPracticeModal');
 const BulkImportModal = lazyModal<typeof import('./components/BulkImportModal').BulkImportModal>(() => import('./components/BulkImportModal'), 'BulkImportModal');
@@ -161,6 +156,13 @@ export default function App() {
     open: false,
     type: 'books',
   });
+
+  // Store layout: the reader's own shelf order and hidden shelves (prefs only; shelf data is never touched, see services/store/prefs.ts)
+  const [storePrefs, setStorePrefs] = useState<StorePrefs>(loadStorePrefs);
+  const [customizing, setCustomizing] = useState(false);
+  const shelfOrder = useMemo(() => orderShelves(DEFAULT_SHELF_ORDER, storePrefs.order), [storePrefs.order]);
+  const updateStorePrefs = useCallback((next: StorePrefs) => { setStorePrefs(next); saveStorePrefs(next); }, []);
+  const reorderShelves = useCallback((order: string[]) => updateStorePrefs({ ...storePrefs, order }), [storePrefs, updateStorePrefs]);
 
   // Library filters
   const [libFilter, setLibFilter] = useState<string>('f');
@@ -655,93 +657,90 @@ export default function App() {
               </button>
             </div>
 
-            {/* Search Input */}
-            <div className="relative">
-              <Search className="w-4 h-4 text-[#706256] dark:text-[#a89a8a] absolute left-3.5 top-3.5 pointer-events-none" />
-              <input
-                type="search"
-                value={storeSearchQuery}
-                onChange={e => setStoreSearchQuery(e.target.value)}
-                placeholder="Search by title, author, or keyword in online catalog"
-                className="w-full pl-10 pr-4 py-3 rounded-xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-sm focus:outline-none focus:ring-2 focus:ring-[#2e5934]"
+            {customizing ? (
+              <StoreCustomize
+                order={shelfOrder}
+                hidden={storePrefs.hidden}
+                onReorder={reorderShelves}
+                onToggle={id => updateStorePrefs({ ...storePrefs, hidden: toggleHidden(storePrefs.hidden, id) })}
+                onDone={() => { updateStorePrefs({ ...storePrefs, order: shelfOrder }); setCustomizing(false); }}
+                onResetLayout={() => updateStorePrefs(NO_PREFS)}
               />
-            </div>
-
-            {/* Search Results if query present */}
-            {storeSearchQuery.trim() && (
-              <div className="flex flex-col gap-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a]">
-                  {isStoreSearching ? 'Searching Online…' : `Search Results (${storeSearchResults.length})`}
-                </span>
-
-                {storeSearchResults.length === 0 && !isStoreSearching ? (
-                  <div className="p-8 text-center text-sm text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-xl border border-[#e3d7c3] dark:border-[#382f25]">
-                    No books found. Check the title spelling or use the Add Book button to add manually.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                    {storeSearchResults.map(b => (
-                      <div key={b.id} className="flex flex-col gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenCover(b)}
-                          className="book-cover-3d w-full aspect-[2/3] rounded-md text-left p-2.5 flex flex-col justify-between text-white overflow-hidden"
-                          style={{ backgroundColor: b.spineColor || '#2e5934' }}
-                        >
-                          <CoverFace book={b} size="md" />
-                        </button>
-                        <h4
-                          onClick={() => handleOpenCover(b)}
-                          className="font-serif-display text-sm leading-tight text-[#201a15] dark:text-[#f0e6d6] line-clamp-2 hover:underline cursor-pointer"
-                        >
-                          {b.title}
-                        </h4>
-                        <div className="text-xs text-[#706256] dark:text-[#a89a8a] truncate">{b.author}</div>
-                        <button
-                          onClick={() => handleOpenCover(b)}
-                          className="mt-1 py-1.5 px-3 rounded-lg text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] text-center"
-                        >
-                          View Details
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+            ) : (
+              <>
+              {/* Search Input */}
+              <div className="relative">
+                <Search className="w-4 h-4 text-[#706256] dark:text-[#a89a8a] absolute left-3.5 top-3.5 pointer-events-none" />
+                <input
+                  type="search"
+                  value={storeSearchQuery}
+                  onChange={e => setStoreSearchQuery(e.target.value)}
+                  placeholder="Search by title, author, or keyword in online catalog"
+                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-sm focus:outline-none focus:ring-2 focus:ring-[#2e5934]"
+                />
               </div>
+
+              {/* Search Results if query present */}
+              {storeSearchQuery.trim() && (
+                <div className="flex flex-col gap-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a]">
+                    {isStoreSearching ? 'Searching Online…' : `Search Results (${storeSearchResults.length})`}
+                  </span>
+
+                  {storeSearchResults.length === 0 && !isStoreSearching ? (
+                    <div className="p-8 text-center text-sm text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-xl border border-[#e3d7c3] dark:border-[#382f25]">
+                      No books found. Check the title spelling or use the Add Book button to add manually.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                      {storeSearchResults.map(b => (
+                        <div key={b.id} className="flex flex-col gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCover(b)}
+                            className="book-cover-3d w-full aspect-[2/3] rounded-md text-left p-2.5 flex flex-col justify-between text-white overflow-hidden"
+                            style={{ backgroundColor: b.spineColor || '#2e5934' }}
+                          >
+                            <CoverFace book={b} size="md" />
+                          </button>
+                          <h4
+                            onClick={() => handleOpenCover(b)}
+                            className="font-serif-display text-sm leading-tight text-[#201a15] dark:text-[#f0e6d6] line-clamp-2 hover:underline cursor-pointer"
+                          >
+                            {b.title}
+                          </h4>
+                          <div className="text-xs text-[#706256] dark:text-[#a89a8a] truncate">{b.author}</div>
+                          <button
+                            onClick={() => handleOpenCover(b)}
+                            className="mt-1 py-1.5 px-3 rounded-lg text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] text-center"
+                          >
+                            View Details
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Shelves, in the reader's own order (Customize Store). Hidden shelves are not drawn, so they also load nothing. */}
+              {shelfOrder.filter(id => !storePrefs.hidden.includes(id)).map(id => {
+                const def = SHELF_BY_ID[id];
+                if (def.library) {
+                  const books = def.library === 'prize' ? prizeBooks : easyBooks;
+                  const title = def.library === 'prize' ? (
+                    <>
+                      <Award className="w-5 h-5 text-amber-500" />
+                      <span>Prize winners from your lists</span>
+                    </>
+                  ) : def.title;
+                  return <StoreShelf key={id} id={id} title={title} books={books} onOpen={handleOpenCover} />;
+                }
+                return <StoreShelf key={id} id={id} title={def.title} source={def.source} ranked={def.ranked} lazy={def.lazy} hideIfUnavailable={def.hideIfUnavailable} onOpen={handleOpenCover} />;
+              })}
+              <p className="text-xs text-[#706256] dark:text-[#a89a8a]">Bestsellers from The New York Times. Covers and ratings from Open Library, Google Books and Apple Books readers.</p>
+              </>
             )}
-
-            {/* Top 15 this week */}
-            {NYT_SHELF_SOURCES.map(({ shelf, source }) => (
-              <StoreShelf key={shelf.id} id={shelf.id} title={shelf.title} source={source} ranked onOpen={handleOpenCover} />
-            ))}
-
-            {/* Trending Today (Updates Daily) */}
-            <StoreShelf id="trending" title="🔥 Trending Today" source={trendingSource} ranked onOpen={handleOpenCover} />
-
-            {/* More NYT lists (official only: a shelf hides itself when its list can't be loaded) */}
-            {NYT_EXTRA_SOURCES.map(({ shelf, source }) => (
-              <StoreShelf key={shelf.id} id={shelf.id} title={shelf.title} source={source} ranked lazy hideIfUnavailable onOpen={handleOpenCover} />
-            ))}
-
-            {/* Prize winners and easy starts from your own catalog (no loading needed) */}
-            <StoreShelf
-              id="prize-catalog"
-              title={
-                <>
-                  <Award className="w-5 h-5 text-amber-500" />
-                  <span>Prize winners from your lists</span>
-                </>
-              }
-              books={prizeBooks}
-              onOpen={handleOpenCover}
-            />
-            <StoreShelf id="easy-catalog" title="🟢 Easy to start" books={easyBooks} onOpen={handleOpenCover} />
-
-            {/* Hand-picked genre shelves: titles show instantly, covers and ratings fill in */}
-            {CURATED_SHELVES.map(sh => (
-              <StoreShelf key={sh.id} id={sh.id} title={`${sh.emoji} ${sh.title}`} source={CURATED_SOURCES[sh.id]} lazy onOpen={handleOpenCover} />
-            ))}
-            <p className="text-xs text-[#706256] dark:text-[#a89a8a]">Bestsellers from The New York Times. Covers and ratings from Open Library, Google Books and Apple Books readers.</p>
           </div>
         </TabPane>
         )}
@@ -1054,6 +1053,17 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-3">
+            {tab === 'store' && (
+              <button
+                onClick={() => setCustomizing(c => !c)}
+                className={`w-10 h-10 aspect-square rounded-full border bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880] ${customizing ? 'border-[#2e5934] dark:border-[#86b880] ring-2 ring-[#2e5934]/30' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}
+                title="Customize Store: reorder, hide and refresh shelves"
+                aria-label="Customize Store"
+                aria-pressed={customizing}
+              >
+                <SlidersHorizontal className="w-4 h-4 text-[#2e5934] dark:text-[#86b880]" />
+              </button>
+            )}
             <button
               onClick={() => setShowBackupModal(true)}
               className="w-10 h-10 aspect-square rounded-full border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880]"

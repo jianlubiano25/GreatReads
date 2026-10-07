@@ -68,6 +68,11 @@ export function parseNytList(data: any): NytEntry[] {
     .sort((a, b) => a.rank - b.rank);
 }
 
+/** When the saved list was fetched (ms), or undefined. Used to say how old a shelf's data is. */
+export const nytListSavedAt = (list: string): number | undefined => {
+  const p = cache.peek(list);
+  return p ? Date.now() - p.ageMs : undefined;
+};
 export const getCachedNytList = (list: string): NytEntry[] | undefined => cache.get(list);
 /** Forget a saved list (used by tests, and handy when switching lists). */
 export const forgetNytList = (list: string) => cache.delete(list);
@@ -114,8 +119,8 @@ const inflight = new Map<string, Promise<NytResult>>();
  * The current list in NYT order. Never throws. When a fresh load fails, the last saved list (up to 10 days old) is returned with
  * `stale: true`; with nothing saved, `entries` is null and `failure` says why.
  */
-export async function loadNytList(list: string, opts: CallOpts = {}): Promise<NytResult> {
-  const hit = cache.get(list);
+export async function loadNytList(list: string, opts: CallOpts & { force?: boolean } = {}): Promise<NytResult> {
+  const hit = opts.force ? undefined : cache.get(list); // force = a manual refresh: ask again, but the saved list stays as the fallback
   if (hit) return { entries: hit, stale: false };
   return dedupeInflight(inflight, list, async () => {
     const r = await getJsonDetailed(listUrl(list), { timeout: 10000, retries: 1, signal: opts.signal });

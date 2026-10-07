@@ -6,7 +6,7 @@ import { loadNytList } from '../books/sources/nyt';
 import { enrichPool, gatherPool, rankPool } from './collate';
 import { NYT_EXTRA_SHELVES, NYT_SHELVES, type NytShelf } from './lists';
 import { combineWithNyt, nytEntryToBook, nytLabel } from './nytBooks';
-import type { ShelfSource } from './shelves';
+import type { RefreshResult, ShelfSource } from './shelves';
 
 export { NYT_SHELVES, NYT_EXTRA_SHELVES, type NytShelf, combineWithNyt, nytEntryToBook, nytLabel };
 
@@ -36,16 +36,18 @@ const refining = new Set<string>();
 
 export function bestsellerSource(shelf: NytShelf): ShelfSource {
   let mode: Mode | null = null;
-  const remember = (m: Mode, books: Book[]) => {
+  /** `at` is when the LIST was fetched; improving its covers afterwards passes the original time, so "last updated" does not creep forward. */
+  const remember = (m: Mode, books: Book[], at = Date.now()) => {
     mode = m;
-    saved.set(shelf.id, { mode: m, books, at: Date.now() });
+    saved.set(shelf.id, { mode: m, books, at });
   };
 
   /** The official NYT path. Slot i stays slot i: the rank never moves. */
   async function official(entries: NonNullable<Awaited<ReturnType<typeof loadNytList>>['entries']>, onUpdate: (b: Book[]) => void): Promise<Book[]> {
     const top = entries.slice(0, shelf.limit ?? 15);
     const provisional = top.map(e => nytEntryToBook(e, shelf.genre));
-    remember('nyt', provisional);
+    const fetchedAt = Date.now();
+    remember('nyt', provisional, fetchedAt);
     if (!refining.has(shelf.id)) {
       refining.add(shelf.id);
       void (async () => {
@@ -56,7 +58,7 @@ export function bestsellerSource(shelf: NytShelf): ShelfSource {
             out[i] = combineWithNyt(provisional[i], r?.book ?? null);
             onUpdate([...out]);
           });
-          if (mode === 'nyt') remember('nyt', out);
+          if (mode === 'nyt') remember('nyt', out, fetchedAt);
         } finally {
           refining.delete(shelf.id);
         }
@@ -91,6 +93,25 @@ export function bestsellerSource(shelf: NytShelf): ShelfSource {
   return {
     id: shelf.id,
     label: () => shelfHeading(shelf, mode),
+    info: () => {
+      const s = saved.get(shelf.id);
+      const m = s?.mode ?? mode;
+      return {
+        updatedAt: s?.at,
+        schedule: 'NYT publishes weekly · checked every 6 hours when opened',
+        source: m === 'collated' ? 'GreatReads fallback (the NYT list could not be loaded), not an official list' : 'The New York Times Books API (official)',
+        kind: m === 'collated' ? 'generated' : 'official',
+      };
+    },
+    // Manual refresh: ask the NYT again now (the saved list stays as the fallback). Only the official list counts as a success.
+    refresh: async (): Promise<RefreshResult> => {
+      const before = saved.get(shelf.id);
+      const nyt = await loadNytList(shelf.list, { force: true });
+      if (!nyt.entries?.length || nyt.stale) return 'failed';
+      const books = await official(nyt.entries, () => {});
+      const key = (bs: Book[]) => bs.map(b => `${b.title}|${b.author}`).join('~');
+      return before?.mode === 'nyt' && key(before.books) === key(books) ? 'unchanged' : 'updated';
+    },
     cached: () => {
       const s = saved.get(shelf.id);
       if (!s || Date.now() - s.at > FRESH_MS[s.mode] || !s.books.length) return null;

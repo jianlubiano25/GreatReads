@@ -9,7 +9,7 @@ import { searchOpenLibrary } from '../books/sources/openLibrary';
 import type { Hit } from '../books/sources/types';
 import { READER_CAPS, recencyValue } from './collate';
 import { curatedSource } from './curated';
-import type { ShelfSource } from './shelves';
+import type { RefreshResult, ShelfInfo, ShelfSource } from './shelves';
 import { fetchWikiPicks, type ColumnRule } from './wikiLists';
 
 /**
@@ -39,9 +39,11 @@ export interface DynamicSpec {
   fetch: (shelf: CuratedShelf, signal?: AbortSignal) => Promise<Fresh | null>;
   /** The heading, when it depends on the date */
   title?: (now: Date) => string;
+  /** What kind of data this is, for Customize Store: a public record standing in for an official list, or GreatReads' own discovery */
+  kind?: 'fallback' | 'generated';
 }
 
-interface Saved { seeds: Seed[]; title?: string; at: number; tried: number }
+interface Saved { seeds: Seed[]; title?: string; /** last SUCCESSFUL refresh */ at: number; /** last attempt, successful or not (only used to space retries) */ tried: number }
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -80,6 +82,20 @@ export async function refreshShelf(shelf: CuratedShelf, spec: DynamicSpec, now =
   return next;
 }
 
+/** Words for a refresh interval: "every 3 days", "weekly", "monthly". */
+export const everyLabel = (ms: number) => {
+  const d = Math.round(ms / DAY);
+  return d === 1 ? 'daily' : d === 7 ? 'weekly' : d === 30 ? 'monthly' : d > 1 ? `every ${d} days` : `every ${Math.max(1, Math.round(ms / HOUR))} hours`;
+};
+
+/** Customize Store's facts about a self-refreshing shelf. `updatedAt` is the last SUCCESSFUL refresh, never a failed try. */
+export const dynamicInfo = (base: CuratedShelf, spec: DynamicSpec): ShelfInfo => ({
+  updatedAt: saved.get(base.id)?.at,
+  schedule: `Refreshes ${everyLabel(spec.refreshMs)}`,
+  source: spec.kind === 'generated' ? `${spec.source} · GreatReads discovery, not an official list` : `${spec.source} · public record, not the official list`,
+  kind: spec.kind ?? 'fallback',
+});
+
 const sameSeeds = (a: Seed[], b: Seed[]) => a.length === b.length && a.every((s, i) => s[0] === b[i][0] && s[1] === b[i][1] && s[2] === b[i][2]);
 const refreshing = new Map<string, Promise<Saved | null>>();
 
@@ -93,6 +109,14 @@ export function dynamicCuratedSource(base: CuratedShelf, spec: DynamicSpec): She
     id: base.id,
     label: () => `${base.emoji} ${spec.title?.(new Date()) ?? saved.get(base.id)?.title ?? base.title}`,
     cached: () => curatedSource(current()).cached(),
+    info: () => dynamicInfo(base, spec),
+    // Manual refresh: the same engine as the schedule, just not waiting for it. A failure keeps the saved (or hand-picked) list.
+    refresh: async (): Promise<RefreshResult> => {
+      const before = saved.get(base.id);
+      const fresh = await refresh();
+      if (!fresh) return 'failed';
+      return before && sameSeeds(fresh.seeds, before.seeds) ? 'unchanged' : 'updated';
+    },
     load: async onUpdate => {
       const mine = ++generation;
       const show = (b: Book[]) => { if (mine === generation) onUpdate(b); };
@@ -122,6 +146,7 @@ export function dynamicCuratedSource(base: CuratedShelf, spec: DynamicSpec): She
 
 const wikiSpec = (pages: string[], rule: ColumnRule, label: (when: string) => string, refreshMs: number, source: string, limit = 12): DynamicSpec => ({
   source,
+  kind: 'fallback',
   refreshMs,
   minSeeds: 8,
   fetch: async () => {
@@ -175,6 +200,7 @@ interface Discovery { query: (year: number) => string; keep?: number; yearsBack?
 
 const olSpec = (d: Discovery): DynamicSpec => ({
   source: 'Open Library search (reader activity, ratings), recent books',
+  kind: 'generated',
   refreshMs: 30 * DAY,
   minSeeds: 8,
   fetch: async base => {
