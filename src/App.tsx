@@ -4,8 +4,8 @@ import { BOOK_AWARDS } from './data/defaultBooks';
 import { BUILTIN_DICTIONARY } from './data/defaultWords';
 import { useReadingLife } from './hooks/useReadingLife';
 import { searchBooks, getCoverUrl, fillMissingCovers } from './services/books';
-import { DEFAULT_SHELF_ORDER, SHELF_BY_ID } from './services/store/registry';
-import { loadStorePrefs, moveItem, NO_PREFS, orderShelves, saveStorePrefs, toggleHidden, type StorePrefs } from './services/store/prefs';
+import { DEFAULT_SHELF_ORDER, SHELF_BY_ID, hiddenShelfIds } from './services/store/registry';
+import { loadStorePrefs, NO_PREFS, orderShelves, saveStorePrefs, toggleShelf, type StorePrefs } from './services/store/prefs';
 import { lookupWord } from './services/dictionary';
 import { dateKey } from './services/dates';
 import { useAppUpdate, applyUpdate, dismissUpdate, restartApp } from './services/appUpdate';
@@ -161,6 +161,7 @@ export default function App() {
   const [storePrefs, setStorePrefs] = useState<StorePrefs>(loadStorePrefs);
   const [customizing, setCustomizing] = useState(false);
   const shelfOrder = useMemo(() => orderShelves(DEFAULT_SHELF_ORDER, storePrefs.order), [storePrefs.order]);
+  const hiddenShelves = useMemo(() => hiddenShelfIds(storePrefs), [storePrefs]);
   const updateStorePrefs = useCallback((next: StorePrefs) => { setStorePrefs(next); saveStorePrefs(next); }, []);
   const reorderShelves = useCallback((order: string[]) => updateStorePrefs({ ...storePrefs, order }), [storePrefs, updateStorePrefs]);
 
@@ -660,9 +661,9 @@ export default function App() {
             {customizing ? (
               <StoreCustomize
                 order={shelfOrder}
-                hidden={storePrefs.hidden}
+                hidden={hiddenShelves}
                 onReorder={reorderShelves}
-                onToggle={id => updateStorePrefs({ ...storePrefs, hidden: toggleHidden(storePrefs.hidden, id) })}
+                onToggle={id => updateStorePrefs(toggleShelf(storePrefs, id, !!SHELF_BY_ID[id]?.defaultHidden))}
                 onDone={() => { updateStorePrefs({ ...storePrefs, order: shelfOrder }); setCustomizing(false); }}
                 onResetLayout={() => updateStorePrefs(NO_PREFS)}
               />
@@ -724,7 +725,7 @@ export default function App() {
               )}
 
               {/* Shelves, in the reader's own order (Customize Store). Hidden shelves are not drawn, so they also load nothing. */}
-              {shelfOrder.filter(id => !storePrefs.hidden.includes(id)).map(id => {
+              {shelfOrder.filter(id => !hiddenShelves.includes(id)).map(id => {
                 const def = SHELF_BY_ID[id];
                 if (def.library) {
                   const books = def.library === 'prize' ? prizeBooks : easyBooks;

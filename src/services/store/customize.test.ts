@@ -6,9 +6,9 @@ import { forgetNytList } from '../books/sources/nyt';
 import { NYT_EXTRA_SHELVES, NYT_SHELVES, bestsellerSource } from './bestsellers';
 import { DYNAMIC_SPECS, dynamicCuratedSource, everyLabel, refreshShelf, type DynamicSpec } from './dynamic';
 import { checkNytLists } from './nytListNames';
-import { STORE_PREFS_KEY, loadStorePrefs, moveItem, orderShelves, saveStorePrefs, toggleHidden } from './prefs';
+import { NO_PREFS, STORE_PREFS_KEY, isShelfHidden, loadStorePrefs, moveItem, orderShelves, saveStorePrefs, toggleShelf } from './prefs';
 import { COOLDOWN_FAILED_MS, COOLDOWN_OK_MS, cooldownLeft, formatUpdated, manualRefresh } from './refresh';
-import { DEFAULT_SHELF_ORDER, STORE_SHELVES } from './registry';
+import { DEFAULT_SHELF_ORDER, SHELF_BY_ID, STORE_SHELVES, hiddenShelfIds } from './registry';
 import { nytList, routeFetch } from './testkit';
 import { trendingSource } from './trending';
 
@@ -34,28 +34,29 @@ test('orderShelves: two new shelves in a row keep their relative order', () => {
   assert.deepEqual(orderShelves(DEFAULT, ['e', 'a']), ['e', 'a', 'b', 'c', 'd']);
 });
 
-test('moveItem and toggleHidden are pure', () => {
+test('moveItem is pure', () => {
   const list = ['a', 'b', 'c'];
   assert.deepEqual(moveItem(list, 0, 2), ['b', 'c', 'a']);
   assert.deepEqual(moveItem(list, 2, 0), ['c', 'a', 'b']);
   assert.equal(moveItem(list, 1, 1), list);
   assert.equal(moveItem(list, 5, 0), list);
   assert.deepEqual(list, ['a', 'b', 'c']);
-  assert.deepEqual(toggleHidden(['x'], 'y'), ['x', 'y']);
-  assert.deepEqual(toggleHidden(['x', 'y'], 'x'), ['y']);
 });
 
 test('prefs persist on the device, and a damaged record falls back to the default layout', () => {
   const store = new Map<string, string>();
   (globalThis as any).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
   try {
-    assert.deepEqual(loadStorePrefs(), { order: [], hidden: [] });
-    assert.equal(saveStorePrefs({ order: ['b', 'a'], hidden: ['a'] }), true);
-    assert.deepEqual(loadStorePrefs(), { order: ['b', 'a'], hidden: ['a'] });
+    assert.deepEqual(loadStorePrefs(), NO_PREFS);
+    assert.equal(saveStorePrefs({ order: ['b', 'a'], hidden: ['a'], shown: ['z'] }), true);
+    assert.deepEqual(loadStorePrefs(), { order: ['b', 'a'], hidden: ['a'], shown: ['z'] });
     store.set(STORE_PREFS_KEY, '{not json');
-    assert.deepEqual(loadStorePrefs(), { order: [], hidden: [] });
+    assert.deepEqual(loadStorePrefs(), NO_PREFS);
     store.set(STORE_PREFS_KEY, JSON.stringify({ order: ['a', 5, null, 'a'], hidden: 'nope' }));
-    assert.deepEqual(loadStorePrefs(), { order: ['a'], hidden: [] });
+    assert.deepEqual(loadStorePrefs(), { order: ['a'], hidden: [], shown: [] });
+    // a layout saved before `shown` existed still loads
+    store.set(STORE_PREFS_KEY, JSON.stringify({ order: ['b'], hidden: ['c'] }));
+    assert.deepEqual(loadStorePrefs(), { order: ['b'], hidden: ['c'], shown: [] });
   } finally {
     delete (globalThis as any).localStorage;
   }
@@ -217,7 +218,7 @@ test('refreshing or reordering never changes the other: layout lives apart from 
   const store = new Map<string, string>();
   (globalThis as any).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
   try {
-    const layout = { order: ['c', 'a', 'b'], hidden: ['b'] };
+    const layout = { order: ['c', 'a', 'b'], hidden: ['b'], shown: [] };
     saveStorePrefs(layout);
     const sh = shelf('t-apart');
     routeFetch([]);
@@ -225,7 +226,7 @@ test('refreshing or reordering never changes the other: layout lives apart from 
     await src.refresh?.();
     assert.deepEqual(loadStorePrefs(), layout, 'a refresh leaves the layout alone');
     const before = src.cached()?.map(b => b.title);
-    saveStorePrefs({ order: ['b', 'c', 'a'], hidden: [] });
+    saveStorePrefs({ order: ['b', 'c', 'a'], hidden: [], shown: [] });
     assert.deepEqual(src.cached()?.map(b => b.title), before, 'a new layout leaves the shelf data alone');
   } finally {
     delete (globalThis as any).localStorage;
@@ -244,4 +245,98 @@ test('checkNytLists: finds the names the NYT publishes and flags ones it does no
   assert.equal(r.missing.length, 1);
   assert.equal(r.missing[0].id, 'typo');
   assert.deepEqual(r.missing[0].suggestions, ['young-adult-hardcover']);
+});
+
+/* ------------------------------ NYT Young Adult: off by default, on by choice ------------------------------ */
+
+const fakeDevice = () => {
+  const store = new Map<string, string>();
+  (globalThis as any).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
+  return store;
+};
+
+test('NYT Young Adult is hidden by default, and it is the only shelf that is', () => {
+  assert.equal(SHELF_BY_ID['nyt-ya'].defaultHidden, true);
+  assert.deepEqual(hiddenShelfIds(NO_PREFS), ['nyt-ya']);
+  // still in the Customize list (so it can be turned on), in its normal place, with a refresh button
+  assert.ok(DEFAULT_SHELF_ORDER.includes('nyt-ya'));
+  assert.ok(SHELF_BY_ID['nyt-ya'].source?.refresh && SHELF_BY_ID['nyt-ya'].source?.info);
+  // the other NYT lists are not affected
+  for (const id of ['nyt-fiction', 'nyt-nonfiction', 'nyt-paperback-fiction', 'nyt-paperback-nonfiction', 'nyt-advice', 'trending']) assert.ok(!hiddenShelfIds(NO_PREFS).includes(id), id);
+});
+
+test('Customize Store can turn Young Adult on (and off again); only the reader\'s own choice is recorded', () => {
+  const on = toggleShelf(NO_PREFS, 'nyt-ya', true);
+  assert.deepEqual(on, { order: [], hidden: [], shown: ['nyt-ya'] });
+  assert.deepEqual(hiddenShelfIds(on), []);
+  const off = toggleShelf(on, 'nyt-ya', true);
+  assert.deepEqual(off, NO_PREFS); // back to the default: nothing stored
+  assert.deepEqual(hiddenShelfIds(off), ['nyt-ya']);
+  // an ordinary shelf: hide, then show
+  const hid = toggleShelf(NO_PREFS, 'romance', false);
+  assert.deepEqual(hiddenShelfIds(hid).sort(), ['nyt-ya', 'romance']);
+  assert.deepEqual(toggleShelf(hid, 'romance', false), NO_PREFS);
+  // the reader's choice beats the default, whichever way the default later points
+  assert.equal(isShelfHidden('nyt-ya', false, { hidden: [], shown: ['nyt-ya'] }), false);
+  assert.equal(isShelfHidden('nyt-ya', true, { hidden: ['nyt-ya'], shown: [] }), true);
+});
+
+test('saved order and visibility survive a restart (read back from the device, with a shelf added by an update)', () => {
+  const store = fakeDevice();
+  try {
+    // the reader: turns Young Adult on, hides Romance, moves Fantasy to the very top
+    const order = moveItem(DEFAULT_SHELF_ORDER, DEFAULT_SHELF_ORDER.indexOf('fantasy'), 0);
+    const prefs = toggleShelf(toggleShelf({ ...NO_PREFS, order }, 'nyt-ya', true), 'romance', false);
+    assert.equal(saveStorePrefs(prefs), true);
+    assert.ok(store.get(STORE_PREFS_KEY));
+
+    // "restart": nothing in memory, only what is on the device
+    const back = loadStorePrefs();
+    assert.deepEqual(back, prefs);
+    assert.equal(orderShelves(DEFAULT_SHELF_ORDER, back.order)[0], 'fantasy');
+    assert.deepEqual(hiddenShelfIds(back), ['romance']);
+
+    // a later app version adds a shelf: the reader's order is kept and the newcomer takes its default place
+    const later = [...DEFAULT_SHELF_ORDER.slice(0, 4), 'brand-new', ...DEFAULT_SHELF_ORDER.slice(4)];
+    const merged = orderShelves(later, back.order);
+    assert.equal(merged[0], 'fantasy');
+    assert.equal(merged.indexOf('brand-new'), merged.indexOf(later[3]) + 1);
+    assert.deepEqual(merged.filter(id => id !== 'brand-new'), back.order);
+  } finally {
+    delete (globalThis as any).localStorage;
+  }
+});
+
+test('refreshing shelves (manual, including a hidden one and a failing one) never changes visibility or order', async () => {
+  const store = fakeDevice();
+  try {
+    const order = orderShelves(DEFAULT_SHELF_ORDER, ['trending', 'nyt-ya']);
+    const prefs = toggleShelf({ ...NO_PREFS, order }, 'romance', false); // Young Adult left at its default (hidden)
+    saveStorePrefs(prefs);
+    const saved = store.get(STORE_PREFS_KEY);
+
+    const ya = SHELF_BY_ID['nyt-ya'].source!;
+    const rows = Array.from({ length: 12 }, (_, i) => [`Teen Book ${i}`, `Author ${i}`, `97803064061${String(i).padStart(2, '0')}`.slice(0, 13)] as [string, string, string]);
+    const nyt = (body: unknown, status = 200) => [(u: URL) => (u.pathname === '/api/nyt' ? { status, body } : undefined)];
+
+    forgetNytList(NYT_EXTRA_SHELVES[0].list);
+    routeFetch(nyt(nytList(rows)));
+    assert.equal(await manualRefresh({ id: 'nyt-ya', refresh: ya.refresh }, Date.now() + 3 * COOLDOWN_OK_MS), 'updated'); // refreshed while hidden
+    assert.equal(store.get(STORE_PREFS_KEY), saved, 'a successful refresh leaves the saved layout byte-for-byte alone');
+    assert.deepEqual(hiddenShelfIds(loadStorePrefs()), ['nyt-ya', 'romance'].sort((a, b) => DEFAULT_SHELF_ORDER.indexOf(a) - DEFAULT_SHELF_ORDER.indexOf(b)));
+
+    routeFetch(nyt({ error: 'rate_limited' }, 429));
+    assert.equal(await ya.refresh?.(), 'failed');
+    assert.equal(store.get(STORE_PREFS_KEY), saved, 'and so does a failed one');
+    assert.deepEqual(loadStorePrefs(), prefs);
+
+    // enable Young Adult: it is then drawn, its refreshed list is still there, and the order did not move
+    const shown = toggleShelf(loadStorePrefs(), 'nyt-ya', true);
+    saveStorePrefs(shown);
+    assert.deepEqual(hiddenShelfIds(loadStorePrefs()), ['romance']);
+    assert.equal(ya.cached()?.[0].title, 'Teen Book 0');
+    assert.deepEqual(loadStorePrefs().order, order);
+  } finally {
+    delete (globalThis as any).localStorage;
+  }
 });

@@ -9,17 +9,21 @@
  * shelf that precedes them by default, instead of piling up at the end or disappearing.
  */
 
-export interface StorePrefs { order: string[]; hidden: string[] }
+/**
+ * `hidden` = shelves the reader hid; `shown` = shelves that are hidden by default (see registry.ts) which the reader turned on.
+ * Only the reader's own choices are stored, so a shelf's default can change later without undoing anything they chose.
+ */
+export interface StorePrefs { order: string[]; hidden: string[]; shown: string[] }
 
 export const STORE_PREFS_KEY = 'readlife.storeprefs1';
-export const NO_PREFS: StorePrefs = { order: [], hidden: [] };
+export const NO_PREFS: StorePrefs = { order: [], hidden: [], shown: [] };
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string'))] : []);
 
 export function loadStorePrefs(): StorePrefs {
   try {
     const raw = JSON.parse(localStorage.getItem(STORE_PREFS_KEY) || 'null');
-    if (raw && typeof raw === 'object') return { order: strings(raw.order), hidden: strings(raw.hidden) };
+    if (raw && typeof raw === 'object') return { order: strings(raw.order), hidden: strings(raw.hidden), shown: strings(raw.shown) };
   } catch {}
   return NO_PREFS;
 }
@@ -50,4 +54,20 @@ export function moveItem<T>(list: T[], from: number, to: number): T[] {
   return next;
 }
 
-export const toggleHidden = (hidden: string[], id: string): string[] => (hidden.includes(id) ? hidden.filter(h => h !== id) : [...hidden, id]);
+/** Is this shelf hidden right now? The reader's choice wins; otherwise the shelf's own default. */
+export const isShelfHidden = (id: string, defaultHidden: boolean, p: Pick<StorePrefs, 'hidden' | 'shown'>): boolean =>
+  p.hidden.includes(id) ? true : p.shown.includes(id) ? false : defaultHidden;
+
+/**
+ * Flip one shelf's visibility. Only departures from the shelf's default are stored (hiding a normally-visible shelf, showing a
+ * normally-hidden one); going back to the default stores nothing. Order is untouched.
+ */
+export function toggleShelf(p: StorePrefs, id: string, defaultHidden: boolean): StorePrefs {
+  const hide = !isShelfHidden(id, defaultHidden, p);
+  const without = (l: string[]) => l.filter(x => x !== id);
+  return {
+    ...p,
+    hidden: hide && !defaultHidden ? [...without(p.hidden), id] : without(p.hidden),
+    shown: !hide && defaultHidden ? [...without(p.shown), id] : without(p.shown),
+  };
+}
