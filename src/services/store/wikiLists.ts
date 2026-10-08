@@ -31,6 +31,8 @@ export interface ColumnRule {
   onePerYear?: boolean;
   /** Tables with fewer data rows than this are ignored (navigation boxes, small side tables). */
   minRows?: number;
+  /** Picks one page must give to count (default 5). A page that holds only the newest few picks needs less: the merged total is still checked. */
+  minPicks?: number;
 }
 
 /* ------------------------------ wikitext -> text ------------------------------ */
@@ -281,7 +283,7 @@ export async function fetchWikiPicks(pages: string[], rule: ColumnRule, signal?:
   for (const page of pages) {
     const text = await fetchWikitext(page, signal);
     if (!text) continue;
-    all.push(...(picksFromTables(parseWikiTables(text), rule) ?? []));
+    all.push(...(picksFromTables(parseWikiTables(text), rule, rule.minPicks ?? 5) ?? []));
   }
   return mergePicks(all);
 }

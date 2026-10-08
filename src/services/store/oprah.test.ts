@@ -92,3 +92,23 @@ test('Oprah shelf: a double pick becomes two books, so each finds its own cover'
   assert.ok(titles.includes('Great Expectations') && titles.includes('A Tale of Two Cities'));
   assert.ok(!titles.some(t => /Great Expectations,/.test(t)));
 });
+
+test('Oprah shelf: reads the 2012+ "Oprah\'s Book Club 2.0" page too, so the newest picks lead, and drops the old hand-picked staples', async () => {
+  const base = CURATED_SHELVES.find(s => s.id === 'oprah')!;
+  const table2 = (rows: string[][]) => `{| class="wikitable"\n! Month !! Author !! Title !! Ref\n|-\n${rows.map(r => `| ${r[0]} || [[${r[1]}]] || ''[[${r[2]}]]'' ||`).join('\n|-\n')}\n|}`;
+  const recent = [['February 2026', 'Tayari Jones', 'Kin'], ['April 2026', 'Maria Semple', 'Go Gentle'], ['May 2026', 'Douglas Stuart', 'John of John'], ['June 2026', 'Sophie Chen Keller', 'Little Wonder']];
+  const older = Array.from({ length: 8 }, (_, i) => [`June ${i + 1}, 20${10 + i}`, `Old Book ${i}`, `Old Author ${i}`]) as [string, string, string][];
+  const calls = routeFetch([
+    u => (u.hostname === 'en.wikipedia.org' && u.searchParams.get('page') === "Oprah's Book Club 2.0" ? { body: { parse: { wikitext: table2(recent) } } } : undefined),
+    u => (u.hostname === 'en.wikipedia.org' && u.searchParams.get('page') === "Oprah's Book Club" ? { body: { parse: { wikitext: wikitext(older) } } } : undefined),
+    u => (u.hostname === 'en.wikipedia.org' ? { status: 404 } : undefined),
+  ]);
+  const got = await refreshShelf({ ...base, id: 't-oprah-2' }, DYNAMIC_SPECS.oprah);
+  assert.deepEqual(got?.seeds.slice(0, 4).map(s => [s[0], s[2]]), [
+    ['Little Wonder', "Oprah's Book Club · Jun 2026"], ['John of John', "Oprah's Book Club · May 2026"], ['Go Gentle', "Oprah's Book Club · Apr 2026"], ['Kin', "Oprah's Book Club · Feb 2026"],
+  ]);
+  assert.ok(calls.some(c => c.includes('2.0')));
+  // the hand-picked staples (Beloved, Gilead...) are not part of the club's shelf
+  assert.ok(!got!.seeds.some(s => ['Beloved', 'Gilead', 'Demon Copperhead', 'The Water Dancer', 'Deacon King Kong'].includes(s[0])));
+  assert.ok(got!.seeds.every(s => /^Oprah's Book Club/.test(s[2] || '')));
+});

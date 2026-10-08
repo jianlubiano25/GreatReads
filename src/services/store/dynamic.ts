@@ -56,6 +56,11 @@ export interface DynamicSpec {
   merge?: 'append';
   /** The most books an appending shelf keeps (the oldest fall off the end) */
   cap?: number;
+  /**
+   * An appending shelf starts from the hand-picked list and keeps what it saved before. When only some of those entries belong on
+   * the shelf (Oprah: her club's picks, not the hand-picked staples that have nothing to do with the club), say which.
+   */
+  keepExisting?: (seed: Seed) => boolean;
 }
 
 interface Saved { seeds: Seed[]; title?: string; /** the last refresh came from the official page (specs that have a fallback) */ official?: boolean; /** last SUCCESSFUL refresh */ at: number; /** last attempt, successful or not (only used to space retries) */ tried: number }
@@ -132,7 +137,7 @@ export async function refreshShelf(shelf: CuratedShelf, spec: DynamicSpec, now =
   }
   attempts.set(shelf.id, { at: now, ok: true });
   const seeds = spec.merge === 'append'
-    ? mergeAppend(found, old?.seeds ?? shelf.seeds, spec.cap)
+    ? mergeAppend(found, (old?.seeds ?? shelf.seeds).filter(s => spec.keepExisting?.(s) ?? true), spec.cap)
     : found.slice(0, Math.max(shelf.seeds.length, 12));
   const next: Saved = { seeds, title: fresh?.title, official: fresh?.official, at: now, tried: now };
   saved.set(shelf.id, next);
@@ -292,15 +297,19 @@ export function oprahNewest(official: { title: string; author: string }[], known
 
 const oprahSpec = (): DynamicSpec => {
   const wiki = wikiSpec(
-    ["Oprah's Book Club", "List of Oprah's Book Club selections"],
-    { title: /^(title|book|selection)/i, author: /^author/i, when: /(date|month|year|selected|announced)/i },
+    // The club has two Wikipedia articles: the original (1996-2011) and "Oprah's Book Club 2.0" (2012 on, every pick since: Kin, Go
+    // Gentle, Little Wonder...). All are read and merged newest first; reading only the first left 2010 at the top of the shelf.
+    ["Oprah's Book Club 2.0", "Oprah's Book Club", "List of Oprah's Book Club selections"],
+    { title: /^(title|book|selection)/i, author: /^author/i, when: /(date|month|year|selected|announced)/i, minRows: 1, minPicks: 1 },
     when => `Oprah's Book Club · ${when}`,
     3 * DAY,
-    "Wikipedia: Oprah's Book Club (the picks table)",
+    "Wikipedia: Oprah's Book Club and Oprah's Book Club 2.0 (the picks tables)",
     12,
     true,
   );
   return {
+    // Only her club's picks belong on this shelf: the hand-picked staples (Beloved, Gilead...) are not in date order and not all club picks
+    keepExisting: s => /^Oprah's Book Club · /.test(s[2] || ''), // dated picks only: the hand-picked ones carry no date
     source: 'oprahdaily.com (the complete Oprah\'s Book Club list)',
     kind: 'official',
     fallbackSource: wiki.source,
