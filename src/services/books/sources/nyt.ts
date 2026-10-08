@@ -122,7 +122,7 @@ export const lastNytFailure = (list: string): NytFailure | undefined => lastFail
  * The NYT allows only a few requests a minute per key, and a first visit asks for several lists at once, so lists go out two at a
  * time and a "too many requests" answer is waited out and tried again (when nothing is saved to show meanwhile).
  */
-export const nytTuning = { backoffMs: [8000, 20000] as number[] };
+export const nytTuning = { backoffMs: [8000, 20000, 65000] as number[] };
 const turn = pool(2);
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 

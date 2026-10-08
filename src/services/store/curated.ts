@@ -3,7 +3,7 @@ import resolvedData from '../../data/storeResolved.json';
 import { CURATED_SHELVES, type CuratedShelf } from '../../data/storeCatalog';
 import { mapPool } from '../books/http';
 import { persistentCache } from '../books/cache';
-import { authorKey, titleKey, workIdFromKey } from '../books/identity';
+import { authorKey, authorsCompatible, titleKey, titlesMatch, workIdFromKey } from '../books/identity';
 import { makeBook } from '../books/model';
 import { getCoverUrl } from '../books/covers';
 import { resolveBook } from '../books/resolve';
@@ -13,7 +13,8 @@ import type { ShelfSource } from './shelves';
 const PREFETCHED = resolvedData as unknown as Record<string, (Partial<Book> & { olKey?: string } | null)[]>;
 
 const SEED_COLORS = ['#6b6f80', '#8a5a3b', '#2e5934', '#925838', '#3a7d80', '#7a4a6a'];
-const cache = persistentCache<{ sig: string; books: Book[] }>('readlife.curated1', { ttl: 7 * 24 * 60 * 60 * 1000, max: 40 });
+// v2: shelves saved by older versions could hold a cover that belonged to another book (a reused slot); they are looked up again once
+const cache = persistentCache<{ sig: string; books: Book[] }>('readlife.curated2', { ttl: 7 * 24 * 60 * 60 * 1000, max: 40 });
 
 /** Changes whenever the shelf's books or pick labels change, so an edited shelf never shows an old cached one. */
 const shelfSig = (shelf: CuratedShelf) => shelf.seeds.map(s => `${s[0]}|${s[1]}|${s[2] || ''}`).join('~');
@@ -70,13 +71,28 @@ export function getCachedCurated(shelf: CuratedShelf): Book[] | null {
   return hit && hit.sig === shelfSig(shelf) && hit.books.length === shelf.seeds.length ? hit.books : null;
 }
 
+/**
+ * Is what the resolver found the book the shelf asked for? The shelf's own title and author are always what is shown, so a wrong
+ * match would put another book's cover, rating and link under the right name. Accepted when the titles agree, or when the author
+ * agrees and the titles share most of their words (a different edition's title); anything else is left to the cover search,
+ * which has its own title and author check.
+ */
+export function resolvedMatchesSeed(found: Pick<Book, 'title' | 'author'>, title: string, author: string): boolean {
+  if (titlesMatch(found.title, title)) return true;
+  if (!authorsCompatible(found.author, author)) return false;
+  const words = (t: string) => titleKey(t).split(' ').filter(w => w.length > 2);
+  const [a, b] = [words(found.title), words(title)];
+  const shared = a.filter(w => b.includes(w)).length;
+  return shared >= Math.max(1, Math.ceil(Math.min(a.length, b.length) / 2));
+}
+
 /** Looks up covers + ratings 4 at a time through the shared resolver, pushing each result to the shelf as it arrives. */
 export async function resolveCuratedShelf(shelf: CuratedShelf, current: Book[], onUpdate: (b: Book[]) => void): Promise<void> {
   const out = [...current];
   await mapPool(shelf.seeds, 4, async ([title, author, award], i) => {
     if (out[i].coverId || out[i].coverUrl) return;
     const r = await resolveBook({ title, author, fallbackId: out[i].id, genreHint: shelf.genre });
-    if (!r) return;
+    if (!r || !resolvedMatchesSeed(r.book, title, author)) return;
     out[i] = { ...r.book, title, author, genre: shelf.genre, awardLabel: award, year: r.book.year || out[i].year, spineColor: out[i].spineColor };
     try { new Image().src = getCoverUrl(r.book.coverId, 'M', r.book.coverUrl); } catch {} // warm the cache
     onUpdate([...out]);

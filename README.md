@@ -11,6 +11,7 @@ React + Vite + Tailwind. Reading data stays in the browser (use Backup to keep c
     npm run prefetch:store -- --max-minutes=10   # optional: pre-fill store covers/ratings (needs internet)
     npm run check:shelves                        # live check: what each self-refreshing Store shelf's source returns right now
     NYT_API_KEY=... npm run check:nyt            # live check: are the NYT list names the Store uses real NYT list names (names.json)
+    npm run check:oprah                          # live check: reads Oprah Daily's complete list the way the Cloudflare function does
     npm run check:service95                      # live check: reads Service95's own Book Club page the way the Cloudflare function does
 
 Deploy (free): Cloudflare Pages. Build command `npm run build`, output directory `dist`, Node 22 (`.node-version`).
@@ -45,7 +46,7 @@ Nothing generated is presented as an official ranking.
 | Top 15 Fiction / Non-fiction | NYT combined print + e-book lists (official); GreatReads-collated stand-in, labelled, if the NYT is down | every 6 h (NYT publishes weekly) |
 | NYT Young Adult, Paperback Fiction, Paperback Non-Fiction, Advice & How-To | NYT lists, official only (hide themselves if unavailable); top 10 | every 6 h |
 | New in <year> | Open Library: books first published this year, by reader activity; heading follows the calendar year | weekly |
-| Oprah's Book Club | Wikipedia list of picks, newest first, each labelled with its own date | every 3 days |
+| Oprah's Book Club | Oprah Daily's own list (`/api/oprah`) for the newest picks, Wikipedia's table for the dates; Wikipedia alone (labelled fallback) if Oprah Daily can't be read. A double pick becomes two books | every 3 days |
 | Women's Prize, International Booker | Wikipedia winners tables | weekly |
 | Romance, Mystery, Sci-fi, Self-help, Fantasy, Memoir, Historical | Open Library: recent (last 5 years), widely read, one book per author, explicit / study guides left out; 4 hand-picked staples stay at the end | monthly |
 | Service95 | the club's own Book Club page via `/api/service95` (official); Wikipedia's list, labelled, if that page can't be read | weekly |
@@ -63,8 +64,11 @@ Wikipedia lists are cached 12 h by the service worker (`public/sw.js`). To chang
   can be found) the shelf falls back to Wikipedia's Service95 list and Customize Store says so; with neither, the saved list stays.
   The page structure was read on 7 Oct 2026 from a text rendering, not raw HTML, so run `npm run check:service95` after deploying to
   confirm it against the live site. `robots.txt` was not checked.
-- **Oprah**: dynamic from Wikipedia's list of picks. This is a *fallback*, not Oprah's own list, and Customize Store says so. An official
-  Oprah Daily feed was not found or verified, so no scraper was written for it.
+- **Oprah**: Oprah Daily's complete list (`functions/api/oprah.js`, entries like `112. “Title,” Author`, newest first) finds picks Wikipedia does not
+  have yet; they sit on top with no date until Wikipedia's table (which supplies every date) catches up. If Oprah Daily can't be read the shelf is
+  Wikipedia alone and Customize Store says it is the fallback. **Not verified against the live page**: it blocks automated readers where this was
+  written, so the parser follows the quoted entry format. Run `npm run check:oprah` after deploying; a changed layout makes the function answer 502
+  and nothing breaks.
 - **Reese's**: dynamic from Wikipedia's picks table (a stand-in, not Reese's own list). **Inklings (Jack Edwards, and the Inklings Book
   Club)**: hand-picked. No official feed or structured public source has been verified for either, and scraping a page without being able to check its
   markup would risk replacing good data with junk. If you find a source, add an entry to `DYNAMIC_SPECS` (it needs a `fetch`,

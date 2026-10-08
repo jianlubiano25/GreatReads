@@ -161,7 +161,8 @@ test('dynamic shelf info: says how it refreshes and what kind of source it is', 
   assert.equal(everyLabel(24 * 3600_000), 'daily');
   assert.equal(everyLabel(3 * 24 * 3600_000), 'every 3 days');
   assert.equal(everyLabel(30 * 24 * 3600_000), 'monthly');
-  assert.equal(DYNAMIC_SPECS.oprah.kind, 'fallback');
+  assert.equal(DYNAMIC_SPECS.womens.kind, 'fallback');
+  assert.equal(DYNAMIC_SPECS.oprah.kind, 'official');
   assert.equal(DYNAMIC_SPECS.romance.kind, 'generated');
 });
 

@@ -40,7 +40,13 @@ const TEMPLATE_LAST = new Set(['nowrap', 'nobr', 'small', 'big', 'lang', 'sort',
 function templateText(tpl: string): string {
   const parts = tpl.slice(2, -2).split('|').map(p => p.trim());
   const name = (parts[0] || '').toLowerCase();
-  if (name === 'sortname') return `${parts[1] || ''} ${parts[2] || ''}`.trim();
+  if (name === 'sortname') {
+    // {{sortname|Yael|van der Wouden}} and {{sortname|first=Yael|last=van der Wouden|nolink=1}}: named values win, the rest are in order
+    const named: Record<string, string> = {};
+    const plain: string[] = [];
+    for (const p of parts.slice(1)) { const m = p.match(/^([a-z]+)\s*=\s*(.*)$/i); if (m) named[m[1].toLowerCase()] = m[2].trim(); else plain.push(p); }
+    return `${named.first ?? plain[0] ?? ''} ${named.last ?? plain[1] ?? ''}`.trim();
+  }
   if (name === 'dts') return [parts[1], parts[2], parts[3]].filter(Boolean).join(' ');
   if (TEMPLATE_LAST.has(name)) return parts[parts.length - 1] || '';
   return ''; // citations, footnotes, flags, notes...
@@ -292,4 +298,17 @@ export function mergePicks(picks: WikiPick[], minPicks = 5): WikiPick[] | null {
       const k = `${titleKey(p.title)}|${authorKey(p.author)}`;
       return seen.has(k) ? false : (seen.add(k), true);
     });
+}
+
+/**
+ * Two books chosen at once come as one row ("Great Expectations, A Tale of Two Cities" / "A Tale of Two Cities and Great Expectations").
+ * Looked up as one title nothing matches, and a loose match can show another book's cover. Split only when BOTH halves look like
+ * titles of their own (two or more words, capitalised): "Pride and Prejudice" and "War and Peace" stay whole.
+ */
+export function splitPairedTitle(title: string): string[] {
+  const m = title.match(/^(.+?)(?:\s*[,\/&]\s*|\s+and\s+)(.+)$/);
+  if (!m) return [title];
+  const [a, b] = [m[1].trim(), m[2].trim()];
+  const looksLikeTitle = (t: string) => t.split(/\s+/).length >= 2 && /^[A-Z“"']/.test(t);
+  return looksLikeTitle(a) && looksLikeTitle(b) ? [a, b] : [title];
 }

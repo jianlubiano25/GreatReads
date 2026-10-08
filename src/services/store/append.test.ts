@@ -66,7 +66,7 @@ const REESE_RULE = DYNAMIC_SPECS.reeses;
 
 test('Reese\'s, Oprah and the prizes are dynamic, append, and say they are a Wikipedia stand-in; Service95 is official', () => {
   for (const id of ['reeses', 'service95', 'oprah', 'womens', 'intbooker']) assert.equal(DYNAMIC_SPECS[id].merge, 'append', id);
-  for (const id of ['reeses', 'oprah', 'womens', 'intbooker']) {
+  for (const id of ['reeses', 'womens', 'intbooker']) {
     const sp = DYNAMIC_SPECS[id];
     assert.ok(sp.source.startsWith('Wikipedia'), id);
     assert.equal(dynamicInfo(CURATED_SHELVES.find(s => s.id === id)!, sp).kind, 'fallback', id); // never presented as the official list
@@ -76,6 +76,10 @@ test('Reese\'s, Oprah and the prizes are dynamic, append, and say they are a Wik
   assert.equal(s95.source, 'service95.com/book-club');
   assert.ok(s95.fallbackSource?.startsWith('Wikipedia'));
   assert.equal(dynamicInfo(CURATED_SHELVES.find(s => s.id === 'service95')!, s95).kind, 'official');
+  // Oprah: Oprah Daily's own list for the newest picks (read by /api/oprah), Wikipedia for the dates and as the labelled fallback
+  const op = DYNAMIC_SPECS.oprah;
+  assert.ok(op.source.startsWith('oprahdaily.com') && op.fallbackSource?.startsWith('Wikipedia'));
+  assert.equal(dynamicInfo(CURATED_SHELVES.find(s => s.id === 'oprah')!, op).kind, 'official'); // (with a saved list from the Wikipedia stand-in it reports 'fallback', as for Service95)
   assert.equal(DYNAMIC_SPECS.reeses.refreshMs, 7 * 24 * 3600_000);
   assert.equal(DYNAMIC_SPECS.inklingsclub, undefined, 'no reliable public source for the Inklings Book Club: it stays hand-picked');
 });
