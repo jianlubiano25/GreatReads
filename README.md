@@ -21,6 +21,9 @@ Headers are in `public/_headers`. Pages serves index.html for unknown paths by i
 Each build gets an id that is a hash of the source files. The app only shows "New version ready" when a downloaded
 update has a different id than the one running. Redeploying unchanged code never prompts. Settings > App Updates
 shows the version and has "Check for updates".
+The build id is also written to `version.json` at build time (never cached: `public/_headers`, `public/sw.js`). The app compares it with
+the id it was built from, so the prompt does not depend on a service worker being active (a hard refresh, or a browser that is not
+letting the worker control the page, used to hide updates). The rule is `services/updateRule.ts`.
 
 ## Garden rules (src/services/garden.ts)
 - Plants come from milestones in `src/data/gardenCatalog.ts` (add a plant + a milestone, nothing else changes).
@@ -75,6 +78,22 @@ The API's list name is the list's `list_name` lower-cased with hyphens, not its 
 `"list_name": "Trade Fiction Paperback"`, `"display_name": "Paperback Trade Fiction"` and the path `/lists/.../trade-fiction-paperback.json`.
 The paperback fiction shelf therefore uses `trade-fiction-paperback`. This comes from NYT's published spec and example responses, not
 from a live `names.json` call: run `NYT_API_KEY=... npm run check:nyt` to confirm every list name against the live API.
+
+### Reliability notes (what keeps shelves correct)
+- **Author names** from Wikipedia are cleaned (`cleanAuthorName`: footnote marks, "(US)" notes, `[a]`, line-break lists become "A & B",
+  trailing original-script names). Saved book-club / prize lists are cleaned again every time they are read, so entries saved by an
+  earlier version are repaired and not duplicated. A dirty name is what made covers disappear: the cover search could not match it.
+- **Several Wikipedia pages** for one shelf are combined (newest first); the first page that answers no longer hides the others.
+- **Covers on a refreshed list**: each list version owns the shelf, so the previous list's late cover lookups cannot overwrite the new
+  list. Placeholder ids belong to the book (`seedId`), not the slot. A book that no source could place is retried after 2 hours (it was
+  remembered for 14 days, so one dropped connection left a blank cover for two weeks).
+- **NYT limits**: the NYT allows only a few requests a minute for the whole site. Lists load two at a time and a rate-limited one is
+  waited out and retried (8 s, then 20 s). `functions/api/nyt.js` keeps the last good list per list (up to 10 days) and serves it when the
+  NYT answers 429 or fails (never for 401/403/503, which are setup mistakes and stay visible). A shelf that is not loading says why in
+  Customize Store.
+- **Location**: the saved position (rounded to about 1 km), the weather and a refusal are kept in localStorage, not sessionStorage (which
+  phones and installed apps empty on every launch, so each launch looked like a first visit). The device is asked only when asking can
+  work (`locationPlan` in `services/weather.ts`). Turn "Match weather to my location" off and on to forget the position and ask again.
 
 ## Customize Store
 The sliders icon opens Customize Store. It is in the footer (Store tab only, next to Backup and Refresh) and also below the Store search box.

@@ -3,7 +3,7 @@ import resolvedData from '../../data/storeResolved.json';
 import { CURATED_SHELVES, type CuratedShelf } from '../../data/storeCatalog';
 import { mapPool } from '../books/http';
 import { persistentCache } from '../books/cache';
-import { workIdFromKey } from '../books/identity';
+import { authorKey, titleKey, workIdFromKey } from '../books/identity';
 import { makeBook } from '../books/model';
 import { getCoverUrl } from '../books/covers';
 import { resolveBook } from '../books/resolve';
@@ -33,13 +33,20 @@ export function prefetchedFor(shelfId: string, i: number, title: string, author:
   return bundled && bundled[0] === title && bundled[1] === author ? rec : {};
 }
 
+/**
+ * A placeholder's id belongs to the BOOK, not to its slot. A self-refreshing shelf puts different books in the same slot over
+ * time, and "seed_oprah_3" would then be a different book each month (the same id on a cover, a saved copy, a cover repair...).
+ */
+export const seedId = (shelfId: string, title: string, author: string) =>
+  `seed_${shelfId}_${`${titleKey(title)} ${authorKey(author)}`.replace(/\s+/g, '-').slice(0, 80)}`;
+
 /** Title-only books so a shelf can draw right away, before any network call (plus whatever was prefetched at build time). */
 export function seedPlaceholders(shelf: CuratedShelf): Book[] {
   return shelf.seeds.map(([t, a, award], i) => {
     const r = prefetchedFor(shelf.id, i, t, a);
     const olWork = r.olKey ? workIdFromKey(r.olKey) : undefined;
     return makeBook({
-      id: r.olKey ? `ol_${r.olKey.replace(/\W/g, '_')}` : `seed_${shelf.id}_${i}`,
+      id: r.olKey ? `ol_${r.olKey.replace(/\W/g, '_')}` : seedId(shelf.id, t, a),
       awardLabel: award,
       title: t,
       author: a,

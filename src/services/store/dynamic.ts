@@ -10,7 +10,7 @@ import type { Hit } from '../books/sources/types';
 import { READER_CAPS, recencyValue } from './collate';
 import { curatedSource } from './curated';
 import type { RefreshResult, ShelfInfo, ShelfSource } from './shelves';
-import { fetchWikiPicks, type ColumnRule } from './wikiLists';
+import { cleanAuthorName, cleanTitle, fetchWikiPicks, type ColumnRule } from './wikiLists';
 
 /**
  * Curated shelves whose book list refreshes itself.
@@ -63,18 +63,40 @@ interface Saved { seeds: Seed[]; title?: string; /** the last refresh came from 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 export const RETRY_MS = HOUR;
-const saved = persistentCache<Saved>('readlife.dynseeds1', { ttl: 400 * DAY, max: 30 });
+const store = persistentCache<Saved>('readlife.dynseeds1', { ttl: 400 * DAY, max: 30 });
+/** How the last attempt to refresh each shelf ended (kept apart from the saved list, which only ever changes on success). */
+const attempts = persistentCache<{ at: number; ok: boolean }>('readlife.dynstatus1', { ttl: 60 * DAY, max: 40 });
+
+/**
+ * The saved list for a shelf, cleaned on the way out. Book clubs and prizes only ever ADD to their saved list, so a name that was
+ * saved with Wikipedia's footnote marks or "(US)" notes would otherwise stay on the shelf (and fail every cover search) for good.
+ * Cleaning at the door repairs lists saved by an earlier version without losing any of their books.
+ */
+const saved = {
+  get(id: string): Saved | undefined {
+    const s = store.get(id);
+    return s ? { ...s, seeds: cleanSeeds(s.seeds) } : undefined;
+  },
+  set(id: string, value: Saved) { store.set(id, value); },
+};
 
 /* ------------------------------ the refresh engine ------------------------------ */
 
 /** Remove unusable entries and repeats; keeps the source's order. */
 export function cleanSeeds(seeds: Seed[]): Seed[] {
   const seen = new Set<string>();
-  return seeds.filter(([t, a]) => {
-    if (typeof t !== 'string' || typeof a !== 'string' || !t.trim() || isUnknownAuthor(a)) return false;
-    const k = `${titleKey(t)}|${authorKey(a)}`;
-    return seen.has(k) ? false : (seen.add(k), true);
-  });
+  const out: Seed[] = [];
+  for (const seed of seeds) {
+    if (!Array.isArray(seed) || typeof seed[0] !== 'string' || typeof seed[1] !== 'string') continue;
+    const title = cleanTitle(seed[0]);
+    const author = cleanAuthorName(seed[1]);
+    if (!title || !author || isUnknownAuthor(author)) continue;
+    const k = `${titleKey(title)}|${authorKey(author)}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(seed[2] === undefined ? [title, author] : [title, author, seed[2]]);
+  }
+  return out;
 }
 
 export const isDue = (s: Saved | undefined, spec: Pick<DynamicSpec, 'refreshMs'>, now = Date.now()) =>
@@ -98,9 +120,11 @@ export async function refreshShelf(shelf: CuratedShelf, spec: DynamicSpec, now =
   try { fresh = await politely(() => spec.fetch(shelf)); } catch { /* a source failing is routine */ }
   const found = fresh ? cleanSeeds(fresh.seeds) : [];
   if (found.length < spec.minSeeds) {
+    attempts.set(shelf.id, { at: now, ok: false });
     if (old) saved.set(shelf.id, { ...old, tried: now }); // keep the stale list; try again in an hour
     return null;
   }
+  attempts.set(shelf.id, { at: now, ok: true });
   const seeds = spec.merge === 'append'
     ? mergeAppend(found, old?.seeds ?? shelf.seeds, spec.cap)
     : found.slice(0, Math.max(shelf.seeds.length, 12));
@@ -125,10 +149,12 @@ export const dynamicInfo = (base: CuratedShelf, spec: DynamicSpec): ShelfInfo =>
     : viaFallback ? `${spec.fallbackSource ?? 'a public record'} · public record, not the official list (the official page could not be read)`
     : spec.kind === 'generated' ? `${spec.source} · GreatReads discovery, not an official list`
     : `${spec.source} · public record, not the official list`;
+  const last = attempts.get(base.id);
+  const note = last && !last.ok && (!s || last.at > s.at) ? ` · last check failed (source unreadable): showing the ${s ? 'saved' : 'hand-picked'} list` : '';
   return {
     updatedAt: s?.at,
     schedule: `Refreshes ${everyLabel(spec.refreshMs)}`,
-    source: source + (spec.merge === 'append' ? ' · new picks are added to the top, earlier ones stay' : ''),
+    source: source + (spec.merge === 'append' ? ' · new picks are added to the top, earlier ones stay' : '') + note,
     kind,
   };
 };
@@ -156,16 +182,19 @@ export function dynamicCuratedSource(base: CuratedShelf, spec: DynamicSpec): She
     },
     load: async onUpdate => {
       const mine = ++generation;
-      const show = (b: Book[]) => { if (mine === generation) onUpdate(b); };
+      // Each list the shelf shows gets a version. A list's cover lookups can outlive it (a refresh arrives while they run), and
+      // their late results must never replace the newer list on screen.
+      let version = 0;
+      const showFor = (v: number) => (b: Book[]) => { if (mine === generation && v === version) onUpdate(b); };
       const have = saved.get(base.id);
 
-      if (!isDue(have, spec)) return curatedSource(withSeeds(base, have)).load(show);
+      if (!isDue(have, spec)) return curatedSource(withSeeds(base, have)).load(showFor(version));
 
       // A replacing shelf with nothing saved waits (briefly) for the source: its hand-picked list is not what it should show.
       // On failure the hand-picked list is the shelf.
       if (!have && spec.merge !== 'append') {
         const fresh = await refresh();
-        return curatedSource(withSeeds(base, fresh ?? undefined)).load(show);
+        return curatedSource(withSeeds(base, fresh ?? undefined)).load(showFor(version));
       }
 
       // Otherwise show what the shelf has right now and swap the refreshed list in when (and only if) it differs.
@@ -174,10 +203,12 @@ export function dynamicCuratedSource(base: CuratedShelf, spec: DynamicSpec): She
       void refresh().then(fresh => {
         if (!fresh || sameSeeds(fresh.seeds, before) || mine !== generation) return;
         const next = curatedSource(withSeeds(base, fresh));
+        const v = ++version; // from here on only the new list may update the shelf
+        const show = showFor(v);
         show(next.seeded());
         void next.load(show);
       });
-      return curatedSource(withSeeds(base, have)).load(show);
+      return curatedSource(withSeeds(base, have)).load(showFor(version));
     },
   };
 }

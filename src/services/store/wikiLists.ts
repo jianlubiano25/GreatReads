@@ -163,12 +163,14 @@ export function parseWikiTables(wikitext: string): WikiTable[] {
 
 /* ------------------------------ picks ------------------------------ */
 
-/** "March 17, 2026", "17 March 2026", "Mar 2026" or "2026" -> sortable value + a short label. */
+/** "March 17, 2026", "17 March 2026", "Mar 2026", "2026-03-17", "2026 03 17" or "2026" -> sortable value + a short label. */
 export function parseWhen(text: string): { at: number; year: number; label: string } | null {
   const year = Number(text.match(/\b(19|20)\d{2}\b/)?.[0]);
   if (!year) return null;
   const mon = text.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?(?=\W|$)/i)?.[1]?.toLowerCase();
-  const m = mon ? MONTH_NUM[mon] : 0;
+  // numeric dates: 2026-03-17, 2026/03, and {{dts}} output "2026 03 17"
+  const numeric = Number(text.match(new RegExp(`\\b${year}[-/. ](0?[1-9]|1[0-2])\\b`))?.[1]);
+  const m = mon ? MONTH_NUM[mon] : numeric || 0;
   return { at: year * 12 + (m ? m - 1 : 0), year, label: m ? `${MONTH_SHORT[m - 1]} ${year}` : String(year) };
 }
 
@@ -180,6 +182,35 @@ export function stripNativeTitle(title: string): string {
   const t = title.replace(/[\u200e\u200f\u202a-\u202e]/g, '').trim();
   const out = t.replace(/\s+[^\u0000-\u024f\u1e00-\u1eff\u2000-\u206f]+(?:\s+[^\u0000-\u024f\u1e00-\u1eff\u2000-\u206f]+)*\s*$/, '').replace(/[,;\s]+$/, '').trim(); // a <br> between the two titles leaves a comma behind
   return out || t;
+}
+
+const INVISIBLE = /[\u200b-\u200f\u202a-\u202e\u2060\ufeff]/g;
+
+/**
+ * An author as a book lookup needs it: just the name(s). Wikipedia cells carry extras that make a cover search fail
+ * ("Madeline Miller (US)", "Name†", "Name[a]", "Name, American novelist", "Author A<br>Author B", a trailing original-script name).
+ * Several authors become "A & B" (the form the resolver and the library already understand).
+ */
+export function cleanAuthorName(raw: string): string {
+  let s = stripNativeTitle(String(raw ?? '').normalize('NFC').replace(INVISIBLE, ' ').replace(/<!--[\s\S]*?-->/g, ' ').replace(/<[^>]+>/g, ' '));
+  s = s.replace(/\[[^\]]*\]/g, ' ').replace(/\([^)]*\)/g, ' ').replace(/[†‡§¶*#^↑]+/g, ' ');
+  s = s.replace(/\s*[–—-]\s*(?:translated|trans\.?|tr\.)\b.*$/i, '').replace(/\s+(?:translated|trans\.?|tr\.)\s+by\b.*$/i, '');
+  s = s.replace(/,\s*(?:an?\s+)?(?:[A-Z][a-z]+(?:-[A-Z][a-z]+)?\s+){0,2}(?:novelist|writer|author|poet|playwright|journalist)\b.*$/i, '');
+  s = s.replace(/\s+/g, ' ').replace(/^[\s,;:&.-]+|[\s,;:&.-]+$/g, '').trim();
+  const parts = s.split(/\s*,\s*/).filter(Boolean);
+  const suffix = /^(jr|sr|ii|iii|iv)\.?$/i;
+  const oneWordEach = parts.length === 2 && parts.every(p => !/\s/.test(p)); // "King, Lily" is Last, First, not two authors
+  if (parts.length > 1 && !oneWordEach) {
+    const kept = parts.filter(p => !suffix.test(p));
+    s = kept.join(' & ');
+  }
+  return s.replace(/\s+/g, ' ').slice(0, 120).trim();
+}
+
+/** A title without footnote marks, [notes] or invisible marks. */
+export function cleanTitle(raw: string): string {
+  const s = String(raw ?? '').normalize('NFC').replace(INVISIBLE, ' ').replace(/<!--[\s\S]*?-->/g, ' ').replace(/\[[^\]]*\]/g, ' ').replace(/[†‡§¶*#^↑]+\s*$/g, ' ');
+  return s.replace(/\s+/g, ' ').trim();
 }
 
 const NO_PICK = /^(?:—|–|-|n\/a|tba|tbd|none|no award|not awarded|no prize|unknown|\?)$/i;
@@ -196,8 +227,8 @@ export function picksFromTables(tables: WikiTable[], rule: ColumnRule, minPicks 
     if (iTitle < 0 || iAuthor < 0 || iWhen < 0 || iTitle === iAuthor || t.rows.length < (rule.minRows ?? 5)) continue;
     const seenYear = new Set<number>();
     for (const r of t.rows) {
-      const title = stripNativeTitle((r[iTitle] || '').trim());
-      const author = (r[iAuthor] || '').trim();
+      const title = cleanTitle(stripNativeTitle((r[iTitle] || '').trim()));
+      const author = cleanAuthorName((r[iAuthor] || '').trim());
       const when = parseWhen(r[iWhen] || '');
       if (!title || !author || !when || NO_PICK.test(title) || NO_PICK.test(author)) continue;
       if (iResult >= 0 && rule.winner && !rule.winner.test(r[iResult] || '')) continue;
@@ -234,13 +265,31 @@ export async function fetchWikitext(page: string, signal?: AbortSignal): Promise
   return text || null;
 }
 
-/** Try each candidate page in turn; the first one that yields enough dated picks wins. */
+/**
+ * Read every candidate page and combine what each one gives (newest first, repeats once). One page may be stale or missing a
+ * table that another has, so the first page that answers does not get to hide the others. A page that fails is skipped.
+ * Null unless the combined result is large enough to trust.
+ */
 export async function fetchWikiPicks(pages: string[], rule: ColumnRule, signal?: AbortSignal): Promise<WikiPick[] | null> {
+  const all: WikiPick[] = [];
   for (const page of pages) {
     const text = await fetchWikitext(page, signal);
     if (!text) continue;
-    const picks = picksFromTables(parseWikiTables(text), rule);
-    if (picks) return picks;
+    all.push(...(picksFromTables(parseWikiTables(text), rule) ?? []));
   }
-  return null;
+  return mergePicks(all);
+}
+
+/** Newest first; the same book from several tables or pages counts once (the first one listed keeps its date and label). */
+export function mergePicks(picks: WikiPick[], minPicks = 5): WikiPick[] | null {
+  if (picks.length < minPicks) return null;
+  const seen = new Set<string>();
+  return picks
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => b.p.at - a.p.at || a.i - b.i)
+    .map(x => x.p)
+    .filter(p => {
+      const k = `${titleKey(p.title)}|${authorKey(p.author)}`;
+      return seen.has(k) ? false : (seen.add(k), true);
+    });
 }
