@@ -10,7 +10,7 @@ import type { Hit } from '../books/sources/types';
 import { READER_CAPS, recencyValue } from './collate';
 import { curatedSource } from './curated';
 import type { RefreshResult, ShelfInfo, ShelfSource } from './shelves';
-import { cleanAuthorName, cleanTitle, fetchWikiPicks, splitPairedTitle, type ColumnRule } from './wikiLists';
+import { cleanAuthorName, cleanTitle, fetchWikiPicks, isSaneAuthor, splitPairedTitle, type ColumnRule } from './wikiLists';
 
 /**
  * Curated shelves whose book list refreshes itself.
@@ -56,11 +56,6 @@ export interface DynamicSpec {
   merge?: 'append';
   /** The most books an appending shelf keeps (the oldest fall off the end) */
   cap?: number;
-  /**
-   * An appending shelf starts from the hand-picked list and keeps what it saved before. When only some of those entries belong on
-   * the shelf (Oprah: her club's picks, not the hand-picked staples that have nothing to do with the club), say which.
-   */
-  keepExisting?: (seed: Seed) => boolean;
 }
 
 interface Saved { seeds: Seed[]; title?: string; /** the last refresh came from the official page (specs that have a fallback) */ official?: boolean; /** last SUCCESSFUL refresh */ at: number; /** last attempt, successful or not (only used to space retries) */ tried: number }
@@ -77,12 +72,45 @@ const attempts = persistentCache<{ at: number; ok: boolean }>('readlife.dynstatu
  * saved with Wikipedia's footnote marks or "(US)" notes would otherwise stay on the shelf (and fail every cover search) for good.
  * Cleaning at the door repairs lists saved by an earlier version without losing any of their books.
  */
+/**
+ * One-time resets of a shelf's SAVED list on this device: the shelf goes back to its hand-picked list, and its next refresh adds the
+ * new picks to that list again. For a saved list that picked up entries it should not have (an earlier version's wrong or garbled
+ * ones: appending shelves never drop what they saved). Change the value to reset a shelf once more.
+ */
+export const SAVED_RESETS: Record<string, string> = {
+  oprah: 'default-list-1', // back to Beloved, Song of Solomon, The Covenant of Water... plus whatever is new
+  service95: 'full-archive-1', // the full archive from the club's own page; a pick saved with a sentence for an author is gone
+};
+const resetMarks = persistentCache<string>('readlife.dynreset1', { ttl: 800 * DAY, max: 20 });
+export const forgetResetMarksForTests = () => Object.keys(SAVED_RESETS).forEach(id => resetMarks.delete(id));
+function applyReset(id: string) {
+  const want = SAVED_RESETS[id];
+  if (!want || resetMarks.get(id) === want) return;
+  store.delete(id);
+  attempts.delete(id);
+  resetMarks.set(id, want);
+}
+
+/**
+ * Entries whose author is not a name (a sentence picked up from a page) cannot find their cover and do not belong on a shelf. The
+ * hand-picked entry for the same book replaces it when there is one; otherwise it is dropped.
+ */
+function repairSeeds(id: string, seeds: Seed[]): Seed[] {
+  const bundled = CURATED_SHELVES.find(s => s.id === id)?.seeds ?? [];
+  return seeds.flatMap((seed): Seed[] => {
+    if (typeof seed?.[0] !== 'string' || typeof seed?.[1] !== 'string' || isSaneAuthor(cleanAuthorName(seed[1]))) return [seed];
+    const same = bundled.find(b => titleKey(b[0]) === titleKey(cleanTitle(seed[0])));
+    return same ? [same] : [];
+  });
+}
+
 const saved = {
   get(id: string): Saved | undefined {
+    applyReset(id);
     const s = store.get(id);
-    return s ? { ...s, seeds: cleanSeeds(s.seeds) } : undefined;
+    return s ? { ...s, seeds: cleanSeeds(repairSeeds(id, s.seeds)) } : undefined;
   },
-  set(id: string, value: Saved) { store.set(id, value); },
+  set(id: string, value: Saved) { applyReset(id); store.set(id, value); },
 };
 
 /* ------------------------------ the refresh engine ------------------------------ */
@@ -97,7 +125,7 @@ export function cleanSeeds(seeds: Seed[]): Seed[] {
     if (!Array.isArray(seed) || typeof seed[0] !== 'string' || typeof seed[1] !== 'string') continue;
     const title = cleanTitle(seed[0]);
     const author = cleanAuthorName(seed[1]);
-    if (!title || !author || isUnknownAuthor(author)) continue;
+    if (!title || !author || isUnknownAuthor(author) || !isSaneAuthor(author)) continue;
     if (WIKI_JUNK.test(author) || WIKI_JUNK.test(title)) continue; // wiki markup that never became text ("last=Smith first=Ann")
     const k = `${titleKey(title)}|${authorKey(author)}`;
     if (seen.has(k)) continue;
@@ -137,7 +165,7 @@ export async function refreshShelf(shelf: CuratedShelf, spec: DynamicSpec, now =
   }
   attempts.set(shelf.id, { at: now, ok: true });
   const seeds = spec.merge === 'append'
-    ? mergeAppend(found, (old?.seeds ?? shelf.seeds).filter(s => spec.keepExisting?.(s) ?? true), spec.cap)
+    ? mergeAppend(found, old?.seeds ?? shelf.seeds, spec.cap)
     : found.slice(0, Math.max(shelf.seeds.length, 12));
   const next: Saved = { seeds, title: fresh?.title, official: fresh?.official, at: now, tried: now };
   saved.set(shelf.id, next);
@@ -264,6 +292,7 @@ const serviceSpec = (): DynamicSpec => {
     fallbackSource: wiki.source,
     refreshMs: 7 * DAY, // a new pick appears at the start of a month; weekly means it is on the shelf within days, not up to a month late
     minSeeds: 8,
+    cap: 60, // the whole archive (about 40 monthly reads and counting) stays on the shelf
     fetch: async (shelf, signal) => {
       const j = await getJson('/api/service95', { timeout: 20000, signal });
       const seeds = (Array.isArray(j?.books) ? j.books : [])
@@ -308,8 +337,6 @@ const oprahSpec = (): DynamicSpec => {
     true,
   );
   return {
-    // Only her club's picks belong on this shelf: the hand-picked staples (Beloved, Gilead...) are not in date order and not all club picks
-    keepExisting: s => /^Oprah's Book Club · /.test(s[2] || ''), // dated picks only: the hand-picked ones carry no date
     source: 'oprahdaily.com (the complete Oprah\'s Book Club list)',
     kind: 'official',
     fallbackSource: wiki.source,

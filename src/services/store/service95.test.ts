@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 // @ts-ignore plain JS module with no type declarations
-import { onRequestGet, parseBookClub, parseBookPage } from '../../../functions/api/service95.js';
+import { looksLikeAuthor, onRequestGet, parseBookClub, parseBookPage } from '../../../functions/api/service95.js';
 import { DYNAMIC_SPECS, dynamicCuratedSource, refreshShelf } from './dynamic';
 import { CURATED_SHELVES } from '../../data/storeCatalog';
 import { routeFetch } from './testkit';
@@ -178,4 +178,27 @@ test('Service95 info: a list saved before the official page was used (no flag) i
   assert.match(info?.source || '', /Wikipedia.*not the official list/);
   // and nothing saved yet: it is simply described as the official shelf it is
   assert.equal(dynamicCuratedSource({ ...shelf, id: 'service95-new' }, DYNAMIC_SPECS.service95).info?.().kind, 'official');
+});
+
+/* ------------------------------ Night People: a sentence in the page text is not the author ------------------------------ */
+
+// The real page (Jan 2026): the heading is just the title, there is NO "By <author>" line, and Dua's quote contains a sentence
+// that says "... Widow Basquiat by Jennifer Clement gave us a who's who of New York's early 1980s creative scene."
+const NIGHT_PEOPLE = (head: string) => `<html><head>${head}</head><body>
+<h1><a href="/books/night-people-mark-ronson">Night People</a></h1><p><strong>Dua's Monthly Read for January 2026</strong></p>
+<p>“I'm lucky to call Mark a friend. For me, <em>Night People</em> completes a <em>Service95</em> Book Club trilogy of sorts. <em>Just Kids</em> by Patti Smith gave us possibly the most spellbinding account of New York in the ’70s ever written. <em>Widow Basquiat</em> by Jennifer Clement gave us a who's who of New York's early 1980s creative scene. <em>Night People</em> gives us the joy of a 1990s club night.” – Dua Lipa</p></body></html>`;
+const NP_HEAD = `<title>Dua's Monthly Read: Night People by Mark Ronson</title><meta property="og:title" content="Dua's Monthly Read: Night People by Mark Ronson" /><meta property="og:description" content="Explore Dua's Monthly Read, Night People by Mark Ronson, for Service95 Book Club and buy the book." />`;
+
+test('parseBookPage: Night People is by Mark Ronson (from the page title), not by whoever a sentence in the quote mentions', () => {
+  assert.deepEqual(parseBookPage(NIGHT_PEOPLE(NP_HEAD)), { title: 'Night People', author: 'Mark Ronson' });
+  // only the description says it
+  assert.deepEqual(parseBookPage(NIGHT_PEOPLE(`<meta name="description" content="Explore Dua's Monthly Read, Night People by Mark Ronson, for Service95 Book Club and buy the book." />`)), { title: 'Night People', author: 'Mark Ronson' });
+  // nothing says it: NO book, never a sentence for an author
+  assert.equal(parseBookPage(NIGHT_PEOPLE('')), null);
+  assert.equal(parseBookPage(NIGHT_PEOPLE('<title>Service95</title>')), null);
+});
+
+test('looksLikeAuthor: names pass, sentences do not', () => {
+  for (const ok of ['Mark Ronson', 'Jean-Baptiste Del Amo', 'Gabriel García Márquez', 'J. K. Rowling', 'Chimamanda Ngozi Adichie', 'Ta-Nehisi Coates']) assert.equal(looksLikeAuthor(ok), true, ok);
+  for (const bad of ["Jennifer Clement gave us a who's who of New York's early 1980s creative scene.", 'Dua Lipa. Night People is a memoir about clubs', '', 'by Mark', '1990s New York']) assert.equal(looksLikeAuthor(bad), false, bad);
 });

@@ -216,6 +216,16 @@ export function cleanAuthorName(raw: string): string {
 }
 
 /** A title without footnote marks, [notes] or invisible marks. */
+/**
+ * Is this a person's name rather than a sentence? A few words, no years, no verbs. Pages sometimes hand over a sentence where an
+ * author belongs (a quote that happens to contain "by <someone>"); such an entry can never find its cover.
+ */
+export function isSaneAuthor(a: string): boolean {
+  const s = String(a ?? '').replace(/\s+/g, ' ').trim();
+  if (!s || s.length > 80 || /\d{3,}|[<>!?;@=]|https?:/i.test(s) || /\b\p{L}{3,}\.\s+\S/u.test(s)) return false;
+  return s.split(' ').length <= 8 && !/\b(gave|gives|is|was|were|are|has|have|had|will|about|which|that|this|who|whose|his|her|their|its|from|into)\b/i.test(s);
+}
+
 export function cleanTitle(raw: string): string {
   const s = String(raw ?? '').normalize('NFC').replace(INVISIBLE, ' ').replace(/<!--[\s\S]*?-->/g, ' ').replace(/\[[^\]]*\]/g, ' ').replace(/[†‡§¶*#^↑]+\s*$/g, ' ');
   return s.replace(/\s+/g, ' ').trim();

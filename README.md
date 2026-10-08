@@ -56,6 +56,12 @@ Nothing generated is presented as an official ranking.
 NYT quota: lists are cached 6 h in the browser and at Cloudflare's edge (`functions/api/nyt.js`), and extra lists only load when scrolled into view.
 Wikipedia lists are cached 12 h by the service worker (`public/sw.js`). To change a source or schedule, edit its entry in `DYNAMIC_SPECS`.
 
+### Resetting a saved shelf list
+Club and prize shelves only ever **add** to what they saved, so a wrong entry stays. `SAVED_RESETS` in `dynamic.ts` discards a shelf's saved list
+once per device (the shelf returns to its hand-picked list; the next refresh adds the new picks again). Change a value to reset that shelf
+once more. Oprah and Service95 are reset this way. A saved author that is a sentence rather than a name is repaired from the hand-picked
+entry for the same book, or dropped (`isSaneAuthor`).
+
 ### Book clubs: where each stands
 - **Service95**: the club's **own page** (service95.com/book-club). The Cloudflare function `functions/api/service95.js` reads the page's
   list of Monthly Reads, then each book's own page for its title and author (one request each, cached at the edge: 12 hours for the list,
@@ -64,6 +70,9 @@ Wikipedia lists are cached 12 h by the service worker (`public/sw.js`). To chang
   can be found) the shelf falls back to Wikipedia's Service95 list and Customize Store says so; with neither, the saved list stays.
   The page structure was read on 7 Oct 2026 from a text rendering, not raw HTML, so run `npm run check:service95` after deploying to
   confirm it against the live site. `robots.txt` was not checked.
+  A book page has **no author line** (Dua's quote on it can contain "<other book> by <someone>"), so the author is read from the page
+  title ("Dua's Monthly Read: Night People by Mark Ronson"), then its description, and only then from a "By ..." line that is a line of
+  its own; anything that is not a name is rejected (`looksLikeAuthor`). The hand-picked list is the club's whole archive (about 40 reads).
 - **Oprah**: Oprah Daily's complete list (`functions/api/oprah.js`, entries like `112. “Title,” Author`, newest first) finds picks Wikipedia does not
   have yet; they sit on top with no date until Wikipedia's table (which supplies every date) catches up. If Oprah Daily can't be read the shelf is
   Wikipedia alone and Customize Store says it is the fallback. **Not verified against the live page**: it blocks automated readers where this was

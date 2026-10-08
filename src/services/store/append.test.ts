@@ -150,12 +150,15 @@ test('a page layout change is a failed refresh, not a wrong shelf', async () => 
   assert.equal(await refreshShelf({ ...sh, id: 't-s95' }, DYNAMIC_SPECS.service95, 9_000), null);
 });
 
-test('the Service95 hand-picked floor holds only picks that were checked against Service95 / Wikipedia / press, newest first', () => {
+test('the Service95 hand-picked list is the club\'s whole archive, newest first, every pick dated', () => {
   const sh = CURATED_SHELVES.find(s => s.id === 'service95')!;
-  assert.ok(sh.seeds.length >= 15);
-  assert.deepEqual(sh.seeds.slice(0, 3).map(s => s[0]), ['Martyr!', 'Lost Lambs', 'Free']);
+  assert.ok(sh.seeds.length >= 35);
+  assert.deepEqual(sh.seeds.slice(0, 3).map(s => s[0]), ['Klara and the Sun', 'Martyr!', 'Lost Lambs']);
   assert.ok(sh.seeds.every(s => /^Service95 Monthly Read · (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) 20\d\d$/.test(s[2] || '')), 'every pick is dated');
-  assert.ok(!sh.seeds.some(s => /Pachinko|A Little Life|Crying in H Mart/.test(s[0])), 'no unverified "Service95 Pick" entries');
+  const night = sh.seeds.find(s => s[0] === 'Night People')!;
+  assert.equal(night[1], 'Mark Ronson'); // Jan 2026: the memoir is Mark Ronson's
+  for (const t of ['Pachinko', 'Just Kids', 'Crying in H Mart', 'Trust', 'Shuggie Bain', 'Widow Basquiat']) assert.ok(sh.seeds.some(s => s[0] === t), `${t} is on the club's own list`);
+  assert.equal(new Set(sh.seeds.map(s => s[0])).size, sh.seeds.length, 'no pick twice');
 });
 
 /* ------------------------------ the stale-cover bug (Dune cover on a different book) ------------------------------ */
@@ -193,4 +196,50 @@ test('every bundled shelf still shows its prefetched covers (the guard did not t
     withCover += ph.filter(b => b.coverId || b.coverUrl).length;
   }
   assert.ok(withCover >= 150, `${withCover} of ${total} bundled books have a cover without any network`);
+});
+
+/* ------------------------------ saved lists: repair a garbled author, one-time resets ------------------------------ */
+
+import { forgetResetMarksForTests, SAVED_RESETS } from './dynamic';
+import { isSaneAuthor } from './wikiLists';
+
+test('isSaneAuthor: a name is, a sentence is not', () => {
+  assert.equal(isSaneAuthor('Mark Ronson'), true);
+  assert.equal(isSaneAuthor('Stephanie Dray & Laura Kamoie'), true);
+  assert.equal(isSaneAuthor("Jennifer Clement gave us a who's who of New York's early 1980s creative scene."), false);
+  assert.equal(isSaneAuthor('last=van der Wouden first=Yael'), false);
+});
+
+test('a sentence for an author is never saved from a source, and a saved one is repaired from the hand-picked entry (Night People)', async () => {
+  const s95 = CURATED_SHELVES.find(s => s.id === 'service95')!;
+  const garbled = "Jennifer Clement gave us a who's who of New York's early 1980s creative scene.";
+  forgetResetMarksForTests();
+  // a refresh whose source handed over the bad author for Night People: that entry is not accepted, the rest is
+  const fresh = [['Klara and the Sun', 'Kazuo Ishiguro', 'Service95 Monthly Read · Oct 2026'], ['Night People', garbled, 'Service95 Monthly Read · Jan 2026'], ['Martyr!', 'Kaveh Akbar', 'Service95 Monthly Read · Sep 2026'], ...Array.from({ length: 8 }, (_, i) => [`Extra ${i}`, `Writer ${i}`, 'Service95 Monthly Read · Dec 2025'])] as [string, string, string][];
+  const saved = await refreshShelf(s95, spec(async () => ({ seeds: fresh }), 'append'), 1_000);
+  const night = saved!.seeds.filter(s => s[0] === 'Night People');
+  assert.equal(night.length, 1, 'one Night People, not two');
+  assert.equal(night[0][1], 'Mark Ronson', 'the hand-picked, correct entry is the one that stays');
+});
+
+test('one-time resets: a saved Oprah / Service95 list goes back to the hand-picked list, once; the next refresh appends again', async () => {
+  assert.ok(SAVED_RESETS.oprah && SAVED_RESETS.service95);
+  const oprah = CURATED_SHELVES.find(s => s.id === 'oprah')!;
+  const sp = DYNAMIC_SPECS.oprah;
+  const withBooks = (n: number) => ({ ...sp, fetch: async () => ({ seeds: Array.from({ length: n }, (_, i) => [`Wrong Old Pick ${i}`, `Some Author ${i}`, "Oprah's Book Club · Mar 2010"] as [string, string, string]) }) });
+  forgetResetMarksForTests();
+  const src0 = dynamicCuratedSource(oprah, withBooks(10));
+  await src0.refresh?.(); // marks are set now; this saves a list with the "wrong old" books
+  const saved = await refreshShelf(oprah, withBooks(10), 2_000);
+  assert.ok(saved!.seeds.some(s => /Wrong Old Pick/.test(s[0])));
+  // a device that saved such a list BEFORE the reset existed: the marker is not set there
+  forgetResetMarksForTests();
+  const after = dynamicCuratedSource(oprah, withBooks(10));
+  const shown = after.cached?.() ?? null;
+  assert.ok(!shown || !shown.some(b => /Wrong Old Pick/.test(b.title)), 'the saved list was discarded');
+  // and it is only once: a later save is kept
+  const again = await refreshShelf(oprah, { ...sp, fetch: async () => ({ seeds: Array.from({ length: 9 }, (_, i) => [`New Pick ${i}`, `Writer ${i}`, "Oprah's Book Club · Oct 2026"] as [string, string, string]) }) }, 3_000);
+  assert.deepEqual(again!.seeds.slice(0, 2).map(s => s[0]), ['New Pick 0', 'New Pick 1']);
+  assert.ok(again!.seeds.some(s => s[0] === 'Beloved'), 'the default list is under the new picks');
+  assert.ok(!again!.seeds.some(s => /Wrong Old Pick/.test(s[0])), 'the wrong ones did not come back');
 });

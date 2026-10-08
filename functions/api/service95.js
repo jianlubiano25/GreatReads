@@ -50,26 +50,49 @@ export function parseBookClub(html) {
 
 const sane = (s, max) => !!s && s.length <= max && !/[<>]|https?:/i.test(s);
 
+// A person's name, not a sentence: a few words, no years, no verbs. (The Night People page has NO "By <author>" line, but its quote from
+// Dua says "Widow Basquiat by Jennifer Clement gave us a who's who of New York's early 1980s creative scene": a loose "by ..." match read
+// that sentence as the author.)
+const NOT_NAME_WORDS = /\b(is|was|were|are|has|have|had|gave|gives|made|makes|will|would|about|which|that|this|who|whose|his|her|their|its|from|into|with|us|we)\b/i;
+export function looksLikeAuthor(a) {
+  const s = String(a ?? '').replace(/\s+/g, ' ').trim();
+  if (!s || s.length > 70 || /\d{3,}|[<>!?:;@]|https?:/i.test(s) || /\b\p{L}{3,}\.\s+\S/u.test(s)) return false;
+  const words = s.split(' ');
+  return words.length <= 7 && !NOT_NAME_WORDS.test(s) && /^\p{Lu}/u.test(s);
+}
+
 /** One book page -> { title, author } or null. */
 export function parseBookPage(html) {
   html = String(html);
-  // 1. the page's own heading, then the "By <author>" line below it
+  // A quoted attribute value can contain the OTHER kind of quote ("Dua's Monthly Read"), so the value runs to the matching quote.
+  const meta = name => {
+    const a = html.match(new RegExp(`<meta[^>]*?(?:property|name)=(["'])${name}\\1[^>]*?content=(["'])([\\s\\S]*?)\\2`, 'i'));
+    if (a) return a[3];
+    const b = html.match(new RegExp(`<meta[^>]*?content=(["'])([\\s\\S]*?)\\1[^>]*?(?:property|name)=(["'])${name}\\3`, 'i'));
+    return b ? b[2] : undefined;
+  };
+  const clean = v => (v ? decode(v).replace(/\s+/g, ' ').trim() : '');
+
+  // 1. The page's own title says it outright: "Dua's Monthly Read[ for October]: <Title> by <Author>" (og:title, then <title>, then the
+  //    description: "Explore Dua's Monthly Read, <Title> by <Author>, for Service95 Book Club ..."). The separator and wording vary
+  //    from month to month, so the rest of the pattern is strict.
+  const titles = [clean(meta('og:title')), clean((html.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1])];
+  for (const t of titles) {
+    const m = t.match(/Monthly Read(?:\s+for\s+[A-Za-z]+(?:\s+\d{4})?)?\s*[:\-\u2013,]\s*(.+)\s+by\s+(.+)$/i);
+    if (m && sane(m[1].trim(), 140) && looksLikeAuthor(m[2].trim())) return { title: m[1].trim(), author: m[2].trim() };
+  }
+  const d = clean(meta('og:description') || meta('description')).match(/Monthly Read,\s*(.+?)\s+by\s+(.+?),\s+for\s+Service95/i);
+  if (d && sane(d[1].trim(), 140) && looksLikeAuthor(d[2].trim())) return { title: d[1].trim(), author: d[2].trim() };
+
+  // 2. The page's heading, then a "By <author>" line that is a line of its own under it (its WHOLE text, and a name)
   const h1 = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i);
   if (h1) {
     const title = text(h1[1]);
     const after = html.slice((h1.index ?? 0) + h1[0].length, (h1.index ?? 0) + h1[0].length + 1500);
-    const by = after.match(/>\s*By\s+([^<]{2,80}?)\s*</i);
-    const author = by ? decode(by[1]).replace(/\s+/g, ' ').trim() : '';
-    if (sane(title, 140) && sane(author, 90)) return { title, author };
+    const by = after.match(/<(p|div|span|h\d)\b[^>]*>\s*By\s+([^<]{2,80}?)\s*<\/\1>/i);
+    const author = by ? decode(by[2]).replace(/\s+/g, ' ').trim() : '';
+    if (sane(title, 140) && looksLikeAuthor(author)) return { title, author };
   }
-  // 2. the page title: "Dua's Monthly Read[ for October]: <Title> by <Author>" (the separator and wording vary, so be strict about the rest)
-  const meta =
-    html.match(/<meta[^>]*?(?:property|name)=["']og:title["'][^>]*?content=["']([^"']*)["']/i) ||
-    html.match(/<meta[^>]*?content=["']([^"']*)["'][^>]*?(?:property|name)=["']og:title["']/i) ||
-    html.match(/<title[^>]*>([^<]*)<\/title>/i);
-  const t = meta ? decode(meta[1]).replace(/\s+/g, ' ').trim() : '';
-  const m = t.match(/Monthly Read(?:\s+for\s+[A-Za-z]+(?:\s+\d{4})?)?\s*[:\-\u2013,]\s*(.+)\s+by\s+(.+)$/i);
-  if (m && sane(m[1].trim(), 140) && sane(m[2].trim(), 90)) return { title: m[1].trim(), author: m[2].trim() };
   return null;
 }
 
