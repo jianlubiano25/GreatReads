@@ -149,6 +149,12 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
 
   const onErr = () => {
     if (cur.alt) return setSt({ ...cur, dead: true });
+    // Open Library -M sometimes 502s; try -L once before a full network lookup
+    if (cur.tries === 0 && baseUrl && baseUrl.includes('covers.openlibrary.org/b/id/') && baseUrl.includes('-M.jpg')) {
+      const large = baseUrl.replace('-M.jpg', '-L.jpg');
+      setSt({ ...cur, tries: 1, alt: large });
+      return;
+    }
     if (cur.tries < 2 && baseUrl) {
       setTimeout(() => setSt(p => (p.base === baseUrl ? { ...p, tries: cur.tries + 1 } : p)), 700 * (cur.tries + 1));
       return;

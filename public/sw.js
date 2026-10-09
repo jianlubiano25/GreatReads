@@ -15,7 +15,7 @@ let PRECACHE = [];
 try { PRECACHE = JSON.parse('__PRECACHE_LIST__'); } catch (e) { /* dev / unreplaced */ }
 
 const SHELL = 'rl-shell-' + BUILD;
-const IMG = 'rl-img-v3'; // v3 guarantees all OpenLibrary, Apple, and Google covers are cached permanently
+const IMG = 'rl-img-v4'; // v4: skip 1x1 placeholders; do not cache opaque failures
 const API = 'rl-api-v1';
 const FONT = 'rl-font-v1';
 const KEEP = [SHELL, IMG, API, FONT];
@@ -213,20 +213,21 @@ async function coverImage(req) {
     try {
       const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
       if (res.ok) {
-        await cache.put(url, res.clone());
-        trim(IMG);
+        // Never cache Open Library's blank 1x1 "missing cover" placeholder (or other tiny junk)
+        const buf = await res.clone().arrayBuffer();
+        if (buf.byteLength > 500) {
+          await cache.put(url, new Response(buf, { status: res.status, statusText: res.statusText, headers: res.headers }));
+          trim(IMG);
+        }
+        return new Response(buf, { status: res.status, statusText: res.statusText, headers: res.headers });
       }
       return res;
     } catch (e) {
       noCors.add(host);
     }
   }
-  const res = await fetch(req);
-  if (res.type === 'opaque' || res.ok) {
-    await cache.put(url, res.clone());
-    trim(IMG);
-  }
-  return res;
+  // Opaque responses hide status codes — do not cache them (a 502 would stick forever otherwise)
+  return fetch(req);
 }
 
 /** Keep each cache under its size limit (oldest entries go first). Runs on ~1 in 8 writes. */
