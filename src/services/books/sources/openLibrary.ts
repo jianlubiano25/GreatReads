@@ -82,3 +82,25 @@ export async function openLibraryRatings(workId: string, opts: CallOpts = {}): P
   if (!j || typeof j.summary?.average !== 'number') return null;
   return { average: Number(j.summary.average.toFixed(1)), count: j.summary.count || 0 };
 }
+
+export async function openLibraryDescription(workId: string, opts: CallOpts = {}): Promise<string> {
+  const w = await getJson(`${OL}/works/${workId}.json`, { timeout: 8000, signal: opts.signal });
+  const val = typeof w?.description === 'string' ? w.description : w?.description?.value;
+  return val ? String(val).split(/\n-{3,}|\n\n/)[0].replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').slice(0, 600) : '';
+}
+
+/** Median page count across a work's editions (used when the search index has no page count). */
+export async function openLibraryEditionPages(workId: string, opts: CallOpts = {}): Promise<number | undefined> {
+  const data = await getJson(`${OL}/works/${workId}/editions.json?limit=40`, { signal: opts.signal });
+  const pages: number[] = ((data && data.entries) || [])
+    .map((e: any) => Number(e.number_of_pages))
+    .filter((n: number) => Number.isFinite(n) && n >= 30 && n <= 2500)
+    .sort((a: number, b: number) => a - b);
+  return pages.length ? pages[Math.floor(pages.length / 2)] : undefined;
+}
+
+/** Re-read one work's search record (ratings, pages, genre, year). */
+export async function openLibraryWorkRecord(workId: string, opts: CallOpts = {}): Promise<Hit | null> {
+  const hits = await searchOpenLibrary({ q: `key:/works/${workId}` }, 1, opts);
+  return hits[0] ?? null;
+}
