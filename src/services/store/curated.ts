@@ -13,8 +13,8 @@ import type { ShelfSource } from './shelves';
 const PREFETCHED = resolvedData as unknown as Record<string, (Partial<Book> & { olKey?: string } | null)[]>;
 
 const SEED_COLORS = ['#6b6f80', '#8a5a3b', '#2e5934', '#925838', '#3a7d80', '#7a4a6a'];
-// v2: shelves saved by older versions could hold a cover that belonged to another book (a reused slot); they are looked up again once
-const cache = persistentCache<{ sig: string; books: Book[] }>('readlife.curated2', { ttl: 7 * 24 * 60 * 60 * 1000, max: 40 });
+// v3: drop books cached during the broken-cover period (v2); force a fresh seed+resolve pass
+const cache = persistentCache<{ sig: string; books: Book[] }>('readlife.curated3', { ttl: 7 * 24 * 60 * 60 * 1000, max: 40 });
 
 /** Changes whenever the shelf's books or pick labels change, so an edited shelf never shows an old cached one. */
 const shelfSig = (shelf: CuratedShelf) => shelf.seeds.map(s => `${s[0]}|${s[1]}|${s[2] || ''}`).join('~');
@@ -89,33 +89,36 @@ export function resolvedMatchesSeed(found: Pick<Book, 'title' | 'author'>, title
 /** Looks up covers + ratings 4 at a time through the shared resolver, pushing each result to the shelf as it arrives. */
 export async function resolveCuratedShelf(shelf: CuratedShelf, current: Book[], onUpdate: (b: Book[]) => void): Promise<void> {
   const out = [...current];
-  await mapPool(shelf.seeds, 4, async ([title, author, award], i) => {
+  await mapPool(shelf.seeds, 4, async ([title, author], i) => {
     if (out[i].coverId || out[i].coverUrl) return;
-    const r = await resolveBook({ title, author, fallbackId: out[i].id, genreHint: shelf.genre });
+    const r = await resolveBook({ title, author });
     if (!r || !resolvedMatchesSeed(r.book, title, author)) return;
-    out[i] = { ...r.book, title, author, genre: shelf.genre, awardLabel: award, year: r.book.year || out[i].year, spineColor: out[i].spineColor };
-    try { new Image().src = getCoverUrl(r.book.coverId, 'M', r.book.coverUrl); } catch {} // warm the cache
+    out[i] = { ...out[i], ...r.book, title, author, awardLabel: out[i].awardLabel, spineColor: out[i].spineColor, id: out[i].id };
+    try { new Image().src = getCoverUrl(r.book.coverId, 'M', r.book.coverUrl); } catch {}
     onUpdate([...out]);
   });
   if (out.filter(b => b.coverId || b.coverUrl).length >= Math.ceil(out.length / 2)) cache.set(shelf.id, { sig: shelfSig(shelf), books: out });
 }
 
-/** A curated shelf as a ShelfSource (used by the Store's generic shelf component). */
 export function curatedSource(shelf: CuratedShelf): ShelfSource & { seeded: () => Book[] } {
-  const seeded = () => {
-    const s = seedPlaceholders(shelf);
-    // Fully prefetched shelves need no lookups and no cache at all
-    return s.every(b => b.coverId || b.coverUrl) ? s : getCachedCurated(shelf) || s;
-  };
+  const seeded = () => seedPlaceholders(shelf);
   return {
     id: shelf.id,
+    label: () => `${shelf.emoji} ${shelf.title}`,
     seeded,
-    cached: seeded,
-    info: () => ({ schedule: 'Hand-picked · no automatic updates', source: 'Hand-picked by GreatReads (no trustworthy public source to refresh from)', kind: 'curated' }),
+    cached: () => {
+      const s = seeded();
+      return s.every(b => b.coverId || b.coverUrl) ? s : getCachedCurated(shelf) || s;
+    },
     load: async onUpdate => {
-      const start = seeded();
-      await resolveCuratedShelf(shelf, start, onUpdate);
-      return start;
+      const books = seeded();
+      onUpdate(books);
+      if (books.every(b => b.coverId || b.coverUrl)) {
+        cache.set(shelf.id, { sig: shelfSig(shelf), books });
+        return books;
+      }
+      await resolveCuratedShelf(shelf, books, onUpdate);
+      return books;
     },
   };
 }
