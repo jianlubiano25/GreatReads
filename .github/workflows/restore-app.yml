@@ -1,0 +1,29 @@
+name: Restore App.tsx
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'src/App.tsx.z64.*'
+      - 'scripts/restore-app.py'
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/app-tabs
+      - name: Restore App.tsx from compressed parts
+        run: python3 scripts/restore-app.py
+      - name: Commit if changed
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add src/App.tsx
+          if git diff --staged --quiet; then
+            echo 'App.tsx already correct'
+          else
+            git commit -m 'Restore App.tsx with LibraryTab and DeviceTab'
+            git push
+          fi
