@@ -20,7 +20,7 @@ export interface OlDoc {
 }
 
 export type OlSize = 'S' | 'M' | 'L';
-export const olCoverById = (id: number, size: OlSize = 'M') => `https://covers.openlibrary.org/b/id/${id}-${size}.jpg`;
+export const olCoverById = (id: number, size: OlSize = 'M') => `https://covers.openlibrary.org/b/id/${id}-${size}.jpg?default=false`;
 /** Exact-edition cover. `default=false` makes a missing cover a 404 (so fallbacks kick in) instead of a blank 1x1 image. */
 export const olCoverByIsbn = (isbn: string, size: OlSize = 'L') => `https://covers.openlibrary.org/b/isbn/${isbn}-${size}.jpg?default=false`;
 
@@ -46,12 +46,13 @@ export function olDocToHit(doc: OlDoc, idx = 0, genreHint = ''): Hit {
 
 /** Raw search. Never throws; returns [] on any failure. */
 export async function searchOpenLibrary(params: Record<string, string>, limit: number, opts: CallOpts = {}): Promise<Hit[]> {
-  const q = new URLSearchParams({ limit: String(limit), fields: FIELDS, ...params });
-  const data = await getJson(`${OL}/search.json?${q}`, { signal: opts.signal, retries: opts.retries });
-  return ((data?.docs || []) as OlDoc[]).filter(d => d?.title).map((d, i) => olDocToHit(d, i));
+  const q = new URLSearchParams({ ...params, limit: String(limit), fields: FIELDS });
+  const data = await getJson(`${OL}/search.json?${q}`, { timeout: 10000, retries: 1, signal: opts.signal });
+  if (!data) return [];
+  return ((data.docs || []) as OlDoc[]).filter(d => d?.title).map((d, i) => olDocToHit(d, i));
 }
 
-/** Open Library's own trending lists (what readers are doing right now). Rank 0 = most trending. */
+/** Trending works for a period (daily/weekly). Rank 0 = most trending. */
 export async function trendingOpenLibrary(period: 'daily' | 'weekly', limit: number, opts: CallOpts = {}): Promise<Array<Hit & { rank: number }> | null> {
   const data = await getJson(`${OL}/trending/${period}.json?limit=${limit}`, { timeout: 10000, retries: 1, signal: opts.signal });
   if (!data) return null;
@@ -78,28 +79,6 @@ export async function findOpenLibrary(q: { title: string; author?: string; isbn?
 
 export async function openLibraryRatings(workId: string, opts: CallOpts = {}): Promise<{ average: number; count: number } | null> {
   const j = await getJson(`${OL}/works/${workId}/ratings.json`, { timeout: 8000, signal: opts.signal });
-  const sm = j?.summary;
-  return sm?.average ? { average: Number(Number(sm.average).toFixed(1)), count: Number(sm.count) || 0 } : null;
-}
-
-export async function openLibraryDescription(workId: string, opts: CallOpts = {}): Promise<string> {
-  const w = await getJson(`${OL}/works/${workId}.json`, { timeout: 8000, signal: opts.signal });
-  const val = typeof w?.description === 'string' ? w.description : w?.description?.value;
-  return val ? String(val).split(/\n-{3,}|\n\n/)[0].replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').slice(0, 600) : '';
-}
-
-/** Median page count across a work's editions (used when the search index has no page count). */
-export async function openLibraryEditionPages(workId: string, opts: CallOpts = {}): Promise<number | undefined> {
-  const data = await getJson(`${OL}/works/${workId}/editions.json?limit=40`, { signal: opts.signal });
-  const pages: number[] = ((data && data.entries) || [])
-    .map((e: any) => Number(e.number_of_pages))
-    .filter((n: number) => Number.isFinite(n) && n >= 30 && n <= 2500)
-    .sort((a: number, b: number) => a - b);
-  return pages.length ? pages[Math.floor(pages.length / 2)] : undefined;
-}
-
-/** Re-read one work's search record (ratings, pages, genre, year). */
-export async function openLibraryWorkRecord(workId: string, opts: CallOpts = {}): Promise<Hit | null> {
-  const hits = await searchOpenLibrary({ q: `key:/works/${workId}` }, 1, opts);
-  return hits[0] ?? null;
+  if (!j || typeof j.summary?.average !== 'number') return null;
+  return { average: Number(j.summary.average.toFixed(1)), count: j.summary.count || 0 };
 }
