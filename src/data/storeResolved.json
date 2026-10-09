@@ -414,419 +414,435 @@
  ],
  "inklings": [
   {
-   "title": "The Hobbit",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication122/v4/8a/d8/61/8ad861cd-9c83-512c-d13e-022e625ef4b6/9780547951973.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 1030,
+   "ratingCount": 1029,
    "pageCount": 310,
    "year": "2012",
-   "olKey": "/works/OL27482W"
+   "olKey": "/works/OL27482W",
+   "title": "The Hobbit"
   },
   {
-   "title": "The Fellowship of the Ring",
-   "coverId": 14627060,
-   "ratingAverage": 4.3,
-   "ratingCount": 405,
-   "pageCount": 492,
-   "year": "1954",
-   "olKey": "/works/OL27513W"
-  },
-  {
-   "title": "The Lion, the Witch and the Wardrobe",
-   "coverId": 8441376,
-   "ratingAverage": 4.1,
-   "ratingCount": 123,
-   "pageCount": 186,
-   "year": "1950",
-   "olKey": "/works/OL71037W"
-  },
-  {
-   "title": "The Screwtape Letters",
-   "coverId": 9779,
-   "ratingAverage": 4.1,
-   "ratingCount": 29,
-   "pageCount": 160,
-   "year": "1942",
-   "olKey": "/works/OL71072W"
-  },
-  {
-   "title": "Out of the Silent Planet",
-   "coverId": 9321665,
-   "ratingAverage": 4,
-   "ratingCount": 32,
-   "pageCount": 174,
-   "year": "1938",
-   "olKey": "/works/OL71166W"
-  },
-  {
-   "title": "The Two Towers",
-   "coverId": 14627564,
-   "ratingAverage": 4.4,
-   "ratingCount": 234,
-   "pageCount": 434,
-   "year": "1954",
-   "olKey": "/works/OL27479W"
-  },
-  {
-   "title": "The Return of the King",
-   "coverId": 14627062,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication116/v4/07/1a/f4/071af4f1-c83c-aec8-6c09-27f15c42d22d/9780547952017.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 108,
-   "pageCount": 499,
-   "year": "1950",
-   "olKey": "/works/OL27455W"
+   "ratingCount": 633,
+   "pageCount": 492,
+   "year": "2012",
+   "olKey": "/works/OL27513W",
+   "title": "The Fellowship of the Ring"
   },
   {
-   "title": "Till We Have Faces",
-   "coverId": 9184539,
-   "ratingAverage": 4.7,
-   "ratingCount": 3,
-   "pageCount": 320,
-   "year": "1956",
-   "olKey": "/works/OL71162W"
-  },
-  {
-   "title": "The Magician's Nephew",
-   "coverId": 1072931,
-   "ratingAverage": 4,
-   "ratingCount": 109,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/e5/33/0f/e5330fc6-7ea8-1b53-c896-79a0e945c039/ChatGPT_Image_Apr_7_2025_12_39_35_PM.png/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 279,
    "pageCount": 186,
-   "year": "1955",
-   "olKey": "/works/OL71042W"
+   "year": "2021",
+   "olKey": "/works/OL71037W",
+   "title": "The Lion, the Witch and the Wardrobe"
   },
   {
-   "title": "War in Heaven",
-   "coverId": 6718269,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication123/v4/f2/9b/3c/f29b3cec-3e96-1507-fada-f5a5d26ab5d4/The-Screwtape-Letters-Apple.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 461,
+   "pageCount": 160,
+   "year": "2024",
+   "olKey": "/works/OL71072W",
+   "title": "The Screwtape Letters"
+  },
+  {
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication115/v4/a5/99/25/a599257a-a777-fae6-ef66-f57e66214531/Planet.png/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 67,
+   "pageCount": 174,
+   "year": "2021",
+   "olKey": "/works/OL71166W",
+   "title": "Out of the Silent Planet"
+  },
+  {
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication116/v4/c0/6f/b9/c06fb914-5bb9-dc7f-c4dc-a72214c99d57/9780547952024.jpg/600x900bb.jpg",
+   "ratingAverage": 5,
+   "ratingCount": 374,
+   "pageCount": 434,
+   "year": "2012",
+   "olKey": "/works/OL27479W",
+   "title": "The Two Towers"
+  },
+  {
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/96/db/d5/96dbd507-dfac-6ff2-e24b-3f3fc2edbb33/9780547952048.jpg/600x900bb.jpg",
+   "ratingAverage": 5,
+   "ratingCount": 287,
+   "pageCount": 495,
+   "year": "2012",
+   "olKey": "/works/OL27455W",
+   "title": "The Return of the King"
+  },
+  {
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication111/v4/92/ff/bf/92ffbfc7-517b-09f2-0ab5-5bbb61b5756c/9780062565426_marketingimage.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 113,
+   "pageCount": 320,
+   "year": "2017",
+   "olKey": "/works/OL71162W",
+   "title": "Till We Have Faces"
+  },
+  {
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/88/91/82/88918296-9901-49d0-dd42-325fb1d8b100/9780061974168.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 1257,
+   "pageCount": 186,
+   "year": "2009",
+   "olKey": "/works/OL71042W",
+   "title": "The Magician's Nephew"
+  },
+  {
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/37/63/cf/3763cfc6-d875-9f7a-99d9-338aec75f7a9/1058599778.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 7,
    "pageCount": 256,
-   "year": "1930",
-   "olKey": "/works/OL1155806W"
+   "year": "2015",
+   "olKey": "/works/OL1155806W",
+   "title": "War in Heaven"
   },
   {
-   "title": "All Hallows' Eve",
-   "coverId": 7445982,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/82/f1/e9/82f1e922-cf78-5344-9db6-d89a49f590c9/1058594589.jpg/600x900bb.jpg",
    "ratingAverage": 4,
    "ratingCount": 1,
    "pageCount": 270,
-   "year": "1945",
-   "olKey": "/works/OL1155807W"
+   "year": "2015",
+   "olKey": "/works/OL1155807W",
+   "title": "All Hallows' Eve"
   },
   {
-   "title": "The Silmarillion",
-   "coverId": 14627042,
-   "ratingAverage": 4,
-   "ratingCount": 123,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication112/v4/dc/cf/ae/dccfaea1-6ac0-e247-a2e3-1ffde5451a2b/9780547951980.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 332,
    "pageCount": 424,
-   "year": "1977",
-   "olKey": "/works/OL27495W"
+   "year": "2012",
+   "olKey": "/works/OL27495W",
+   "title": "The Silmarillion"
   }
  ],
  "oprah": [
   {
-   "title": "Beloved",
-   "coverId": 8261367,
-   "ratingAverage": 3.9,
-   "ratingCount": 75,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/2d/bc/0b/2dbc0bac-a99b-3d04-3008-ed3cc4caed52/9780307388629.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 929,
    "pageCount": 321,
    "year": "1987",
-   "olKey": "/works/OL50548W"
+   "olKey": "/works/OL50548W",
+   "title": "Beloved"
   },
   {
-   "title": "Song of Solomon",
-   "coverId": 9317262,
-   "ratingAverage": 4.3,
-   "ratingCount": 16,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/8b/0e/2e/8b0e2e36-e2ce-10c5-200f-48830dfb4cdc/9780307388124.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 460,
    "pageCount": 341,
-   "year": "1634",
-   "olKey": "/works/OL50564W"
+   "year": "1977",
+   "olKey": "/works/OL50564W",
+   "title": "Song of Solomon"
   },
   {
-   "title": "The Covenant of Water",
-   "coverId": 13190092,
-   "ratingAverage": 4.4,
-   "ratingCount": 5,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/6b/88/5d/6b885d95-0932-7fe0-a912-279fa02a6493/9780802162182.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 3703,
    "year": "2023",
-   "olKey": "/works/OL29192912W"
+   "olKey": "/works/OL29192912W",
+   "title": "The Covenant of Water"
   },
   {
-   "title": "Demon Copperhead",
-   "coverId": 13141227,
-   "ratingAverage": 4.6,
-   "ratingCount": 7,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/37/41/49/374149d4-e176-69a7-c511-c168a13d65e5/9780063251991.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 8372,
    "pageCount": 560,
    "year": "2022",
-   "olKey": "/works/OL27052926W"
+   "olKey": "/works/OL27052926W",
+   "title": "Demon Copperhead"
   },
   {
-   "title": "The Underground Railroad",
-   "coverId": 7899016,
-   "ratingAverage": 4,
-   "ratingCount": 52,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication128/v4/bc/6e/11/bc6e11f7-0574-f08d-d1c2-02fb6af1a3ec/9780385537049.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 3441,
    "pageCount": 378,
-   "year": "2000",
-   "olKey": "/works/OL17619932W"
+   "year": "2016",
+   "olKey": "/works/OL17619932W",
+   "title": "The Underground Railroad"
   },
   {
-   "title": "Wild",
-   "coverId": 7249596,
-   "ratingAverage": 3.9,
-   "ratingCount": 42,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication4/v4/af/36/d3/af36d33d-786b-bd93-60f9-ccd3d977a9a9/9780307957658.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 6427,
    "pageCount": 363,
-   "year": "1767",
-   "olKey": "/works/OL16142316W"
+   "year": "2012",
+   "olKey": "/works/OL16142316W",
+   "title": "Wild"
   },
   {
-   "title": "The Water Dancer",
-   "coverId": 11328148,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication124/v4/26/e5/cb/26e5cb40-39c3-4642-d9bb-54b6889b0ea5/9780399590603.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 1,
+   "ratingCount": 3329,
    "pageCount": 416,
    "year": "2019",
-   "olKey": "/works/OL20125974W"
+   "olKey": "/works/OL20125974W",
+   "title": "The Water Dancer"
   },
   {
-   "title": "Lila",
-   "coverId": 7317559,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication124/v4/e4/e1/79/e4e179d6-7b15-7963-5c45-bda923ec5c08/9780374709082.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 2,
+   "ratingCount": 454,
    "pageCount": 272,
    "year": "2014",
-   "olKey": "/works/OL17077593W"
+   "olKey": "/works/OL17077593W",
+   "title": "Lila"
   },
   {
-   "title": "Deacon King Kong",
-   "coverId": 9289592,
-   "ratingAverage": 2,
-   "ratingCount": 2,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/4f/d6/3f/4fd63fef-9583-d9f8-935e-fc78f3352ed7/9780735216747.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 2190,
    "pageCount": 544,
    "year": "2020",
-   "olKey": "/works/OL20650889W"
+   "olKey": "/works/OL20650889W",
+   "title": "Deacon King Kong"
   },
   {
-   "title": "Gilead",
-   "coverId": 1472533,
-   "ratingAverage": 3.4,
-   "ratingCount": 16,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication124/v4/f9/e9/d3/f9e9d3ab-e60b-1cf4-19f1-95e47955d8b6/9780374706098.jpg/600x900bb.jpg",
+   "ratingAverage": 3.5,
+   "ratingCount": 903,
    "pageCount": 257,
    "year": "2004",
-   "olKey": "/works/OL1875009W"
+   "olKey": "/works/OL1875009W",
+   "title": "Gilead"
   },
   {
-   "title": "Cane River",
-   "coverId": 286147,
-   "ratingAverage": 5,
-   "ratingCount": 1,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/c9/80/bb/c980bb51-9775-cddf-4192-cb7aab21adf2/1059195410.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 7,
    "pageCount": 418,
    "year": "2001",
-   "olKey": "/works/OL5842496W"
+   "olKey": "/works/OL5842496W",
+   "title": "Cane River"
   },
   {
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication112/v4/ff/26/b4/ff26b4ec-bbc1-0495-b900-597c47b0c719/9780316461269.jpg/600x900bb.jpg",
+   "ratingAverage": 3.5,
+   "ratingCount": 2092,
+   "year": "2021",
    "title": "The Sweetness of Water"
   }
  ],
  "reeses": [
   {
-   "title": "Where the Crawdads Sing",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication124/v4/9b/da/27/9bda2792-1f9e-3a35-339e-a34dfe18b986/cover.jpg/600x900bb.jpg",
    "ratingAverage": 4.3,
    "ratingCount": 102,
    "pageCount": 416,
    "year": "2020",
-   "olKey": "/works/OL18766691W"
+   "olKey": "/works/OL18766691W",
+   "title": "Where the Crawdads Sing"
   },
   {
-   "title": "Daisy Jones & The Six",
-   "coverId": 8742674,
-   "ratingAverage": 3.9,
-   "ratingCount": 45,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/eb/de/71/ebde71c4-759b-e97e-c695-e6a477c0d79f/9781524798635.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 7726,
    "pageCount": 400,
    "year": "2019",
-   "olKey": "/works/OL19922194W"
+   "olKey": "/works/OL19922194W",
+   "title": "Daisy Jones & The Six"
   },
   {
-   "title": "Little Fires Everywhere",
-   "coverId": 8111914,
-   "ratingAverage": 3.9,
-   "ratingCount": 48,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication112/v4/9c/4e/52/9c4e52b3-5da6-c51f-1d40-27748825b9aa/9780735224308.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 9591,
    "pageCount": 384,
-   "year": "2014",
-   "olKey": "/works/OL17821431W"
+   "year": "2017",
+   "olKey": "/works/OL17821431W",
+   "title": "Little Fires Everywhere"
   },
   {
-   "title": "Eleanor Oliphant Is Completely Fine",
-   "coverId": 8415055,
-   "ratingAverage": 4.2,
-   "ratingCount": 33,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication125/v4/f5/c0/c8/f5c0c873-803b-6fb5-414d-33cd14d9ea46/9780735220706.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 7926,
    "pageCount": 352,
    "year": "2017",
-   "olKey": "/works/OL19781733W"
+   "olKey": "/works/OL19781733W",
+   "title": "Eleanor Oliphant Is Completely Fine"
   },
   {
-   "title": "The Alice Network",
-   "coverId": 9260189,
-   "ratingAverage": 4.1,
-   "ratingCount": 7,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication128/v4/26/8f/d6/268fd6d0-189c-a57e-86d8-5b614e6be6bd/9780062654205_marketingimage.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 6038,
    "pageCount": 444,
    "year": "2017",
-   "olKey": "/works/OL20060313W"
+   "olKey": "/works/OL20060313W",
+   "title": "The Alice Network"
   },
   {
-   "title": "Such a Fun Age",
-   "coverId": 9255831,
-   "ratingAverage": 3,
-   "ratingCount": 5,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication115/v4/9d/2c/95/9d2c9500-c8da-2da6-30c7-81f568303b33/9780525541929.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 3135,
    "pageCount": 320,
    "year": "2019",
-   "olKey": "/works/OL20639693W"
+   "olKey": "/works/OL20639693W",
+   "title": "Such a Fun Age"
   },
   {
-   "title": "The Seven Husbands of Evelyn Hugo",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/1e/f4/8b/1ef48b3d-5a62-27a5-2853-0ed8dffe46d4/9781501139246.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 18791,
+   "ratingCount": 18783,
    "pageCount": 400,
    "year": "2017",
-   "olKey": "/works/OL18203673W"
+   "olKey": "/works/OL18203673W",
+   "title": "The Seven Husbands of Evelyn Hugo"
   },
   {
-   "title": "The Paper Palace",
-   "coverId": 11308545,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication122/v4/09/50/3c/09503c19-b9a7-f8bc-40ab-58469c25671c/9780593329849.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 1,
+   "ratingCount": 4388,
    "pageCount": 456,
    "year": "2021",
-   "olKey": "/works/OL24630972W"
+   "olKey": "/works/OL24630972W",
+   "title": "The Paper Palace"
   },
   {
-   "title": "Next Year in Havana",
-   "coverId": 9265063,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication115/v4/6f/58/ec/6f58ec60-c869-9d19-25a4-c52e63bafdc3/9780399586699.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 1,
+   "ratingCount": 2238,
    "pageCount": 1,
    "year": "2018",
-   "olKey": "/works/OL20643492W"
+   "olKey": "/works/OL20643492W",
+   "title": "Next Year in Havana"
   },
   {
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication115/v4/52/14/22/52142225-7cba-edd1-e96c-856de26ce268/9780062868954.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 9580,
+   "year": "2020",
    "title": "The Guest List"
   },
   {
-   "title": "Untamed",
-   "coverId": 9295686,
-   "ratingAverage": 3.9,
-   "ratingCount": 13,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/74/6a/63/746a6365-c125-77f9-a3fd-d3f33968bcc8/9781984801265.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 4062,
    "pageCount": 352,
    "year": "2020",
-   "olKey": "/works/OL20652361W"
+   "olKey": "/works/OL20652361W",
+   "title": "Untamed"
   },
   {
-   "title": "The Sanatorium",
-   "coverId": 14640925,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication112/v4/2c/06/a0/2c06a0d8-baee-aa57-11c6-a58294268745/9780593296684.d.jpg/600x900bb.jpg",
    "ratingAverage": 3.5,
-   "ratingCount": 2,
+   "ratingCount": 2619,
    "pageCount": 450,
    "year": "2021",
-   "olKey": "/works/OL37516935W"
+   "olKey": "/works/OL37516935W",
+   "title": "The Sanatorium"
   }
  ],
  "womens": [
   {
-   "title": "The Correspondent",
-   "coverId": 15254278,
-   "ratingAverage": 4,
-   "ratingCount": 2,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/64/45/5d/64455dfa-1086-92dd-7874-b3a33b607246/9780593798447.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 5260,
    "pageCount": 360,
    "year": "2025",
-   "olKey": "/works/OL42414694W"
+   "olKey": "/works/OL42414694W",
+   "title": "The Correspondent"
   },
   {
-   "title": "The Safekeep",
-   "coverId": 14631041,
-   "ratingAverage": 4.3,
-   "ratingCount": 3,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/a5/ff/88/a5ff887f-ec0d-8e0c-ffbf-1864f47eaed1/9781668034361.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 388,
    "year": "2024",
-   "olKey": "/works/OL37572547W"
+   "olKey": "/works/OL37572547W",
+   "title": "The Safekeep"
   },
   {
-   "title": "Brotherless Night",
-   "coverId": 14824259,
-   "ratingAverage": 4,
-   "ratingCount": 1,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/49/f3/bb/49f3bbc2-e214-eb2c-03f9-692d5d10703b/9780812997163.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 24,
    "year": "2023",
-   "olKey": "/works/OL28349234W"
+   "olKey": "/works/OL28349234W",
+   "title": "Brotherless Night"
   },
   {
-   "title": "Demon Copperhead",
-   "coverId": 13141227,
-   "ratingAverage": 4.6,
-   "ratingCount": 7,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/37/41/49/374149d4-e176-69a7-c511-c168a13d65e5/9780063251991.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 8372,
    "pageCount": 560,
    "year": "2022",
-   "olKey": "/works/OL27052926W"
+   "olKey": "/works/OL27052926W",
+   "title": "Demon Copperhead"
   },
   {
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication112/v4/c4/0c/c9/c40cc99a-a432-087a-6f09-20ece248bdd3/9780399563652.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 111,
+   "pageCount": 560,
+   "year": "2021",
+   "olKey": "/works/OL24197713W",
    "title": "The Book of Form and Emptiness"
   },
   {
-   "title": "Piranesi",
-   "coverId": 10226290,
-   "ratingAverage": 4.3,
-   "ratingCount": 63,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication116/v4/2c/2e/b4/2c2eb4b8-6a28-c926-b0ed-03fbd7ed2ce0/1031214040.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 1697,
    "pageCount": 272,
    "year": "2020",
-   "olKey": "/works/OL20893680W"
+   "olKey": "/works/OL20893680W",
+   "title": "Piranesi"
   },
   {
-   "title": "Hamnet",
-   "coverId": 10306590,
-   "ratingAverage": 4.1,
-   "ratingCount": 15,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/c9/4b/d2/c94bd2a7-d4d2-d80a-955d-7ec1770528f4/9780525657613.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 2302,
    "pageCount": 355,
    "year": "2020",
-   "olKey": "/works/OL20743965W"
+   "olKey": "/works/OL20743965W",
+   "title": "Hamnet"
   },
   {
-   "title": "An American Marriage",
-   "coverId": 8289154,
-   "ratingAverage": 3.7,
-   "ratingCount": 11,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication112/v4/0d/c4/a2/0dc4a204-b60c-692f-8c4a-faa2c30758d3/9781616207601.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 257,
    "pageCount": 320,
    "year": "2018",
-   "olKey": "/works/OL18020218W"
+   "olKey": "/works/OL18020218W",
+   "title": "An American Marriage"
   },
   {
-   "title": "Home Fire",
-   "coverId": 15164839,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/e3/15/28/e31528fb-8759-5f14-d92a-77f4d813a130/9780735217706.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 4,
+   "ratingCount": 277,
    "pageCount": 288,
    "year": "2017",
-   "olKey": "/works/OL17868253W"
+   "olKey": "/works/OL17868253W",
+   "title": "Home Fire"
   },
   {
-   "title": "Flashlight",
-   "coverId": 15111652,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/c0/bb/69/c0bb6931-bc88-2d71-4ec1-1a6ce0d68962/9780374616380.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 1,
+   "ratingCount": 127,
    "pageCount": 464,
    "year": "2025",
-   "olKey": "/works/OL42408368W"
+   "olKey": "/works/OL42408368W",
+   "title": "Flashlight"
   },
   {
-   "title": "Heart the Lover",
-   "coverId": 15143628,
-   "ratingAverage": 4,
-   "ratingCount": 1,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/b3/82/05/b3820594-31d2-05b9-cde7-5906ac1282f1/9780802165183.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 1496,
    "pageCount": 256,
    "year": "2025",
-   "olKey": "/works/OL43763830W"
+   "olKey": "/works/OL43763830W",
+   "title": "Heart the Lover"
   },
   {
-   "title": "Dominion",
-   "coverId": 15111941,
-   "ratingAverage": 4,
-   "ratingCount": 1,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/7b/06/e0/7b06e0f4-a5ba-1857-5534-fc379dc28efe/9780374609351.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 46,
    "pageCount": 240,
    "year": "2025",
-   "olKey": "/works/OL42441000W"
+   "olKey": "/works/OL42441000W",
+   "title": "Dominion"
   }
  ],
  "intbooker": [
