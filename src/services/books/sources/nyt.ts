@@ -68,12 +68,6 @@ export function parseNytList(data: any): NytEntry[] {
     .sort((a, b) => a.rank - b.rank);
 }
 
-/** When the saved list was fetched (ms), or undefined. Used to say how old a shelf's data is. */
-export const nytListSavedAt = (list: string): number | undefined => {
-  const p = cache.peek(list);
-  return p ? Date.now() - p.ageMs : undefined;
-};
-export const getCachedNytList = (list: string): NytEntry[] | undefined => cache.get(list);
 /** Forget a saved list (used by tests, and handy when switching lists). */
 export const forgetNytList = (list: string) => cache.delete(list);
 
@@ -158,9 +152,4 @@ export async function loadNytList(list: string, opts: CallOpts & { force?: boole
     const old = cache.peek(list);
     return old ? { entries: old.value, stale: true, failure } : { entries: null, stale: false, failure };
   });
-}
-
-/** The current list in NYT order, or null when it cannot be had at all. (A saved list up to 10 days old still counts.) */
-export async function fetchNytList(list: string, opts: CallOpts = {}): Promise<NytEntry[] | null> {
-  return (await loadNytList(list, opts)).entries;
 }

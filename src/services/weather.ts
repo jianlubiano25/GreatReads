@@ -290,14 +290,6 @@ export function setWeatherOverride(override: 'auto' | WeatherCondition) {
   } catch {}
 }
 
-export function getWeatherOverride(): string {
-  try {
-    return localStorage.getItem(OVERRIDE_KEY) || 'auto';
-  } catch {
-    return 'auto';
-  }
-}
-
 /** Location-based weather is optional and off by default (the scene already follows the time of day). */
 export function isLocationWeatherEnabled(): boolean {
   try {

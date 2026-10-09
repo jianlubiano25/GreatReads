@@ -82,14 +82,6 @@ function recordLoadedCover(url: string) {
   }, 1500);
 }
 
-export function warmBookCover(book: Book, imgSize: 'S' | 'M' | 'L' = 'M') {
-  const url = getCoverFix(book) || getCoverUrl(book.coverId, imgSize, book.coverUrl);
-  if (!url || loadedCovers.has(url)) return;
-  const im = new Image();
-  im.onload = () => recordLoadedCover(url);
-  im.src = url;
-}
-
 /**
  * Cover contents. The real cover image is shown on its own; the title/author text
  * appears gracefully as the book jacket while loading or when no cover exists.

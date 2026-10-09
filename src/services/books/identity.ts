@@ -18,6 +18,18 @@ export function titleKey(title = ''): string {
   return t.replace(/^(the|a|an) /, '');
 }
 
+/** Subtitles that only describe the kind of book, so they never make two titles different books. */
+const GENERIC_SUBTITLE = /^(an? |the )?(novel|memoir|story|stories|thriller|mystery|romance|true story|short stories|collection|essays|biography|play|poems?)( of .*)?$/;
+
+/** "Mistborn: The Final Empire" -> "final empire". Empty when there is no subtitle or it is only generic ("A Novel"). */
+export function subtitleKey(title = ''): string {
+  const t = strip(title).replace(/&/g, ' and ').replace(/\(.*?\)|\[.*?\]/g, ' ');
+  const parts = t.split(/\s*[:–—]\s+|\s+-\s+/);
+  if (parts.length < 2) return '';
+  const sub = parts.slice(1).join(' ').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^(the|a|an) /, '');
+  return GENERIC_SUBTITLE.test(sub) || /^(a |an |the )?novel\b/.test(sub) ? '' : sub;
+}
+
 /** First author only: "Neil Gaiman & Terry Pratchett" -> "Neil Gaiman"; "King, Lily" -> "Lily King". */
 export function primaryAuthor(author = ''): string {
   const parts = author.split(/\s*(?:&|;|\/|\band\b)\s*/i).filter(Boolean);
@@ -94,10 +106,6 @@ export function mergeIdentity(a?: BookIdentity, b?: BookIdentity): BookIdentity 
   return Object.keys(out).length ? out : undefined;
 }
 
-export function withIdentity<T extends Book>(book: T, extra: BookIdentity): T {
-  return { ...book, identity: mergeIdentity(book.identity, extra) };
-}
-
 /* ---------------- matching ---------------- */
 
 export function authorsCompatible(a = '', b = ''): boolean {
@@ -117,9 +125,18 @@ export function authorListMatches(candidate: string | string[] | undefined, want
   return list.some(c => authorsCompatible(c, want));
 }
 
+/**
+ * Same title? The main title must match. Subtitles only matter when BOTH titles have one and they clearly differ
+ * ("Mistborn: The Final Empire" vs "Mistborn: The Well of Ascension"), so "The Fruit Fly: A Novel" still matches
+ * "The Fruit Fly" and a shortened subtitle still matches the full one.
+ */
 export const titlesMatch = (a = '', b = ''): boolean => {
   const ka = titleKey(a);
-  return !!ka && ka === titleKey(b);
+  if (!ka || ka !== titleKey(b)) return false;
+  const sa = subtitleKey(a);
+  const sb = subtitleKey(b);
+  if (!sa || !sb || sa === sb) return true;
+  return sa.startsWith(sb) || sb.startsWith(sa);
 };
 
 /** Same publication: a shared ISBN or edition/volume id. */

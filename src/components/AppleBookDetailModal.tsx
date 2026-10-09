@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { Book } from '../types';
-import { BOOK_AWARDS, DIFFICULTY_LABELS, SHELF_LABELS } from '../data/defaultBooks';
-import { getCoverUrl, enrichBookDetails, fetchBookMeta } from '../services/books';
+import { DIFFICULTY_LABELS, SHELF_LABELS } from '../data/defaultBooks';
+import { enrichBookDetails, fetchBookMeta } from '../services/books';
 import { CoverFace, stars, compactCount, honorsListFor } from './BookMeta';
-import { X, BookOpen, Smartphone, Star, Award, ChevronDown, Check, Plus, Bookmark } from 'lucide-react';
+import { X, BookOpen, Smartphone, Star, Award, ChevronDown, Check, Bookmark } from 'lucide-react';
 
 interface AppleBookDetailModalProps {
   book: Book;
@@ -29,18 +29,16 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   readingStatus,
   currentPage = 0,
   totalPages: propTotalPages,
-  note,
   highlightsCount = 0,
   onClose,
   onAddToLibrary,
   onAddToDevice,
-  onUpdateProgress,
   onOpenHighlights,
 }) => {
   useModalA11y(onClose);
   const [book, setBook] = useState<Book>(initialBook);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [, setLoadingDetails] = useState(false);
   const [activeTabAction, setActiveTabAction] = useState<'idle' | 'lib' | 'dev'>('idle');
 
   // Load richer details if missing summary or page count
@@ -94,7 +92,6 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   }, [initialBook.id]);
 
   const awards = honorsListFor(book);
-  const coverUrl = getCoverUrl(book.coverId, 'L', book.coverUrl);
   const displayPages = propTotalPages || book.pageCount || 0;
   const shelfInfo = SHELF_LABELS[book.shelf] || { label: book.genre || 'Book', emoji: '📖', color: book.spineColor || '#2e5934' };
   // Under the genre: the curated shelf (🧠 Heal) — or where a store book came from.

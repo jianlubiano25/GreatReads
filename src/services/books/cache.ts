@@ -8,7 +8,17 @@ export interface Cache<T> {
   delete(key: string): void;
 }
 
+/** Every localStorage key the app can download again, so the "storage is full" cleanup can never go stale. */
+const clearableKeys = new Set<string>();
+
+/** Marks a localStorage key as re-downloadable (safe to wipe when storage is full). */
+export const registerClearableKey = (key: string) => { clearableKeys.add(key); };
+
+/** Keys that are safe to clear: registered caches plus the old cache keys older versions used. */
+export const clearableCacheKeys = (): string[] => [...new Set([...clearableKeys, ...LEGACY_BOOK_CACHE_KEYS, 'readlife.curated1', 'readlife.curated2'])];
+
 export function persistentCache<T>(storageKey: string, opts: { ttl: number; max: number; keepStale?: number }): Cache<T> {
+  registerClearableKey(storageKey);
   type Entry = { t: number; v: T };
   const mem = new Map<string, Entry>();
   let loaded = false;

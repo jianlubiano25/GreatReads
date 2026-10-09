@@ -468,5 +468,3 @@ export const DYNAMIC_SPECS: Record<string, DynamicSpec> = {
 /** Shelf id -> source object, as the Store needs it: self-refreshing when it has a spec, plain curated otherwise. */
 export const shelfSourceFor = (shelf: CuratedShelf): ShelfSource & { seeded?: () => Book[] } =>
   DYNAMIC_SPECS[shelf.id] ? dynamicCuratedSource(shelf, DYNAMIC_SPECS[shelf.id]) : curatedSource(shelf);
-
-export const dynamicShelfIds = () => CURATED_SHELVES.filter(s => DYNAMIC_SPECS[s.id]).map(s => s.id);

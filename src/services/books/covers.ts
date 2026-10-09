@@ -1,4 +1,5 @@
 import type { Book } from '../../types';
+import { registerClearableKey } from './cache';
 import { dedupeInflight, mapPool, pool } from './http';
 import { identityOf, isUnknownAuthor, primaryAuthor, titlesMatch } from './identity';
 import { findApple } from './sources/appleBooks';
@@ -27,6 +28,8 @@ export function getCoverUrl(coverId?: number, size: CoverSize = 'M', customUrl?:
 
 const FIX_KEY = 'readlife.coverFix1'; // key -> { url, t }
 const NONE_KEY = 'readlife.coverNone2'; // key -> time of the last miss
+registerClearableKey(FIX_KEY);
+registerClearableKey(NONE_KEY);
 const NONE_TTL = 24 * 60 * 60 * 1000;
 const MAX_FIXES = 400;
 
@@ -200,7 +203,6 @@ export function fillMissingCovers(books: Book[], onUpdate: (books: Book[]) => vo
 /* ---------------- the "Reload missing covers" button ---------------- */
 
 let repairing = false;
-export const isRepairing = () => repairing;
 
 /**
  * Re-run the lookup for only the covers that failed. Returns how many were fixed, not found anywhere, or

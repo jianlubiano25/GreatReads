@@ -3,7 +3,7 @@ import { Book, BookStatus, TabType, WordItem } from './types';
 import { BOOK_AWARDS } from './data/defaultBooks';
 import { BUILTIN_DICTIONARY } from './data/defaultWords';
 import { useReadingLife } from './hooks/useReadingLife';
-import { searchBooks, getCoverUrl, fillMissingCovers } from './services/books';
+import { searchBooks, getCoverUrl, fillMissingCovers, sameWork } from './services/books';
 import { DEFAULT_SHELF_ORDER, SHELF_BY_ID, hiddenShelfIds } from './services/store/registry';
 import { loadStorePrefs, NO_PREFS, orderShelves, saveStorePrefs, toggleShelf, type StorePrefs } from './services/store/prefs';
 import { lookupWord } from './services/dictionary';
@@ -1127,16 +1127,21 @@ export default function App() {
       </nav>
 
       {/* Modal 1: Apple Books Detail Modal (when tapping any book cover) */}
-      {selectedBookForDetail && (
+      {selectedBookForDetail && (() => {
+        // The same book can sit in the library under a different record id (search vs Store vs NYT): use the one you own
+        const owned = libraryBooks.find(b => b.id === selectedBookForDetail.id)
+          ?? libraryBooks.find(b => sameWork(b, selectedBookForDetail, true));
+        const ownKey = String(owned ? owned.id : selectedBookForDetail.id);
+        return (
         <AppleBookDetailModal
           book={selectedBookForDetail}
-          inLibrary={libraryBooks.some(b => b.id === selectedBookForDetail.id)}
-          onDevice={allBooks.some(b => b.id === selectedBookForDetail.id && (b.isOnDevice || state.status[String(b.id)] === 'done'))}
-          readingStatus={state.status[String(selectedBookForDetail.id)]}
-          currentPage={state.currentPage[String(selectedBookForDetail.id)]}
-          totalPages={state.totalPages[String(selectedBookForDetail.id)]}
-          note={state.notes[String(selectedBookForDetail.id)]}
-          highlightsCount={(state.highlights[String(selectedBookForDetail.id)] || []).length}
+          inLibrary={!!owned}
+          onDevice={allBooks.some(b => String(b.id) === ownKey && (b.isOnDevice || state.status[ownKey] === 'done'))}
+          readingStatus={state.status[ownKey]}
+          currentPage={state.currentPage[ownKey]}
+          totalPages={state.totalPages[ownKey]}
+          note={state.notes[ownKey]}
+          highlightsCount={(state.highlights[ownKey] || []).length}
           onClose={() => setSelectedBookForDetail(null)}
           onAddToLibrary={b => {
             addBook(b, 'library');
@@ -1145,12 +1150,13 @@ export default function App() {
             addBook(b, 'device');
           }}
           onOpenHighlights={() => {
-            const b = selectedBookForDetail;
+            const b = owned ?? selectedBookForDetail;
             setSelectedBookForDetail(null);
             setSelectedBookForHighlights(b);
           }}
         />
-      )}
+        );
+      })()}
 
       <Suspense fallback={null}>
       {/* Modal 2: Apple Look Up Modal */}

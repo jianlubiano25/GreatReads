@@ -1,3 +1,4 @@
+import { useModalA11y } from '../../hooks/useModalA11y';
 import React, { useMemo, useState } from 'react';
 import { X, Lock, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { GardenState } from '../../types';
@@ -18,6 +19,7 @@ interface Props {
  * Rearranging only changes WHERE a plant stands. What you have earned never changes.
  */
 export function AchievementsModal({ garden, onMovePlant, onClose }: Props) {
+  useModalA11y(onClose); // Escape closes only this sheet; focus stays inside it
   const earnedCount = MILESTONES.filter(m => garden.achievements[m.id]).length;
   const byArea = useMemo(() => plantsByArea(garden), [garden.plants, garden.placements]);
   const [selected, setSelected] = useState<string | null>(null);

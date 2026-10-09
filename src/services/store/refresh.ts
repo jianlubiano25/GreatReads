@@ -28,8 +28,6 @@ export function cooldownLeft(id: string, now = Date.now()): number {
   return a ? Math.max(0, a.at + (a.ok ? COOLDOWN_OK_MS : COOLDOWN_FAILED_MS) - now) : 0;
 }
 
-export const isRefreshing = (id: string) => running.has(id);
-
 export function manualRefresh(source: Pick<ShelfSource, 'id' | 'refresh'>, now = Date.now()): Promise<ManualResult> {
   const { refresh } = source;
   if (!refresh) return Promise.resolve('unsupported');
