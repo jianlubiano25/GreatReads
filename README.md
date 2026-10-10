@@ -46,7 +46,7 @@ Nothing generated is presented as an official ranking.
 | Top 15 Fiction / Non-fiction | NYT combined print + e-book lists (official); GreatReads-collated stand-in, labelled, if the NYT is down | every 6 h (NYT publishes weekly) |
 | NYT Young Adult, Paperback Fiction, Paperback Non-Fiction, Advice & How-To | NYT lists, official only (hide themselves if unavailable); top 10 | every 6 h |
 | New in <year> | Open Library: books first published this year, by reader activity; heading follows the calendar year | weekly |
-| Oprah's Book Club | Oprah Daily's own list (`/api/oprah`) only. One refresh adds the picks the shelf doesn't have yet in front of the default list, which keeps its order and labels. A double pick becomes two books | every 3 days |
+| Oprah's Book Club | Oprah Daily's own list (`/api/oprah`) for the newest picks plus Wikipedia's "Oprah's Book Club 2.0" table for the dates; either alone is enough (Wikipedia alone is labelled fallback). One refresh adds the picks the shelf doesn't have yet in front of the default list, which keeps its order and labels. A double pick becomes two books | every 3 days |
 | Women's Prize, International Booker | Wikipedia winners tables | weekly |
 | Romance, Mystery, Sci-fi, Self-help, Fantasy, Memoir, Historical | Open Library: recent (last 5 years), widely read, one book per author, explicit / study guides left out; 4 hand-picked staples stay at the end | monthly |
 | Service95 | the club's own Book Club page via `/api/service95` (official); Wikipedia's list, labelled, if that page can't be read | weekly |
@@ -73,8 +73,8 @@ entry for the same book, or dropped (`isSaneAuthor`).
   A book page has **no author line** (Dua's quote on it can contain "<other book> by <someone>"), so the author is read from the page
   title ("Dua's Monthly Read: Night People by Mark Ronson"), then its description, and only then from a "By ..." line that is a line of
   its own; anything that is not a name is rejected (`looksLikeAuthor`). The hand-picked list is the club's whole archive (about 40 reads).
-- **Oprah**: Oprah Daily's complete list (`functions/api/oprah.js`, entries like `112. “Title,” Author`, newest first) is the only source. New picks
-  sit on top with no date; the default list stays behind them. If Oprah Daily can't be read nothing changes and the saved list stays. **Not verified against the live page**: it blocks automated readers where this was
+- **Oprah**: Oprah Daily's complete list (`functions/api/oprah.js`, entries like `112. “Title,” Author`, newest first) (entries are a number followed by a "Title, by Author" link) finds the newest picks; they sit on top with no date until
+  Wikipedia's 2.0 table, which supplies the dates, has them. If neither can be read nothing changes and Customize Store says why. **Not verified against the live page**: it blocks automated readers where this was
   written, so the parser follows the quoted entry format. Run `npm run check:oprah` after deploying; a changed layout makes the function answer 502
   and nothing breaks.
 - **Reese's**: dynamic from Wikipedia's picks table (a stand-in, not Reese's own list). **Inklings (Jack Edwards, and the Inklings Book

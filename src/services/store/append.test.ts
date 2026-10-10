@@ -76,9 +76,9 @@ test('Reese\'s, Oprah and the prizes are dynamic, append, and say they are a Wik
   assert.equal(s95.source, 'service95.com/book-club');
   assert.ok(s95.fallbackSource?.startsWith('Wikipedia'));
   assert.equal(dynamicInfo(CURATED_SHELVES.find(s => s.id === 'service95')!, s95).kind, 'official');
-  // Oprah: Oprah Daily's own list (read by /api/oprah) is the only source; Wikipedia plays no part
+  // Oprah: Oprah Daily's own list (read by /api/oprah) for the newest picks, Wikipedia's 2.0 table for the dates and as the labelled fallback
   const op = DYNAMIC_SPECS.oprah;
-  assert.ok(op.source.startsWith('oprahdaily.com') && op.fallbackSource === undefined && op.keepExisting === true);
+  assert.ok(op.source.startsWith('oprahdaily.com') && op.fallbackSource?.includes('2.0') && op.keepExisting === true);
   assert.equal(dynamicInfo(CURATED_SHELVES.find(s => s.id === 'oprah')!, op).kind, 'official'); // (a list saved before Oprah Daily was the only source is reset to the default list)
   assert.equal(DYNAMIC_SPECS.reeses.refreshMs, 7 * 24 * 3600_000);
   assert.equal(DYNAMIC_SPECS.inklingsclub, undefined, 'no reliable public source for the Inklings Book Club: it stays hand-picked');

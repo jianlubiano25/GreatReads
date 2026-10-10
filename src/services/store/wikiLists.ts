@@ -29,6 +29,10 @@ export interface ColumnRule {
   winner?: RegExp;
   /** Keep only the first row of each year (prize tables list the winner first). */
   onePerYear?: boolean;
+  /** Tables with fewer data rows than this are ignored (navigation boxes, small side tables). Default 5. */
+  minRows?: number;
+  /** Picks one page must give to count (default 5). */
+  minPicks?: number;
 }
 
 /* ------------------------------ wikitext -> text ------------------------------ */
@@ -262,7 +266,7 @@ export function picksFromTables(tables: WikiTable[], rule: ColumnRule, minPicks 
     const iAuthor = find(rule.author);
     const iWhen = find(rule.when);
     const iResult = rule.result ? find(rule.result) : -1;
-    if (iTitle < 0 || iAuthor < 0 || iWhen < 0 || iTitle === iAuthor || t.rows.length < 5) continue;
+    if (iTitle < 0 || iAuthor < 0 || iWhen < 0 || iTitle === iAuthor || t.rows.length < (rule.minRows ?? 5)) continue;
     const seenYear = new Set<number>();
     for (const r of t.rows) {
       const title = cleanTitle(stripNativeTitle((r[iTitle] || '').trim()));
@@ -313,9 +317,9 @@ export async function fetchWikiPicks(pages: string[], rule: ColumnRule, signal?:
   for (const page of pages) {
     const text = await fetchWikitext(page, signal);
     if (!text) continue;
-    all.push(...(picksFromTables(parseWikiTables(text), rule) ?? []));
+    all.push(...(picksFromTables(parseWikiTables(text), rule, rule.minPicks ?? 5) ?? []));
   }
-  return mergePicks(all);
+  return mergePicks(all, rule.minPicks ?? 5);
 }
 
 /** Newest first; the same book from several tables or pages counts once (the first one listed keeps its date and label). */

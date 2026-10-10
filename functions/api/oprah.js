@@ -1,9 +1,10 @@
 // Cloudflare Pages Function: GET /api/oprah
 // Oprah's Book Club picks from Oprah Daily's own list page (the browser cannot read another site's pages):
 //   https://www.oprahdaily.com/entertainment/books/g23067476/oprah-book-club-list/
-// The page is a numbered gallery, newest pick first, each entry written as   112. “Title,” Author
-// Answers { source, picks: [{ n, title, author }] } newest first (at most 30). The page carries no dates, so the app labels these picks
-// "Oprah's Book Club" and adds the ones the shelf does not have yet (see DYNAMIC_SPECS.oprah). This is the shelf's only source.
+// The page is a numbered gallery, newest pick first: the number, then the book as a link reading "Title, by Author"
+// (older layouts wrote   112. “Title,” Author   and that is still read)
+// Answers { source, picks: [{ n, title, author }] } newest first (at most 30). The page carries no dates: the app takes them from Wikipedia's
+// "Oprah's Book Club 2.0" table and labels picks Wikipedia lacks "Oprah's Book Club" (see DYNAMIC_SPECS.oprah).
 //
 // NOT verified against the live page: the page blocks automated readers in the tool used to write this, so the parser follows the
 // entry format quoted by outlets that republish the list. Anything that does not look like that is dropped, fewer than 8 entries
@@ -40,6 +41,28 @@ export function parseOprahList(html) {
     if (/^\d{1,3}$/.test(nodes[i]) && /^[\u201c"]/.test(nodes[i + 1])) { nodes.splice(i, 2, `${nodes[i]}. ${nodes[i + 1]}`); }
   }
   const byNumber = new Map();
+  // Oprah Daily's gallery today: the number, then the book as a link reading "Title, by Author"
+  //   125 / Hungered, by Amanda Rizkalla / $15 AMAZON / ALSO CONSIDER / $27 BOOKSHOP / the blurb...
+  // (the number alone in its tag, or in front of the same text: "125 Hungered, by Amanda Rizkalla")
+  const byline = (text, n) => {
+    const at = text.lastIndexOf(', by ');
+    if (at < 1) return null;
+    const title = text.slice(0, at).replace(/^[\u201c"]|[,\u201d"]$/g, '').trim();
+    const author = text.slice(at + 5).replace(/[.,;]+$/, '').trim();
+    if (!n || n > 400 || title.length < 1 || title.length > 140 || author.length < 3 || author.length > 90 || !/^[A-Z\u00C0-\u024F]/.test(author) || /[<>$]|https?:/i.test(`${title}${author}`)) return null;
+    return { n, title, author };
+  };
+  const add = e => { if (e && !byNumber.has(e.n)) byNumber.set(e.n, e); };
+  for (let i = 0; i < nodes.length; i++) {
+    if (/^\d{1,3}$/.test(nodes[i])) {
+      // the byline may be one piece or split over a few tags ("Hungered" / ", by" / "Amanda Rizkalla")
+      let text = '', found = null;
+      for (let k = 1; k <= 3 && nodes[i + k] !== undefined && !found; k++) { text = `${text} ${nodes[i + k]}`.replace(/\s+,/g, ',').trim(); found = byline(text, Number(nodes[i])); if (found) i += k; }
+      if (found) { add(found); continue; }
+    }
+    const same = nodes[i].match(/^(\d{1,3})\s*[.)]?\s+(.+, by .+)$/);
+    if (same) { const e = byline(same[2], Number(same[1])); if (e) { add(e); continue; } }
+  }
   for (let i = 0; i < nodes.length; i++) {
     // An entry may be split over several tags (the number, the title, the author): join up to three pieces until it reads as one
     if (!/^\d{1,3}\s*[.)]/.test(nodes[i])) continue;

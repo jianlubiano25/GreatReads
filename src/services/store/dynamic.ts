@@ -75,7 +75,7 @@ const attempts = persistentCache<{ at: number; ok: boolean; /** why the last try
  * ones: appending shelves never drop what they saved). Change the value to reset a shelf once more.
  */
 export const SAVED_RESETS: Record<string, string> = {
-  oprah: 'default-list-2', // back to Beloved, Song of Solomon, The Covenant of Water...; Oprah Daily's newer picks are added in front on the next refresh (Wikipedia is no longer a source)
+  oprah: 'default-list-2', // back to Beloved, Song of Solomon, The Covenant of Water...; Oprah Daily's newer picks are added in front on the next refresh (Oprah Daily + Wikipedia 2.0)
   service95: 'full-archive-1', // the full archive from the club's own page; a pick saved with a sentence for an author is gone
 };
 const resetMarks = persistentCache<string>('readlife.dynreset1', { ttl: 800 * DAY, max: 20 });
@@ -312,42 +312,59 @@ const serviceSpec = (): DynamicSpec => {
   };
 };
 
-/* ------------------------------ source: Oprah Daily's own list ------------------------------ */
+/* ------------------------------ source: Oprah Daily's list + Wikipedia's "Oprah's Book Club 2.0" ------------------------------ */
 
 /** How many of Oprah Daily's newest picks one refresh looks at (the rest of the page is older than the shelf needs). */
 const OPRAH_NEWEST = 18;
+const OPRAH_WIKI_PAGES = ["Oprah's Book Club 2.0"]; // 2012 on: every pick since Wild
+const OPRAH_WIKI_RULE: ColumnRule = { title: /^(title|book|selection)/i, author: /^author/i, when: /(date|month|year|selected|announced)/i, minRows: 1, minPicks: 1 };
 
-/**
- * Oprah's Book Club. Oprah Daily's own list (read by /api/oprah) is the only source: it is the official record and the first to
- * have a new pick. It carries no dates, so a pick is labelled "Oprah's Book Club". One refresh adds the picks the shelf does not
- * have yet in front of the shelf; the default list (Beloved, Song of Solomon...) keeps its place and its labels. When Oprah Daily
- * cannot be read nothing changes and Customize Store says so.
- */
+/** Oprah Daily's newest picks as shelf entries (undated). Two books chosen at once become two covers, not one unfindable title. */
 export function oprahNewest(official: { title: string; author: string }[], max = OPRAH_NEWEST): Seed[] {
-  // Two books chosen at once (Great Expectations + A Tale of Two Cities) become two covers, not one unfindable title
   return official.slice(0, max).flatMap(p => splitPairedTitle(p.title).map(title => [title, p.author, "Oprah's Book Club"] as Seed));
 }
+
+/** The book without its subtitle, as one key ("Hidden Valley Road: Inside the Mind of..." is "Hidden Valley Road" on Wikipedia). */
+const mainTitle = (t: string) => titleKey(t.split(/:\s/)[0]);
+
+/**
+ * Oprah's Book Club. Two sources, read together in ONE refresh; either one alone is enough:
+ *  - Oprah Daily's own list (/api/oprah): the official record, the first to have a new pick, but with no dates. Its picks that
+ *    Wikipedia does not have yet go on top, labelled "Oprah's Book Club".
+ *  - Wikipedia's "Oprah's Book Club 2.0" table (2012 on): the picks with their dates ("Oprah's Book Club · Jun 2026"). It is also
+ *    the stand-in when Oprah Daily cannot be read.
+ * Either way only books the shelf does not have are added in front: the default list keeps its order and labels.
+ */
+export function oprahSeeds(official: { title: string; author: string }[], dated: Seed[]): Seed[] {
+  const known = new Set(dated.map(s => mainTitle(s[0])));
+  return [...oprahNewest(official).filter(s => !known.has(mainTitle(s[0]))), ...dated];
+}
+
+const oprahSpec = (): DynamicSpec => ({
+  source: 'oprahdaily.com (the complete Oprah\'s Book Club list)',
+  kind: 'official',
+  fallbackSource: "Wikipedia: Oprah's Book Club 2.0 (the picks table)",
+  refreshMs: 3 * DAY,
+  minSeeds: 5,
+  cap: 60,
+  keepExisting: true,
+  fetch: async (_shelf, signal) => {
+    const [daily, wiki] = await Promise.all([
+      getJsonDetailed('/api/oprah', { timeout: 20000, signal, retries: 1 }),
+      fetchWikiPicks(OPRAH_WIKI_PAGES, OPRAH_WIKI_RULE, signal).catch(() => null),
+    ]);
+    const official = (Array.isArray(daily.data?.picks) ? daily.data.picks : []).filter((p: any) => p && typeof p.title === 'string' && typeof p.author === 'string');
+    const dated = (wiki ?? []).slice(0, 12).flatMap(p => splitPairedTitle(p.title).map(title => [title, p.author, `Oprah's Book Club · ${p.when}`] as Seed));
+    if (!official.length && !dated.length) throw new Error(`${oprahProblem(daily.status, daily.failure)}; Wikipedia's list could not be read either`);
+    return { seeds: oprahSeeds(official, dated), official: official.length > 0 };
+  },
+});
 
 /** Why /api/oprah gave nothing, in words for Customize Store (so a failing refresh says what to fix). */
 const oprahProblem = (status: number, failure?: string) =>
   status === 404 || failure === 'not-json' ? 'the Oprah function is not running here: it only exists on the deployed site'
   : status === 502 ? 'Oprah Daily could not be read: the page blocked the request or its layout changed (run npm run check:oprah)'
   : failure === 'timeout' ? 'Oprah Daily took too long' : failure === 'network' ? 'no connection' : `Oprah Daily answered nothing usable (${status || failure || 'unknown'})`;
-
-const oprahSpec = (): DynamicSpec => ({
-  source: 'oprahdaily.com (the complete Oprah\'s Book Club list)',
-  kind: 'official',
-  refreshMs: 3 * DAY,
-  minSeeds: 5, // /api/oprah itself answers an error under 8 picks
-  cap: 60,
-  keepExisting: true,
-  fetch: async (_shelf, signal) => {
-    const r = await getJsonDetailed('/api/oprah', { timeout: 20000, signal, retries: 1 });
-    const official = (Array.isArray(r.data?.picks) ? r.data.picks : []).filter((p: any) => p && typeof p.title === 'string' && typeof p.author === 'string');
-    if (!official.length) throw new Error(oprahProblem(r.status, r.failure));
-    return { seeds: oprahNewest(official), official: true };
-  },
-});
 
 /* ------------------------------ source: Open Library discovery ------------------------------ */
 
@@ -421,7 +438,7 @@ export const DYNAMIC_SPECS: Record<string, DynamicSpec> = {
   new2026: { ...olSpec({ query: y => `language:eng AND first_publish_year:${y}` }), title: now => `New in ${now.getFullYear()}`, refreshMs: 7 * DAY },
 
   // Published picks, from Wikipedia's lists (see wikiLists.ts). The shelf's labels show each pick's own date.
-  // Oprah Daily's own list is the only source for the club shelf: see oprahSpec
+  // Oprah Daily's own list for the newest picks, Wikipedia's 2.0 table for the dates (and as the fallback): see oprahSpec
   oprah: history(oprahSpec()),
   womens: history(wikiSpec(
     // Pages are tried in turn; one without a readable winners table is skipped. (The winners may live on a list page of their own.)
