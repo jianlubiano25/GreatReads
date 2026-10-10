@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useSyncExternalStore, useMemo } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, useMemo } from 'react';
 import { Book, GardenState } from '../types';
 import { subscribeCovers, getCoversVersion } from '../services/books';
 import { CoverFace } from './BookMeta';
@@ -7,6 +7,7 @@ import { subscribeNookPrefs, getNookPrefsVersion, getNookMatchesTheme, getWindow
 import { GardenArea } from './garden/GardenView';
 import { NookClock } from './NookClock';
 import { MoonPhase, moonPhase, MOON_PHASE_NAMES, MOON_PHASE_EMOJI } from './MoonPhase';
+import { buildVine, vineLeaves, type VineGeometry } from '../services/vinePath';
 
 interface Props {
   books: Book[];
@@ -19,28 +20,18 @@ interface Props {
 }
 
 /**
- * A pointed vine leaf: round at the stem end, drawn to a sharp tip, with a faint centre vein.
- * (x, y) is where the stem meets the vine; `side` is -1 (left) or 1 (right); `r` tilts the tip upwards.
- * Size is 5% smaller than the old oval leaf.
+ * A pointed vine leaf: round at the stem end, drawn to a sharp tip, with a faint centre vein. It points along +x from (0, 0).
  */
 const LEAF_LEN = 17.1;
 const LEAF_HALF = 4.6;
 const LEAF_D = `M0 0 C${(LEAF_LEN * 0.14).toFixed(1)} ${(-LEAF_HALF * 1.45).toFixed(1)} ${(LEAF_LEN * 0.62).toFixed(1)} ${(-LEAF_HALF * 1.1).toFixed(1)} ${LEAF_LEN} 0 C${(LEAF_LEN * 0.62).toFixed(1)} ${(LEAF_HALF * 1.1).toFixed(1)} ${(LEAF_LEN * 0.14).toFixed(1)} ${(LEAF_HALF * 1.45).toFixed(1)} 0 0Z`;
-const Leaf = ({ x, y, side, r, c }: { x: number; y: number; side: number; r: number; c: string }) => (
-  <g transform={`translate(${x} ${y}) scale(${side} 1) rotate(${-Math.abs(r)})`}>
-    <path d={LEAF_D} fill={c} />
-    <path d={`M1 0 L${LEAF_LEN * 0.82} 0`} stroke="rgba(255,255,255,0.28)" strokeWidth={0.7} strokeLinecap="round" />
-  </g>
-);
+const LEAF_VEIN = `M1 0 L${LEAF_LEN * 0.82} 0`;
 
-// Window climbing vine
-const vinePt = (t: number) => ({ x: 14 + 9 * Math.sin(t * 6.5) + t * 16, y: 128 - t * 114 });
-const VINE_D = 'M' + Array.from({ length: 41 }, (_, i) => { const p = vinePt(i / 40); return `${p.x.toFixed(1)} ${p.y.toFixed(1)}`; }).join(' L');
-const VINE_LEAVES = Array.from({ length: 10 }, (_, k) => { const t = (k + 1) / 11; return { t, ...vinePt(t), side: k % 2 ? 1 : -1 }; });
-// Little flowers dotted along the vine (they appear as the vine reaches them and stay once grown)
-const VINE_FLOWERS = [
-  { k: 1, c: '#f4a6bd' }, { k: 3, c: '#fff4c9' }, { k: 5, c: '#c9b2f0' }, { k: 7, c: '#f4a6bd' }, { k: 9, c: '#fff4c9' },
-].map(({ k, c }) => { const t = (k + 1) / 11; const p = vinePt(t); const side = k % 2 ? 1 : -1; return { t, c, x: p.x + side * 3.2, y: p.y - 5 }; });
+// The vine (see services/vinePath.ts): the window frame, then the bottom shelf's board, then the top shelf's. Flowers dot the leaves.
+const FLOWER_COLORS = ['#f4a6bd', '#fff4c9', '#c9b2f0'];
+const WINDOW_RADIUS = 60; // the window's arched top corners (px, as in its border-radius)
+const WINDOW_WOOD = 5; // its frame's border width
+const SHELF_BOARD = 7; // a shelf board's thickness
 const grow = (on: boolean, visible: boolean, extra = ''): React.CSSProperties => ({
   opacity: on && visible ? 1 : 0,
   transform: on && visible ? 'scale(1)' : 'scale(0.2)',
@@ -189,6 +180,39 @@ export function ReadingScene({
     return () => ro.disconnect();
   }, []);
 
+  // Where the window's wooden frame and the two shelf boards are, in the scene's own pixels: the vine grows along them
+  const rowRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const boardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [geo, setGeo] = useState<VineGeometry | null>(null);
+  const measureVine = () => {
+    const row = rowRef.current, frame = frameRef.current, [topRow, bottomRow] = boardRefs.current;
+    if (!row || !frame || !topRow || !bottomRow) return;
+    const R = row.getBoundingClientRect(), F = frame.getBoundingClientRect(), T = topRow.getBoundingClientRect(), B = bottomRow.getBoundingClientRect();
+    if (!R.width || !F.width || !T.width) return;
+    const round = (n: number) => Math.round(n * 2) / 2;
+    const board = (r: DOMRect) => ({ x0: round(r.left - R.left), x1: round(r.right - R.left), y: round(r.bottom - R.top - SHELF_BOARD / 2) });
+    const next: VineGeometry = {
+      frame: { x: round(F.left - R.left), y: round(F.top - R.top), w: round(F.width), h: round(F.height) },
+      wood: WINDOW_WOOD,
+      radius: WINDOW_RADIUS * Math.min(1, F.width / (2 * WINDOW_RADIUS)), // the browser shrinks the arch's corners in a narrow window
+      bottom: board(B),
+      top: board(T),
+      width: round(R.width),
+    };
+    setGeo(prev => (prev && JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+  };
+  useLayoutEffect(() => {
+    measureVine();
+    const row = rowRef.current;
+    if (!row || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measureVine);
+    ro.observe(row);
+    return () => ro.disconnect();
+  });
+  const vine = useMemo(() => (geo ? buildVine(geo) : null), [geo]);
+  const vineParts = useMemo(() => (vine ? vineLeaves(vine) : []), [vine]);
+
   // iPad-size screens keep two shelves but use bigger covers, with a little air between the shelves.
   const big = viewW >= 768;
   const SPINE_W = big ? 56 : 44;
@@ -268,7 +292,7 @@ export function ReadingScene({
       {/* Hanging plants: a rail above the window and bookshelf (scrolls sideways; hidden until something hangs) */}
       <GardenArea garden={garden} night={nookDark} areaId="hanging" />
 
-      <div className="flex items-end gap-2 sm:gap-4 px-3 pt-3">
+      <div ref={rowRef} className="relative flex items-end gap-2 sm:gap-4 px-3 pt-3">
         {/* Cozy Arched Window with Weather, Sun, Moon, Stars, Clouds, Rain & Snow */}
         <div className="relative shrink-0" style={{ width: '28%', maxWidth: 155 }}>
           <div
@@ -286,9 +310,10 @@ export function ReadingScene({
             aria-label={`Window showing ${describe(weather.condition, period)}. Press to change the weather.`}
           >
             <div
+              ref={frameRef}
               style={{
-                border: '5px solid #8a5a3b',
-                borderRadius: '60px 60px 4px 4px',
+                border: `${WINDOW_WOOD}px solid #8a5a3b`,
+                borderRadius: `${WINDOW_RADIUS}px ${WINDOW_RADIUS}px 4px 4px`,
                 aspectRatio: '3/4',
                 position: 'relative',
                 overflow: 'hidden',
@@ -416,39 +441,6 @@ export function ReadingScene({
               <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', width: 4, background: '#8a5a3b' }} />
             </div>
 
-            {/* Creeping Window Vine */}
-            <svg
-              viewBox="0 0 100 133"
-              preserveAspectRatio="xMinYMax meet"
-              className="absolute inset-0 w-full h-full pointer-events-none"
-              fill="none"
-              aria-label="Window vine, grows as you read and keeps what it has grown"
-            >
-              <path
-                d={VINE_D}
-                stroke="#2e5934"
-                strokeWidth={2.6}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                pathLength={100}
-                strokeDasharray={`${Math.round(vineG * 100)} 100`}
-                style={{ transition: 'stroke-dasharray 1.4s ease' }}
-              />
-              {VINE_LEAVES.map((l, i) => (
-                <g key={i} style={grow(true, vineG >= l.t - 0.02, `${l.x}px ${l.y}px`)}>
-                  <Leaf x={l.x} y={l.y} side={l.side} r={35} c={i % 2 ? '#4e7f55' : '#71ab7a'} />
-                </g>
-              ))}
-              {VINE_FLOWERS.map((f, i) => (
-                <g key={`f${i}`} style={grow(true, vineG >= f.t + 0.04, `${f.x}px ${f.y}px`)}>
-                  {[0, 72, 144, 216, 288].map(a => (
-                    <ellipse key={a} cx={f.x} cy={f.y - 2.3} rx={1.5} ry={2.2} transform={`rotate(${a} ${f.x} ${f.y})`} fill={f.c} />
-                  ))}
-                  <circle cx={f.x} cy={f.y} r={1.1} fill="#ffd66b" />
-                </g>
-              ))}
-            </svg>
-
             {/* Quick weather / time indicator pill on tap */}
             {tip && (
               <div role="status" className="absolute top-2 left-1/2 -translate-x-1/2 z-20 px-2 py-0.5 rounded-full bg-black/75 text-white text-[10px] font-sans whitespace-nowrap shadow-md">
@@ -492,7 +484,7 @@ export function ReadingScene({
           <NookClock weather={weather} dark={nookDark} large={big} />
           <div ref={shelfRef} className="flex flex-col">
           {shelves.map((row, i) => (
-            <div key={i} className="flex items-end gap-[3px] justify-start px-1" style={{ borderBottom: '7px solid #8a5a3b', minHeight: SPINE_H, marginTop: i > 0 ? SHELF_GAP : 0 }}>
+            <div key={i} ref={el => { boardRefs.current[i] = el; }} className="flex items-end gap-[3px] justify-start px-1" style={{ borderBottom: `${SHELF_BOARD}px solid #8a5a3b`, minHeight: SPINE_H, marginTop: i > 0 ? SHELF_GAP : 0 }}>
               {row.map(b => (
                 <button
                   key={b.id}
@@ -518,6 +510,45 @@ export function ReadingScene({
           ))}
           </div>
         </div>
+
+        {/* The vine: up the window's wooden frame, then (as the streak goes on) along the bottom shelf and the top shelf */}
+        {vine && (
+          <svg
+            width={geo!.width}
+            height="100%"
+            className="absolute left-0 top-0 pointer-events-none z-10"
+            style={{ height: '100%' }}
+            fill="none"
+            aria-label="Vine along the window and shelves, grows as you read and keeps what it has grown"
+          >
+            <path
+              d={vine.d}
+              stroke="#2e5934"
+              strokeWidth={2.6}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              pathLength={100}
+              strokeDasharray={`${(vineG * 100).toFixed(2)} 100`}
+              style={{ transition: 'stroke-dasharray 1.4s ease' }}
+            />
+            {vineParts.map((l, i) => (
+              <g key={i} style={grow(true, vineG >= l.t - 0.004, `${l.x}px ${l.y}px`)}>
+                <g transform={`translate(${l.x.toFixed(1)} ${l.y.toFixed(1)}) rotate(${l.rot.toFixed(1)}) scale(${l.size})`}>
+                  <path d={LEAF_D} fill={i % 2 ? '#4e7f55' : '#71ab7a'} />
+                  <path d={LEAF_VEIN} stroke="rgba(255,255,255,0.28)" strokeWidth={0.7} strokeLinecap="round" />
+                </g>
+                {l.flower && vineG >= l.t + 0.01 && (
+                  <g transform={`translate(${l.x.toFixed(1)} ${l.y.toFixed(1)}) scale(${l.size > 0.7 ? 1 : 0.75})`}>
+                    {[0, 72, 144, 216, 288].map(a => (
+                      <ellipse key={a} cx={0} cy={-2.3} rx={1.5} ry={2.2} transform={`rotate(${a})`} fill={FLOWER_COLORS[i % FLOWER_COLORS.length]} />
+                    ))}
+                    <circle r={1.1} fill="#ffd66b" />
+                  </g>
+                )}
+              </g>
+            ))}
+          </svg>
+        )}
       </div>
 
       {/* Garden shelf below the window and bookshelf: every standing plant you have earned, scrolling sideways */}

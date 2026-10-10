@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 // @ts-ignore plain JS module with no type declarations
 import { onRequestGet as oprahFn, parseOprahList } from '../../../functions/api/oprah.js';
 import { DYNAMIC_SPECS, oprahNewest, refreshShelf } from './dynamic';
+import { splitPairedTitle } from './wikiLists';
 import { routeFetch } from './testkit';
 import { CURATED_SHELVES } from '../../data/storeCatalog';
 
@@ -41,76 +42,43 @@ test('/api/oprah: answers the picks, and an unreadable page is an error that is 
   assert.equal((await oprahFn()).status, 502);
 });
 
-test('oprahNewest: only the picks above what Wikipedia already lists, undated; nothing when titles are not comparable', () => {
-  const known: [string, string, string][] = [['Hello Beautiful', 'Ann Napolitano', "Oprah's Book Club · Mar 2023"], ['Bittersweet', 'Susan Cain', "Oprah's Book Club · Apr 2022"]];
-  const official = [{ title: 'Brand New', author: 'N A' }, { title: 'Newer Still', author: 'N B' }, { title: 'Hello Beautiful: A Novel', author: 'Ann Napolitano' }, { title: 'Bittersweet', author: 'Susan Cain' }];
-  assert.deepEqual(oprahNewest(official, known), [['Brand New', 'N A', "Oprah's Book Club"], ['Newer Still', 'N B', "Oprah's Book Club"]]);
-  assert.deepEqual(oprahNewest(official.slice(2), known), []); // nothing newer
-  const unrelated = Array.from({ length: 10 }, (_, i) => ({ title: `Other ${i}`, author: 'X Y' }));
-  assert.deepEqual(oprahNewest(unrelated, known), []); // none of them match: not comparable, add nothing
+test('oprahNewest: the newest picks from Oprah Daily, labelled, a double pick as two books', () => {
+  const official = [{ title: 'Brand New', author: 'N A' }, { title: 'Great Expectations, A Tale of Two Cities', author: 'Charles Dickens' }, { title: 'Older', author: 'O A' }];
+  assert.deepEqual(oprahNewest(official), [['Brand New', 'N A', "Oprah's Book Club"], ['Great Expectations', 'Charles Dickens', "Oprah's Book Club"], ['A Tale of Two Cities', 'Charles Dickens', "Oprah's Book Club"], ['Older', 'O A', "Oprah's Book Club"]]);
+  assert.equal(oprahNewest(official, 1).length, 1);
 });
 
-const wikitext = (rows: [string, string, string][]) => `{| class="wikitable"
-! Date !! Title !! Author
-|-
-${rows.map(([d, t, a]) => `| ${d} || ''[[${t}]]'' || [[${a}]]`).join('\n|-\n')}
-|}`;
-const wikiRows: [string, string, string][] = Array.from({ length: 10 }, (_, i) => [`June ${i + 1}, 20${10 + i}`, `Wiki Book ${i}`, `Wiki Author ${i}`]);
+test('a subtitle with commas is one book (Love, Loss, and Liberation is not a second book)', () => {
+  const t = 'All the Way to the River: Love, Loss, and Liberation';
+  assert.deepEqual(splitPairedTitle(t), [t]);
+  assert.deepEqual(oprahNewest([{ title: t, author: 'Elizabeth Gilbert' }]), [[t, 'Elizabeth Gilbert', "Oprah's Book Club"]]);
+  assert.deepEqual(splitPairedTitle('Love, Loss, and Liberation'), ['Love, Loss, and Liberation']);
+});
 
-test('Oprah shelf: Oprah Daily\'s newer picks go on top, undated; Wikipedia keeps the dates; the fallback is used when Oprah Daily cannot be read', async () => {
+test('Oprah shelf: ONE refresh adds Oprah Daily\'s new picks in front; the default list stays where it is; Wikipedia is never asked', async () => {
   const base = CURATED_SHELVES.find(s => s.id === 'oprah')!;
-  const picks = [{ n: 112, title: 'Brand New Pick', author: 'New Author' }, { n: 111, title: 'Wiki Book 9', author: 'Wiki Author 9' }, { n: 110, title: 'Wiki Book 8', author: 'Wiki Author 8' }];
-  routeFetch([
-    u => (u.pathname === '/api/oprah' ? { body: { picks } } : undefined),
-    u => (u.hostname === 'en.wikipedia.org' ? { body: { parse: { wikitext: wikitext(wikiRows) } } } : undefined),
-  ]);
+  const official = [
+    ...Array.from({ length: 3 }, (_, i) => ({ n: 130 - i, title: `Fresh ${i}`, author: `Fresh Author ${i}` })),
+    { n: 127, title: 'Beloved', author: 'Toni Morrison' }, // already a default: keeps its own place and label
+    ...Array.from({ length: 10 }, (_, i) => ({ n: 126 - i, title: `Older ${i}`, author: `Older Author ${i}` })),
+  ];
+  const calls = routeFetch([u => (u.pathname === '/api/oprah' ? { body: { picks: official } } : undefined)]);
   const got = await refreshShelf({ ...base, id: 't-oprah' }, DYNAMIC_SPECS.oprah);
-  assert.deepEqual(got?.seeds[0], ['Brand New Pick', 'New Author', "Oprah's Book Club"]);
-  assert.equal(got?.seeds[1][2], "Oprah's Book Club · Jun 2019"); // Wikipedia's own date, newest first
+  assert.deepEqual(got?.seeds.slice(0, 3).map(s => s[0]), ['Fresh 0', 'Fresh 1', 'Fresh 2']);
   assert.equal(got?.official, true);
-
-  // Oprah Daily down: Wikipedia alone, and the shelf says it was not the official list
-  routeFetch([
-    u => (u.pathname === '/api/oprah' ? { status: 502, body: { error: 'layout_changed' } } : undefined),
-    u => (u.hostname === 'en.wikipedia.org' ? { body: { parse: { wikitext: wikitext(wikiRows) } } } : undefined),
-  ]);
-  const fb = await refreshShelf({ ...base, id: 't-oprah-fb' }, DYNAMIC_SPECS.oprah);
-  assert.equal(fb?.seeds[0][0], 'Wiki Book 9');
-  assert.equal(fb?.official, false);
-
-  // Wikipedia down: nothing is added (undated picks alone would wipe the dated labels)
-  routeFetch([u => (u.pathname === '/api/oprah' ? { body: { picks } } : undefined)]);
-  assert.equal(await refreshShelf({ ...base, id: 't-oprah-nowiki' }, DYNAMIC_SPECS.oprah), null);
-});
-
-test('Oprah shelf: a double pick becomes two books, so each finds its own cover', async () => {
-  const base = CURATED_SHELVES.find(s => s.id === 'oprah')!;
-  const rows: [string, string, string][] = [...wikiRows, ['June 7, 2010', 'Great Expectations, A Tale of Two Cities', 'Charles Dickens']];
-  routeFetch([u => (u.hostname === 'en.wikipedia.org' ? { body: { parse: { wikitext: wikitext(rows) } } } : undefined)]);
-  const got = await refreshShelf({ ...base, id: 't-oprah-pair' }, DYNAMIC_SPECS.oprah);
   const titles = got!.seeds.map(s => s[0]);
-  assert.ok(titles.includes('Great Expectations') && titles.includes('A Tale of Two Cities'));
-  assert.ok(!titles.some(t => /Great Expectations,/.test(t)));
-});
-
-test('Oprah shelf: reads the 2012+ "Oprah\'s Book Club 2.0" page too, so the newest picks lead, and the default list stays behind them', async () => {
-  const base = CURATED_SHELVES.find(s => s.id === 'oprah')!;
-  const table2 = (rows: string[][]) => `{| class="wikitable"\n! Month !! Author !! Title !! Ref\n|-\n${rows.map(r => `| ${r[0]} || [[${r[1]}]] || ''[[${r[2]}]]'' ||`).join('\n|-\n')}\n|}`;
-  const recent = [['February 2026', 'Tayari Jones', 'Kin'], ['April 2026', 'Maria Semple', 'Go Gentle'], ['May 2026', 'Douglas Stuart', 'John of John'], ['June 2026', 'Sophie Chen Keller', 'Little Wonder']];
-  const older = Array.from({ length: 8 }, (_, i) => [`June ${i + 1}, 20${10 + i}`, `Old Book ${i}`, `Old Author ${i}`]) as [string, string, string][];
-  const calls = routeFetch([
-    u => (u.hostname === 'en.wikipedia.org' && u.searchParams.get('page') === "Oprah's Book Club 2.0" ? { body: { parse: { wikitext: table2(recent) } } } : undefined),
-    u => (u.hostname === 'en.wikipedia.org' && u.searchParams.get('page') === "Oprah's Book Club" ? { body: { parse: { wikitext: wikitext(older) } } } : undefined),
-    u => (u.hostname === 'en.wikipedia.org' ? { status: 404 } : undefined),
-  ]);
-  const got = await refreshShelf({ ...base, id: 't-oprah-2' }, DYNAMIC_SPECS.oprah);
-  assert.deepEqual(got?.seeds.slice(0, 4).map(s => [s[0], s[2]]), [
-    ['Little Wonder', "Oprah's Book Club · Jun 2026"], ['John of John', "Oprah's Book Club · May 2026"], ['Go Gentle', "Oprah's Book Club · Apr 2026"], ['Kin', "Oprah's Book Club · Feb 2026"],
-  ]);
-  assert.ok(calls.some(c => c.includes('2.0')));
-  // the default list (Beloved, Song of Solomon, The Covenant of Water...) stays: new picks are ADDED in front of it
-  const titles = got!.seeds.map(s => s[0]);
-  for (const t of ['Beloved', 'Song of Solomon', 'The Covenant of Water', 'Gilead']) assert.ok(titles.includes(t), t);
-  assert.ok(titles.indexOf('Little Wonder') < titles.indexOf('Beloved'), 'new picks come first');
+  for (const b of base.seeds) assert.ok(titles.includes(b[0]), `${b[0]} (default) is kept`);
+  assert.equal(got!.seeds.find(s => s[0] === 'Beloved')![2], base.seeds[0][2], 'a default keeps its own label');
+  const order = base.seeds.map(b => titles.indexOf(b[0]));
+  assert.deepEqual(order, [...order].sort((a, b) => a - b), 'the default list keeps its order');
   assert.equal(new Set(titles.map(t => t.toLowerCase())).size, titles.length, 'no book twice');
+  assert.ok(!calls.some(c => /wikipedia/i.test(c)), 'Wikipedia is not a source for Oprah');
+
+  // a second refresh with nothing new changes nothing
+  const again = await refreshShelf({ ...base, id: 't-oprah' }, DYNAMIC_SPECS.oprah);
+  assert.deepEqual(again?.seeds, got?.seeds);
+
+  // Oprah Daily down: the refresh fails and the saved list stays
+  routeFetch([u => (u.pathname === '/api/oprah' ? { status: 502, body: { error: 'layout_changed' } } : undefined)]);
+  assert.equal(await refreshShelf({ ...base, id: 't-oprah-down' }, DYNAMIC_SPECS.oprah), null);
 });

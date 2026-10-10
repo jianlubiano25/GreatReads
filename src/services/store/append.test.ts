@@ -76,10 +76,10 @@ test('Reese\'s, Oprah and the prizes are dynamic, append, and say they are a Wik
   assert.equal(s95.source, 'service95.com/book-club');
   assert.ok(s95.fallbackSource?.startsWith('Wikipedia'));
   assert.equal(dynamicInfo(CURATED_SHELVES.find(s => s.id === 'service95')!, s95).kind, 'official');
-  // Oprah: Oprah Daily's own list for the newest picks (read by /api/oprah), Wikipedia for the dates and as the labelled fallback
+  // Oprah: Oprah Daily's own list (read by /api/oprah) is the only source; Wikipedia plays no part
   const op = DYNAMIC_SPECS.oprah;
-  assert.ok(op.source.startsWith('oprahdaily.com') && op.fallbackSource?.startsWith('Wikipedia'));
-  assert.equal(dynamicInfo(CURATED_SHELVES.find(s => s.id === 'oprah')!, op).kind, 'official'); // (with a saved list from the Wikipedia stand-in it reports 'fallback', as for Service95)
+  assert.ok(op.source.startsWith('oprahdaily.com') && op.fallbackSource === undefined && op.keepExisting === true);
+  assert.equal(dynamicInfo(CURATED_SHELVES.find(s => s.id === 'oprah')!, op).kind, 'official'); // (a list saved before Oprah Daily was the only source is reset to the default list)
   assert.equal(DYNAMIC_SPECS.reeses.refreshMs, 7 * 24 * 3600_000);
   assert.equal(DYNAMIC_SPECS.inklingsclub, undefined, 'no reliable public source for the Inklings Book Club: it stays hand-picked');
 });
@@ -182,7 +182,14 @@ test('prefetched covers belong to the book they were fetched for, never to whate
   // prepending a new pick shifts every other book by one slot: none may take its neighbour's data
   const shifted = { ...sci, seeds: [['Brand New', 'Someone'], ...sci.seeds] as CuratedShelf['seeds'] };
   const ph = seedPlaceholders(shifted);
-  assert.ok(ph.slice(1).every(b => !b.coverId && !b.coverUrl), 'shifted slots hold nobody else\'s cover');
+  assert.ok(!ph[0].coverId && !ph[0].coverUrl, 'the new pick has no cover of its own yet');
+  // ...but every book that only moved down a slot keeps ITS OWN cover (matched by book, not slot)
+  const own = seedPlaceholders(sci);
+  sci.seeds.forEach((_, i) => { assert.equal(ph[i + 1].title, own[i].title); assert.equal(ph[i + 1].coverId, own[i].coverId); assert.equal(ph[i + 1].coverUrl, own[i].coverUrl); });
+  // and a different book in a bundled slot never takes that slot's cover
+  const swapped = seedPlaceholders({ ...sci, seeds: [sci.seeds[1], sci.seeds[0], ...sci.seeds.slice(2)] as CuratedShelf['seeds'] });
+  assert.equal(swapped[0].coverUrl ?? swapped[0].coverId, own[1].coverUrl ?? own[1].coverId);
+  assert.equal(swapped[1].coverUrl ?? swapped[1].coverId, own[0].coverUrl ?? own[0].coverId);
   assert.deepEqual(prefetchedFor('scifi', 0, t0, a0), (prefetchedFor('scifi', 0, t0, a0)), 'stable');
   assert.deepEqual(prefetchedFor('scifi', 0, 'Not That Book', a0), {});
   assert.deepEqual(prefetchedFor('no-such-shelf', 0, 'x', 'y'), {});

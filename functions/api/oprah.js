@@ -2,12 +2,12 @@
 // Oprah's Book Club picks from Oprah Daily's own list page (the browser cannot read another site's pages):
 //   https://www.oprahdaily.com/entertainment/books/g23067476/oprah-book-club-list/
 // The page is a numbered gallery, newest pick first, each entry written as   112. “Title,” Author
-// Answers { source, picks: [{ n, title, author }] } newest first (at most 30). The page carries no dates: the app takes the dates
-// from Wikipedia and uses this list only to find picks Wikipedia does not have yet (see DYNAMIC_SPECS.oprah).
+// Answers { source, picks: [{ n, title, author }] } newest first (at most 30). The page carries no dates, so the app labels these picks
+// "Oprah's Book Club" and adds the ones the shelf does not have yet (see DYNAMIC_SPECS.oprah). This is the shelf's only source.
 //
 // NOT verified against the live page: the page blocks automated readers in the tool used to write this, so the parser follows the
 // entry format quoted by outlets that republish the list. Anything that does not look like that is dropped, fewer than 8 entries
-// is an error (502, never cached), and the shelf then simply keeps using Wikipedia. Run `npm run check:oprah` on a normal
+// is an error (502, never cached), and the shelf then simply keeps its saved list. Run `npm run check:oprah` on a normal
 // connection to see what the real page gives.
 const PAGE = 'https://www.oprahdaily.com/entertainment/books/g23067476/oprah-book-club-list/';
 const LIMIT = 30;

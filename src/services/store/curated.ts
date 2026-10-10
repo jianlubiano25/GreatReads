@@ -20,18 +20,40 @@ const cache = persistentCache<{ sig: string; books: Book[] }>('readlife.curated2
 const shelfSig = (shelf: CuratedShelf) => shelf.seeds.map(s => `${s[0]}|${s[1]}|${s[2] || ''}`).join('~');
 
 /**
- * Prefetched cover/rating data is stored BY POSITION, so it may only be used for the book it was fetched for. A self-refreshing
- * shelf has a different list from the bundled one, and slot 3 of the new list is not slot 3 of the old: using the old slot's
- * cover would put the wrong cover (and rating, year, Open Library link) on the new book.
- * The record's own title settles it when it has one; older data has none, so the slot must still hold the same book as the
- * bundled seed list the data was fetched for.
+ * Prefetched cover/rating data (npm run prefetch:store) is stored in the order of the BUNDLED seed list, so slot numbers only mean
+ * something for that list. A self-refreshing shelf has a different order (new picks go in front), so the data is found by BOOK:
+ * the record belongs to the bundled seed that was fetched for it, and is used for any list that holds that same book, in any slot.
+ * (Matching by slot lost every bundled cover as soon as a refresh moved the books, e.g. the International Booker shelf.)
+ * Another book in the same slot never gets it: the cover, rating, year and Open Library link would be the wrong book's.
+ * `i` is only the fast path for an unchanged list.
  */
+const prefetchedIndex = new Map<string, Map<string, Partial<Book> & { olKey?: string; title?: string }>>();
+const bookKey = (title: string, author: string) => `${titleKey(title)}|${authorKey(author)}`;
+
+function prefetchedByBook(shelfId: string): Map<string, Partial<Book> & { olKey?: string; title?: string }> {
+  let index = prefetchedIndex.get(shelfId);
+  if (!index) {
+    index = new Map();
+    const bundled = CURATED_SHELVES.find(s => s.id === shelfId)?.seeds ?? [];
+    (PREFETCHED[shelfId] ?? []).forEach((rec, i) => {
+      const seed = bundled[i];
+      if (rec && seed) index!.set(bookKey(seed[0], seed[1]), rec);
+    });
+    prefetchedIndex.set(shelfId, index);
+  }
+  return index;
+}
+
 export function prefetchedFor(shelfId: string, i: number, title: string, author: string): Partial<Book> & { olKey?: string; title?: string } {
   const rec = PREFETCHED[shelfId]?.[i];
-  if (!rec) return {};
-  if (rec.title) return rec.title === title ? rec : {};
-  const bundled = CURATED_SHELVES.find(s => s.id === shelfId)?.seeds[i];
-  return bundled && bundled[0] === title && bundled[1] === author ? rec : {};
+  if (rec && rec.title && rec.title === title) return rec;
+  const index = prefetchedByBook(shelfId);
+  const exact = index.get(bookKey(title, author));
+  if (exact) return exact;
+  // The same book with its author written another way (a source's spelling of a translated name): same title, compatible author
+  const bundled = CURATED_SHELVES.find(s => s.id === shelfId)?.seeds ?? [];
+  const at = bundled.findIndex(([t, a], k) => !!PREFETCHED[shelfId]?.[k] && titlesMatch(t, title) && authorsCompatible(a, author));
+  return at >= 0 ? PREFETCHED[shelfId][at] ?? {} : {};
 }
 
 /**

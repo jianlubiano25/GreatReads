@@ -5,7 +5,7 @@
  *
  * Runs the same code Cloudflare runs and prints the newest picks it found. Exits 1 when the page's layout no longer matches
  * (fewer than 8 numbered picks), which means the parser in functions/api/oprah.js needs updating. Until then the Oprah shelf keeps
- * using Wikipedia's list, so nothing breaks. (The parser was written from the entry format the page is quoted in, not from a live read.)
+ * its saved list, so nothing breaks. (The parser was written from the entry format the page is quoted in, not from a live read.)
  */
 // @ts-ignore plain JS module with no type declarations
 import { onRequestGet } from '../functions/api/oprah.js';
@@ -14,7 +14,7 @@ const res: Response = await onRequestGet();
 const body: any = await res.json();
 if (res.status !== 200) {
   console.error(`FAILED (${res.status}): ${JSON.stringify(body)}`);
-  console.error('The shelf keeps its saved list and uses Wikipedia. Compare https://www.oprahdaily.com/entertainment/books/g23067476/oprah-book-club-list/ with parseOprahList().');
+  console.error('The shelf keeps its saved list until the parser is fixed. Compare https://www.oprahdaily.com/entertainment/books/g23067476/oprah-book-club-list/ with parseOprahList().');
   process.exit(1);
 }
 console.log(`Oprah Daily list: ${body.picks.length} newest picks found\n`);

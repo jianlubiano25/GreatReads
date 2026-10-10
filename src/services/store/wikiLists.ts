@@ -2,8 +2,8 @@ import { getJson } from '../books/http';
 import { authorKey, titleKey } from '../books/identity';
 
 /**
- * Reads "who/what was picked" out of a Wikipedia list article. Used for shelves that have no API of their own (Oprah's Book
- * Club, the Women's Prize, the International Booker): the article's tables are the public record that people keep up to date.
+ * Reads "who/what was picked" out of a Wikipedia list article. Used for shelves that have no API of their own (the Women's Prize,
+ * the International Booker, Reese's): the article's tables are the public record that people keep up to date.
  *
  * Nothing here knows a page's exact layout. Columns are found by their HEADER NAMES (title / author / date...), `rowspan` is
  * expanded, and a page that does not yield enough picks is simply reported as "no result" so the shelf keeps its saved list.
@@ -29,18 +29,34 @@ export interface ColumnRule {
   winner?: RegExp;
   /** Keep only the first row of each year (prize tables list the winner first). */
   onePerYear?: boolean;
-  /** Tables with fewer data rows than this are ignored (navigation boxes, small side tables). */
-  minRows?: number;
-  /** Picks one page must give to count (default 5). A page that holds only the newest few picks needs less: the merged total is still checked. */
-  minPicks?: number;
 }
 
 /* ------------------------------ wikitext -> text ------------------------------ */
 
 const TEMPLATE_LAST = new Set(['nowrap', 'nobr', 'small', 'big', 'lang', 'sort', 'sortname-last', 'abbr', 'tooltip']);
 
+/**
+ * Wikipedia lets an editor write a template's positional values with their numbers: {{sortname|1=The|2=Book of Form}} is the same
+ * as {{sortname|The|Book of Form}}. Left as written, the numbers leaked into the text ("1=The 2=Book of Form and Emptiness").
+ * The name stays first; each "N=value" goes to position N, and plain values fill the places that are left, in order.
+ */
+export function positionalParams(parts: string[]): string[] {
+  const [name = '', ...rest] = parts;
+  const numbered = new Map<number, string>();
+  const plain: string[] = [];
+  for (const p of rest) {
+    const m = p.match(/^(\d{1,2})\s*=\s*([\s\S]*)$/);
+    if (m) numbered.set(Number(m[1]), m[2].trim()); else plain.push(p);
+  }
+  if (!numbered.size) return parts;
+  const out: string[] = [];
+  const last = Math.max(...numbered.keys(), plain.length);
+  for (let i = 1, k = 0; i <= last || k < plain.length; i++) out.push(numbered.get(i) ?? plain[k++] ?? '');
+  return [name, ...out];
+}
+
 function templateText(tpl: string): string {
-  const parts = tpl.slice(2, -2).split('|').map(p => p.trim());
+  const parts = positionalParams(tpl.slice(2, -2).split('|').map(p => p.trim()));
   const name = (parts[0] || '').toLowerCase();
   if (name === 'sortname') {
     // {{sortname|Yael|van der Wouden}} and {{sortname|first=Yael|last=van der Wouden|nolink=1}}: named values win, the rest are in order
@@ -200,7 +216,7 @@ const INVISIBLE = /[\u200b-\u200f\u202a-\u202e\u2060\ufeff]/g;
  * Several authors become "A & B" (the form the resolver and the library already understand).
  */
 export function cleanAuthorName(raw: string): string {
-  let s = stripNativeTitle(String(raw ?? '').normalize('NFC').replace(INVISIBLE, ' ').replace(/<!--[\s\S]*?-->/g, ' ').replace(/<[^>]+>/g, ' '));
+  let s = stripNativeTitle(stripNumberedValues(String(raw ?? '')).normalize('NFC').replace(INVISIBLE, ' ').replace(/<!--[\s\S]*?-->/g, ' ').replace(/<[^>]+>/g, ' '));
   s = s.replace(/\[[^\]]*\]/g, ' ').replace(/\([^)]*\)/g, ' ').replace(/[†‡§¶*#^↑]+/g, ' ');
   s = s.replace(/\s*[–—-]\s*(?:translated|trans\.?|tr\.)\b.*$/i, '').replace(/\s+(?:translated|trans\.?|tr\.)\s+by\b.*$/i, '');
   s = s.replace(/,\s*(?:an?\s+)?(?:[A-Z][a-z]+(?:-[A-Z][a-z]+)?\s+){0,2}(?:novelist|writer|author|poet|playwright|journalist)\b.*$/i, '');
@@ -226,8 +242,12 @@ export function isSaneAuthor(a: string): boolean {
   return s.split(' ').length <= 8 && !/\b(gave|gives|is|was|were|are|has|have|had|will|about|which|that|this|who|whose|his|her|their|its|from|into)\b/i.test(s);
 }
 
+/** A leftover "1=" / "2=" from a template's numbered value ("1=The 2=Book of Form" -> "The Book of Form"). Never part of a real title or name. */
+const NUMBERED_VALUE = /(^|\s)\d{1,2}\s*=\s*(?=\S)/g;
+export const stripNumberedValues = (s: string) => s.replace(NUMBERED_VALUE, '$1').replace(/\s+/g, ' ').trim();
+
 export function cleanTitle(raw: string): string {
-  const s = String(raw ?? '').normalize('NFC').replace(INVISIBLE, ' ').replace(/<!--[\s\S]*?-->/g, ' ').replace(/\[[^\]]*\]/g, ' ').replace(/[†‡§¶*#^↑]+\s*$/g, ' ');
+  const s = stripNumberedValues(String(raw ?? '')).normalize('NFC').replace(INVISIBLE, ' ').replace(/<!--[\s\S]*?-->/g, ' ').replace(/\[[^\]]*\]/g, ' ').replace(/[†‡§¶*#^↑]+\s*$/g, ' ');
   return s.replace(/\s+/g, ' ').trim();
 }
 
@@ -242,7 +262,7 @@ export function picksFromTables(tables: WikiTable[], rule: ColumnRule, minPicks 
     const iAuthor = find(rule.author);
     const iWhen = find(rule.when);
     const iResult = rule.result ? find(rule.result) : -1;
-    if (iTitle < 0 || iAuthor < 0 || iWhen < 0 || iTitle === iAuthor || t.rows.length < (rule.minRows ?? 5)) continue;
+    if (iTitle < 0 || iAuthor < 0 || iWhen < 0 || iTitle === iAuthor || t.rows.length < 5) continue;
     const seenYear = new Set<number>();
     for (const r of t.rows) {
       const title = cleanTitle(stripNativeTitle((r[iTitle] || '').trim()));
@@ -293,7 +313,7 @@ export async function fetchWikiPicks(pages: string[], rule: ColumnRule, signal?:
   for (const page of pages) {
     const text = await fetchWikitext(page, signal);
     if (!text) continue;
-    all.push(...(picksFromTables(parseWikiTables(text), rule, rule.minPicks ?? 5) ?? []));
+    all.push(...(picksFromTables(parseWikiTables(text), rule) ?? []));
   }
   return mergePicks(all);
 }
@@ -318,9 +338,13 @@ export function mergePicks(picks: WikiPick[], minPicks = 5): WikiPick[] | null {
  * titles of their own (two or more words, capitalised): "Pride and Prejudice" and "War and Peace" stay whole.
  */
 export function splitPairedTitle(title: string): string[] {
+  // A subtitle ("All the Way to the River: Love, Loss, and Liberation") or a list inside one title is never two books
+  if (/[:–—]|\s-\s/.test(title)) return [title];
+  const seps = title.match(/\s*[,\/&]\s*|\s+and\s+/g) ?? [];
+  if (seps.length !== 1) return [title]; // "A, B, and C" is a list, not a pair
   const m = title.match(/^(.+?)(?:\s*[,\/&]\s*|\s+and\s+)(.+)$/);
   if (!m) return [title];
   const [a, b] = [m[1].trim(), m[2].trim()];
-  const looksLikeTitle = (t: string) => t.split(/\s+/).length >= 2 && /^[A-Z“"']/.test(t);
+  const looksLikeTitle = (t: string) => t.split(/\s+/).length >= 2 && /^[A-Z“\"']/.test(t) && !/^(and|or|but|with)\s/i.test(t);
   return looksLikeTitle(a) && looksLikeTitle(b) ? [a, b] : [title];
 }

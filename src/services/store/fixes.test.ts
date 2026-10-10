@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { CuratedShelf } from '../../data/storeCatalog';
 import { cleanSeeds, dynamicCuratedSource, mergeAppend, refreshShelf, type DynamicSpec } from './dynamic';
-import { cleanWiki, parseWikiTables, picksFromTables, splitPairedTitle } from './wikiLists';
+import { cleanTitle, cleanWiki, parseWikiTables, picksFromTables, splitPairedTitle } from './wikiLists';
 import { resolvedMatchesSeed } from './curated';
 import { routeFetch } from './testkit';
 
@@ -50,4 +50,19 @@ test('a found book is only used when it is the book the shelf asked for (no othe
   assert.equal(resolvedMatchesSeed({ title: 'Demon Copperhead: A Novel', author: 'Barbara Kingsolver' }, 'Demon Copperhead', 'Barbara Kingsolver'), true);
   assert.equal(resolvedMatchesSeed({ title: 'The Underground Railroad', author: 'Colson Whitehead' }, 'Underground Railroad', 'Colson Whitehead'), true);
   assert.equal(resolvedMatchesSeed({ title: "Harry Potter and the Philosopher's Stone", author: 'J.K. Rowling' }, "Harry Potter and the Sorcerer's Stone", 'J. K. Rowling'), true); // another edition's title
+});
+
+test('numbered template values never reach a title: "1=The 2=Book of Form and Emptiness" is "The Book of Form and Emptiness"', () => {
+  assert.equal(cleanWiki('{{sortname|1=The|2=Book of Form and Emptiness}}'), 'The Book of Form and Emptiness');
+  assert.equal(cleanWiki('{{nowrap|1=The Book of Form and Emptiness}}'), 'The Book of Form and Emptiness');
+  assert.equal(cleanWiki('{{sortname|Ruth|2=Ozeki}}'), 'Ruth Ozeki');
+  assert.equal(cleanTitle('1=The 2=Book of Form and Emptiness'), 'The Book of Form and Emptiness'); // the safety net, for anything already saved
+  assert.equal(cleanTitle('Catch-22'), 'Catch-22');
+});
+
+test('a saved "1=The 2=Book…" title is repaired and is not shown twice next to the real one', () => {
+  const seeds = cleanSeeds([['1=The 2=Book of Form and Emptiness', 'Ruth Ozeki', "Women's Prize 2022"], ['The Book of Form and Emptiness', 'Ruth Ozeki', "Women's Prize 2022"]]);
+  assert.deepEqual(seeds, [['The Book of Form and Emptiness', 'Ruth Ozeki', "Women's Prize 2022"]]);
+  const merged = mergeAppend([['1=The 2=Book of Form and Emptiness', 'Ruth Ozeki', "Women's Prize 2022"]], [['The Book of Form and Emptiness', 'Ruth Ozeki', "Women's Prize 2022"]]);
+  assert.deepEqual(merged.map(s => s[0]), ['The Book of Form and Emptiness']);
 });

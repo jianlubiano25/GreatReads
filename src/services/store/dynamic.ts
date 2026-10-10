@@ -54,6 +54,8 @@ export interface DynamicSpec {
    * their history and grow). Default: the fresh list replaces the old one (discovery shelves, which show what is popular now).
    */
   merge?: 'append';
+  /** With 'append': books the shelf already has keep their place and label; only new ones are added in front (a club's default list stays as it is) */
+  keepExisting?: boolean;
   /** The most books an appending shelf keeps (the oldest fall off the end) */
   cap?: number;
 }
@@ -68,17 +70,12 @@ const store = persistentCache<Saved>('readlife.dynseeds1', { ttl: 400 * DAY, max
 const attempts = persistentCache<{ at: number; ok: boolean }>('readlife.dynstatus1', { ttl: 60 * DAY, max: 40 });
 
 /**
- * The saved list for a shelf, cleaned on the way out. Book clubs and prizes only ever ADD to their saved list, so a name that was
- * saved with Wikipedia's footnote marks or "(US)" notes would otherwise stay on the shelf (and fail every cover search) for good.
- * Cleaning at the door repairs lists saved by an earlier version without losing any of their books.
- */
-/**
  * One-time resets of a shelf's SAVED list on this device: the shelf goes back to its hand-picked list, and its next refresh adds the
  * new picks to that list again. For a saved list that picked up entries it should not have (an earlier version's wrong or garbled
  * ones: appending shelves never drop what they saved). Change the value to reset a shelf once more.
  */
 export const SAVED_RESETS: Record<string, string> = {
-  oprah: 'default-list-1', // back to Beloved, Song of Solomon, The Covenant of Water... plus whatever is new
+  oprah: 'default-list-2', // back to Beloved, Song of Solomon, The Covenant of Water...; Oprah Daily's newer picks are added in front on the next refresh (Wikipedia is no longer a source)
   service95: 'full-archive-1', // the full archive from the club's own page; a pick saved with a sentence for an author is gone
 };
 const resetMarks = persistentCache<string>('readlife.dynreset1', { ttl: 800 * DAY, max: 20 });
@@ -115,9 +112,13 @@ const saved = {
 
 /* ------------------------------ the refresh engine ------------------------------ */
 
-/** Remove unusable entries and repeats; keeps the source's order. */
 const WIKI_JUNK = /\b(?:first|last|dab|nolink|sort)\s*=|[{}|]/i;
 
+/**
+ * Remove unusable entries and repeats; keeps the source's order. Every saved list passes through here on the way out: club and prize
+ * shelves only ever ADD to their saved list, so a name saved with a footnote mark, a "(US)" note or a template's "1=" would otherwise
+ * stay on the shelf (and fail every cover search) for good. Cleaning at the door repairs lists saved by an earlier version.
+ */
 export function cleanSeeds(seeds: Seed[]): Seed[] {
   const seen = new Set<string>();
   const out: Seed[] = [];
@@ -144,12 +145,18 @@ const withSeeds = (shelf: CuratedShelf, s?: Saved): CuratedShelf => (s ? { ...sh
 const politely = pool(2);
 export const APPEND_CAP = 36;
 
-/** What an appending shelf becomes: the source's newest picks first, then everything the shelf already had. */
-export function mergeAppend(found: Seed[], existing: Seed[], cap = APPEND_CAP): Seed[] {
+/**
+ * What an appending shelf becomes: the source's newest picks first, then everything the shelf already had.
+ * `keepExisting`: a book the shelf already has stays exactly where it is, with its own label (the default list of a club shelf is
+ * never reshuffled); only books the shelf does not have yet are added in front.
+ */
+export function mergeAppend(found: Seed[], existing: Seed[], cap = APPEND_CAP, keepExisting = false): Seed[] {
   // A pick the source dates again keeps its fresh label (first wins). A title is one pick: the same book saved earlier with its author
   // spelled differently (or wrongly) is replaced by the fresh one instead of showing twice.
+  const have = new Set(cleanSeeds(existing).map(([t]) => titleKey(t)));
+  const fresh = keepExisting ? cleanSeeds(found).filter(([t]) => !have.has(titleKey(t))) : found;
   const seen = new Set<string>();
-  return cleanSeeds([...found, ...existing]).filter(([t]) => { const k = titleKey(t); return seen.has(k) ? false : (seen.add(k), true); }).slice(0, cap);
+  return cleanSeeds([...fresh, ...existing]).filter(([t]) => { const k = titleKey(t); return seen.has(k) ? false : (seen.add(k), true); }).slice(0, cap);
 }
 
 /** Ask the source for a fresh list and save it. Returns the saved list, or null when nothing better than before was found. */
@@ -165,7 +172,7 @@ export async function refreshShelf(shelf: CuratedShelf, spec: DynamicSpec, now =
   }
   attempts.set(shelf.id, { at: now, ok: true });
   const seeds = spec.merge === 'append'
-    ? mergeAppend(found, old?.seeds ?? shelf.seeds, spec.cap)
+    ? mergeAppend(found, old?.seeds ?? shelf.seeds, spec.cap, spec.keepExisting)
     : found.slice(0, Math.max(shelf.seeds.length, 12));
   const next: Saved = { seeds, title: fresh?.title, official: fresh?.official, at: now, tried: now };
   saved.set(shelf.id, next);
@@ -254,7 +261,7 @@ export function dynamicCuratedSource(base: CuratedShelf, spec: DynamicSpec): She
 
 /* ------------------------------ source: Wikipedia list articles ------------------------------ */
 
-const wikiSpec = (pages: string[], rule: ColumnRule, label: (when: string) => string, refreshMs: number, source: string, limit = 12, splitPairs = false): DynamicSpec => ({
+const wikiSpec = (pages: string[], rule: ColumnRule, label: (when: string) => string, refreshMs: number, source: string, limit = 12): DynamicSpec => ({
   source,
   kind: 'fallback',
   refreshMs,
@@ -262,8 +269,7 @@ const wikiSpec = (pages: string[], rule: ColumnRule, label: (when: string) => st
   fetch: async () => {
     const picks = await fetchWikiPicks(pages, rule);
     if (!picks) return null;
-    // `splitPairs`: two books chosen at once (Oprah's Great Expectations + A Tale of Two Cities) become two covers, not one unfindable title
-    const rows = picks.flatMap(p => (splitPairs ? splitPairedTitle(p.title) : [p.title]).map(title => [title, p.author, label(p.when)] as Seed));
+    const rows = picks.map(p => [p.title, p.author, label(p.when)] as Seed);
     return { seeds: rows.slice(0, limit) };
   },
 });
@@ -305,52 +311,35 @@ const serviceSpec = (): DynamicSpec => {
   };
 };
 
-/* ------------------------------ source: Oprah Daily's list + Wikipedia's dates ------------------------------ */
+/* ------------------------------ source: Oprah Daily's own list ------------------------------ */
+
+/** How many of Oprah Daily's newest picks one refresh looks at (the rest of the page is older than the shelf needs). */
+const OPRAH_NEWEST = 18;
 
 /**
- * Oprah's Book Club. Oprah Daily's own list (read by /api/oprah) is the official record and is the first to have a new pick; it
- * carries no dates, so the dates come from Wikipedia's table. The shelf is Wikipedia's dated picks, plus any NEWER picks Oprah
- * Daily lists that Wikipedia does not have yet (shown with no date until Wikipedia catches up). If Oprah Daily cannot be read the
- * shelf is Wikipedia's list alone, and Customize Store says so. With Wikipedia down nothing is added: undated picks alone would
- * replace the dated labels the shelf already has.
+ * Oprah's Book Club. Oprah Daily's own list (read by /api/oprah) is the only source: it is the official record and the first to
+ * have a new pick. It carries no dates, so a pick is labelled "Oprah's Book Club". One refresh adds the picks the shelf does not
+ * have yet in front of the shelf; the default list (Beloved, Song of Solomon...) keeps its place and its labels. When Oprah Daily
+ * cannot be read nothing changes and Customize Store says so.
  */
-export function oprahNewest(official: { title: string; author: string }[], known: Seed[], maxNew = 6): Seed[] {
-  const have = new Set(known.map(s => titleKey(s[0])));
-  const fresh: Seed[] = [];
-  for (const p of official) {
-    if (have.has(titleKey(p.title))) break; // reached what Wikipedia already lists: everything above this was picked after it
-    fresh.push([p.title, p.author, "Oprah's Book Club"]);
-  }
-  return fresh.length > maxNew ? [] : fresh; // far more "new" picks than Wikipedia could be behind: the titles are not comparable, so add nothing
+export function oprahNewest(official: { title: string; author: string }[], max = OPRAH_NEWEST): Seed[] {
+  // Two books chosen at once (Great Expectations + A Tale of Two Cities) become two covers, not one unfindable title
+  return official.slice(0, max).flatMap(p => splitPairedTitle(p.title).map(title => [title, p.author, "Oprah's Book Club"] as Seed));
 }
 
-const oprahSpec = (): DynamicSpec => {
-  const wiki = wikiSpec(
-    // The club has two Wikipedia articles: the original (1996-2011) and "Oprah's Book Club 2.0" (2012 on, every pick since: Kin, Go
-    // Gentle, Little Wonder...). All are read and merged newest first; reading only the first left 2010 at the top of the shelf.
-    ["Oprah's Book Club 2.0", "Oprah's Book Club", "List of Oprah's Book Club selections"],
-    { title: /^(title|book|selection)/i, author: /^author/i, when: /(date|month|year|selected|announced)/i, minRows: 1, minPicks: 1 },
-    when => `Oprah's Book Club · ${when}`,
-    3 * DAY,
-    "Wikipedia: Oprah's Book Club and Oprah's Book Club 2.0 (the picks tables)",
-    12,
-    true,
-  );
-  return {
-    source: 'oprahdaily.com (the complete Oprah\'s Book Club list)',
-    kind: 'official',
-    fallbackSource: wiki.source,
-    refreshMs: 3 * DAY,
-    minSeeds: 8,
-    fetch: async (shelf, signal) => {
-      const dated = await wiki.fetch(shelf, signal);
-      const j = await getJson('/api/oprah', { timeout: 20000, signal }).catch(() => null);
-      const official = (Array.isArray(j?.picks) ? j.picks : []).filter((p: any) => p && typeof p.title === 'string' && typeof p.author === 'string');
-      if (!official.length || !dated) return dated && { ...dated, official: false };
-      return { seeds: [...oprahNewest(official, dated.seeds), ...dated.seeds], official: true };
-    },
-  };
-};
+const oprahSpec = (): DynamicSpec => ({
+  source: 'oprahdaily.com (the complete Oprah\'s Book Club list)',
+  kind: 'official',
+  refreshMs: 3 * DAY,
+  minSeeds: 5, // /api/oprah itself answers an error under 8 picks
+  cap: 60,
+  keepExisting: true,
+  fetch: async (_shelf, signal) => {
+    const j = await getJson('/api/oprah', { timeout: 20000, signal }).catch(() => null);
+    const official = (Array.isArray(j?.picks) ? j.picks : []).filter((p: any) => p && typeof p.title === 'string' && typeof p.author === 'string');
+    return official.length ? { seeds: oprahNewest(official), official: true } : null;
+  },
+});
 
 /* ------------------------------ source: Open Library discovery ------------------------------ */
 
@@ -424,7 +413,7 @@ export const DYNAMIC_SPECS: Record<string, DynamicSpec> = {
   new2026: { ...olSpec({ query: y => `language:eng AND first_publish_year:${y}` }), title: now => `New in ${now.getFullYear()}`, refreshMs: 7 * DAY },
 
   // Published picks, from Wikipedia's lists (see wikiLists.ts). The shelf's labels show each pick's own date.
-  // Oprah Daily's own list for the newest picks, Wikipedia for the dates (and as the fallback): see oprahSpec
+  // Oprah Daily's own list is the only source for the club shelf: see oprahSpec
   oprah: history(oprahSpec()),
   womens: history(wikiSpec(
     // Pages are tried in turn; one without a readable winners table is skipped. (The winners may live on a list page of their own.)
