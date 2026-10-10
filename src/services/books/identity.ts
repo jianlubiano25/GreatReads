@@ -97,6 +97,9 @@ export function titleVariants(title = ''): string[] {
 export function authorVariants(author = ''): string[] {
   const out = [author.trim()];
   if (/[-\u2010\u2011\u2013]/.test(author)) out.push(author.replace(/[-\u2010\u2011\u2013]/g, '').trim(), author.replace(/[-\u2010\u2011\u2013]/g, ' ').replace(/\s+/g, ' ').trim());
+  // A name with a middle name ("Marieke Lucas Rijneveld") is often catalogued without it ("Marieke Rijneveld") or by its last two parts ("Lucas Rijneveld")
+  const parts = author.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 3 && !/[,;&]| and /.test(author)) out.push(`${parts[0]} ${parts[parts.length - 1]}`, parts.slice(-2).join(' '));
   return [...new Set(out.filter(Boolean))];
 }
 

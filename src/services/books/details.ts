@@ -114,7 +114,11 @@ export async function fetchRatingSources(book: Book, opts: CallOpts = {}): Promi
       const r = wid ? await openLibraryRatings(wid, opts) : null;
       return r ? { ratingAverage: r.average, ratingCount: r.count } : null;
     }),
-    pair('google', async () => (await findGoogle(q, opts))?.book),
+    pair('google', async () => {
+      const exact = (await findGoogle(q, opts))?.book;
+      if (ratingOf(exact) || !q.isbn) return exact;
+      return (await findGoogle({ title: q.title, author: q.author }, opts))?.book ?? exact; // that edition has no ratings: another edition of the book may
+    }),
     pair('apple', async () => (await findApple({ title: book.title, author }, opts))?.book),
   ]);
   const out = [ol, google, apple].filter((r): r is SourceRating => !!r);

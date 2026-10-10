@@ -1,7 +1,7 @@
 // Run with: npm test
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { titlesMatch, titleVariants, dualTitleParts, subtitleKey, sameWork, authorsCompatible } from './identity';
+import { titlesMatch, titleVariants, dualTitleParts, subtitleKey, sameWork, authorsCompatible, authorVariants } from './identity';
 import { chooseRating, knownRating, withKnownRating, ratingOf, starFills, otherRatings, inferRatingSource } from './ratings';
 import { fetchRatingSources } from './details';
 import { repairSeeds } from '../store/dynamic';
@@ -247,4 +247,9 @@ test('fetchRatingSources returns each site\'s own average and count, never combi
   ]);
   const r = await fetchRatingSources(book({ id: 'q1', title: 'Sources Alpha', author: 'Hal Author' }));
   assert.deepEqual(r, [{ average: 4, count: 321, source: 'openlibrary' }, { average: 3.5, count: 125, source: 'google' }]);
+});
+
+test('author search variants: a middle name is also tried without it', () => {
+  assert.deepEqual(authorVariants('Marieke Lucas Rijneveld'), ['Marieke Lucas Rijneveld', 'Marieke Rijneveld', 'Lucas Rijneveld']);
+  assert.deepEqual(authorVariants('Olga Tokarczuk'), ['Olga Tokarczuk']);
 });
