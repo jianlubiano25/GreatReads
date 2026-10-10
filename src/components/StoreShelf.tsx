@@ -1,8 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Book } from '../types';
 import type { ShelfSource } from '../services/store/shelves';
 import { CoverFace, RatingLine, AwardBadges } from './BookMeta';
 import { rememberHonor } from '../services/store/honors';
+import { withKnownRating } from '../services/books';
+import { DEFAULT_BOOKS } from '../data/defaultBooks';
 
 interface Props {
   id: string;
@@ -17,17 +19,22 @@ interface Props {
   lazy?: boolean;
   /** Draw nothing (instead of an error box) when the source can't load: for optional shelves such as the extra NYT lists */
   hideIfUnavailable?: boolean;
+  /** Books you already have: when a shelf book is the same book as one of these, it shows that book's rating (average + count together) */
+  known?: Book[];
   onOpen: (b: Book) => void;
 }
 
 /** One horizontally scrolling store shelf, fed by a ShelfSource. */
-export const StoreShelf = React.memo(function StoreShelf({ id, title, source, books: fixedBooks, ranked, lazy, hideIfUnavailable, onOpen }: Props) {
+export const StoreShelf = React.memo(function StoreShelf({ id, title, source, books: fixedBooks, ranked, lazy, hideIfUnavailable, known, onOpen }: Props) {
   const [loaded, setLoaded] = useState<Book[] | null>(() => (fixedBooks || !source ? null : source.cached()));
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0); // "Try again" reloads the shelf
   const [visible, setVisible] = useState(!lazy);
   const holder = useRef<HTMLDivElement>(null);
-  const books = fixedBooks ?? loaded;
+  const raw = fixedBooks ?? loaded;
+  // The same book must show the same rating on every screen: reuse the one you already have (ratings policy, step 1)
+  const pool = useMemo(() => [...DEFAULT_BOOKS, ...(known || [])], [known]);
+  const books = useMemo(() => (raw ? raw.map(b => withKnownRating(b, pool)) : raw), [raw, pool]);
 
   useEffect(() => {
     if (fixedBooks || !lazy || visible) return;

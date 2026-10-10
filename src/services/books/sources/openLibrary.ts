@@ -1,5 +1,5 @@
 import { getJson } from '../http';
-import { authorVariants, cleanIsbn, mainTitle, titlesMatch, authorListMatches, workIdFromKey } from '../identity';
+import { authorVariants, cleanIsbn, titleVariants, titlesMatch, authorListMatches, workIdFromKey } from '../identity';
 import { genreFromSubjects, makeBook } from '../model';
 import type { CallOpts, Hit } from './types';
 
@@ -66,10 +66,10 @@ export async function findOpenLibrary(q: { title: string; author?: string; isbn?
   const isbn = cleanIsbn(q.isbn);
   let hits = isbn ? await searchOpenLibrary({ isbn }, 3, opts) : [];
   if (!hits.length) {
-    // The title as given, then without its subtitle; the author as given, then with a hyphen closed up. The first search that finds
+    // The title as given, without its subtitle, then each half of an "English, Original" dual title; the author as given, then with a hyphen closed up. The first search that finds
     // the book wins, so a book that is listed under a shorter title or another spelling of the name still gets its cover.
     const named = !!q.author && !/^(Unknown|Featured) Author$/.test(q.author);
-    const titles = [...new Set([q.title, mainTitle(q.title)])];
+    const titles = titleVariants(q.title);
     for (const title of titles) {
       for (const author of named ? authorVariants(q.author) : [undefined]) {
         const params: Record<string, string> = { title };

@@ -6,6 +6,7 @@ import { persistentCache } from '../books/cache';
 import { authorKey, authorsCompatible, titleKey, titlesMatch, workIdFromKey } from '../books/identity';
 import { makeBook } from '../books/model';
 import { getCoverUrl } from '../books/covers';
+import { mergeBooks } from '../books/merge';
 import { resolveBook } from '../books/resolve';
 import type { ShelfSource } from './shelves';
 
@@ -108,15 +109,28 @@ export function resolvedMatchesSeed(found: Pick<Book, 'title' | 'author'>, title
   return shared >= Math.max(1, Math.ceil(Math.min(a.length, b.length) / 2));
 }
 
-/** Looks up covers + ratings 4 at a time through the shared resolver, pushing each result to the shelf as it arrives. */
+/** Everything a shelf card needs from the network: a cover, a rating and a page count. A book is only looked up when one is missing. */
+export const needsLookup = (b: Pick<Book, 'coverId' | 'coverUrl' | 'ratingAverage' | 'pageCount'>): boolean =>
+  !(b.coverId || b.coverUrl) || !b.ratingAverage || !b.pageCount;
+
+/**
+ * Looks up the missing cover / rating / page count 4 books at a time through the shared resolver, pushing each result to the shelf
+ * as it arrives. What the book already has (a bundled cover, pages, year) is kept: the lookup only fills gaps, so one book is never
+ * given another edition's cover. Ratings come from the resolver as ONE source's average + count (see books/ratings.ts).
+ * The shelf's own title, author, genre and pick label are always what is shown.
+ */
 export async function resolveCuratedShelf(shelf: CuratedShelf, current: Book[], onUpdate: (b: Book[]) => void): Promise<void> {
   const out = [...current];
   await mapPool(shelf.seeds, 4, async ([title, author, award], i) => {
-    if (out[i].coverId || out[i].coverUrl) return;
-    const r = await resolveBook({ title, author, fallbackId: out[i].id, genreHint: shelf.genre });
+    const have = out[i];
+    if (!needsLookup(have)) return;
+    const r = await resolveBook({ title, author, fallbackId: have.id, genreHint: shelf.genre });
     if (!r || !resolvedMatchesSeed(r.book, title, author)) return;
-    out[i] = { ...r.book, title, author, genre: shelf.genre, awardLabel: award, year: r.book.year || out[i].year, spineColor: out[i].spineColor };
-    try { new Image().src = getCoverUrl(r.book.coverId, 'M', r.book.coverUrl); } catch {} // warm the cache
+    const hadCover = !!(have.coverId || have.coverUrl);
+    // `have` goes first so it wins every gap; ids and identity (Open Library work, ISBN) are taken from the resolved book
+    const merged = mergeBooks({ ...have, id: r.book.id }, r.book);
+    out[i] = { ...merged, title, author, genre: shelf.genre, awardLabel: award, year: merged.year || r.book.year || have.year, spineColor: have.spineColor };
+    if (!hadCover) try { new Image().src = getCoverUrl(r.book.coverId, 'M', r.book.coverUrl); } catch {} // warm the cache
     onUpdate([...out]);
   });
   if (out.filter(b => b.coverId || b.coverUrl).length >= Math.ceil(out.length / 2)) cache.set(shelf.id, { sig: shelfSig(shelf), books: out });
@@ -127,7 +141,7 @@ export function curatedSource(shelf: CuratedShelf): ShelfSource & { seeded: () =
   const seeded = () => {
     const s = seedPlaceholders(shelf);
     // Fully prefetched shelves need no lookups and no cache at all
-    return s.every(b => b.coverId || b.coverUrl) ? s : getCachedCurated(shelf) || s;
+    return s.every(b => !needsLookup(b)) ? s : getCachedCurated(shelf) || s;
   };
   return {
     id: shelf.id,

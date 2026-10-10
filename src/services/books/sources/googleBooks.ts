@@ -1,5 +1,5 @@
 import { getJson } from '../http';
-import { authorVariants, cleanIsbn, isbnPair, mainTitle, titlesMatch, authorListMatches } from '../identity';
+import { authorVariants, cleanIsbn, isbnPair, titleVariants, titlesMatch, authorListMatches } from '../identity';
 import { makeBook } from '../model';
 import type { CallOpts, Hit } from './types';
 
@@ -68,10 +68,10 @@ export async function findGoogle(q: { title: string; author?: string; isbn?: str
     if (exact) return exact;
   }
   const generic = !q.author || /^(Unknown|Featured) Author$/.test(q.author);
-  // The title as given, then without its subtitle; the author as given, then with a hyphen closed up (see openLibrary.ts). The first
+  // The title as given, without its subtitle, then each half of a dual title; the author as given, then with a hyphen closed up (see openLibrary.ts). The first
   // search that finds the book wins.
   const ok = (h: Hit) => titlesMatch(h.book.title, q.title) && authorListMatches(h.book.author, q.author || '');
-  for (const title of [...new Set([q.title, mainTitle(q.title)])]) {
+  for (const title of titleVariants(q.title)) {
     for (const author of generic ? [undefined] : authorVariants(q.author)) {
       const found = (await searchGoogle(`intitle:"${title}"${author ? ` inauthor:"${author}"` : ''}`, 6, opts)).find(ok);
       if (found || opts.signal?.aborted) return found ?? null;

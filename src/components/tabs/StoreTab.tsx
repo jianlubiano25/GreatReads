@@ -170,9 +170,9 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
                   <span>Prize winners from your lists</span>
                 </>
               ) : def.title;
-              return <StoreShelf key={id} id={id} title={title} books={books} onOpen={handleOpenCover} />;
+              return <StoreShelf key={id} id={id} title={title} books={books} known={allBooks} onOpen={handleOpenCover} />;
             }
-            return <StoreShelf key={id} id={id} title={def.title} source={def.source} ranked={def.ranked} lazy={def.lazy} hideIfUnavailable={def.hideIfUnavailable} onOpen={handleOpenCover} />;
+            return <StoreShelf key={id} id={id} title={def.title} source={def.source} ranked={def.ranked} lazy={def.lazy} hideIfUnavailable={def.hideIfUnavailable} known={allBooks} onOpen={handleOpenCover} />;
           })}
           <p className="text-xs text-[#706256] dark:text-[#a89a8a]">Bestsellers from The New York Times. Covers and ratings from Open Library, Google Books and Apple Books readers.</p>
           </>

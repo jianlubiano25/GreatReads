@@ -1,6 +1,7 @@
 import type { Book } from '../../types';
 import { mergeIdentity, sameWork } from './identity';
 import { hasRealSummary, isKnownGenre } from './model';
+import { ratingOf } from './ratings';
 
 /** The same book from two places becomes one record that keeps the best of both. `a` wins on identity (id, title, author). */
 export function mergeBooks(a: Book, b: Book): Book {
@@ -11,8 +12,9 @@ export function mergeBooks(a: Book, b: Book): Book {
   }
   if (!out.pageCount && b.pageCount) { out.pageCount = b.pageCount; out.difficulty = b.difficulty; }
   if (!out.year && b.year) out.year = b.year;
-  // keep whichever rating rests on clearly more readers
-  if ((!out.ratingAverage && b.ratingAverage) || (b.ratingAverage && (b.ratingCount || 0) > (out.ratingCount || 0) * 1.5)) {
+  // A rating is an average + count from ONE audience: `a` keeps its pair; `b`'s pair is taken whole only when `a` has none.
+  // (Never add the counts or mix one record's average with the other's count; see ratings.ts for which source to prefer.)
+  if (!ratingOf(out) && ratingOf(b)) {
     out.ratingAverage = b.ratingAverage;
     out.ratingCount = b.ratingCount;
   }

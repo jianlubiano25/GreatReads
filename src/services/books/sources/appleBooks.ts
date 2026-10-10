@@ -1,14 +1,20 @@
 import { getJson } from '../http';
-import { authorListMatches, titlesMatch } from '../identity';
+import { authorListMatches, titleVariants, titlesMatch } from '../identity';
 import { genreFromSubjects, makeBook, plainText } from '../model';
 import type { CallOpts, Hit } from './types';
 
 /** Apple Books (iTunes Search): fast CDN, 600x900 art, readers' ratings. No key needed. */
 export async function findApple(q: { title: string; author?: string }, opts: CallOpts = {}): Promise<Hit | null> {
   const generic = !q.author || /^(Unknown|Featured) Author$/.test(q.author);
-  const term = encodeURIComponent(`${q.title} ${generic ? '' : q.author}`.trim());
-  const data = await getJson(`https://itunes.apple.com/search?media=ebook&entity=ebook&limit=6&term=${term}`, { timeout: 4500, signal: opts.signal });
-  const m = (data?.results || []).find((it: any) => it.artworkUrl100 && titlesMatch(String(it.trackName || ''), q.title) && authorListMatches(it.artistName, q.author || ''));
+  // Apple lists a book under its own (often shorter, club-marketed or translated) title: ask with the full title, then the main
+  // title, then each half of a dual title. The first search that returns a matching book wins.
+  let m: any;
+  for (const title of titleVariants(q.title)) {
+    const term = encodeURIComponent(`${title} ${generic ? '' : q.author}`.trim());
+    const data = await getJson(`https://itunes.apple.com/search?media=ebook&entity=ebook&limit=6&term=${term}`, { timeout: 4500, signal: opts.signal });
+    m = (data?.results || []).find((it: any) => it.artworkUrl100 && titlesMatch(String(it.trackName || ''), q.title) && authorListMatches(it.artistName, q.author || ''));
+    if (m || opts.signal?.aborted) break;
+  }
   if (!m) return null;
   const genres: string[] = Array.isArray(m.genres) ? m.genres.map(String).filter((g: string) => g !== 'Books') : [];
   const book = makeBook({

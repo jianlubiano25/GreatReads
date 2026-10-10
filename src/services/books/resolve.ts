@@ -3,6 +3,7 @@ import { dedupeInflight } from './http';
 import { persistentCache } from './cache';
 import { cleanIsbn, isbnPair, mergeIdentity } from './identity';
 import { mergeBooks } from './merge';
+import { chooseRating, ratingOf, setRating } from './ratings';
 import type { ContentFlags } from './quality';
 import { findApple } from './sources/appleBooks';
 import { findGoogle } from './sources/googleBooks';
@@ -65,10 +66,15 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
     }
     let book: Book = hits.map(h => h.book).reduce((a, b) => mergeBooks(a, b));
     book.identity = mergeIdentity(book.identity, isbnPair(q.isbn));
-    if (!book.ratingAverage && book.identity?.olWork) {
-      const r = await openLibraryRatings(book.identity.olWork, opts);
-      if (r) book = { ...book, ratingAverage: r.average, ratingCount: r.count || book.ratingCount };
+    // Ratings follow the ladder in ratings.ts: ONE source's average + count, never a mix and never a sum. Open Library first (its
+    // work-level ratings when the search record has none), then Google. Apple's readers still feed `readers` below, not the stars.
+    let olRating = ratingOf(ol?.book);
+    const workId = book.identity?.olWork;
+    if (!olRating && workId) {
+      const r = await openLibraryRatings(workId, opts);
+      if (r) olRating = { average: r.average, count: r.count || undefined };
     }
+    book = setRating(book, chooseRating({ ol: olRating, google: ratingOf(gb?.book) }));
     if (q.genreHint && !book.genre) book.genre = q.genreHint;
     const flags: ContentFlags = {
       subjects: hits.flatMap(h => h.flags.subjects || []),

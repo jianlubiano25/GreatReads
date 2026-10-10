@@ -6,6 +6,7 @@ export { mergeBooks, dedupeBooks } from './merge';
 export { searchBooks, searchRelevance } from './search';
 export { resolveBook, type ResolveQuery, type Resolved } from './resolve';
 export { enrichBookDetails, fetchBookMeta } from './details';
+export { chooseRating, knownRating, withKnownRating, ratingOf, setRating, SUFFICIENT_RATINGS, type RatingPair } from './ratings';
 export * from './covers';
 export * from './quality';
 dropLegacyBookCaches();

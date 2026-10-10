@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
 import { Book, TabType, WordItem } from './types';
 import { useReadingLife } from './hooks/useReadingLife';
-import { getCoverUrl, sameWork } from './services/books';
+import { getCoverUrl, sameWork, withKnownRating } from './services/books';
+import { DEFAULT_BOOKS } from './data/defaultBooks';
 import { useAppUpdate, applyUpdate, dismissUpdate, restartApp } from './services/appUpdate';
 
 // Modals
@@ -486,9 +487,11 @@ export default function App() {
         const owned = libraryBooks.find(b => b.id === selectedBookForDetail.id)
           ?? libraryBooks.find(b => sameWork(b, selectedBookForDetail, true));
         const ownKey = String(owned ? owned.id : selectedBookForDetail.id);
+        // Search, Store and NYT copies of a book you own show YOUR copy's rating, so one book never shows two ratings
+        const shownBook = withKnownRating(selectedBookForDetail, [...DEFAULT_BOOKS, ...libraryBooks]);
         return (
         <AppleBookDetailModal
-          book={selectedBookForDetail}
+          book={shownBook}
           inLibrary={!!owned}
           onDevice={allBooks.some(b => String(b.id) === ownKey && (b.isOnDevice || state.status[ownKey] === 'done'))}
           readingStatus={state.status[ownKey]}

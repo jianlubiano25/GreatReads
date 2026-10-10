@@ -21,13 +21,29 @@ export function titleKey(title = ''): string {
 /** Subtitles that only describe the kind of book, so they never make two titles different books. */
 const GENERIC_SUBTITLE = /^(an? |the )?(novel|memoir|story|stories|thriller|mystery|romance|true story|short stories|collection|essays|biography|play|poems?)( of .*)?$/;
 
-/** "Mistborn: The Final Empire" -> "final empire". Empty when there is no subtitle or it is only generic ("A Novel"). */
+/** Publisher / club / retailer wording ("A Reese's Book Club Pick", "Special Edition", "Now a Major Film"): marketing, not part of the title. */
+const MARKETING_SUBTITLE = /\b(book club|club pick|pick|edition|bestsell\w*|best seller|winner|award|prize|booker|pulitzer|oprah|reese|now a|major (motion )?picture|netflix|tv series|movie tie|illustrated|annotated|with a new|new (foreword|introduction|afterword)|signed|deluxe|collector)\b/;
+
+/**
+ * A subtitle that describes the book rather than names a volume of a series ("Love, Loss, and Liberation"; "How to ..."). Series
+ * volumes ("Mistborn: The Final Empire") are short and have no list commas, so they stay distinct. Judged on the raw text, because
+ * the commas are gone once it is normalised.
+ */
+function isDescriptiveSubtitle(raw: string, norm: string): boolean {
+  if (MARKETING_SUBTITLE.test(norm)) return true;
+  if (/,/.test(raw)) return true; // a list: "Love, Loss, and Liberation"
+  if (/^(how|why|what|when|where|who|a |an )/.test(norm)) return true;
+  return norm.split(' ').filter(Boolean).length >= 6;
+}
+
+/** "Mistborn: The Final Empire" -> "final empire". Empty when there is no subtitle or it only describes / markets the book ("A Novel"). */
 export function subtitleKey(title = ''): string {
   const t = strip(title).replace(/&/g, ' and ').replace(/\(.*?\)|\[.*?\]/g, ' ');
   const parts = t.split(/\s*[:–—]\s+|\s+-\s+/);
   if (parts.length < 2) return '';
-  const sub = parts.slice(1).join(' ').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^(the|a|an) /, '');
-  return GENERIC_SUBTITLE.test(sub) || /^(a |an |the )?novel\b/.test(sub) ? '' : sub;
+  const rawSub = parts.slice(1).join(' ');
+  const sub = rawSub.replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^(the|a|an) /, '');
+  return !sub || GENERIC_SUBTITLE.test(sub) || /^(a |an |the )?novel\b/.test(sub) || isDescriptiveSubtitle(rawSub, sub) ? '' : sub;
 }
 
 /** First author only: "Neil Gaiman & Terry Pratchett" -> "Neil Gaiman"; "King, Lily" -> "Lily King". */
@@ -48,6 +64,31 @@ export function authorKey(author = ''): string {
 
 /** "All the Way to the River: Love, Loss, and Liberation" -> "All the Way to the River". The title as a search engine most often has it. */
 export const mainTitle = (title = ''): string => title.split(/\s*[:–—]\s+|\s+-\s+/)[0].trim() || title;
+
+/**
+ * "The Discomfort of Evening, De avond is ongemak" is one book under two titles (English, original). When the main title is
+ * exactly two comma-separated halves of at least two words each, both halves are returned; otherwise [] ("Hello, Goodbye" and
+ * "Shine, Shine, Shine" are single titles).
+ */
+export function dualTitleParts(title = ''): string[] {
+  const parts = mainTitle(title).replace(/\(.*?\)|\[.*?\]/g, ' ').split(/\s*,\s+/).map(p => p.trim()).filter(Boolean);
+  if (parts.length !== 2) return [];
+  return parts.every(p => titleKey(p).split(' ').filter(Boolean).length >= 2) ? parts : [];
+}
+
+/** Every main-title key a title answers to: the whole main title, plus each half of a dual title. */
+export function titleKeys(title = ''): string[] {
+  return [...new Set([titleKey(title), ...dualTitleParts(title).map(titleKey)].filter(Boolean))];
+}
+
+/**
+ * What to type into a catalogue search for this book, best first: the title as given, without its subtitle, then each half of a
+ * dual title. Searches stop at the first form that finds the book, so a book listed under a shorter or translated title is still found.
+ */
+export function titleVariants(title = ''): string[] {
+  const t = title.trim();
+  return [...new Set([t, mainTitle(t), ...dualTitleParts(t)].map(x => x.trim()).filter(x => x.length > 1))];
+}
 
 /**
  * The ways one author's name is written, for a search that must find the book however the catalogue spells it:
@@ -140,13 +181,13 @@ export function authorListMatches(candidate: string | string[] | undefined, want
 }
 
 /**
- * Same title? The main title must match. Subtitles only matter when BOTH titles have one and they clearly differ
- * ("Mistborn: The Final Empire" vs "Mistborn: The Well of Ascension"), so "The Fruit Fly: A Novel" still matches
- * "The Fruit Fly" and a shortened subtitle still matches the full one.
+ * Same title? The main title must match (either half of an "English, Original" dual title counts). Subtitles only matter when BOTH
+ * titles have a series-style one and they clearly differ ("Mistborn: The Final Empire" vs "Mistborn: The Well of Ascension"), so
+ * "The Fruit Fly: A Novel", a club or edition subtitle, or a one-sided subtitle still match, and a shortened subtitle still matches the full one.
  */
 export const titlesMatch = (a = '', b = ''): boolean => {
-  const ka = titleKey(a);
-  if (!ka || ka !== titleKey(b)) return false;
+  const kb = titleKeys(b);
+  if (!titleKeys(a).some(k => kb.includes(k))) return false;
   const sa = subtitleKey(a);
   const sb = subtitleKey(b);
   if (!sa || !sb || sa === sb) return true;
