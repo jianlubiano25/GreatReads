@@ -32,4 +32,3 @@ export function explicitScore(title: string, f: ContentFlags = {}): number {
 }
 
 export const isExplicit = (title: string, f?: ContentFlags) => explicitScore(title, f) >= EXPLICIT_FILTER_AT;
-export const isSuggestive = (title: string, f?: ContentFlags) => explicitScore(title, f) >= EXPLICIT_PENALTY_AT;

@@ -297,11 +297,6 @@ export function markCelebrated(garden: GardenState, plantIds: string[]): GardenS
   return { ...garden, celebrated };
 }
 
-/** The first milestone (by order) that has not been earned yet: its plant is the one "growing" next. */
-export function nextMilestone(garden: GardenState): MilestoneDef | undefined {
-  return MILESTONES.find(m => !garden.achievements[m.id]);
-}
-
 export function growingMilestones(garden: GardenState): MilestoneDef[] {
   const seen = new Set<string>();
   const milestones: MilestoneDef[] = [];

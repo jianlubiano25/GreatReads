@@ -36,10 +36,10 @@ test('NYT function: a successful answer is passed through and cached; the key go
   const seen = upstream(200, { results: { books: [{ rank: 1 }] } });
   const res = await call(nyt, '/api/nyt?list=combined-print-and-e-book-fiction', { NYT_API_KEY: 'SECRETKEY' });
   assert.equal(res.status, 200);
-  assert.match(res.headers.get('cache-control') || '', /max-age=1800/);
+  assert.match(res.headers.get('cache-control') || '', /max-age=3600/);
   assert.equal(seen.length, 1);
   assert.ok(seen[0].url.startsWith('https://api.nytimes.com/svc/books/v3/lists/current/combined-print-and-e-book-fiction.json?api-key=SECRETKEY'));
-  assert.deepEqual(seen[0].init.cf.cacheTtlByStatus, { '200-299': 3600, '400-599': -1 }); // errors are never cached at the edge
+  assert.deepEqual(seen[0].init.cf.cacheTtlByStatus, { '200-299': 21600, '400-599': -1 }); // errors are never cached at the edge
   assert.ok(!(await res.text()).includes('SECRETKEY'));
 });
 

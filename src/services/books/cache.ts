@@ -8,7 +8,17 @@ export interface Cache<T> {
   delete(key: string): void;
 }
 
+/** Every localStorage key the app can download again, so the "storage is full" cleanup can never go stale. */
+const clearableKeys = new Set<string>();
+
+/** Marks a localStorage key as re-downloadable (safe to wipe when storage is full). */
+export const registerClearableKey = (key: string) => { clearableKeys.add(key); };
+
+/** Keys that are safe to clear: registered caches plus the old cache keys older versions used. */
+export const clearableCacheKeys = (): string[] => [...new Set([...clearableKeys, ...LEGACY_BOOK_CACHE_KEYS, 'readlife.curated1', 'readlife.curated2'])];
+
 export function persistentCache<T>(storageKey: string, opts: { ttl: number; max: number; keepStale?: number }): Cache<T> {
+  registerClearableKey(storageKey);
   type Entry = { t: number; v: T };
   const mem = new Map<string, Entry>();
   let loaded = false;
@@ -65,7 +75,7 @@ export function persistentCache<T>(storageKey: string, opts: { ttl: number; max:
 /** Cache keys older versions of the app used for book data. Removed at startup so they do not eat the 5 MB storage budget. */
 export const LEGACY_BOOK_CACHE_KEYS = [
   'readlife.store1', 'readlife.store2', 'readlife.store3', 'readlife.meta2', 'readlife.meta3',
-  'readlife.covers1', 'readlife.coverMiss1', 'readlife.coverNone1',
+  'readlife.covers1', 'readlife.coverMiss1', 'readlife.coverNone1', 'readlife.coverNone2',
 ];
 export const dropLegacyBookCaches = () => {
   try { LEGACY_BOOK_CACHE_KEYS.forEach(k => localStorage.removeItem(k)); } catch {}

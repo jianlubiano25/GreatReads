@@ -3,6 +3,7 @@ import { dedupeInflight } from './http';
 import { persistentCache } from './cache';
 import { cleanIsbn, isbnPair, mergeIdentity } from './identity';
 import { mergeBooks } from './merge';
+import { chooseRating, ratingOf, setRating } from './ratings';
 import type { ContentFlags } from './quality';
 import { findApple } from './sources/appleBooks';
 import { findGoogle } from './sources/googleBooks';
@@ -34,6 +35,11 @@ export interface Resolved {
 }
 
 const cache = persistentCache<Resolved | null>('readlife.resolved1', { ttl: 14 * 24 * 60 * 60 * 1000, max: 250 });
+/**
+ * Books no source could place. Remembered only briefly: "not found" is often a dropped connection or a rate limit, and a miss
+ * that lasted two weeks (as saved results do) left covers blank long after the network was fine again.
+ */
+const misses = persistentCache<true>('readlife.resolvedmiss1', { ttl: 2 * 60 * 60 * 1000, max: 300 });
 const inflight = new Map<string, Promise<Resolved | null>>();
 
 const keyOf = (q: ResolveQuery) => {
@@ -44,7 +50,9 @@ const keyOf = (q: ResolveQuery) => {
 export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resolved | null> {
   const key = keyOf(q);
   const hit = cache.get(key);
-  if (hit !== undefined) return Promise.resolve(hit && { ...hit, book: { ...hit.book, id: pickId(hit.book, q) } });
+  // Only a real result is reused for long. (Older versions also saved "not found" here for 14 days: those are looked up again.)
+  if (hit) return Promise.resolve({ ...hit, book: { ...hit.book, id: pickId(hit.book, q) } });
+  if (misses.get(key)) return Promise.resolve(null);
   return dedupeInflight(inflight, key, async () => {
     const [ol, gb, ap] = await Promise.all([
       findOpenLibrary(q, opts),
@@ -53,15 +61,20 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
     ]);
     const hits = [ol, gb, ap].filter((h): h is NonNullable<typeof h> => !!h);
     if (!hits.length) {
-      if (!opts.signal?.aborted) cache.set(key, null);
+      if (!opts.signal?.aborted) misses.set(key, true);
       return null;
     }
     let book: Book = hits.map(h => h.book).reduce((a, b) => mergeBooks(a, b));
     book.identity = mergeIdentity(book.identity, isbnPair(q.isbn));
-    if (!book.ratingAverage && book.identity?.olWork) {
-      const r = await openLibraryRatings(book.identity.olWork, opts);
-      if (r) book = { ...book, ratingAverage: r.average, ratingCount: r.count || book.ratingCount };
+    // Ratings follow the ladder in ratings.ts: ONE source's average + count, never a mix and never a sum. Open Library first (its
+    // work-level ratings when the search record has none), then Google. Apple's readers still feed `readers` below, not the stars.
+    let olRating = ratingOf(ol?.book) && { ...ratingOf(ol?.book)!, source: 'openlibrary' as const };
+    const workId = book.identity?.olWork;
+    if (!olRating && workId) {
+      const r = await openLibraryRatings(workId, opts);
+      if (r) olRating = { average: r.average, count: r.count || undefined, source: 'openlibrary' };
     }
+    book = setRating(book, chooseRating({ ol: olRating, google: ratingOf(gb?.book) && { ...ratingOf(gb?.book)!, source: 'google' as const } }));
     if (q.genreHint && !book.genre) book.genre = q.genreHint;
     const flags: ContentFlags = {
       subjects: hits.flatMap(h => h.flags.subjects || []),

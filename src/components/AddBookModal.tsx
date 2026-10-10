@@ -37,7 +37,6 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
   const [manualYear, setManualYear] = useState('');
   const [manualShelf, setManualShelf] = useState<ShelfKey>('mine');
   const [manualNotes, setManualNotes] = useState('');
-  const [manualSummary, setManualSummary] = useState('');
   const [manualSuccess, setManualSuccess] = useState(false);
 
   const searchAbort = useRef<AbortController | null>(null);
@@ -97,7 +96,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
       isOnDevice: destination === 'device',
       year: manualYear.trim(),
       genre: SHELF_LABELS[manualShelf]?.label || 'Book',
-      summary: manualSummary.trim(),
+      summary: '',
       authorBio: '',
       pageCount: Math.max(0, Math.round(Number(manualPages)) || 0), // 0 = unknown (looked up later)
       spineColor: SHELF_LABELS[manualShelf]?.color || '#6b6f80',

@@ -21,6 +21,8 @@ export interface Book {
   coverUrl?: string;
   ratingAverage?: number;
   ratingCount?: number;
+  /** Which site ratingAverage + ratingCount came from (the two always come from the same one). Older saved books have none; it is then worked out when needed. */
+  ratingSource?: 'openlibrary' | 'google' | 'apple' | 'library';
   spineColor?: string;
   source?: 'curated' | 'openlibrary' | 'google' | 'apple' | 'nyt' | 'manual';
   addedAt?: number;

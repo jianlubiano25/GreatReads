@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { Book, HighlightItem } from '../types';
-import { Bookmark, Plus, Trash2, Search, X, Check, Edit3, Save } from 'lucide-react';
+import { Bookmark, Plus, Trash2, Search, X, Edit3, Save } from 'lucide-react';
 
 interface HighlightsModalProps {
   book: Book;

@@ -1,6 +1,7 @@
 import type { Book } from '../../types';
+import { registerClearableKey } from './cache';
 import { dedupeInflight, mapPool, pool } from './http';
-import { identityOf, isUnknownAuthor, primaryAuthor, titlesMatch } from './identity';
+import { identityOf, isUnknownAuthor, primaryAuthor, titleVariants, titlesMatch } from './identity';
 import { findApple } from './sources/appleBooks';
 import { findGoogle, googleVolume } from './sources/googleBooks';
 import { olCoverById, olCoverByIsbn, searchOpenLibrary } from './sources/openLibrary';
@@ -26,7 +27,9 @@ export function getCoverUrl(coverId?: number, size: CoverSize = 'M', customUrl?:
 /* ---------------- stores: repaired covers (rare) and the missing list (for the button) ---------------- */
 
 const FIX_KEY = 'readlife.coverFix1'; // key -> { url, t }
-const NONE_KEY = 'readlife.coverNone2'; // key -> time of the last miss
+const NONE_KEY = 'readlife.coverNone3'; // key -> time of the last miss
+registerClearableKey(FIX_KEY);
+registerClearableKey(NONE_KEY);
 const NONE_TTL = 24 * 60 * 60 * 1000;
 const MAX_FIXES = 400;
 
@@ -146,11 +149,13 @@ async function search(b: MissingBook): Promise<string> {
   const byName = await findGoogle({ title: b.title, author });
   if (byName?.book.coverUrl && (url = await accept(byName.book.coverUrl))) return url;
 
-  // other Open Library editions of this book
-  const editions = (await searchOpenLibrary({ title: b.title, ...(author ? { author } : {}) }, 8))
-    .filter(h => h.book.coverId && h.book.coverId !== b.coverId && titlesMatch(h.book.title, b.title))
-    .slice(0, 3);
-  for (const h of editions) if ((url = await accept(olCoverById(h.book.coverId!, 'M')))) return url;
+  // other Open Library editions of this book (under any of its title forms)
+  for (const title of titleVariants(b.title)) {
+    const editions = (await searchOpenLibrary({ title, ...(author ? { author } : {}) }, 8))
+      .filter(h => h.book.coverId && h.book.coverId !== b.coverId && titlesMatch(h.book.title, b.title))
+      .slice(0, 3);
+    for (const h of editions) if ((url = await accept(olCoverById(h.book.coverId!, 'M')))) return url;
+  }
   return '';
 }
 
@@ -200,7 +205,6 @@ export function fillMissingCovers(books: Book[], onUpdate: (books: Book[]) => vo
 /* ---------------- the "Reload missing covers" button ---------------- */
 
 let repairing = false;
-export const isRepairing = () => repairing;
 
 /**
  * Re-run the lookup for only the covers that failed. Returns how many were fixed, not found anywhere, or

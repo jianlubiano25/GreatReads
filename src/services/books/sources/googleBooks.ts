@@ -1,5 +1,5 @@
 import { getJson } from '../http';
-import { cleanIsbn, isbnPair, titlesMatch, authorListMatches } from '../identity';
+import { authorVariants, cleanIsbn, isbnPair, titleVariants, titlesMatch, authorListMatches } from '../identity';
 import { makeBook } from '../model';
 import type { CallOpts, Hit } from './types';
 
@@ -68,6 +68,16 @@ export async function findGoogle(q: { title: string; author?: string; isbn?: str
     if (exact) return exact;
   }
   const generic = !q.author || /^(Unknown|Featured) Author$/.test(q.author);
-  const hits = await searchGoogle(`intitle:"${q.title}"${generic ? '' : ` inauthor:"${q.author}"`}`, 6, opts);
-  return hits.find(h => titlesMatch(h.book.title, q.title) && authorListMatches(h.book.author, q.author || '')) ?? null;
+  // The title as given, without its subtitle, then each half of a dual title; the author as given, then with a hyphen closed up (see openLibrary.ts). The first
+  // search that finds the book wins.
+  const ok = (h: Hit) => titlesMatch(h.book.title, q.title) && authorListMatches(h.book.author, q.author || '');
+  for (const title of titleVariants(q.title)) {
+    for (const author of generic ? [undefined] : authorVariants(q.author)) {
+      const matches = (await searchGoogle(`intitle:"${title}"${author ? ` inauthor:"${author}"` : ''}`, 6, opts)).filter(ok);
+      // Editions of one book differ in whether Google has ratings for them: take the best-rated match, else the first
+      const found = matches.reduce<Hit | undefined>((best, h) => (!best || (h.book.ratingCount || 0) > (best.book.ratingCount || 0) ? h : best), undefined);
+      if (found || opts.signal?.aborted) return found ?? null;
+    }
+  }
+  return null;
 }

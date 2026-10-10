@@ -5,14 +5,17 @@ import { INITIAL_WORDS } from '../data/defaultWords';
 import { normalizeV2, normalizeLegacy, parseBackup } from '../services/stateSanitizer';
 import { computeSnapshot, currentStreakFor, evaluateGarden, markCelebrated, movePlant as movePlantIn, pendingCelebrations, seedGarden } from '../services/garden';
 import { dateKey } from '../services/dates';
-import { mergeBooks, sameWork } from '../services/books';
+import { applyAddBook, type AddDestination } from '../services/library';
+import { clearableCacheKeys } from '../services/books/cache';
+
+// Small helper lists that are not persistentCache instances but can be rebuilt (never user data)
+const EXTRA_CLEARABLE = ['readlife.preload', 'readlife.loaded', 'readlife.phoneticTried'];
 
 const STORAGE_KEY = 'readlife.v2';
 const LEGACY_KEY = 'readlife.v1';
 const RECOVERY_KEY = 'readlife.v2.recovery';
 const SAVE_DELAY_MS = 350;
-// Things the app can download again if they are ever lost; safe to clear when storage is full
-const CACHE_KEYS = ['readlife.shelves1', 'readlife.curated1', 'readlife.resolved1', 'readlife.meta4', 'readlife.nyt1', 'readlife.coverFix1', 'readlife.coverNone2', 'readlife.preload', 'readlife.loaded', 'readlife.phoneticTried', 'readlife.store1', 'readlife.store2', 'readlife.store3', 'readlife.meta3', 'readlife.covers1', 'readlife.coverMiss1', 'readlife.coverNone1'];
+// Things the app can download again live in one registry (books/cache.ts); the cleanup below clears exactly those
 
 export function getTodayKey(): string {
   return dateKey(); // "YYYY-MM-DD" in local time
@@ -106,7 +109,7 @@ export function useReadingLife() {
       console.error('Failed to save to localStorage:', e);
       // Storage is full or blocked. Throw away the re-downloadable caches first, then try once more.
       try {
-        for (const k of CACHE_KEYS) localStorage.removeItem(k);
+        for (const k of [...clearableCacheKeys(), ...EXTRA_CLEARABLE]) localStorage.removeItem(k);
         write();
         dirty.current = false;
         setSaveError(false);
@@ -305,38 +308,8 @@ export function useReadingLife() {
     });
   }, []);
 
-  const addBook = useCallback((incoming: Book, destination: 'device' | 'library' | 'now' | 'next' = 'library') => {
-    setState(prev => {
-      // The same book arriving under a different record id (search vs Store vs NYT) is the book you already have, not a second copy
-      const dupe = [...DEFAULT_BOOKS, ...prev.customBooks].find(b =>
-        String(b.id) !== String(incoming.id) && !prev.hiddenBookIds[String(b.id)] && sameWork(b, incoming, true));
-      const idKey = String(dupe ? dupe.id : incoming.id);
-      const isDevice = destination === 'device';
-      const existingCustom = prev.customBooks.find(b => String(b.id) === idKey);
-      const isCatalogDupe = !!dupe && !existingCustom; // a built-in book: nothing to store, only its status changes
-
-      let updatedCustom: Book[] = prev.customBooks;
-      if (existingCustom) {
-        const merged = dupe ? mergeBooks(existingCustom, incoming) : { ...existingCustom, ...incoming };
-        updatedCustom = prev.customBooks.map(b => (String(b.id) === idKey ? { ...merged, id: existingCustom.id, isOnDevice: isDevice || existingCustom.isOnDevice } : b));
-      } else if (!isCatalogDupe) {
-        updatedCustom = [{ ...incoming, isOnDevice: isDevice }, ...prev.customBooks];
-      }
-
-      return {
-        ...prev,
-        customBooks: updatedCustom,
-        onDeviceOverrides: {
-          ...prev.onDeviceOverrides,
-          [idKey]: isDevice ? true : (prev.onDeviceOverrides[idKey] ?? false),
-        },
-        // Adding to the library or device never promotes a book to "Up next"; that is your choice.
-        status: {
-          ...prev.status,
-          [idKey]: destination === 'now' || destination === 'next' ? destination : (prev.status[idKey] || 'list'),
-        },
-      };
-    });
+  const addBook = useCallback((incoming: Book, destination: AddDestination = 'library') => {
+    setState(prev => applyAddBook(prev, incoming, destination));
   }, []);
 
   const removeBook = useCallback((bookId: string | number) => {

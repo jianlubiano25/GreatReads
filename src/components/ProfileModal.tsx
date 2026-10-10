@@ -40,7 +40,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   onImportBackup,
   onOpenBackupModal,
 }) => {
-  useModalA11y(onClose);
+  // Dismissing the sheet (outside tap, X, Escape) keeps your edits, just like Save & Close
+  useModalA11y(() => handleSave());
   const [name, setName] = useState(profile.name);
   const [pageGoal, setPageGoal] = useState(String(goal));
   const [theme, setTheme] = useState(profile.theme);
@@ -128,7 +129,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 overflow-y-auto animate-in fade-in duration-200"
-      onClick={onClose}
+      onClick={() => handleSave()}
     >
       <div
         className="relative w-full max-w-[500px] max-h-[92dvh] sm:max-h-[88dvh] bg-[#fbf7ee] dark:bg-[#231d17] text-[#201a15] dark:text-[#f0e6d6] rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-y-auto overscroll-contain flex flex-col border border-[#e3d7c3] dark:border-[#382f25]"
@@ -144,7 +145,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           <button
             type="button"
             aria-label="Close"
-            onClick={onClose}
+            onClick={() => handleSave()}
             className="p-1.5 rounded-full text-[#706256] dark:text-[#a89a8a] hover:bg-black/10 dark:hover:bg-white/10"
           >
             <X className="w-5 h-5" />

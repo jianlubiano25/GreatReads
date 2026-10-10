@@ -1,27 +1,21 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense } from 'react';
-import { Book, BookStatus, TabType, WordItem } from './types';
-import { BOOK_AWARDS } from './data/defaultBooks';
-import { BUILTIN_DICTIONARY } from './data/defaultWords';
+import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
+import { Book, TabType, WordItem } from './types';
 import { useReadingLife } from './hooks/useReadingLife';
-import { searchBooks, getCoverUrl, fillMissingCovers } from './services/books';
-import { NYT_SHELVES, bestsellerSource } from './services/store/bestsellers';
-import { trendingSource } from './services/store/trending';
-import { curatedSource } from './services/store/curated';
-import { lookupWord } from './services/dictionary';
-import { dateKey } from './services/dates';
+import { getCoverUrl, sameWork, withKnownRating } from './services/books';
+import { DEFAULT_BOOKS } from './data/defaultBooks';
 import { useAppUpdate, applyUpdate, dismissUpdate, restartApp } from './services/appUpdate';
-import { CURATED_SHELVES } from './data/storeCatalog';
 
 // Modals
 import { AppleBookDetailModal } from './components/AppleBookDetailModal';
-import { ReadingScene } from './components/ReadingScene';
 import { PlantCelebration } from './components/garden/PlantCelebration';
-import { DayStrip } from './components/DayStrip';
-import { NowReadingCard, UpNextCard, LibraryCard, DeviceCard, WordCard } from './components/cards';
-import { CoverFace } from './components/BookMeta';
 import { MissingCoversButton } from './components/MissingCoversButton';
-import { StoreShelf } from './components/StoreShelf';
-import { bookKind } from './services/bookKind';
+
+// Tabs (each is a screen of its own: see components/tabs)
+import { TodayTab } from './components/tabs/TodayTab';
+import { StoreTab } from './components/tabs/StoreTab';
+import { LibraryTab } from './components/tabs/LibraryTab';
+import { WordsTab } from './components/tabs/WordsTab';
+import { DeviceTab } from './components/tabs/DeviceTab';
 
 // Icons
 import {
@@ -30,14 +24,12 @@ import {
   Library,
   Sprout,
   Smartphone,
-  Plus,
-  Search,
-  Award,
   RotateCcw,
   Sparkles,
   Share2,
   Download,
   AlertTriangle,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 /**
@@ -66,22 +58,10 @@ const AppleLookUpModal = lazyModal<typeof import('./components/AppleLookUpModal'
 const AddBookModal = lazyModal<typeof import('./components/AddBookModal').AddBookModal>(() => import('./components/AddBookModal'), 'AddBookModal');
 const HighlightsModal = lazyModal<typeof import('./components/HighlightsModal').HighlightsModal>(() => import('./components/HighlightsModal'), 'HighlightsModal');
 const ProfileModal = lazyModal<typeof import('./components/ProfileModal').ProfileModal>(() => import('./components/ProfileModal'), 'ProfileModal');
-// One source object per shelf, created once (shelves compare their source to know when to reload)
-const NYT_SHELF_SOURCES = NYT_SHELVES.map(shelf => ({ shelf, source: bestsellerSource(shelf) }));
-const CURATED_SOURCES = Object.fromEntries(CURATED_SHELVES.map(sh => [sh.id, curatedSource(sh)]));
 const BackupModal = lazyModal<typeof import('./components/BackupModal').BackupModal>(() => import('./components/BackupModal'), 'BackupModal');
 const WordPracticeModal = lazyModal<typeof import('./components/WordPracticeModal').WordPracticeModal>(() => import('./components/WordPracticeModal'), 'WordPracticeModal');
 const BulkImportModal = lazyModal<typeof import('./components/BulkImportModal').BulkImportModal>(() => import('./components/BulkImportModal'), 'BulkImportModal');
 const ShareModal = lazyModal<typeof import('./components/ShareModal').ShareModal>(() => import('./components/ShareModal'), 'ShareModal');
-
-/**
- * A tab's content stays mounted once it has been opened and is only hidden when you switch away,
- * so covers, shelves and scroll positions are not rebuilt (or re-downloaded) every time you come back.
- * Tabs you never open cost nothing: they are not rendered until the first visit.
- */
-function TabPane({ active, children }: { active: boolean; children: React.ReactNode }) {
-  return <div hidden={!active} className="contents">{children}</div>;
-}
 
 const TAB_TITLES: Record<string, string> = { store: 'Book Store', lib: 'Library', words: 'Word Garden', dev: 'On my device' };
 
@@ -160,92 +140,11 @@ export default function App() {
     type: 'books',
   });
 
-  // Library filters
-  const [libFilter, setLibFilter] = useState<string>('f');
+  // Customize Store is switched on from the page header and footer, so the flag lives here (the layout itself is kept by StoreTab)
+  const [customizing, setCustomizing] = useState(false);
 
   // New-version detection (prompts only when the code really changed)
   const update = useAppUpdate();
-
-  // Word Garden filters & search
-  const [wordFilter, setWordFilter] = useState<'all' | 'learning' | 'learned'>('all');
-  const [wordSearchQuery, setWordSearchQuery] = useState('');
-
-  // Store search & shelf data
-  const [storeSearchQuery, setStoreSearchQuery] = useState('');
-  const [storeSearchResults, setStoreSearchResults] = useState<Book[]>([]);
-  const [isStoreSearching, setIsStoreSearching] = useState(false);
-
-
-  // Handle store search with debounce; superseded requests are cancelled so a slow old answer
-  // can never overwrite the results of what you typed last.
-  // Words saved without a pronunciation get one filled in. Each word is tried once per two weeks (remembered on
-  // this device), so a word the dictionary doesn't know doesn't cause a network request on every launch.
-  const triedPhonetic = useRef<Set<string> | null>(null);
-  useEffect(() => {
-    if (tab !== 'words') return;
-    const KEY = 'readlife.phoneticTried';
-    if (!triedPhonetic.current) {
-      triedPhonetic.current = new Set();
-      try {
-        const saved: Record<string, number> = JSON.parse(localStorage.getItem(KEY) || '{}');
-        for (const [id, t] of Object.entries(saved)) if (Date.now() - t < 14 * 86400000) triedPhonetic.current.add(id);
-      } catch {}
-    }
-    const tried = triedPhonetic.current;
-    let cancelled = false;
-    (async () => {
-      const todo = state.words
-        .filter(w => {
-          const lower = (w.word || '').toLowerCase();
-          const builtinPhonetic = Object.hasOwn(BUILTIN_DICTIONARY, lower) ? BUILTIN_DICTIONARY[lower].phonetic : undefined;
-          return !w.phonetic && !builtinPhonetic && !tried.has(w.id);
-        })
-        .slice(0, 12);
-      for (const w of todo) {
-        if (cancelled) return;
-        tried.add(w.id);
-        try {
-          const saved: Record<string, number> = JSON.parse(localStorage.getItem(KEY) || '{}');
-          saved[w.id] = Date.now();
-          localStorage.setItem(KEY, JSON.stringify(saved));
-        } catch {}
-        try {
-          const r = await lookupWord(w.word);
-          if (r.phonetic || r.audioUrl) {
-            updateWord(w.id, { phonetic: r.phonetic || undefined, audioUrl: r.audioUrl, partOfSpeech: w.partOfSpeech || r.partOfSpeech });
-          }
-        } catch {}
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [tab, state.words.length]);
-
-  useEffect(() => {
-    if (!storeSearchQuery.trim()) {
-      setStoreSearchResults([]);
-      setIsStoreSearching(false);
-      return;
-    }
-    const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      setIsStoreSearching(true);
-      try {
-        const results = await searchBooks(storeSearchQuery, '', 10, controller.signal);
-        if (!controller.signal.aborted) {
-          setStoreSearchResults(results);
-          fillMissingCovers(results, r => { if (!controller.signal.aborted) setStoreSearchResults(r); }, controller.signal);
-        }
-      } catch {
-        if (!controller.signal.aborted) setStoreSearchResults([]);
-      } finally {
-        if (!controller.signal.aborted) setIsStoreSearching(false);
-      }
-    }, 450);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [storeSearchQuery]);
 
   // Books categorization
   const nowReadingBooks = useMemo(() => {
@@ -272,16 +171,6 @@ export default function App() {
     const statusMap = state.status || {};
     return allBooks.filter(b => b.isOnDevice && statusMap[String(b.id)] !== 'done');
   }, [allBooks, state.status]);
-
-  const devicePages = useMemo(() => {
-    let known = 0;
-    let unknown = 0;
-    for (const b of [...onDeviceBooks, ...finishedBooks]) {
-      if (b.pageCount) known += b.pageCount;
-      else unknown++;
-    }
-    return { known, unknown };
-  }, [onDeviceBooks, finishedBooks]);
 
   const finishedCount = finishedBooks.length;
 
@@ -321,84 +210,6 @@ export default function App() {
   }, [sceneBooks, nowReadingBooks, upNextBooks]);
 
 
-  // 7-day dots for streak
-  const last7Days = useMemo(() => {
-    const days = [];
-    const dayLetters = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-    const log = state.dailyLog || {};
-    const goal = state.goal || 10;
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const k = dateKey(d);
-      const pages = log[k] || 0;
-      days.push({
-        letter: dayLetters[d.getDay()],
-        pages,
-        isGoalMet: pages >= goal,
-        key: k,
-        isToday: i === 0,
-      });
-    }
-    return days;
-  }, [state.dailyLog, state.goal, todayKey]);
-
-  // Store shelves built from your own catalog
-  const prizeBooks = useMemo(
-    () => allBooks.filter(b => typeof b.id === 'number' && (BOOK_AWARDS[b.id] || []).length > 0),
-    [allBooks],
-  );
-  const easyBooks = useMemo(() => allBooks.filter(b => b.difficulty === 1), [allBooks]);
-
-  // Library filtered books (includes all catalog challenge books + custom books)
-  const filteredLibraryBooks = useMemo(() => {
-    const list = libraryBooks;
-    if (libFilter === 'f') {
-      return list.filter(b => b.first12Order && b.first12Order > 0).sort((a, b) => (a.first12Order || 0) - (b.first12Order || 0));
-    }
-    if (libFilter === 's') {
-      return list.filter(b => b.isNew);
-    }
-    if (libFilter === 'aw') {
-      return list.filter(b => typeof b.id === 'number' && (BOOK_AWARDS[b.id] || []).length > 0);
-    }
-    if (libFilter === 'fic' || libFilter === 'nf') {
-      const expected = libFilter === 'fic' ? 'fiction' : 'nonfiction';
-      return list.filter(b => bookKind(b) === expected);
-    }
-    if (libFilter === 'all') {
-      return list;
-    }
-    return list.filter(b => b.shelf === libFilter);
-  }, [libraryBooks, libFilter]);
-
-  // Filtered words
-  const filteredWords = useMemo(() => {
-    const q = wordSearchQuery.toLowerCase().trim();
-    const wordsList = state.words || [];
-    return wordsList.filter(w => {
-      const matchFilter =
-        wordFilter === 'all'
-          ? true
-          : wordFilter === 'learned'
-          ? w.isLearned
-          : !w.isLearned;
-      const matchQuery =
-        !q ||
-        (w.word && (w.word || '').toLowerCase().includes(q)) ||
-        (w.definition && w.definition.toLowerCase().includes(q)) ||
-        (w.bookTitle && w.bookTitle.toLowerCase().includes(q));
-      return matchFilter && matchQuery;
-    });
-  }, [state.words, wordFilter, wordSearchQuery]);
-
-  // Searching for a word that is not in the garden yet offers to look it up and add it
-  const searchedWord = wordSearchQuery.trim();
-  const canAddSearchedWord =
-    searchedWord.length > 0 &&
-    searchedWord.length <= 40 &&
-    !state.words.some(w => (w.word || '').toLowerCase() === searchedWord.toLowerCase());
-
   // Handlers (stable references so the memoized cards don't redraw when something unrelated changes)
   const handleOpenCover = useCallback((book: Book) => setSelectedBookForDetail(book), []);
   const handleOpenHighlights = useCallback((book: Book) => setSelectedBookForHighlights(book), []);
@@ -421,10 +232,16 @@ export default function App() {
   }, [removeBook]);
   const editWord = useCallback((w: WordItem) => setShowLookupModal({ open: true, existingWord: w }), []);
   const lookupAgain = useCallback((word: string) => setShowLookupModal({ open: true, initialWord: word }), []);
+  // Tabs ask App to open the modals (App owns every modal's state)
+  const openAddBook = useCallback(() => setShowAddBookModal({ open: true, isDevice: false }), []);
+  const openAddToDevice = useCallback(() => setShowAddBookModal({ open: true, isDevice: true }), []);
+  const openLookupNew = useCallback(() => setShowLookupModal({ open: true }), []);
+  const openPractice = useCallback(() => setShowWordPracticeModal(true), []);
+  const openPasteWords = useCallback(() => setShowBulkModal({ open: true, type: 'words' }), []);
+  const openPasteList = useCallback(() => setShowBulkModal({ open: true, type: 'books' }), []);
   const confirmDeleteWord = useCallback((w: WordItem) => {
     if (confirm(`Remove "${w.word}" from Word Garden?`)) deleteWord(w.id);
   }, [deleteWord]);
-  const noStatus: BookStatus = 'list';
 
   return (
     <div className="rl-shell min-h-dvh flex flex-col bg-[#f5f0e6] dark:bg-[#181410] text-[#201a15] dark:text-[#f0e6d6]">
@@ -444,6 +261,17 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2.5 shrink-0">
+            {tab === 'store' && (
+              <button
+                onClick={() => setCustomizing(c => !c)}
+                className={`w-10 h-10 aspect-square rounded-full border bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880] ${customizing ? 'border-[#2e5934] dark:border-[#86b880] ring-2 ring-[#2e5934]/30' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}
+                title="Customize Store: reorder, hide and refresh shelves"
+                aria-label="Customize Store"
+                aria-pressed={customizing}
+              >
+                <SlidersHorizontal className="w-4 h-4 text-[#2e5934] dark:text-[#86b880]" />
+              </button>
+            )}
             <button
               onClick={() => setShowShareModal(true)}
               className="w-10 h-10 aspect-square rounded-full border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880]"
@@ -484,7 +312,7 @@ export default function App() {
         {update.available && (
           <aside
             aria-label="App update available"
-            className="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-[calc(100vw-24px)] px-4 py-3 rounded-2xl bg-[#201a15] dark:bg-[#2e261f] text-[#f0e6d6] shadow-2xl flex items-center gap-3 border border-[#382f25]"
+            className="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-50 w-max max-w-[calc(100vw-24px)] px-4 py-3 rounded-2xl bg-[#201a15] dark:bg-[#2e261f] text-[#f0e6d6] shadow-2xl flex flex-wrap items-center justify-center gap-x-3 gap-y-2 border border-[#382f25]"
           >
             <Sparkles className="w-4 h-4 text-emerald-400 animate-pulse shrink-0" />
             <span className="text-xs font-medium">New version ready</span>
@@ -494,548 +322,93 @@ export default function App() {
             >
               Update now
             </button>
-            <button onClick={dismissUpdate} className="text-xs text-white/60 hover:text-white ml-1" aria-label="Not now">
+            <button onClick={dismissUpdate} className="px-2 py-1 text-xs text-white/70 hover:text-white shrink-0" aria-label="Not now">
               Later
             </button>
           </aside>
         )}
 
-        {/* Reading nook: window, shelves of your real covers, coffee & growing plants */}
+        {/* Tab 1: TODAY VIEW (the reading nook and today's goal) */}
         {visitedTabs.has('today') && (
-        <TabPane active={tab === 'today'}>
-        <ReadingScene
-          books={sceneBooks}
-          streak={currentStreak}
-          todayPages={todayPages}
-          goal={state.goal}
-          garden={state.garden}
-          dailyLog={state.dailyLog}
-          onOpenBook={setSelectedBookForDetail}
-        />
-        </TabPane>
-        )}
-
-        {/* Tab 1: TODAY VIEW */}
-        {visitedTabs.has('today') && (
-        <TabPane active={tab === 'today'}>
-          <div className="flex flex-col gap-6">
-            <p className="text-sm text-[#706256] dark:text-[#a89a8a] ">
-              {state.goal} pages a day is the whole goal. Keep going if you're enjoying it, stop if you're not.
-            </p>
-
-            {/* iPad / Desktop Split: Left Dashboard & Right Now Reading */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
-              {/* Left Column: Progress Ring & Daily Goal & Intention */}
-              <div className="md:col-span-5 flex flex-col gap-4">
-                {/* Daily Goal Card */}
-                <div className="p-6 rounded-2xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] border-l-4 border-l-[#2e5934] shadow-sm flex flex-col gap-4">
-                  <div className="flex items-center gap-5">
-                    <div>
-                      <span className="font-serif-display text-5xl leading-none text-[#2e5934] dark:text-[#86b880]">
-                        {todayPages}
-                      </span>
-                      <span className="text-xs text-[#706256] dark:text-[#a89a8a] block mt-1">pages today</span>
-                    </div>
-
-                    <div className="flex-1 flex flex-col gap-2">
-                      <div className="w-full h-3 rounded-full bg-[#e3d7c3] dark:bg-[#382f25] overflow-hidden">
-                        <div
-                          className="h-full bg-[#2e5934] dark:bg-[#86b880] transition-all duration-500 rounded-full"
-                          style={{ width: `${Math.min(100, (todayPages * 100) / state.goal)}%` }}
-                        />
-                      </div>
-                      <div className="text-xs text-[#706256] dark:text-[#a89a8a]">
-                        {todayPages >= state.goal
-                          ? 'Goal reached. Anything more is a bonus.'
-                          : `${state.goal - todayPages} more to hit today's goal`} · {currentStreak}-day streak
-                      </div>
-                    </div>
-                  </div>
-
-                  <DayStrip days={last7Days} onSetPages={setDayPages} />
-                </div>
-
-                {/* Reading Intention Card */}
-                <div className="p-5 rounded-2xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] border-l-4 border-l-[#925838] shadow-sm flex flex-col gap-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-[#925838] dark:text-[#d89e70] font-sans">
-                    My Reading Intention
-                  </label>
-                  <textarea
-                    value={state.readingIntention}
-                    onChange={e => updateIntention(e.target.value)}
-                    rows={2}
-                    placeholder="What are you hoping to find in books right now?"
-                    className="w-full bg-transparent text-sm italic  text-[#201a15] dark:text-[#f0e6d6] focus:outline-none resize-none leading-relaxed"
-                  />
-                </div>
-              </div>
-
-              {/* Right Column: Currently Reading Books */}
-              <div className="md:col-span-7 flex flex-col gap-4">
-                <h2 className="font-serif-display text-2xl text-[#201a15] dark:text-[#f0e6d6]">
-                  Reading now
-                </h2>
-
-                {nowReadingBooks.length === 0 ? (
-                  <div className="p-8 rounded-2xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-center text-[#706256] dark:text-[#a89a8a] text-sm">
-                    Nothing in progress. Open the Library or Book Store to choose your first book.
-                  </div>
-                ) : (
-                  nowReadingBooks.map(b => (
-                    <NowReadingCard
-                      key={b.id}
-                      book={b}
-                      currentPage={state.currentPage[String(b.id)] || 0}
-                      totalPages={state.totalPages[String(b.id)] || b.pageCount || 0}
-                      highlightCount={(state.highlights[String(b.id)] || []).length}
-                      note={state.notes[String(b.id)] || ''}
-                      onOpen={handleOpenCover}
-                      onProgress={updateBookProgress}
-                      onStatus={setBookStatus}
-                      onQuotes={handleOpenHighlights}
-                      onNote={updateBookNote}
-                    />
-                  ))
-                )}
-
-                {/* Up Next List */}
-                <div className="mt-4 flex flex-col gap-3">
-                  <h3 className="font-serif-display text-xl text-[#201a15] dark:text-[#f0e6d6]">
-                    Up next
-                  </h3>
-                  {upNextBooks.length === 0 ? (
-                    <div className="p-4 rounded-xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-center text-xs text-[#706256] dark:text-[#a89a8a]">
-                      Pick up to three books to read next.
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {upNextBooks.map(b => (
-                        <UpNextCard key={b.id} book={b} onOpen={handleOpenCover} onStart={startReading} />
-                      ))}
-                    </div>
-                  )}
-                  {upNextBooks.length > 3 && (
-                    <p className="text-xs text-[#706256] dark:text-[#a89a8a] italic">
-                      That's more than three. A shorter Next list is easier to actually start.
-                    </p>
-                  )}
-                </div>
-
-                <div className="text-xs text-[#706256] dark:text-[#a89a8a] mt-2">
-                  Books finished so far: <b>{finishedCount}</b>
-                </div>
-              </div>
-            </div>
-          </div>
-        </TabPane>
+          <TodayTab
+            active={tab === 'today'}
+            state={state}
+            todayKey={todayKey}
+            todayPages={todayPages}
+            currentStreak={currentStreak}
+            sceneBooks={sceneBooks}
+            nowReadingBooks={nowReadingBooks}
+            upNextBooks={upNextBooks}
+            finishedCount={finishedCount}
+            handleOpenCover={handleOpenCover}
+            handleOpenHighlights={handleOpenHighlights}
+            startReading={startReading}
+            setDayPages={setDayPages}
+            updateIntention={updateIntention}
+            updateBookProgress={updateBookProgress}
+            setBookStatus={setBookStatus}
+            updateBookNote={updateBookNote}
+          />
         )}
 
         {/* Tab 2: BOOK STORE VIEW */}
         {visitedTabs.has('store') && (
-        <TabPane active={tab === 'store'}>
-          <div className="flex flex-col gap-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-serif-display text-2xl sm:text-3xl text-[#201a15] dark:text-[#f0e6d6]">
-                  Book Store
-                </h2>
-                <p className="text-xs sm:text-sm text-[#706256] dark:text-[#a89a8a]">
-                  Browse popular works, prize winners, and discover new books. Tap any cover to see author, year &amp; page details.
-                </p>
-              </div>
-
-              <button
-                onClick={() => setShowAddBookModal({ open: true, isDevice: false })}
-                className="flex px-4 py-2 rounded-xl text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] items-center gap-1.5 shadow-sm shrink-0"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Book</span>
-              </button>
-            </div>
-
-            {/* Search Input */}
-            <div className="relative">
-              <Search className="w-4 h-4 text-[#706256] dark:text-[#a89a8a] absolute left-3.5 top-3.5 pointer-events-none" />
-              <input
-                type="search"
-                value={storeSearchQuery}
-                onChange={e => setStoreSearchQuery(e.target.value)}
-                placeholder="Search by title, author, or keyword in online catalog"
-                className="w-full pl-10 pr-4 py-3 rounded-xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-sm focus:outline-none focus:ring-2 focus:ring-[#2e5934]"
-              />
-            </div>
-
-            {/* Search Results if query present */}
-            {storeSearchQuery.trim() && (
-              <div className="flex flex-col gap-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a]">
-                  {isStoreSearching ? 'Searching Online…' : `Search Results (${storeSearchResults.length})`}
-                </span>
-
-                {storeSearchResults.length === 0 && !isStoreSearching ? (
-                  <div className="p-8 text-center text-sm text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-xl border border-[#e3d7c3] dark:border-[#382f25]">
-                    No books found. Check the title spelling or use the Add Book button to add manually.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                    {storeSearchResults.map(b => (
-                      <div key={b.id} className="flex flex-col gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenCover(b)}
-                          className="book-cover-3d w-full aspect-[2/3] rounded-md text-left p-2.5 flex flex-col justify-between text-white overflow-hidden"
-                          style={{ backgroundColor: b.spineColor || '#2e5934' }}
-                        >
-                          <CoverFace book={b} size="md" />
-                        </button>
-                        <h4
-                          onClick={() => handleOpenCover(b)}
-                          className="font-serif-display text-sm leading-tight text-[#201a15] dark:text-[#f0e6d6] line-clamp-2 hover:underline cursor-pointer"
-                        >
-                          {b.title}
-                        </h4>
-                        <div className="text-xs text-[#706256] dark:text-[#a89a8a] truncate">{b.author}</div>
-                        <button
-                          onClick={() => handleOpenCover(b)}
-                          className="mt-1 py-1.5 px-3 rounded-lg text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] text-center"
-                        >
-                          View Details
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Top 15 this week */}
-            {NYT_SHELF_SOURCES.map(({ shelf, source }) => (
-              <StoreShelf key={shelf.id} id={shelf.id} title={shelf.title} source={source} ranked onOpen={handleOpenCover} />
-            ))}
-
-            {/* Trending Today (Updates Daily) */}
-            <StoreShelf id="trending" title="🔥 Trending Today" source={trendingSource} ranked onOpen={handleOpenCover} />
-
-            {/* Prize winners and easy starts from your own catalog (no loading needed) */}
-            <StoreShelf
-              id="prize-catalog"
-              title={
-                <>
-                  <Award className="w-5 h-5 text-amber-500" />
-                  <span>Prize winners from your lists</span>
-                </>
-              }
-              books={prizeBooks}
-              onOpen={handleOpenCover}
-            />
-            <StoreShelf id="easy-catalog" title="🟢 Easy to start" books={easyBooks} onOpen={handleOpenCover} />
-
-            {/* Hand-picked genre shelves: titles show instantly, covers and ratings fill in */}
-            {CURATED_SHELVES.map(sh => (
-              <StoreShelf key={sh.id} id={sh.id} title={`${sh.emoji} ${sh.title}`} source={CURATED_SOURCES[sh.id]} lazy onOpen={handleOpenCover} />
-            ))}
-            <p className="text-xs text-[#706256] dark:text-[#a89a8a]">Bestsellers from The New York Times. Covers and ratings from Open Library, Google Books and Apple Books readers.</p>
-          </div>
-        </TabPane>
+          <StoreTab
+            active={tab === 'store'}
+            allBooks={allBooks}
+            customizing={customizing}
+            setCustomizing={setCustomizing}
+            handleOpenCover={handleOpenCover}
+            onAddBook={openAddBook}
+          />
         )}
 
         {/* Tab 3: LIBRARY VIEW */}
         {visitedTabs.has('lib') && (
-        <TabPane active={tab === 'lib'}>
-          <div className="flex flex-col gap-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-serif-display text-2xl sm:text-3xl text-[#201a15] dark:text-[#f0e6d6]">
-                  Library
-                </h2>
-                <p className="text-xs sm:text-sm text-[#706256] dark:text-[#a89a8a]">
-                  Your reading list. Finished books move to On my device. Tap any cover to see author, year &amp; page count.
-                </p>
-              </div>
-
-              <button
-                onClick={() => setShowAddBookModal({ open: true, isDevice: false })}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] flex items-center gap-1.5 shadow-sm"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Book</span>
-              </button>
-            </div>
-
-            {/* Filter Chips */}
-            <div className="flex flex-wrap gap-2 text-xs">
-              {[
-                ['f', 'First 12'],
-                ['heal', '🧠 Heal'],
-                ['love', '💕 Love'],
-                ['life', '🌱 Life at 30'],
-                ['joy', '✨ Joy'],
-                ['prize', '🌷 Prize winners'],
-                ['world', '🌍 World'],
-                ['art', '🎵 Art & music'],
-                ['aw', '🏆 Prize winners'],
-                ['s', 'New suggestions'],
-                ['fic', '📖 Fiction'],
-                ['nf', '🧭 Non-fiction'],
-                ['all', 'All Books'],
-              ].map(([k, label]) => (
-                <button
-                  key={k}
-                  onClick={() => setLibFilter(k)}
-                  className={`px-3.5 py-1.5 rounded-full border text-xs font-semibold transition-all ${
-                    libFilter === k
-                      ? 'bg-[#2e5934] text-white border-[#2e5934]'
-                      : 'bg-[#fbf7ee] dark:bg-[#231d17] border-[#e3d7c3] dark:border-[#382f25] text-[#706256] dark:text-[#a89a8a] hover:text-[#201a15]'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {/* Book Cards Grid - Responsive for iPad and iPhone */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredLibraryBooks.map(b => (
-                <LibraryCard
-                  key={b.id}
-                  book={b}
-                  status={state.status[String(b.id)] || noStatus}
-                  highlightCount={(state.highlights[String(b.id)] || []).length}
-                  onOpen={handleOpenCover}
-                  onQuotes={handleOpenHighlights}
-                  onStatus={setBookStatus}
-                  onRemove={confirmRemoveFromLibrary}
-                />
-              ))}
-            </div>
-          </div>
-        </TabPane>
+          <LibraryTab
+            active={tab === 'lib'}
+            libraryBooks={libraryBooks}
+            state={state}
+            handleOpenCover={handleOpenCover}
+            handleOpenHighlights={handleOpenHighlights}
+            setBookStatus={setBookStatus}
+            confirmRemoveFromLibrary={confirmRemoveFromLibrary}
+            onAddBook={openAddBook}
+          />
         )}
 
         {/* Tab 4: WORD GARDEN VIEW */}
         {visitedTabs.has('words') && (
-        <TabPane active={tab === 'words'}>
-          <div className="flex flex-col gap-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h2 className="font-serif-display text-2xl sm:text-3xl text-[#201a15] dark:text-[#f0e6d6]">
-                  Word Garden
-                </h2>
-                <p className="text-xs sm:text-sm text-[#706256] dark:text-[#a89a8a]">
-                  Words you've discovered while reading. Look up meanings instantly using Apple Books dictionary.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowLookupModal({ open: true })}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] flex items-center gap-1.5 shadow-sm"
-                >
-                  <Search className="w-3.5 h-3.5" />
-                  <span>Look up a word</span>
-                </button>
-                <button
-                  onClick={() => setShowWordPracticeModal(true)}
-                  className="px-3.5 py-2 rounded-xl text-xs font-semibold border border-[#2e5934] text-[#2e5934] dark:text-[#86b880] hover:bg-[#2e5934]/10"
-                >
-                  Quiz Me
-                </button>
-                <button
-                  onClick={() => setShowBulkModal({ open: true, type: 'words' })}
-                  className="px-3 py-2 rounded-xl text-xs font-semibold border border-[#e3d7c3] dark:border-[#382f25] text-[#706256] dark:text-[#a89a8a] hover:bg-black/5"
-                >
-                  Paste Words
-                </button>
-              </div>
-            </div>
-
-            {/* Word Search and Filters */}
-            <div className="flex flex-col sm:flex-row gap-3 items-center">
-              <div className="relative w-full sm:flex-1">
-                <Search className="w-4 h-4 text-[#706256] dark:text-[#a89a8a] absolute left-3 top-3 pointer-events-none" />
-                <input
-                  type="search"
-                  value={wordSearchQuery}
-                  onChange={e => setWordSearchQuery(e.target.value)}
-                  placeholder="Search discovered words or meanings…"
-                  className="w-full pl-9 pr-4 py-2 bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-xs rounded-xl focus:outline-none"
-                />
-              </div>
-
-              <div className="flex gap-2 w-full sm:w-auto">
-                <button
-                  onClick={() => setWordFilter('all')}
-                  className={`flex-1 sm:flex-none px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                    wordFilter === 'all'
-                      ? 'bg-[#2e5934] text-white border-[#2e5934]'
-                      : 'border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#706256] dark:text-[#a89a8a]'
-                  }`}
-                >
-                  All ({state.words.length})
-                </button>
-                <button
-                  onClick={() => setWordFilter('learning')}
-                  className={`flex-1 sm:flex-none px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                    wordFilter === 'learning'
-                      ? 'bg-[#2e5934] text-white border-[#2e5934]'
-                      : 'border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#706256] dark:text-[#a89a8a]'
-                  }`}
-                >
-                  Learning ({state.words.filter(w => !w.isLearned).length})
-                </button>
-                <button
-                  onClick={() => setWordFilter('learned')}
-                  className={`flex-1 sm:flex-none px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-                    wordFilter === 'learned'
-                      ? 'bg-[#2e5934] text-white border-[#2e5934]'
-                      : 'border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#706256] dark:text-[#a89a8a]'
-                  }`}
-                >
-                  Learned ({state.words.filter(w => w.isLearned).length})
-                </button>
-              </div>
-            </div>
-
-            {canAddSearchedWord && (
-              <button
-                type="button"
-                onClick={() => lookupAgain(searchedWord)}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-dashed border-[#2e5934] text-[#2e5934] dark:text-[#86b880] dark:border-[#86b880] bg-[#2e5934]/5 hover:bg-[#2e5934]/10 text-sm font-semibold active:scale-[0.99] transition-all"
-              >
-                <Plus className="w-4 h-4 shrink-0" />
-                <span className="truncate">Add “{searchedWord}” to Word Garden</span>
-              </button>
-            )}
-
-            {/* Word Cards Grid */}
-            {filteredWords.length === 0 ? (
-              <div className="p-12 text-center text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-2xl border border-[#e3d7c3] dark:border-[#382f25]">
-                <Sprout className="w-8 h-8 mx-auto mb-2 text-[#2e5934] opacity-70" />
-                <p className="text-sm font-medium">{canAddSearchedWord ? `“${searchedWord}” is not in your garden yet. Tap the button above to add it.` : 'No words found. Tap "Look up a word" to add your first discovery!'}</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredWords.map(w => (
-                  <WordCard
-                    key={w.id}
-                    word={w}
-                    onEdit={editWord}
-                    onLookup={lookupAgain}
-                    onToggleLearned={toggleWordLearned}
-                    onDelete={confirmDeleteWord}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </TabPane>
+          <WordsTab
+            active={tab === 'words'}
+            state={state}
+            updateWord={updateWord}
+            editWord={editWord}
+            lookupAgain={lookupAgain}
+            toggleWordLearned={toggleWordLearned}
+            confirmDeleteWord={confirmDeleteWord}
+            onLookupNew={openLookupNew}
+            onPractice={openPractice}
+            onPasteWords={openPasteWords}
+          />
         )}
 
         {/* Tab 5: ON MY DEVICE VIEW */}
         {visitedTabs.has('dev') && (
-        <TabPane active={tab === 'dev'}>
-          <div className="flex flex-col gap-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h2 className="font-serif-display text-2xl sm:text-3xl text-[#201a15] dark:text-[#f0e6d6]">
-                  On my device
-                </h2>
-                <p className="text-xs sm:text-sm text-[#706256] dark:text-[#a89a8a]">
-                  Books you keep on your device, plus everything you've finished. A book can be here and in your Library at once.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowAddBookModal({ open: true, isDevice: true })}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] flex items-center gap-1.5 shadow-sm"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add to Device</span>
-                </button>
-                <button
-                  onClick={() => setShowBulkModal({ open: true, type: 'books' })}
-                  className="px-3.5 py-2 rounded-xl text-xs font-semibold border border-[#e3d7c3] dark:border-[#382f25] text-[#706256] dark:text-[#a89a8a] hover:bg-black/5"
-                >
-                  Paste List
-                </button>
-              </div>
-            </div>
-
-            {/* Total Books on Device counter */}
-            <div className="flex items-center gap-2 text-xs text-[#706256] dark:text-[#a89a8a]">
-              <span><b>{onDeviceBooks.length + finishedBooks.length}</b> books on device{finishedBooks.length > 0 ? ` (${finishedBooks.length} finished)` : ''}</span>
-              <span>·</span>
-              {devicePages.known > 0 && (
-                <span>
-                  <b>{devicePages.known.toLocaleString()}</b> total pages
-                  {devicePages.unknown > 0 ? ` (${devicePages.unknown} ${devicePages.unknown === 1 ? 'book' : 'books'} without a page count)` : ''}
-                </span>
-              )}
-            </div>
-
-            {onDeviceBooks.length === 0 && finishedBooks.length === 0 ? (
-              <div className="p-12 text-center text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-2xl border border-[#e3d7c3] dark:border-[#382f25] flex flex-col items-center gap-3">
-                <Smartphone className="w-10 h-10 text-[#2e5934] opacity-70" />
-                <div>
-                  <h4 className="font-serif-display text-lg text-[#201a15] dark:text-[#f0e6d6]">
-                    Nothing on your device yet
-                  </h4>
-                  <p className="text-xs mt-1">
-                    Tap "Add to Device" or "Paste List" to add books you already own to your device shelf.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowAddBookModal({ open: true, isDevice: true })}
-                  className="mt-2 px-4 py-2 rounded-xl text-xs font-semibold bg-[#2e5934] text-white"
-                >
-                  + Add a Book to Device
-                </button>
-              </div>
-            ) : (
-              <>
-                {onDeviceBooks.length > 0 && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {onDeviceBooks.map(b => (
-                      <DeviceCard
-                        key={b.id}
-                        book={b}
-                        status={state.status[String(b.id)] || noStatus}
-                        highlightCount={(state.highlights[String(b.id)] || []).length}
-                        onOpen={handleOpenCover}
-                        onQuotes={handleOpenHighlights}
-                        onMoveToList={moveToReadingList}
-                        onRemoveFromDevice={confirmRemoveFromDevice}
-                        onReadAgain={readAgain}
-                      />
-                    ))}
-                  </div>
-                )}
-                {finishedBooks.length > 0 && (
-                  <section className="flex flex-col gap-3" aria-label="Finished books">
-                    <h3 className="font-serif-display text-xl text-[#201a15] dark:text-[#f0e6d6]">Finished ({finishedBooks.length})</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {finishedBooks.map(b => (
-                        <DeviceCard
-                          key={b.id}
-                          book={b}
-                          finished
-                          status="done"
-                          highlightCount={(state.highlights[String(b.id)] || []).length}
-                          onOpen={handleOpenCover}
-                          onQuotes={handleOpenHighlights}
-                          onMoveToList={moveToReadingList}
-                          onRemoveFromDevice={confirmRemoveFinished}
-                          onReadAgain={readAgain}
-                        />
-                      ))}
-                    </div>
-                  </section>
-                )}
-              </>
-            )}
-          </div>
-        </TabPane>
+          <DeviceTab
+            active={tab === 'dev'}
+            onDeviceBooks={onDeviceBooks}
+            finishedBooks={finishedBooks}
+            state={state}
+            handleOpenCover={handleOpenCover}
+            handleOpenHighlights={handleOpenHighlights}
+            moveToReadingList={moveToReadingList}
+            readAgain={readAgain}
+            confirmRemoveFromDevice={confirmRemoveFromDevice}
+            confirmRemoveFinished={confirmRemoveFinished}
+            onAddToDevice={openAddToDevice}
+            onPasteList={openPasteList}
+          />
         )}
 
         {/* Footer: Cozy footer with perfectly rounded Backup & Refresh buttons */}
@@ -1047,6 +420,17 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-3">
+            {tab === 'store' && (
+              <button
+                onClick={() => setCustomizing(c => !c)}
+                className={`w-10 h-10 aspect-square rounded-full border bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880] ${customizing ? 'border-[#2e5934] dark:border-[#86b880] ring-2 ring-[#2e5934]/30' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}
+                title="Customize Store: reorder, hide and refresh shelves"
+                aria-label="Customize Store"
+                aria-pressed={customizing}
+              >
+                <SlidersHorizontal className="w-4 h-4 text-[#2e5934] dark:text-[#86b880]" />
+              </button>
+            )}
             <button
               onClick={() => setShowBackupModal(true)}
               className="w-10 h-10 aspect-square rounded-full border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880]"
@@ -1098,16 +482,23 @@ export default function App() {
       </nav>
 
       {/* Modal 1: Apple Books Detail Modal (when tapping any book cover) */}
-      {selectedBookForDetail && (
+      {selectedBookForDetail && (() => {
+        // The same book can sit in the library under a different record id (search vs Store vs NYT): use the one you own
+        const owned = libraryBooks.find(b => b.id === selectedBookForDetail.id)
+          ?? libraryBooks.find(b => sameWork(b, selectedBookForDetail, true));
+        const ownKey = String(owned ? owned.id : selectedBookForDetail.id);
+        // Search, Store and NYT copies of a book you own show YOUR copy's rating, so one book never shows two ratings
+        const shownBook = withKnownRating(selectedBookForDetail, [...DEFAULT_BOOKS, ...libraryBooks]);
+        return (
         <AppleBookDetailModal
-          book={selectedBookForDetail}
-          inLibrary={libraryBooks.some(b => b.id === selectedBookForDetail.id)}
-          onDevice={allBooks.some(b => b.id === selectedBookForDetail.id && (b.isOnDevice || state.status[String(b.id)] === 'done'))}
-          readingStatus={state.status[String(selectedBookForDetail.id)]}
-          currentPage={state.currentPage[String(selectedBookForDetail.id)]}
-          totalPages={state.totalPages[String(selectedBookForDetail.id)]}
-          note={state.notes[String(selectedBookForDetail.id)]}
-          highlightsCount={(state.highlights[String(selectedBookForDetail.id)] || []).length}
+          book={shownBook}
+          inLibrary={!!owned}
+          onDevice={allBooks.some(b => String(b.id) === ownKey && (b.isOnDevice || state.status[ownKey] === 'done'))}
+          readingStatus={state.status[ownKey]}
+          currentPage={state.currentPage[ownKey]}
+          totalPages={state.totalPages[ownKey]}
+          note={state.notes[ownKey]}
+          highlightsCount={(state.highlights[ownKey] || []).length}
           onClose={() => setSelectedBookForDetail(null)}
           onAddToLibrary={b => {
             addBook(b, 'library');
@@ -1116,12 +507,13 @@ export default function App() {
             addBook(b, 'device');
           }}
           onOpenHighlights={() => {
-            const b = selectedBookForDetail;
+            const b = owned ?? selectedBookForDetail;
             setSelectedBookForDetail(null);
             setSelectedBookForHighlights(b);
           }}
         />
-      )}
+        );
+      })()}
 
       <Suspense fallback={null}>
       {/* Modal 2: Apple Look Up Modal */}

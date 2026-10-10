@@ -23,10 +23,9 @@ export const AppleLookUpModal: React.FC<AppleLookUpModalProps> = ({
   const [query, setQuery] = useState(existingWordItem ? existingWordItem.word : initialWord);
   const [lookupResult, setLookupResult] = useState<LookupResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
   
   // Custom user inputs
-  const [selectedBookId, setSelectedBookId] = useState<string | number>(existingWordItem?.bookId || '');
+  const [selectedBookId, setSelectedBookId] = useState<string | number>(existingWordItem?.bookId ?? '');
   const [quoteSentence, setQuoteSentence] = useState(existingWordItem?.quoteSentence || '');
   const [customDefinition, setCustomDefinition] = useState(existingWordItem?.definition || '');
   const [wikiData, setWikiData] = useState<{ title: string; extract: string; img?: string; url?: string } | null>(null);
@@ -44,13 +43,11 @@ export const AppleLookUpModal: React.FC<AppleLookUpModalProps> = ({
     if (!clean) {
       setLookupResult(null);
       setWikiData(null);
-      setErrorMsg('');
       setLoading(false);
       return;
     }
 
     setLoading(true);
-    setErrorMsg('');
 
     try {
       // 1. Dictionary lookup
@@ -85,7 +82,6 @@ export const AppleLookUpModal: React.FC<AppleLookUpModalProps> = ({
       }
     } catch (err: any) {
       console.warn('Lookup error:', err);
-      if (!isStale()) setErrorMsg('No definition found for this exact spelling.');
     } finally {
       if (!isStale()) setLoading(false);
     }
@@ -108,7 +104,6 @@ export const AppleLookUpModal: React.FC<AppleLookUpModalProps> = ({
     lookupSeq.current++;
     setLookupResult(null);
     setWikiData(null);
-    setErrorMsg('');
     setLoading(!!val.trim());
     clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
@@ -139,7 +134,7 @@ export const AppleLookUpModal: React.FC<AppleLookUpModalProps> = ({
       example: lookupResult?.example || ex?.example || '',
       etymology: lookupResult?.etymology ?? ex?.etymology,
       synonyms: lookupResult?.synonyms || ex?.synonyms || [],
-      bookId: selectedBookId || undefined,
+      bookId: selectedBookId === '' ? undefined : selectedBookId, // book id 0 is a real book
       bookTitle: matchedBook?.title,
       quoteSentence: quoteSentence.trim() || undefined,
       isLearned: existingWordItem ? existingWordItem.isLearned : false,
@@ -204,7 +199,6 @@ export const AppleLookUpModal: React.FC<AppleLookUpModalProps> = ({
                   setQuery('');
                   setLookupResult(null);
                   setWikiData(null);
-                  setErrorMsg('');
                   setLoading(false);
                 }}
                 className="absolute right-3 p-1 text-[#706256] dark:text-[#a89a8a] hover:text-[#201a15]"

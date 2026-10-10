@@ -93,10 +93,15 @@ async function resolveBook(title, author) {
   else if (ol?.coverId) rec.coverId = ol.coverId;
   else if (gb?.coverUrl) rec.coverUrl = gb.coverUrl;
 
-  const ratingAvg = apple?.ratingAverage || ol?.ratingAverage || gb?.ratingAverage;
-  if (ratingAvg) rec.ratingAverage = ratingAvg;
-  const ratingCount = apple?.ratingCount || ol?.ratingCount || gb?.ratingCount;
-  if (ratingCount) rec.ratingCount = ratingCount;
+  // A rating is ONE source's average + count, taken together (never an average from one site with another's count, never a sum).
+  // Ladder, as in src/services/books/ratings.ts: Open Library, then Google Books; Apple's readers are not used for the stars.
+  // A source with fewer than 10 ratings only wins when no other source has a rating.
+  const ladder = [ol, gb].filter(r => r?.ratingAverage);
+  const pick = ladder.find(r => (r.ratingCount || 0) >= 10) || ladder[0];
+  if (pick) {
+    rec.ratingAverage = pick.ratingAverage;
+    if (pick.ratingCount) rec.ratingCount = pick.ratingCount;
+  }
 
   const pages = ol?.pages || gb?.pages; // unknown stays unknown (never invent a page count)
   if (pages) rec.pageCount = pages;
@@ -114,6 +119,8 @@ let out = {};
 try { out = JSON.parse(await fs.readFile(OUT, 'utf8')); } catch {}
 
 // Optional time limit: `node scripts/prefetch-store.mjs --max-minutes=10` stops politely (re-run to finish the rest)
+// `--redo-ratings` fetches every book again, so ratings saved by an older version of this script are rewritten under the policy above
+const redoRatings = process.argv.includes('--redo-ratings');
 const maxMinutes = Number((process.argv.find(a => a.startsWith('--max-minutes=')) || '').split('=')[1]) || 0;
 const deadline = maxMinutes ? Date.now() + maxMinutes * 60_000 : Infinity;
 
@@ -126,7 +133,7 @@ for (const shelf of shelves) {
   // Resolve books in shelf in chunks of 4 concurrent
   const tasks = shelf.seeds.map(([title, author], i) => async () => {
     const existing = out[shelf.id][i];
-    if (existing && existing.title === title && (existing.coverUrl || existing.coverId) && existing.ratingAverage) {
+    if (!redoRatings && existing && existing.title === title && (existing.coverUrl || existing.coverId) && existing.ratingAverage) {
       return;
     }
     const resolved = await resolveBook(title, author);

@@ -89,7 +89,7 @@ self.addEventListener('fetch', (event) => {
 
   // ---- same origin ----
   if (url.origin === self.location.origin) {
-    if (url.pathname === '/sw.js' || url.pathname.endsWith('.zip') || url.pathname.startsWith('/api/')) return;
+    if (url.pathname === '/sw.js' || url.pathname === '/version.json' || url.pathname.endsWith('.zip') || url.pathname.startsWith('/api/')) return; // always the network: these must never be stale
     if (req.mode === 'navigate') return event.respondWith(navigate(req));
     if (url.pathname.startsWith('/assets/')) return event.respondWith(cacheFirst(req, SHELL));
     if (url.pathname === '/' || url.pathname.endsWith('.html')) return event.respondWith(networkFirst(req, SHELL, 4000));
@@ -101,6 +101,8 @@ self.addEventListener('fetch', (event) => {
   if (req.destination === 'image') return event.respondWith(coverImage(req));
   if (host === 'fonts.googleapis.com') return event.respondWith(staleWhileRevalidate(event, req, FONT));
   if (host === 'fonts.gstatic.com') return event.respondWith(cacheFirst(req, FONT));
+  // Wikipedia's API also feeds the Store's prize shelves (Oprah, Women's Prize, International Booker): those answers must stay fresh
+  if (host === 'en.wikipedia.org' && url.pathname === '/w/api.php') return event.respondWith(ttlFetch(req, API, 12 * HOUR));
   if (DICT_HOSTS.includes(host)) return event.respondWith(ttlFetch(req, API, 30 * DAY));
   if (BOOK_HOSTS.includes(host)) return event.respondWith(ttlFetch(req, API, 12 * HOUR));
 });

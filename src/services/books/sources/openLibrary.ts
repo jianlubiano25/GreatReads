@@ -1,5 +1,5 @@
 import { getJson } from '../http';
-import { cleanIsbn, titlesMatch, authorListMatches, workIdFromKey } from '../identity';
+import { authorVariants, cleanIsbn, titleVariants, titlesMatch, authorListMatches, workIdFromKey } from '../identity';
 import { genreFromSubjects, makeBook } from '../model';
 import type { CallOpts, Hit } from './types';
 
@@ -47,7 +47,7 @@ export function olDocToHit(doc: OlDoc, idx = 0, genreHint = ''): Hit {
 /** Raw search. Never throws; returns [] on any failure. */
 export async function searchOpenLibrary(params: Record<string, string>, limit: number, opts: CallOpts = {}): Promise<Hit[]> {
   const q = new URLSearchParams({ limit: String(limit), fields: FIELDS, ...params });
-  const data = await getJson(`${OL}/search.json?${q}`, { signal: opts.signal });
+  const data = await getJson(`${OL}/search.json?${q}`, { signal: opts.signal, retries: opts.retries });
   return ((data?.docs || []) as OlDoc[]).filter(d => d?.title).map((d, i) => olDocToHit(d, i));
 }
 
@@ -66,9 +66,19 @@ export async function findOpenLibrary(q: { title: string; author?: string; isbn?
   const isbn = cleanIsbn(q.isbn);
   let hits = isbn ? await searchOpenLibrary({ isbn }, 3, opts) : [];
   if (!hits.length) {
-    const params: Record<string, string> = { title: q.title };
-    if (q.author && !/^(Unknown|Featured) Author$/.test(q.author)) params.author = q.author;
-    hits = (await searchOpenLibrary(params, 6, opts)).filter(h => titlesMatch(h.book.title, q.title) && authorListMatches(h.book.author, q.author || ''));
+    // The title as given, without its subtitle, then each half of an "English, Original" dual title; the author as given, then with a hyphen closed up. The first search that finds
+    // the book wins, so a book that is listed under a shorter title or another spelling of the name still gets its cover.
+    const named = !!q.author && !/^(Unknown|Featured) Author$/.test(q.author);
+    const titles = titleVariants(q.title);
+    for (const title of titles) {
+      for (const author of named ? authorVariants(q.author) : [undefined]) {
+        const params: Record<string, string> = { title };
+        if (author) params.author = author;
+        hits = (await searchOpenLibrary(params, 6, opts)).filter(h => titlesMatch(h.book.title, q.title) && authorListMatches(h.book.author, q.author || ''));
+        if (hits.length || opts.signal?.aborted) break;
+      }
+      if (hits.length || opts.signal?.aborted) break;
+    }
   }
   if (!hits.length) return null;
   const withCover = hits.filter(h => h.book.coverId);

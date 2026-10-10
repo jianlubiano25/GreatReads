@@ -124,3 +124,23 @@ test('NYT list keeps the NYT order and exact edition ids', () => {
   assert.equal(entries[0].cover, 'https://img/1.jpg');
   assert.equal(nytTitleCase('Already Mixed'), 'Already Mixed');
 });
+
+test('titles: different subtitles are different books (series volumes)', () => {
+  assert.equal(titlesMatch('Mistborn: The Final Empire', 'Mistborn: The Well of Ascension'), false);
+  assert.equal(titlesMatch('The Lord of the Rings: The Fellowship of the Ring', 'The Lord of the Rings: The Two Towers'), false);
+  assert.equal(titlesMatch('Star Wars - Thrawn', 'Star Wars - Heir to the Empire'), false);
+});
+
+test('titles: a missing, generic or shortened subtitle still matches', () => {
+  assert.equal(titlesMatch('The Fruit Fly: A Novel', 'The Fruit Fly'), true);
+  assert.equal(titlesMatch('Atomic Habits: An Easy & Proven Way to Build Good Habits', 'Atomic Habits'), true);
+  assert.equal(titlesMatch('Atomic Habits: An Easy & Proven Way to Build Good Habits & Break Bad Ones', 'Atomic Habits: An Easy & Proven Way to Build Good Habits'), true);
+  assert.equal(titlesMatch('Dune', 'Dune: Messiah'), true); // cannot be told apart safely (see Atomic Habits)
+});
+
+test('sameWork: Mistborn volumes by one author are not the same work', () => {
+  const a = book({ id: 'a', title: 'Mistborn: The Final Empire', author: 'Brandon Sanderson' });
+  const b = book({ id: 'b', title: 'Mistborn: The Well of Ascension', author: 'Brandon Sanderson' });
+  assert.equal(sameWork(a, b), false);
+  assert.equal(sameWork(a, { ...a, id: 'c' }), true);
+});
