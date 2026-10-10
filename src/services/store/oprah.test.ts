@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 // @ts-ignore plain JS module with no type declarations
 import { onRequestGet as oprahFn, parseOprahList } from '../../../functions/api/oprah.js';
-import { DYNAMIC_SPECS, oprahNewest, refreshShelf } from './dynamic';
+import { DYNAMIC_SPECS, dynamicInfo, oprahNewest, refreshShelf } from './dynamic';
 import { splitPairedTitle } from './wikiLists';
 import { routeFetch } from './testkit';
 import { CURATED_SHELVES } from '../../data/storeCatalog';
@@ -81,4 +81,18 @@ test('Oprah shelf: ONE refresh adds Oprah Daily\'s new picks in front; the defau
   // Oprah Daily down: the refresh fails and the saved list stays
   routeFetch([u => (u.pathname === '/api/oprah' ? { status: 502, body: { error: 'layout_changed' } } : undefined)]);
   assert.equal(await refreshShelf({ ...base, id: 't-oprah-down' }, DYNAMIC_SPECS.oprah), null);
+});
+
+test('parseOprahList: the number in a tag of its own still reads as an entry', () => {
+  const html = Array.from({ length: 9 }, (_, i) => `<div><span>${120 - i}</span><h2>“Title ${120 - i},” Author ${120 - i}</h2></div>`).join('');
+  const out = parseOprahList(html);
+  assert.equal(out.length, 9);
+  assert.deepEqual([out[0].n, out[0].title, out[0].author], [120, 'Title 120', 'Author 120']);
+});
+
+test('a failing Oprah refresh says why, so Customize Store can show it', async () => {
+  const base = CURATED_SHELVES.find(s => s.id === 'oprah')!;
+  routeFetch([u => (u.pathname === '/api/oprah' ? { status: 502, body: { error: 'upstream_error', upstream: 403 } } : undefined)]);
+  assert.equal(await refreshShelf({ ...base, id: 't-oprah-why' }, DYNAMIC_SPECS.oprah), null);
+  assert.match(dynamicInfo({ ...base, id: 't-oprah-why' }, DYNAMIC_SPECS.oprah).source, /Oprah Daily could not be read/);
 });

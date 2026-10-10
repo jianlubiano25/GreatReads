@@ -35,6 +35,10 @@ export function parseOprahList(html) {
     .split('\u0000')
     .map(n => decode(n).replace(/\s+/g, ' ').trim())
     .filter(Boolean);
+  // The number may sit in a tag of its own ("112" or "112." then the entry): join it to the entry that follows
+  for (let i = 0; i + 1 < nodes.length; i++) {
+    if (/^\d{1,3}$/.test(nodes[i]) && /^[\u201c"]/.test(nodes[i + 1])) { nodes.splice(i, 2, `${nodes[i]}. ${nodes[i + 1]}`); }
+  }
   const byNumber = new Map();
   for (let i = 0; i < nodes.length; i++) {
     // An entry may be split over several tags (the number, the title, the author): join up to three pieces until it reads as one
@@ -60,7 +64,12 @@ export async function onRequestGet() {
   let html;
   try {
     const res = await fetch(PAGE, {
-      headers: { 'user-agent': 'GreatReads/1.0 (a reading app; reads the public Oprah Daily book club list; github.com/jianlubiano25/GreatReads)', accept: 'text/html' },
+      // A browser-like request: this publisher turns away requests that announce themselves as a script
+      headers: {
+        'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
+        accept: 'text/html,application/xhtml+xml',
+        'accept-language': 'en-US,en;q=0.9',
+      },
       // Cache only 2xx at Cloudflare's edge (12 h). Errors are never cached.
       cf: { cacheEverything: true, cacheTtlByStatus: { '200-299': 12 * 3600, '400-599': -1 } },
     });

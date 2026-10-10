@@ -1,7 +1,7 @@
 import type { Book } from '../../types';
 import { CURATED_SHELVES, type CuratedShelf } from '../../data/storeCatalog';
 import { persistentCache } from '../books/cache';
-import { dedupeInflight, getJson, pool } from '../books/http';
+import { dedupeInflight, getJson, getJsonDetailed, pool } from '../books/http';
 import { authorKey, isUnknownAuthor, titleKey } from '../books/identity';
 import { shrunkRating } from '../books/model';
 import { isExplicit } from '../books/quality';
@@ -67,7 +67,7 @@ const DAY = 24 * HOUR;
 export const RETRY_MS = HOUR;
 const store = persistentCache<Saved>('readlife.dynseeds1', { ttl: 400 * DAY, max: 30 });
 /** How the last attempt to refresh each shelf ended (kept apart from the saved list, which only ever changes on success). */
-const attempts = persistentCache<{ at: number; ok: boolean }>('readlife.dynstatus1', { ttl: 60 * DAY, max: 40 });
+const attempts = persistentCache<{ at: number; ok: boolean; /** why the last try failed, when the source said */ why?: string }>('readlife.dynstatus1', { ttl: 60 * DAY, max: 40 });
 
 /**
  * One-time resets of a shelf's SAVED list on this device: the shelf goes back to its hand-picked list, and its next refresh adds the
@@ -163,10 +163,11 @@ export function mergeAppend(found: Seed[], existing: Seed[], cap = APPEND_CAP, k
 export async function refreshShelf(shelf: CuratedShelf, spec: DynamicSpec, now = Date.now()): Promise<Saved | null> {
   const old = saved.get(shelf.id);
   let fresh: Fresh | null = null;
-  try { fresh = await politely(() => spec.fetch(shelf)); } catch { /* a source failing is routine */ }
+  let why: string | undefined;
+  try { fresh = await politely(() => spec.fetch(shelf)); } catch (e) { why = e instanceof Error ? e.message : undefined; /* a source failing is routine */ }
   const found = fresh ? cleanSeeds(fresh.seeds) : [];
   if (found.length < spec.minSeeds) {
-    attempts.set(shelf.id, { at: now, ok: false });
+    attempts.set(shelf.id, { at: now, ok: false, why });
     if (old) saved.set(shelf.id, { ...old, tried: now }); // keep the stale list; try again in an hour
     return null;
   }
@@ -196,7 +197,7 @@ export const dynamicInfo = (base: CuratedShelf, spec: DynamicSpec): ShelfInfo =>
     : spec.kind === 'generated' ? `${spec.source} · GreatReads discovery, not an official list`
     : `${spec.source} · public record, not the official list`;
   const last = attempts.get(base.id);
-  const note = last && !last.ok && (!s || last.at > s.at) ? ` · last check failed (source unreadable): showing the ${s ? 'saved' : 'hand-picked'} list` : '';
+  const note = last && !last.ok && (!s || last.at > s.at) ? ` · last check failed (${last.why ?? 'source unreadable'}): showing the ${s ? 'saved' : 'hand-picked'} list` : '';
   return {
     updatedAt: s?.at,
     schedule: `Refreshes ${everyLabel(spec.refreshMs)}`,
@@ -327,6 +328,12 @@ export function oprahNewest(official: { title: string; author: string }[], max =
   return official.slice(0, max).flatMap(p => splitPairedTitle(p.title).map(title => [title, p.author, "Oprah's Book Club"] as Seed));
 }
 
+/** Why /api/oprah gave nothing, in words for Customize Store (so a failing refresh says what to fix). */
+const oprahProblem = (status: number, failure?: string) =>
+  status === 404 || failure === 'not-json' ? 'the Oprah function is not running here: it only exists on the deployed site'
+  : status === 502 ? 'Oprah Daily could not be read: the page blocked the request or its layout changed (run npm run check:oprah)'
+  : failure === 'timeout' ? 'Oprah Daily took too long' : failure === 'network' ? 'no connection' : `Oprah Daily answered nothing usable (${status || failure || 'unknown'})`;
+
 const oprahSpec = (): DynamicSpec => ({
   source: 'oprahdaily.com (the complete Oprah\'s Book Club list)',
   kind: 'official',
@@ -335,9 +342,10 @@ const oprahSpec = (): DynamicSpec => ({
   cap: 60,
   keepExisting: true,
   fetch: async (_shelf, signal) => {
-    const j = await getJson('/api/oprah', { timeout: 20000, signal }).catch(() => null);
-    const official = (Array.isArray(j?.picks) ? j.picks : []).filter((p: any) => p && typeof p.title === 'string' && typeof p.author === 'string');
-    return official.length ? { seeds: oprahNewest(official), official: true } : null;
+    const r = await getJsonDetailed('/api/oprah', { timeout: 20000, signal, retries: 1 });
+    const official = (Array.isArray(r.data?.picks) ? r.data.picks : []).filter((p: any) => p && typeof p.title === 'string' && typeof p.author === 'string');
+    if (!official.length) throw new Error(oprahProblem(r.status, r.failure));
+    return { seeds: oprahNewest(official), official: true };
   },
 });
 
