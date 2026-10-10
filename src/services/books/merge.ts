@@ -17,6 +17,7 @@ export function mergeBooks(a: Book, b: Book): Book {
   if (!ratingOf(out) && ratingOf(b)) {
     out.ratingAverage = b.ratingAverage;
     out.ratingCount = b.ratingCount;
+    out.ratingSource = b.ratingSource;
   }
   if (!hasRealSummary(out.summary) && hasRealSummary(b.summary)) out.summary = b.summary;
   if (!out.authorBio && b.authorBio) out.authorBio = b.authorBio;

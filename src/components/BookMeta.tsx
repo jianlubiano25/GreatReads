@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react'
 import { Book } from '../types';
 import { BOOK_AWARDS } from '../data/defaultBooks';
 import { honorKind, mergeHonors } from '../services/store/honors';
+import { starFills } from '../services/books';
 import { coverKey, getCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, reportMissingCover, clearMissingCover } from '../services/books';
 
 export type AwardKind = 'w' | 's' | 'c'; // winner, shortlist, other pick (book club, series...)
@@ -20,6 +21,22 @@ export const stars = (r: number) => {
   const count = Math.max(0, Math.min(5, Math.round(r) || 0));
   return '★'.repeat(count) + '☆'.repeat(5 - count);
 };
+/** Five stars, each filled by exactly its share of the rating: 4.0 is four full stars, 4.5 four and a half, 3.2 three full, one filled 20%, one empty. */
+export function StarRating({ value, className = '' }: { value: number; className?: string }) {
+  return (
+    <span className={`inline-flex gap-px leading-none ${className}`} role="img" aria-label={`${value.toFixed(1)} out of 5 stars`}>
+      {starFills(value).map((fill, i) => (
+        <span key={i} aria-hidden="true" className="relative inline-block">
+          <span style={{ color: '#d9a441', opacity: 0.28 }}>★</span>
+          {fill > 0 && (
+            <span className="absolute left-0 top-0 overflow-hidden whitespace-nowrap" style={{ width: `${fill * 100}%`, color: '#d9a441' }}>★</span>
+          )}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 export const compactCount = (n?: number) => (!n ? '' : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
 /** ★★★★☆ 4.2 · 11k ratings (renders nothing if the book has no rating) */

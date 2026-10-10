@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { Book } from '../types';
 import { DIFFICULTY_LABELS, SHELF_LABELS } from '../data/defaultBooks';
-import { enrichBookDetails, fetchBookMeta } from '../services/books';
-import { CoverFace, stars, compactCount, honorsListFor } from './BookMeta';
+import { enrichBookDetails, fetchBookMeta, fetchRatingSources, inferRatingSource, otherRatings, RATING_SOURCE_LABEL, type SourceRating } from '../services/books';
+import { CoverFace, StarRating, compactCount, honorsListFor } from './BookMeta';
 import { X, BookOpen, Smartphone, Star, Award, ChevronDown, Check, Bookmark } from 'lucide-react';
 
 interface AppleBookDetailModalProps {
@@ -82,7 +82,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           if (prev.year && prev.year !== 'N/A') next.year = prev.year;
           if (prev.difficulty) next.difficulty = prev.difficulty;
           // What the card showed is what the sheet shows; live data only fills the gaps
-          if (prev.ratingAverage) { next.ratingAverage = prev.ratingAverage; next.ratingCount = prev.ratingCount; }
+          if (prev.ratingAverage) { next.ratingAverage = prev.ratingAverage; next.ratingCount = prev.ratingCount; next.ratingSource = prev.ratingSource; }
           if (prev.pageCount) next.pageCount = prev.pageCount;
           return next;
         });
@@ -90,6 +90,18 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
     }
     return () => { live = false; };
   }, [initialBook.id]);
+
+  // What each site says about the book (shown beside the main rating). Loaded quietly; the sheet never waits for it.
+  const [siteRatings, setSiteRatings] = useState<SourceRating[]>([]);
+  useEffect(() => {
+    let live = true;
+    const ctl = new AbortController();
+    fetchRatingSources(initialBook, { signal: ctl.signal }).then(r => { if (live) setSiteRatings(r); }).catch(() => {});
+    return () => { live = false; ctl.abort(); };
+  }, [initialBook.id]);
+  const mainSource = inferRatingSource(book, siteRatings);
+  const otherSites = otherRatings(siteRatings, mainSource);
+  const ratingsText = (r: { count?: number }) => (r.count ? `${compactCount(r.count)} ${r.count === 1 ? 'rating' : 'ratings'}` : '');
 
   const awards = honorsListFor(book);
   const displayPages = propTotalPages || book.pageCount || 0;
@@ -362,16 +374,33 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           )}
         </div>
 
-        {/* Ratings */}
-        {book.ratingAverage ? (
+        {/* Ratings: the main rating (one site's average + count) and, beside it, what the other sites say */}
+        {book.ratingAverage || otherSites.length ? (
           <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25]">
-            <h4 className="font-serif-display text-lg mb-2">Ratings</h4>
-            <div className="flex items-center gap-4">
-              <span className="font-serif-display text-5xl leading-none">{book.ratingAverage.toFixed(1)}</span>
-              <div>
-                <span className="rl-stars text-lg">{stars(book.ratingAverage)}</span>
-                {book.ratingCount ? <div className="text-sm text-[#706256] dark:text-[#a89a8a]">{compactCount(book.ratingCount)} ratings</div> : null}
-              </div>
+            <h4 className="font-serif-display text-lg mb-2">
+              Ratings{book.ratingAverage && mainSource ? <span className="font-sans text-sm font-normal text-[#706256] dark:text-[#a89a8a]"> · {RATING_SOURCE_LABEL[mainSource]}</span> : null}
+            </h4>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+              {book.ratingAverage ? (
+                <div className="flex items-center gap-4">
+                  <span className="font-serif-display text-5xl leading-none">{book.ratingAverage.toFixed(1)}</span>
+                  <div>
+                    <StarRating value={book.ratingAverage} className="text-lg" />
+                    {book.ratingCount ? <div className="text-sm text-[#706256] dark:text-[#a89a8a]">{compactCount(book.ratingCount)} ratings</div> : null}
+                  </div>
+                </div>
+              ) : null}
+              {otherSites.length ? (
+                <ul className="flex flex-col gap-1 text-xs text-[#706256] dark:text-[#a89a8a]" aria-label="Ratings from other sites">
+                  {otherSites.map(r => (
+                    <li key={r.source} className="flex items-center gap-1.5">
+                      <span className="font-semibold">{RATING_SOURCE_LABEL[r.source]}</span>
+                      <StarRating value={r.average} className="text-xs" />
+                      <span>{r.average.toFixed(1)}{r.count ? ` · ${ratingsText(r)}` : ''}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
           </div>
         ) : null}

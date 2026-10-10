@@ -1,11 +1,14 @@
 import type { Book } from '../../types';
 import { getJson } from './http';
 import { persistentCache } from './cache';
-import { identityOf, isUnknownAuthor, primaryAuthor } from './identity';
+import { bookKey, identityOf, isUnknownAuthor, primaryAuthor } from './identity';
+import { ratingOf, type SourceRating } from './ratings';
 import { difficultyFor, genreFromSubjects, plainText } from './model';
 import { resolveBook } from './resolve';
+import { findApple } from './sources/appleBooks';
 import { findGoogle } from './sources/googleBooks';
-import { findOpenLibrary, openLibraryDescription, openLibraryEditionPages, openLibraryWorkRecord } from './sources/openLibrary';
+import type { CallOpts } from './sources/types';
+import { findOpenLibrary, openLibraryDescription, openLibraryEditionPages, openLibraryRatings, openLibraryWorkRecord } from './sources/openLibrary';
 
 /** Book detail sheet helpers: a real synopsis and author bio, and refreshed pages / genre / year / ratings. */
 
@@ -57,7 +60,7 @@ export async function fetchBookMeta(book: Book): Promise<Partial<Book> | null> {
   let pages = d?.pageCount;
   const wid = workId || d?.identity?.olWork;
   if (!pages && wid) pages = (await openLibraryEditionPages(wid)) ?? 0;
-  if (d?.ratingAverage) { meta.ratingAverage = d.ratingAverage; meta.ratingCount = d.ratingCount; }
+  if (d?.ratingAverage) { meta.ratingAverage = d.ratingAverage; meta.ratingCount = d.ratingCount; meta.ratingSource = 'openlibrary'; }
   if (d?.year) meta.year = d.year;
   const genre = found ? genreFromSubjects(found.flags.subjects) : '';
   if (genre) meta.genre = genre;
@@ -68,7 +71,7 @@ export async function fetchBookMeta(book: Book): Promise<Partial<Book> | null> {
     const r = await resolveBook({ title: book.title, author: isUnknownAuthor(book.author) ? '' : primaryAuthor(book.author), isbn: id.isbn13 || id.isbn10, fallbackId: book.id });
     const rb = r?.book;
     if (rb) {
-      if (!meta.ratingAverage && rb.ratingAverage) { meta.ratingAverage = rb.ratingAverage; meta.ratingCount = rb.ratingCount; } // a pair, from one source
+      if (!meta.ratingAverage && rb.ratingAverage) { meta.ratingAverage = rb.ratingAverage; meta.ratingCount = rb.ratingCount; meta.ratingSource = rb.ratingSource; } // a pair, from one source
       if (!meta.pageCount && rb.pageCount) meta.pageCount = rb.pageCount;
       if (!meta.year && rb.year) meta.year = rb.year;
       if (!meta.genre) { const g = genreFromSubjects(r!.flags.subjects); if (g) meta.genre = g; }
@@ -78,4 +81,43 @@ export async function fetchBookMeta(book: Book): Promise<Partial<Book> | null> {
 
   if (Object.keys(meta).length) metaCache.set(key, meta);
   return Object.keys(meta).length ? meta : null;
+}
+
+const sourcesCache = persistentCache<SourceRating[]>('readlife.ratingsrc1', { ttl: 7 * 24 * 60 * 60 * 1000, max: 300 });
+
+/**
+ * What each site says about this book, for the book info: Open Library, Google Books and Apple Books, each its own average + count
+ * (never combined). Only sites that have a rating are returned. Cached per book; a site that cannot be reached is simply left out.
+ */
+export async function fetchRatingSources(book: Book, opts: CallOpts = {}): Promise<SourceRating[]> {
+  const key = bookKey(book);
+  const hit = sourcesCache.get(key);
+  if (hit) return hit;
+
+  const id = identityOf(book);
+  const author = isUnknownAuthor(book.author) ? '' : primaryAuthor(book.author);
+  const q = { title: book.title, author, isbn: id.isbn13 || id.isbn10 };
+  const pair = async (source: SourceRating['source'], run: () => Promise<Pick<Book, 'ratingAverage' | 'ratingCount'> | null | undefined>): Promise<SourceRating | null> => {
+    try {
+      const r = ratingOf(await run());
+      return r ? { average: r.average, count: r.count, source } : null;
+    } catch {
+      return null;
+    }
+  };
+  const [ol, google, apple] = await Promise.all([
+    pair('openlibrary', async () => {
+      const found = (id.olWork ? await openLibraryWorkRecord(id.olWork, opts) : null) ?? (await findOpenLibrary(q, opts));
+      const direct = ratingOf(found?.book);
+      if (direct) return found!.book;
+      const wid = id.olWork || found?.book.identity?.olWork;
+      const r = wid ? await openLibraryRatings(wid, opts) : null;
+      return r ? { ratingAverage: r.average, ratingCount: r.count } : null;
+    }),
+    pair('google', async () => (await findGoogle(q, opts))?.book),
+    pair('apple', async () => (await findApple({ title: book.title, author }, opts))?.book),
+  ]);
+  const out = [ol, google, apple].filter((r): r is SourceRating => !!r);
+  if (!opts.signal?.aborted && out.length) sourcesCache.set(key, out);
+  return out;
 }

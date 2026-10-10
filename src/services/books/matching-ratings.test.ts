@@ -1,8 +1,10 @@
 // Run with: npm test
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { titlesMatch, titleVariants, dualTitleParts, subtitleKey, sameWork } from './identity';
-import { chooseRating, knownRating, withKnownRating, ratingOf } from './ratings';
+import { titlesMatch, titleVariants, dualTitleParts, subtitleKey, sameWork, authorsCompatible } from './identity';
+import { chooseRating, knownRating, withKnownRating, ratingOf, starFills, otherRatings, inferRatingSource } from './ratings';
+import { fetchRatingSources } from './details';
+import { repairSeeds } from '../store/dynamic';
 import { mergeBooks } from './merge';
 import { resolveBook } from './resolve';
 import { findApple } from './sources/appleBooks';
@@ -66,7 +68,7 @@ test('same book in the library lends its rating as a pair, whatever the record i
   const mine = book({ id: 0, title: 'Piranesi', author: 'Susanna Clarke', ratingAverage: 4.4, ratingCount: 1200 });
   const store = book({ id: 'ol__works_OL1W', title: 'Piranesi: A Novel', author: 'Clarke, Susanna', ratingAverage: 4.1, ratingCount: 99999 });
   const other = book({ id: 'x', title: 'Piranesi', author: 'Somebody Else', ratingAverage: 3, ratingCount: 7 });
-  assert.deepEqual(knownRating(store, [mine]), { average: 4.4, count: 1200 });
+  assert.deepEqual(knownRating(store, [mine]), { average: 4.4, count: 1200, source: 'library' });
   const shown = withKnownRating(store, [mine]);
   assert.equal(shown.ratingAverage, 4.4);
   assert.equal(shown.ratingCount, 1200); // not 99999, not 1200 + 99999
@@ -189,4 +191,60 @@ test('resolveCuratedShelf looks a book up when only the rating or pages are miss
 test('resolvedMatchesSeed accepts a dual or club-subtitled title for the same book', () => {
   assert.ok(resolvedMatchesSeed({ title: 'De avond is ongemak', author: 'Marieke Lucas Rijneveld' }, 'The Discomfort of Evening, De avond is ongemak', 'Marieke Lucas Rijneveld'));
   assert.ok(!resolvedMatchesSeed({ title: 'Something Else Entirely', author: 'Other Person' }, 'The Discomfort of Evening, De avond is ongemak', 'Marieke Lucas Rijneveld'));
+});
+
+/* ---------- translated books: author spelling and original-language titles ---------- */
+
+test('an author written with or without a given name is the same author', () => {
+  assert.ok(authorsCompatible('Marieke Lucas Rijneveld', 'Lucas Rijneveld'));
+  assert.ok(authorsCompatible('Lucas Rijneveld', 'Marieke Lucas Rijneveld'));
+  assert.ok(!authorsCompatible('Lucas Rijneveld', 'Lucas Smith'));
+  assert.ok(!authorsCompatible('Ann Brown', 'Bob Brown'));
+});
+
+test('a prize pick under its original-language title becomes the hand-picked book with the same pick label', () => {
+  // intbooker's bundled list holds "The Discomfort of Evening" labelled "International Booker 2020"
+  const dutch: [string, string, string] = ['De avond is ongemak', 'Marieke Lucas Rijneveld', 'International Booker 2020'];
+  const other: [string, string, string] = ['Celestial Bodies', 'Jokha Alharthi', 'International Booker 2019'];
+  const out = repairSeeds('intbooker', [dutch, other]);
+  assert.equal(out[0][0], 'The Discomfort of Evening');
+  assert.equal(out[0][2], 'International Booker 2020');
+  assert.equal(out[1][0], 'Celestial Bodies'); // untouched
+  // when the English pick is already in the list, the Dutch duplicate goes
+  const both = repairSeeds('intbooker', [['The Discomfort of Evening', 'Marieke Lucas Rijneveld', 'International Booker 2020'], dutch]);
+  assert.equal(both.filter(s => /Discomfort|ongemak/.test(s[0])).length, 1);
+});
+
+/* ---------- ratings from every site ---------- */
+
+test('starFills: exact fractions per star', () => {
+  assert.deepEqual(starFills(4), [1, 1, 1, 1, 0]);
+  assert.deepEqual(starFills(4.5), [1, 1, 1, 1, 0.5]);
+  assert.deepEqual(starFills(3.2), [1, 1, 1, 0.2, 0]);
+  assert.deepEqual(starFills(0), [0, 0, 0, 0, 0]);
+  assert.deepEqual(starFills(9), [1, 1, 1, 1, 1]);
+});
+
+test('the main rating names its site and the others are listed after it', () => {
+  const found = [
+    { source: 'apple' as const, average: 4, count: 80 },
+    { source: 'openlibrary' as const, average: 4.2, count: 300 },
+    { source: 'google' as const, average: 3.9, count: 125 },
+  ];
+  assert.equal(inferRatingSource({ id: 'x', ratingAverage: 4.2, ratingCount: 300 } as any, found), 'openlibrary'); // matched by its own pair
+  assert.equal(inferRatingSource({ id: 'x', ratingAverage: 4.2, ratingCount: 999 } as any, found), undefined); // matches no site exactly: no claim
+  assert.equal(inferRatingSource({ id: 0, source: 'curated', ratingAverage: 4.6, ratingCount: 18400 } as any, found), 'library');
+  assert.equal(inferRatingSource({ id: 'x', ratingAverage: 4.2, ratingSource: 'google' } as any, found), 'google'); // what the book says wins
+  assert.deepEqual(otherRatings(found, 'openlibrary').map(f => f.source), ['google', 'apple']);
+  assert.deepEqual(otherRatings(found, 'library').map(f => f.source), ['openlibrary', 'google', 'apple']);
+});
+
+test('fetchRatingSources returns each site\'s own average and count, never combined, and skips sites without a rating', async () => {
+  routeFetch([
+    u => (u.hostname === 'openlibrary.org' ? { body: olDoc('/works/OL91W', 'Sources Alpha', 'Hal Author', { ratings_average: 4.04, ratings_count: 321 }) } : undefined),
+    u => (u.hostname === 'www.googleapis.com' ? { body: gbVolume('Sources Alpha', 'Hal Author', { averageRating: 3.5, ratingsCount: 125 }) } : undefined),
+    u => (u.hostname === 'itunes.apple.com' ? { body: { results: [{ trackId: 3, trackName: 'Sources Alpha', artistName: 'Hal Author', artworkUrl100: 'https://a/100x100bb.jpg' }] } } : undefined), // Apple: no rating
+  ]);
+  const r = await fetchRatingSources(book({ id: 'q1', title: 'Sources Alpha', author: 'Hal Author' }));
+  assert.deepEqual(r, [{ average: 4, count: 321, source: 'openlibrary' }, { average: 3.5, count: 125, source: 'google' }]);
 });

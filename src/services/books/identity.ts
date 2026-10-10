@@ -170,7 +170,11 @@ export function authorsCompatible(a = '', b = ''): boolean {
   if (ka.replace(/ /g, '') === kb.replace(/ /g, '')) return true; // "Jokha al-Harthi" / "Jokha Alharthi": a hyphen or a space inside a surname
   const pa = ka.split(' ');
   const pb = kb.split(' ');
-  return pa[pa.length - 1] === pb[pb.length - 1] && pa[0][0] === pb[0][0];
+  if (pa[pa.length - 1] === pb[pb.length - 1] && pa[0][0] === pb[0][0]) return true;
+  // One catalogue gives the full name, another drops or adds a name ("Marieke Lucas Rijneveld" / "Lucas Rijneveld"): the shorter name
+  // (at least first + last) is contained in the longer one
+  const [short, long] = pa.length <= pb.length ? [pa, pb] : [pb, pa];
+  return short.length >= 2 && short.every(w => long.includes(w));
 }
 
 /** Does a result's author (or author list) include the wanted author? Unknown wanted author matches anything. */

@@ -68,13 +68,13 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
     book.identity = mergeIdentity(book.identity, isbnPair(q.isbn));
     // Ratings follow the ladder in ratings.ts: ONE source's average + count, never a mix and never a sum. Open Library first (its
     // work-level ratings when the search record has none), then Google. Apple's readers still feed `readers` below, not the stars.
-    let olRating = ratingOf(ol?.book);
+    let olRating = ratingOf(ol?.book) && { ...ratingOf(ol?.book)!, source: 'openlibrary' as const };
     const workId = book.identity?.olWork;
     if (!olRating && workId) {
       const r = await openLibraryRatings(workId, opts);
-      if (r) olRating = { average: r.average, count: r.count || undefined };
+      if (r) olRating = { average: r.average, count: r.count || undefined, source: 'openlibrary' };
     }
-    book = setRating(book, chooseRating({ ol: olRating, google: ratingOf(gb?.book) }));
+    book = setRating(book, chooseRating({ ol: olRating, google: ratingOf(gb?.book) && { ...ratingOf(gb?.book)!, source: 'google' as const } }));
     if (q.genreHint && !book.genre) book.genre = q.genreHint;
     const flags: ContentFlags = {
       subjects: hits.flatMap(h => h.flags.subjects || []),
