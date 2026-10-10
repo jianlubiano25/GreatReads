@@ -75,7 +75,7 @@ export function persistentCache<T>(storageKey: string, opts: { ttl: number; max:
 /** Cache keys older versions of the app used for book data. Removed at startup so they do not eat the 5 MB storage budget. */
 export const LEGACY_BOOK_CACHE_KEYS = [
   'readlife.store1', 'readlife.store2', 'readlife.store3', 'readlife.meta2', 'readlife.meta3',
-  'readlife.covers1', 'readlife.coverMiss1', 'readlife.coverNone1',
+  'readlife.covers1', 'readlife.coverMiss1', 'readlife.coverNone1', 'readlife.coverNone2',
 ];
 export const dropLegacyBookCaches = () => {
   try { LEGACY_BOOK_CACHE_KEYS.forEach(k => localStorage.removeItem(k)); } catch {}

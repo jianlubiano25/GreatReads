@@ -2,7 +2,7 @@ import type { Book } from '../../types';
 import { CURATED_SHELVES, type CuratedShelf } from '../../data/storeCatalog';
 import { persistentCache } from '../books/cache';
 import { dedupeInflight, getJson, getJsonDetailed, pool } from '../books/http';
-import { authorKey, isUnknownAuthor, titleKey } from '../books/identity';
+import { authorKey, authorsCompatible, isUnknownAuthor, titleKey } from '../books/identity';
 import { shrunkRating } from '../books/model';
 import { isExplicit } from '../books/quality';
 import { searchOpenLibrary } from '../books/sources/openLibrary';
@@ -95,6 +95,12 @@ function applyReset(id: string) {
 function repairSeeds(id: string, seeds: Seed[]): Seed[] {
   const bundled = CURATED_SHELVES.find(s => s.id === id)?.seeds ?? [];
   return seeds.flatMap((seed): Seed[] => {
+    // A translated book saved with its original title after the English one ("Flights, Bieguni"): it is the hand-picked book
+    if (typeof seed?.[0] === 'string' && typeof seed?.[1] === 'string') {
+      const t = cleanTitle(seed[0]);
+      const own = bundled.find(b => t.length > b[0].length && t.toLowerCase().startsWith(`${b[0].toLowerCase()}, `) && authorsCompatible(b[1], cleanAuthorName(seed[1])));
+      if (own) return [seed[2] === undefined ? own : [own[0], own[1], seed[2]]];
+    }
     if (typeof seed?.[0] !== 'string' || typeof seed?.[1] !== 'string' || isSaneAuthor(cleanAuthorName(seed[1]))) return [seed];
     const same = bundled.find(b => titleKey(b[0]) === titleKey(cleanTitle(seed[0])));
     return same ? [same] : [];
@@ -443,14 +449,15 @@ export const DYNAMIC_SPECS: Record<string, DynamicSpec> = {
   womens: history(wikiSpec(
     // Pages are tried in turn; one without a readable winners table is skipped. (The winners may live on a list page of their own.)
     ["Women's Prize for Fiction", "List of Women's Prize for Fiction winners"],
-    { ...prize(), result: /^(result|status|outcome)/i, winner: /winner/i, onePerYear: true },
+    { ...prize(), result: /^(result|status|outcome)/i, winner: /winner/i, onePerYear: true, firstTitleLine: true },
     when => `Women's Prize ${when}`,
     7 * DAY,
     "Wikipedia: Women's Prize for Fiction (winners)",
   )),
   intbooker: history(wikiSpec(
     ['International Booker Prize'],
-    { ...prize(), result: /^(result|status|outcome)/i, winner: /winner/i, onePerYear: true },
+    // the title cell reads "At Night All Blood Is Black" and, on the next line, the original "Frère d'âme": the English title is the pick
+    { ...prize(), result: /^(result|status|outcome)/i, winner: /winner/i, onePerYear: true, firstTitleLine: true },
     when => `International Booker ${when}`,
     7 * DAY,
     'Wikipedia: International Booker Prize (winners)',

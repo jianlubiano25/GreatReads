@@ -46,6 +46,19 @@ export function authorKey(author = ''): string {
   return strip(primaryAuthor(author)).replace(/\b(jr|sr|ii|iii|phd|md)\b\.?/g, ' ').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+/** "All the Way to the River: Love, Loss, and Liberation" -> "All the Way to the River". The title as a search engine most often has it. */
+export const mainTitle = (title = ''): string => title.split(/\s*[:–—]\s+|\s+-\s+/)[0].trim() || title;
+
+/**
+ * The ways one author's name is written, for a search that must find the book however the catalogue spells it:
+ * as given, with a hyphen closed up ("al-Harthi" -> "alHarthi": catalogues write Jokha Alharthi), and with it as a space.
+ */
+export function authorVariants(author = ''): string[] {
+  const out = [author.trim()];
+  if (/[-\u2010\u2011\u2013]/.test(author)) out.push(author.replace(/[-\u2010\u2011\u2013]/g, '').trim(), author.replace(/[-\u2010\u2011\u2013]/g, ' ').replace(/\s+/g, ' ').trim());
+  return [...new Set(out.filter(Boolean))];
+}
+
 export const isUnknownAuthor = (author = '') => {
   const k = authorKey(author);
   return !k || /^(unknown|featured)( author)?$/.test(k);
@@ -113,6 +126,7 @@ export function authorsCompatible(a = '', b = ''): boolean {
   const ka = authorKey(a);
   const kb = authorKey(b);
   if (ka === kb) return true;
+  if (ka.replace(/ /g, '') === kb.replace(/ /g, '')) return true; // "Jokha al-Harthi" / "Jokha Alharthi": a hyphen or a space inside a surname
   const pa = ka.split(' ');
   const pb = kb.split(' ');
   return pa[pa.length - 1] === pb[pb.length - 1] && pa[0][0] === pb[0][0];

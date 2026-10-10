@@ -66,3 +66,50 @@ test('a saved "1=The 2=Book…" title is repaired and is not shown twice next to
   const merged = mergeAppend([['1=The 2=Book of Form and Emptiness', 'Ruth Ozeki', "Women's Prize 2022"]], [['The Book of Form and Emptiness', 'Ruth Ozeki', "Women's Prize 2022"]]);
   assert.deepEqual(merged.map(s => s[0]), ['The Book of Form and Emptiness']);
 });
+
+test('a translated prize winner keeps only its English title (the original-language title on the next line is dropped)', () => {
+  const rows = [[2021, 'At Night All Blood Is Black', "Frère d'âme", 'David Diop'], [2020, 'The Discomfort of Evening', 'De avonden', 'Marieke Lucas Rijneveld'], [2019, 'Celestial Bodies', 'Sayyidat al-Qamar', 'Jokha al-Harthi'], [2018, 'Flights', 'Bieguni', 'Olga Tokarczuk'], [2017, 'A Horse Walks into a Bar', 'Sus al-Ta', 'David Grossman'], [2016, 'The Vegetarian', '채식주의자', 'Han Kang']]
+    .map(([y, en, orig, a]) => `| ${y} || ''[[${en}]]''<br>''${orig}'' || [[${a}]] || Winner`).join('\n|-\n');
+  const wt = `{| class="wikitable"\n! Year !! Title !! Author !! Result\n|-\n${rows}\n|}`;
+  const picks = picksFromTables(parseWikiTables(wt), { title: /^(title)/i, author: /^(author)/i, when: /^year/i, result: /^result/i, winner: /winner/i, onePerYear: true, firstTitleLine: true })!;
+  assert.deepEqual(picks.map(p => p.title), ['At Night All Blood Is Black', 'The Discomfort of Evening', 'Celestial Bodies', 'Flights', 'A Horse Walks into a Bar', 'The Vegetarian']);
+  // a second author on the next line is still two authors
+  const two = picksFromTables(parseWikiTables(`{| class="wikitable"\n! Year !! Title !! Author\n|-\n${[1,2,3,4,5,6].map(i => `| 20${10 + i} || Book ${i} || A${i} One<br>B${i} Two`).join('\n|-\n')}\n|}`), { title: /^title/i, author: /^author/i, when: /^year/i })!;
+  assert.equal(two[0].author, 'A6 One & B6 Two');
+});
+
+test('a saved "Flights, Bieguni" is repaired to the hand-picked "Flights" and not shown twice', async () => {
+  const sh: CuratedShelf = { id: 'intbooker', title: 'T', emoji: '📚', genre: 'Fiction', seeds: Array.from({ length: 10 }, (_, i) => [`Base ${i}`, `Author ${i}`] as [string, string]) };
+  const spec: DynamicSpec = { source: 't', kind: 'fallback', refreshMs: 7 * 24 * 3600_000, minSeeds: 8, merge: 'append', fetch: async () => ({ seeds: [['Flights, Bieguni', 'Olga Tokarczuk', 'International Booker 2018'], ...Array.from({ length: 9 }, (_, i) => [`Good ${i}`, `Writer ${i}`, 'x'] as [string, string, string])] }) };
+  routeFetch([]);
+  await refreshShelf(sh, spec);
+  const books = dynamicCuratedSource(sh, spec).cached()!;
+  assert.ok(books.some(b => b.title === 'Flights') && !books.some(b => /Bieguni/.test(b.title)));
+});
+
+test('author names: "Jokha al-Harthi" and "Jokha Alharthi" are one author; hyphen variants for searching', async () => {
+  const { authorsCompatible, authorVariants, mainTitle } = await import('../books/identity');
+  assert.ok(authorsCompatible('Jokha al-Harthi', 'Jokha Alharthi'));
+  assert.ok(!authorsCompatible('Jokha al-Harthi', 'Jokha Smith'));
+  assert.deepEqual(authorVariants('Jokha al-Harthi'), ['Jokha al-Harthi', 'Jokha alHarthi', 'Jokha al Harthi']);
+  assert.deepEqual(authorVariants('Han Kang'), ['Han Kang']);
+  assert.equal(mainTitle('All the Way to the River: Love, Loss, and Liberation'), 'All the Way to the River');
+  assert.equal(mainTitle('Beloved'), 'Beloved');
+});
+
+test('cover lookup: a subtitled title is found under its short title, and a hyphenated author under the closed-up spelling', async () => {
+  const { findOpenLibrary } = await import('../books/sources/openLibrary');
+  const doc = (title: string, author: string) => ({ docs: [{ key: '/works/OL1W', title, author_name: [author], cover_i: 7, first_publish_year: 2025 }] });
+  // Open Library lists it as "All the Way to the River" only: the full-subtitle search finds nothing
+  const calls = routeFetch([u => {
+    if (u.pathname !== '/search.json') return undefined;
+    return u.searchParams.get('title') === 'All the Way to the River' ? { body: doc('All the Way to the River', 'Elizabeth Gilbert') } : { body: { docs: [] } };
+  }]);
+  const hit = await findOpenLibrary({ title: 'All the Way to the River: Love, Loss, and Liberation', author: 'Elizabeth Gilbert' });
+  assert.equal(hit?.book.coverId, 7);
+  assert.equal(calls.length, 2);
+
+  // The catalogue spells the name Alharthi
+  routeFetch([u => (u.pathname === '/search.json' ? (u.searchParams.get('author') === 'Jokha alHarthi' ? { body: doc('Celestial Bodies', 'Jokha Alharthi') } : { body: { docs: [] } }) : undefined)]);
+  assert.equal((await findOpenLibrary({ title: 'Celestial Bodies', author: 'Jokha al-Harthi' }))?.book.coverId, 7);
+});

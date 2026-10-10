@@ -29,6 +29,8 @@ export interface ColumnRule {
   winner?: RegExp;
   /** Keep only the first row of each year (prize tables list the winner first). */
   onePerYear?: boolean;
+  /** The title cell holds the English title and then, on the next line, the original-language one (prize tables of translated books): keep the first line only. */
+  firstTitleLine?: boolean;
   /** Tables with fewer data rows than this are ignored (navigation boxes, small side tables). Default 5. */
   minRows?: number;
   /** Picks one page must give to count (default 5). */
@@ -78,11 +80,14 @@ const MONTH_NUM: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may:
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** Wikitext cell -> plain text: links, italics, citations, templates and HTML removed. */
-export function cleanWiki(raw: string): string {
+/** Stands for a <br> between two lines of one table cell (kept apart so a title cell's second line can be told from its first). */
+const BR = '\u2063';
+
+export function cleanWiki(raw: string, keepBreaks = false): string {
   let s = raw.replace(/<!--[\s\S]*?-->/g, '');
   s = s.replace(/<ref[^>]*\/>/gi, '').replace(/<ref[^>]*>[\s\S]*?<\/ref>/gi, '');
   for (let i = 0; i < 5 && /\{\{[^{}]*\}\}/.test(s); i++) s = s.replace(/\{\{[^{}]*\}\}/g, templateText);
-  s = s.replace(/<br\s*\/?>/gi, ', ').replace(/<\/?[a-z][^>]*>/gi, '');
+  s = s.replace(/<br\s*\/?>/gi, keepBreaks ? BR : ', ').replace(/<\/?[a-z][^>]*>/gi, '');
   s = s.replace(/\[\[(?:File|Image|Category):[^\]]*\]\]/gi, '');
   s = s.replace(/\[\[([^\]|]*)\|([^\]]*)\]\]/g, '$2').replace(/\[\[([^\]]*)\]\]/g, '$1');
   s = s.replace(/\[https?:\/\/[^\s\]]+\s*([^\]]*)\]/g, '$1').replace(/'{2,}/g, '');
@@ -155,7 +160,7 @@ export function parseWikiTables(wikitext: string): WikiTable[] {
         }
         if (raw >= r.length) break;
         const cell = r[raw++];
-        const text = cleanWiki(cell.text);
+        const text = cleanWiki(cell.text, true);
         for (let k = 0; k < cell.colspan; k++) {
           cells.push(text);
           if (cell.rowspan > 1) carry.set(col, { text, left: cell.rowspan - 1 });
@@ -257,11 +262,13 @@ export function cleanTitle(raw: string): string {
 
 const NO_PICK = /^(?:—|–|-|n\/a|tba|tbd|none|no award|not awarded|no prize|unknown|\?)$/i;
 
+const plain = (cell: string) => cell.split(BR).filter(x => x.trim()).join(', ');
+
 /** The newest picks first. Returns null unless the page gave dated picks in useful numbers (so a layout change cannot reorder the shelf wrongly). */
 export function picksFromTables(tables: WikiTable[], rule: ColumnRule, minPicks = 5): WikiPick[] | null {
   const picks: WikiPick[] = [];
   for (const t of tables) {
-    const find = (re: RegExp) => t.headers.findIndex(h => re.test(h.trim()));
+    const find = (re: RegExp) => t.headers.findIndex(h => re.test(plain(h).trim()));
     const iTitle = find(rule.title);
     const iAuthor = find(rule.author);
     const iWhen = find(rule.when);
@@ -269,11 +276,12 @@ export function picksFromTables(tables: WikiTable[], rule: ColumnRule, minPicks 
     if (iTitle < 0 || iAuthor < 0 || iWhen < 0 || iTitle === iAuthor || t.rows.length < (rule.minRows ?? 5)) continue;
     const seenYear = new Set<number>();
     for (const r of t.rows) {
-      const title = cleanTitle(stripNativeTitle((r[iTitle] || '').trim()));
-      const author = cleanAuthorName((r[iAuthor] || '').trim());
-      const when = parseWhen(r[iWhen] || '');
+      const titleCell = rule.firstTitleLine ? (r[iTitle] || '').split(BR).map(x => x.trim()).find(Boolean) ?? '' : plain(r[iTitle] || '');
+      const title = cleanTitle(stripNativeTitle(titleCell.trim()));
+      const author = cleanAuthorName(plain(r[iAuthor] || '').trim());
+      const when = parseWhen(plain(r[iWhen] || ''));
       if (!title || !author || !when || NO_PICK.test(title) || NO_PICK.test(author)) continue;
-      if (iResult >= 0 && rule.winner && !rule.winner.test(r[iResult] || '')) continue;
+      if (iResult >= 0 && rule.winner && !rule.winner.test(plain(r[iResult] || ''))) continue;
       if (rule.onePerYear) {
         if (seenYear.has(when.year)) continue;
         seenYear.add(when.year);

@@ -27,7 +27,7 @@ export function getCoverUrl(coverId?: number, size: CoverSize = 'M', customUrl?:
 /* ---------------- stores: repaired covers (rare) and the missing list (for the button) ---------------- */
 
 const FIX_KEY = 'readlife.coverFix1'; // key -> { url, t }
-const NONE_KEY = 'readlife.coverNone2'; // key -> time of the last miss
+const NONE_KEY = 'readlife.coverNone3'; // key -> time of the last miss
 registerClearableKey(FIX_KEY);
 registerClearableKey(NONE_KEY);
 const NONE_TTL = 24 * 60 * 60 * 1000;
