@@ -3,6 +3,9 @@
   {
    "title": "Kin",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/ff/41/14/ff4114ef-0ef7-b674-98e0-3ac40814b7ac/9780525659198.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 530,
+   "ratingSource": "apple",
    "pageCount": 368,
    "year": "2026",
    "olKey": "/works/OL45346558W"
@@ -10,8 +13,9 @@
   {
    "title": "The Keeper",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/22/15/6b/22156b12-b4b5-26e6-5f39-f84be503365b/9780593493472.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4,
-   "ratingCount": 1,
+   "ratingAverage": 4.5,
+   "ratingCount": 989,
+   "ratingSource": "apple",
    "pageCount": 528,
    "year": "2026",
    "olKey": "/works/OL45093452W"
@@ -19,38 +23,54 @@
   {
    "title": "Exit Party",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/22/4a/27/224a2741-7c05-53f2-3b13-aecf4d23eea1/9780593321478.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 101,
+   "ratingSource": "apple",
    "year": "2026",
    "olKey": "/works/OL46028544W"
   },
   {
    "title": "The Disappearers",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/d5/62/85/d562854f-0640-438d-98f7-45c31aecd253/9780593717226.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 38,
+   "ratingSource": "apple",
    "year": "2026",
    "olKey": "/works/OL45862992W"
   },
   {
    "title": "John of John",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/07/c9/ab/07c9ab1e-af9b-74cf-1597-fbbbd4910901/9780802167279.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 302,
+   "ratingSource": "apple",
    "year": "2026",
    "olKey": "/works/OL45691929W"
   },
   {
    "title": "Cool Machine",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/03/4e/e7/034ee726-235c-48bc-2d5d-861f131159f3/9780385550512.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4,
-   "ratingCount": 1,
+   "ratingAverage": 4.5,
+   "ratingCount": 137,
+   "ratingSource": "apple",
    "year": "2026",
    "olKey": "/works/OL45345738W"
   },
   {
    "title": "London Falling",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/1c/0d/79/1c0d79ae-1230-6969-fb01-de3e83944ae2/9780385548540.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 607,
+   "ratingSource": "apple",
    "year": "2026",
    "olKey": "/works/OL45399274W"
   },
   {
    "title": "Yesteryear",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/83/35/a9/8335a977-61f3-2f2c-22e2-a0551cf8707f/9780593804223.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 2950,
+   "ratingSource": "apple",
    "pageCount": 400,
    "year": "2026",
    "olKey": "/works/OL45177696W"
@@ -58,16 +78,18 @@
   {
    "title": "Famesick",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/06/19/fd/0619fd29-d4f0-6c10-562a-f36bbfb06af7/9780593129333.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4,
-   "ratingCount": 1,
+   "ratingAverage": 4.5,
+   "ratingCount": 413,
+   "ratingSource": "apple",
    "year": "2026",
    "olKey": "/works/OL45187492W"
   },
   {
    "title": "Our Perfect Storm",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/24/a7/3a/24a73a0c-a4ca-2228-63e6-b82a5745fe06/9780593953235.d.jpg/600x900bb.jpg",
-   "ratingAverage": 2.5,
-   "ratingCount": 2,
+   "ratingAverage": 4.5,
+   "ratingCount": 1109,
+   "ratingSource": "apple",
    "year": "2026",
    "olKey": "/works/OL45398621W"
   },
@@ -75,7 +97,8 @@
    "title": "Half His Age",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/11/bb/d9/11bbd912-883c-8015-c0ea-0606091a2743/9780593723746.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 3,
+   "ratingCount": 618,
+   "ratingSource": "apple",
    "pageCount": 288,
    "year": "2026",
    "olKey": "/works/OL44829733W"
@@ -83,8 +106,9 @@
   {
    "title": "Strangers",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/0f/0a/db/0f0adb9f-8dd7-7c5a-0458-79ced91d5e39/9780593733325.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4,
-   "ratingCount": 1,
+   "ratingAverage": 4.5,
+   "ratingCount": 2827,
+   "ratingSource": "apple",
    "pageCount": 256,
    "year": "2026",
    "olKey": "/works/OL44815782W"
@@ -94,8 +118,9 @@
   {
    "title": "Klara and the Sun",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication116/v4/ba/7b/b0/ba7bb051-38ad-3553-98a4-1c93b41c0fbd/9780593318188.d.jpg/600x900bb.jpg",
-   "ratingAverage": 3.8,
-   "ratingCount": 48,
+   "ratingAverage": 4,
+   "ratingCount": 2254,
+   "ratingSource": "apple",
    "pageCount": 334,
    "year": "2021",
    "olKey": "/works/OL20883297W"
@@ -103,8 +128,9 @@
   {
    "title": "Martyr!",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/03/9c/ff/039cff07-bdaf-e68c-d44d-29b553501cd5/9780593537626.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4,
-   "ratingCount": 11,
+   "ratingAverage": 4.5,
+   "ratingCount": 571,
+   "ratingSource": "apple",
    "pageCount": 380,
    "year": "2024",
    "olKey": "/works/OL37505411W"
@@ -113,15 +139,17 @@
    "title": "Lost Lambs",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/0f/9a/27/0f9a27dc-9e49-e239-7b00-9fcb876aeec0/9780374619244.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 1,
+   "ratingCount": 157,
+   "ratingSource": "apple",
    "year": "2026",
    "olKey": "/works/OL45015650W"
   },
   {
    "title": "Free",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/95/ea/d2/95ead202-1832-8e16-52d8-44bcf383dcf9/9780393867749.jpg/600x900bb.jpg",
-   "ratingAverage": 4,
-   "ratingCount": 1,
+   "ratingAverage": 4.5,
+   "ratingCount": 39,
+   "ratingSource": "apple",
    "pageCount": 256,
    "year": "2022",
    "olKey": "/works/OL25334399W"
@@ -136,8 +164,9 @@
   {
    "title": "So Late in the Day",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/6b/d2/2c/6bd22c64-7891-f095-681f-d26b77fe481f/9780802160874.jpg/600x900bb.jpg",
-   "ratingAverage": 3,
-   "ratingCount": 2,
+   "ratingAverage": 4,
+   "ratingCount": 74,
+   "ratingSource": "apple",
    "year": "2023",
    "olKey": "/works/OL35762090W"
   },
@@ -146,6 +175,7 @@
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/46/31/7e/46317edc-d54a-1561-04cd-d6634ecb15f2/1039957087.jpg/600x900bb.jpg",
    "ratingAverage": 4,
    "ratingCount": 1,
+   "ratingSource": "openlibrary",
    "pageCount": 96,
    "year": "2012",
    "olKey": "/works/OL19636922W"
@@ -154,7 +184,8 @@
    "title": "Bad Feminist",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication122/v4/a2/1d/db/a21ddb32-8f19-c8f2-8bf8-2e91a1a83cec/9780062282729_marketingimage.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 11,
+   "ratingCount": 180,
+   "ratingSource": "apple",
    "pageCount": 324,
    "year": "2014",
    "olKey": "/works/OL17573878W"
@@ -162,11 +193,17 @@
   {
    "title": "The Son of Man",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/66/42/02/664202c8-b985-faab-21be-60a3a608b721/9780802160911.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 5,
+   "ratingSource": "apple",
    "year": "2024"
   },
   {
    "title": "Night People",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/a1/ea/20/a1ea205f-e333-01af-ced1-72d9bb28ecc1/9781538741139.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 43,
+   "ratingSource": "apple",
    "pageCount": 256,
    "year": "2025",
    "olKey": "/works/OL44545435W"
@@ -174,13 +211,17 @@
   {
    "title": "Brightly Shining",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/c6/60/df/c660df94-6702-c584-0b3b-60820b644fb9/9780802163509.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 12,
+   "ratingSource": "apple",
    "year": "2024"
   },
   {
    "title": "The Handmaid's Tale",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication116/v4/61/f2/a0/61f2a0cb-71f7-e7e3-04f2-bbe93c5a2477/9780547345666.jpg/600x900bb.jpg",
-   "ratingAverage": 4,
-   "ratingCount": 136,
+   "ratingAverage": 4.5,
+   "ratingCount": 778,
+   "ratingSource": "apple",
    "pageCount": 352,
    "year": "1986",
    "olKey": "/works/OL675783W"
@@ -189,7 +230,8 @@
    "title": "Flesh",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/1a/93/66/1a936663-0c48-6d4b-2fcf-93734ccca885/9781982122812.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 1,
+   "ratingCount": 411,
+   "ratingSource": "apple",
    "pageCount": 368,
    "year": "2025",
    "olKey": "/works/OL42549900W"
@@ -197,8 +239,9 @@
   {
    "title": "The Trees",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication125/v4/79/71/94/79719478-7028-12ee-2049-7b3016b560c9/9781644451564.jpg/600x900bb.jpg",
-   "ratingAverage": 5,
-   "ratingCount": 2,
+   "ratingAverage": 4,
+   "ratingCount": 284,
+   "ratingSource": "apple",
    "pageCount": 320,
    "year": "2021",
    "olKey": "/works/OL24511712W"
@@ -206,8 +249,9 @@
   {
    "title": "This House of Grief",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/94/32/8b/94328b63-e94e-23ac-635b-b6c563a6fdd2/9780553387445.d.jpg/600x900bb.jpg",
-   "ratingAverage": 3,
-   "ratingCount": 1,
+   "ratingAverage": 4,
+   "ratingCount": 16,
+   "ratingSource": "apple",
    "pageCount": 320,
    "year": "2023",
    "olKey": "/works/OL20250247W"
@@ -217,14 +261,16 @@
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/67/dc/c4/67dcc4a4-1472-b333-6e52-7e8d325f5f5c/9780063491717.jpg/600x900bb.jpg",
    "ratingAverage": 4,
    "ratingCount": 1,
+   "ratingSource": "openlibrary",
    "year": "2026",
    "olKey": "/works/OL42545060W"
   },
   {
    "title": "Widow Basquiat",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication/v4/57/bb/a3/57bba31c-6df0-1d5c-7683-473ae097773f/9780553419924.jpg/600x900bb.jpg",
-   "ratingAverage": 3.3,
-   "ratingCount": 3,
+   "ratingAverage": 5,
+   "ratingCount": 74,
+   "ratingSource": "apple",
    "pageCount": 186,
    "year": "2014",
    "olKey": "/works/OL19990028W"
@@ -232,13 +278,17 @@
   {
    "title": "Still Born",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/35/b0/9d/35b09d5e-76a1-728a-2926-2d038dec8419/1039378227.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 9,
+   "ratingSource": "apple",
    "year": "2023"
   },
   {
    "title": "Grief Is the Thing with Feathers",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication18/v4/be/72/bb/be72bbd9-c057-c102-e407-ed185a68e98a/9781555979379.jpg/600x900bb.jpg",
-   "ratingAverage": 4.1,
-   "ratingCount": 8,
+   "ratingAverage": 4.5,
+   "ratingCount": 82,
+   "ratingSource": "apple",
    "pageCount": 121,
    "year": "2016",
    "olKey": "/works/OL20032791W"
@@ -246,25 +296,35 @@
   {
    "title": "There There",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication113/v4/b8/08/a9/b808a91b-8b4b-bcc6-f3de-a611e48fa989/9780525520382.jpg/600x900bb.jpg",
-   "ratingAverage": 3.5,
-   "ratingCount": 13,
+   "ratingAverage": 4,
+   "ratingCount": 1413,
+   "ratingSource": "apple",
    "pageCount": 304,
    "year": "2018",
    "olKey": "/works/OL18143930W"
   },
   {
-   "title": "The Bee Sting"
+   "title": "The Bee Sting",
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/45/68/aa/4568aa3f-3ee8-f18d-a29b-3e2a67b123fa/9780374600310.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 606,
+   "ratingSource": "apple",
+   "year": "2023"
   },
   {
    "title": "Drive Your Plow Over the Bones of the Dead",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication123/v4/96/61/b4/9661b4aa-bb29-4fbb-8d4e-a24b554679e4/9780525541356.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 681,
+   "ratingSource": "apple",
    "year": "2019"
   },
   {
    "title": "On Earth We're Briefly Gorgeous",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/99/e6/a7/99e6a775-88b6-e04f-8148-78a5fd93e7fb/9780525562030.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4.2,
-   "ratingCount": 30,
+   "ratingAverage": 4,
+   "ratingCount": 971,
+   "ratingSource": "apple",
    "pageCount": 256,
    "year": "2019",
    "olKey": "/works/OL20783698W"
@@ -272,8 +332,9 @@
   {
    "title": "Lincoln in the Bardo",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/9a/b5/04/9ab50491-0b30-f3e3-dfd1-7631f0617a80/9780812995350.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4.2,
-   "ratingCount": 23,
+   "ratingAverage": 4,
+   "ratingCount": 787,
+   "ratingSource": "apple",
    "pageCount": 426,
    "year": "2017",
    "olKey": "/works/OL17635834W"
@@ -283,51 +344,57 @@
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/b7/e7/86/b7e7864a-b119-c73f-88dd-0356a93838e4/9781448121571.jpg/600x900bb.jpg",
    "ratingAverage": 4.2,
    "ratingCount": 21,
+   "ratingSource": "openlibrary",
    "pageCount": 400,
    "year": "2015",
    "olKey": "/works/OL4126109W"
   },
   {
    "title": "Say Nothing",
-   "coverId": 9242450,
-   "ratingAverage": 4.6,
-   "ratingCount": 17,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/77/8b/31/778b31d9-92c8-91ea-2d64-8228aee81948/9780385543378.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 1347,
+   "ratingSource": "apple",
    "pageCount": 536,
-   "year": "2018",
+   "year": "2019",
    "olKey": "/works/OL20153382W"
   },
   {
    "title": "Swimming in the Dark",
-   "coverId": 10144986,
-   "ratingAverage": 4.8,
-   "ratingCount": 4,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication114/v4/d9/e0/20/d9e02011-c2f9-ed0a-4021-80c675db35b8/9780062890023.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 328,
+   "ratingSource": "apple",
    "pageCount": 176,
    "year": "2020",
    "olKey": "/works/OL20743897W"
   },
   {
    "title": "Crying in H Mart",
-   "coverId": 10462708,
-   "ratingAverage": 3.8,
-   "ratingCount": 26,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/53/32/dd/5332ddd8-abe1-d551-79fa-ee4aec3646d7/9780525657750.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 1545,
+   "ratingSource": "apple",
    "pageCount": 256,
-   "year": "2020",
+   "year": "2021",
    "olKey": "/works/OL22448002W"
   },
   {
    "title": "Trust",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/b2/5e/e7/b25ee752-9c39-fff3-0172-a7cfb2ce2e64/9780593420331.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 4,
+   "ratingCount": 2033,
+   "ratingSource": "apple",
    "pageCount": 416,
    "year": "2022",
    "olKey": "/works/OL25916696W"
   },
   {
    "title": "A Thousand Splendid Suns",
-   "coverId": 8579790,
-   "ratingAverage": 4.3,
-   "ratingCount": 134,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication117/v4/e1/f4/5a/e1f45af9-4776-5b73-7566-eecd5e263618/9781101010907.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 3184,
+   "ratingSource": "apple",
    "pageCount": 406,
    "year": "2007",
    "olKey": "/works/OL5782000W"
@@ -335,259 +402,292 @@
   {
    "title": "The Guest",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/fa/40/20/fa4020ff-a157-c8fd-0c3f-88c032af7a51/9780812998634.d.jpg/600x900bb.jpg",
-   "ratingAverage": 2.7,
-   "ratingCount": 3,
+   "ratingAverage": 3.5,
+   "ratingCount": 629,
+   "ratingSource": "apple",
    "pageCount": 304,
    "year": "2023",
    "olKey": "/works/OL28605788W"
   },
   {
    "title": "The Vanishing Half",
-   "coverId": 10095692,
-   "ratingAverage": 3.9,
-   "ratingCount": 17,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/d3/a0/16/d3a01645-c257-b4f4-3c0c-4aa9e15b9306/9780525536970.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 7578,
+   "ratingSource": "apple",
    "pageCount": 376,
    "year": "2020",
    "olKey": "/works/OL20799434W"
   },
   {
    "title": "One Hundred Years of Solitude",
-   "coverId": 15185412,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/16/8d/09/168d0914-c02b-3615-eaf9-7c32e30c20d4/fvdb.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 246,
+   "ratingSource": "apple",
    "pageCount": 417,
-   "year": "1971",
+   "year": "2022",
    "olKey": "/works/OL43108828W"
   },
   {
    "title": "Just Kids",
-   "coverId": 6671097,
-   "ratingAverage": 4.1,
-   "ratingCount": 29,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication/91/bf/23/mzi.ensiwmrf.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 1081,
+   "ratingSource": "apple",
    "pageCount": 320,
-   "year": "2006",
+   "year": "2010",
    "olKey": "/works/OL15474046W"
   },
   {
    "title": "Half of a Yellow Sun",
-   "coverId": 8472660,
-   "ratingAverage": 4.3,
-   "ratingCount": 35,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/d9/5f/64/d95f64a4-ef5c-f689-6a7d-51f099197421/9780307485779.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 421,
+   "ratingSource": "apple",
    "pageCount": 500,
    "year": "2006",
    "olKey": "/works/OL5731542W"
   },
   {
    "title": "Pachinko",
-   "coverId": 8044605,
-   "ratingAverage": 4,
-   "ratingCount": 25,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication125/v4/d9/4a/e5/d94ae54d-9529-c42f-93b5-bbb07d7aa948/9781455563913.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 4050,
+   "ratingSource": "apple",
    "pageCount": 512,
    "year": "2017",
    "olKey": "/works/OL17762217W"
   },
   {
    "title": "Shuggie Bain",
-   "coverId": 9271540,
-   "ratingAverage": 4.2,
-   "ratingCount": 15,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication125/v4/5a/62/88/5a6288cc-d2e6-2318-3d4c-ec5ea499264a/9780802148056.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 777,
+   "ratingSource": "apple",
    "pageCount": 538,
-   "year": "2019",
+   "year": "2020",
    "olKey": "/works/OL20645179W"
   }
  ],
  "inklings": [
   {
    "title": "The Hobbit",
-   "coverId": 14627509,
-   "ratingAverage": 4.3,
-   "ratingCount": 500,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication122/v4/8a/d8/61/8ad861cd-9c83-512c-d13e-022e625ef4b6/9780547951973.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 1031,
+   "ratingSource": "apple",
    "pageCount": 310,
-   "year": "1937",
+   "year": "2012",
    "olKey": "/works/OL27482W"
   },
   {
    "title": "The Fellowship of the Ring",
-   "coverId": 14627060,
-   "ratingAverage": 4.3,
-   "ratingCount": 405,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication116/v4/07/1a/f4/071af4f1-c83c-aec8-6c09-27f15c42d22d/9780547952017.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 637,
+   "ratingSource": "apple",
    "pageCount": 492,
-   "year": "1954",
+   "year": "2012",
    "olKey": "/works/OL27513W"
   },
   {
    "title": "The Lion, the Witch and the Wardrobe",
-   "coverId": 8441376,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/82/65/51/826551bb-0887-3802-b47a-6d4df39c7532/e2dda85f-0087-48a6-a15f-66c1da75dcde_cover_image.png/600x900bb.jpg",
    "ratingAverage": 4.1,
    "ratingCount": 123,
+   "ratingSource": "openlibrary",
    "pageCount": 186,
-   "year": "1950",
+   "year": "2026",
    "olKey": "/works/OL71037W"
   },
   {
    "title": "The Screwtape Letters",
-   "coverId": 9779,
-   "ratingAverage": 4.1,
-   "ratingCount": 29,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication123/v4/f2/9b/3c/f29b3cec-3e96-1507-fada-f5a5d26ab5d4/The-Screwtape-Letters-Apple.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 463,
+   "ratingSource": "apple",
    "pageCount": 160,
-   "year": "1942",
+   "year": "2024",
    "olKey": "/works/OL71072W"
   },
   {
    "title": "Out of the Silent Planet",
-   "coverId": 9321665,
-   "ratingAverage": 4,
-   "ratingCount": 32,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/9c/89/af/9c89afc9-aaf3-7b11-9ac5-17442268c1a7/ChatGPT_Image_Apr_19_2025_11_54_40_AM.png/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 12,
+   "ratingSource": "apple",
    "pageCount": 174,
-   "year": "1938",
+   "year": "2023",
    "olKey": "/works/OL71166W"
   },
   {
    "title": "The Two Towers",
-   "coverId": 14627564,
-   "ratingAverage": 4.4,
-   "ratingCount": 234,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication116/v4/c0/6f/b9/c06fb914-5bb9-dc7f-c4dc-a72214c99d57/9780547952024.jpg/600x900bb.jpg",
+   "ratingAverage": 5,
+   "ratingCount": 379,
+   "ratingSource": "apple",
    "pageCount": 434,
-   "year": "1954",
+   "year": "2012",
    "olKey": "/works/OL27479W"
   },
   {
    "title": "The Return of the King",
-   "coverId": 14627062,
-   "ratingAverage": 4.5,
-   "ratingCount": 108,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/96/db/d5/96dbd507-dfac-6ff2-e24b-3f3fc2edbb33/9780547952048.jpg/600x900bb.jpg",
+   "ratingAverage": 5,
+   "ratingCount": 289,
+   "ratingSource": "apple",
    "pageCount": 499,
-   "year": "1950",
+   "year": "2012",
    "olKey": "/works/OL27455W"
   },
   {
    "title": "Till We Have Faces",
-   "coverId": 9184539,
-   "ratingAverage": 4.7,
-   "ratingCount": 3,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/f2/2b/8d/f22b8d03-1d36-b653-4f5f-a7083e55aa3b/cover.png/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 11,
+   "ratingSource": "apple",
    "pageCount": 320,
-   "year": "1956",
+   "year": "2023",
    "olKey": "/works/OL71162W"
   },
   {
    "title": "The Magician's Nephew",
-   "coverId": 1072931,
-   "ratingAverage": 4,
-   "ratingCount": 109,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/88/91/82/88918296-9901-49d0-dd42-325fb1d8b100/9780061974168.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 1258,
+   "ratingSource": "apple",
    "pageCount": 186,
-   "year": "1955",
+   "year": "2009",
    "olKey": "/works/OL71042W"
   },
   {
    "title": "War in Heaven",
-   "coverId": 6718269,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/37/63/cf/3763cfc6-d875-9f7a-99d9-338aec75f7a9/1058599778.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 7,
+   "ratingSource": "apple",
    "pageCount": 256,
-   "year": "1930",
+   "year": "2015",
    "olKey": "/works/OL1155806W"
   },
   {
    "title": "All Hallows' Eve",
-   "coverId": 7445982,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/82/f1/e9/82f1e922-cf78-5344-9db6-d89a49f590c9/1058594589.jpg/600x900bb.jpg",
    "ratingAverage": 4,
    "ratingCount": 1,
+   "ratingSource": "openlibrary",
    "pageCount": 270,
-   "year": "1945",
+   "year": "2015",
    "olKey": "/works/OL1155807W"
   },
   {
    "title": "The Silmarillion",
-   "coverId": 14627042,
-   "ratingAverage": 4,
-   "ratingCount": 123,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication112/v4/dc/cf/ae/dccfaea1-6ac0-e247-a2e3-1ffde5451a2b/9780547951980.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 332,
+   "ratingSource": "apple",
    "pageCount": 424,
-   "year": "1977",
+   "year": "2012",
    "olKey": "/works/OL27495W"
   }
  ],
  "oprah": [
   {
    "title": "Beloved",
-   "coverId": 8261367,
-   "ratingAverage": 3.9,
-   "ratingCount": 75,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/2d/bc/0b/2dbc0bac-a99b-3d04-3008-ed3cc4caed52/9780307388629.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 931,
+   "ratingSource": "apple",
    "pageCount": 321,
    "year": "1987",
    "olKey": "/works/OL50548W"
   },
   {
    "title": "Song of Solomon",
-   "coverId": 9317262,
-   "ratingAverage": 4.3,
-   "ratingCount": 16,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/8b/0e/2e/8b0e2e36-e2ce-10c5-200f-48830dfb4cdc/9780307388124.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 461,
+   "ratingSource": "apple",
    "pageCount": 341,
-   "year": "1634",
+   "year": "1977",
    "olKey": "/works/OL50564W"
   },
   {
    "title": "The Covenant of Water",
-   "coverId": 13190092,
-   "ratingAverage": 4.4,
-   "ratingCount": 5,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/6b/88/5d/6b885d95-0932-7fe0-a912-279fa02a6493/9780802162182.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 3708,
+   "ratingSource": "apple",
    "year": "2023",
    "olKey": "/works/OL29192912W"
   },
   {
    "title": "Demon Copperhead",
-   "coverId": 13141227,
-   "ratingAverage": 4.6,
-   "ratingCount": 7,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/37/41/49/374149d4-e176-69a7-c511-c168a13d65e5/9780063251991.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 8392,
+   "ratingSource": "apple",
    "pageCount": 560,
    "year": "2022",
    "olKey": "/works/OL27052926W"
   },
   {
    "title": "The Underground Railroad",
-   "coverId": 7899016,
-   "ratingAverage": 4,
-   "ratingCount": 52,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication128/v4/bc/6e/11/bc6e11f7-0574-f08d-d1c2-02fb6af1a3ec/9780385537049.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 3441,
+   "ratingSource": "apple",
    "pageCount": 378,
-   "year": "2000",
+   "year": "2016",
    "olKey": "/works/OL17619932W"
   },
   {
    "title": "Wild",
-   "coverId": 7249596,
-   "ratingAverage": 3.9,
-   "ratingCount": 42,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication4/v4/af/36/d3/af36d33d-786b-bd93-60f9-ccd3d977a9a9/9780307957658.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 6430,
+   "ratingSource": "apple",
    "pageCount": 363,
-   "year": "1767",
+   "year": "2012",
    "olKey": "/works/OL16142316W"
   },
   {
    "title": "The Water Dancer",
-   "coverId": 11328148,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication124/v4/26/e5/cb/26e5cb40-39c3-4642-d9bb-54b6889b0ea5/9780399590603.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 1,
+   "ratingCount": 3329,
+   "ratingSource": "apple",
    "pageCount": 416,
    "year": "2019",
    "olKey": "/works/OL20125974W"
   },
   {
    "title": "Lila",
-   "coverId": 7317559,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication124/v4/e4/e1/79/e4e179d6-7b15-7963-5c45-bda923ec5c08/9780374709082.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 2,
+   "ratingCount": 453,
+   "ratingSource": "apple",
    "pageCount": 272,
    "year": "2014",
    "olKey": "/works/OL17077593W"
   },
   {
    "title": "Deacon King Kong",
-   "coverId": 9289592,
-   "ratingAverage": 2,
-   "ratingCount": 2,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/4f/d6/3f/4fd63fef-9583-d9f8-935e-fc78f3352ed7/9780735216747.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 2190,
+   "ratingSource": "apple",
    "pageCount": 544,
    "year": "2020",
    "olKey": "/works/OL20650889W"
   },
   {
    "title": "Gilead",
-   "coverId": 1472533,
-   "ratingAverage": 3.4,
-   "ratingCount": 16,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication124/v4/f9/e9/d3/f9e9d3ab-e60b-1cf4-19f1-95e47955d8b6/9780374706098.jpg/600x900bb.jpg",
+   "ratingAverage": 3.5,
+   "ratingCount": 904,
+   "ratingSource": "apple",
    "pageCount": 257,
    "year": "2004",
    "olKey": "/works/OL1875009W"
@@ -597,12 +697,18 @@
    "coverId": 286147,
    "ratingAverage": 5,
    "ratingCount": 1,
+   "ratingSource": "openlibrary",
    "pageCount": 418,
    "year": "2001",
    "olKey": "/works/OL5842496W"
   },
   {
-   "title": "The Sweetness of Water"
+   "title": "The Sweetness of Water",
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication112/v4/ff/26/b4/ff26b4ec-bbc1-0495-b900-597c47b0c719/9780316461269.jpg/600x900bb.jpg",
+   "ratingAverage": 3.5,
+   "ratingCount": 2092,
+   "ratingSource": "apple",
+   "year": "2021"
   }
  ],
  "reeses": [
@@ -611,33 +717,37 @@
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication124/v4/9b/da/27/9bda2792-1f9e-3a35-339e-a34dfe18b986/cover.jpg/600x900bb.jpg",
    "ratingAverage": 4.3,
    "ratingCount": 102,
+   "ratingSource": "openlibrary",
    "pageCount": 416,
    "year": "2020",
    "olKey": "/works/OL18766691W"
   },
   {
    "title": "Daisy Jones & The Six",
-   "coverId": 8742674,
-   "ratingAverage": 3.9,
-   "ratingCount": 45,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/eb/de/71/ebde71c4-759b-e97e-c695-e6a477c0d79f/9781524798635.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 7728,
+   "ratingSource": "apple",
    "pageCount": 400,
    "year": "2019",
    "olKey": "/works/OL19922194W"
   },
   {
    "title": "Little Fires Everywhere",
-   "coverId": 8111914,
-   "ratingAverage": 3.9,
-   "ratingCount": 48,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication112/v4/9c/4e/52/9c4e52b3-5da6-c51f-1d40-27748825b9aa/9780735224308.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 9593,
+   "ratingSource": "apple",
    "pageCount": 384,
-   "year": "2014",
+   "year": "2017",
    "olKey": "/works/OL17821431W"
   },
   {
    "title": "Eleanor Oliphant Is Completely Fine",
-   "coverId": 8415055,
-   "ratingAverage": 4.2,
-   "ratingCount": 33,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication125/v4/f5/c0/c8/f5c0c873-803b-6fb5-414d-33cd14d9ea46/9780735220706.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 7931,
+   "ratingSource": "apple",
    "pageCount": 352,
    "year": "2017",
    "olKey": "/works/OL19781733W"
@@ -647,15 +757,17 @@
    "coverId": 9260189,
    "ratingAverage": 4.1,
    "ratingCount": 7,
+   "ratingSource": "openlibrary",
    "pageCount": 444,
    "year": "2017",
    "olKey": "/works/OL20060313W"
   },
   {
    "title": "Such a Fun Age",
-   "coverId": 9255831,
-   "ratingAverage": 3,
-   "ratingCount": 5,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication115/v4/9d/2c/95/9d2c9500-c8da-2da6-30c7-81f568303b33/9780525541929.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 3137,
+   "ratingSource": "apple",
    "pageCount": 320,
    "year": "2019",
    "olKey": "/works/OL20639693W"
@@ -663,8 +775,9 @@
   {
    "title": "The Seven Husbands of Evelyn Hugo",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/1e/f4/8b/1ef48b3d-5a62-27a5-2853-0ed8dffe46d4/9781501139246.jpg/600x900bb.jpg",
-   "ratingAverage": 4.1,
-   "ratingCount": 186,
+   "ratingAverage": 4.5,
+   "ratingCount": 18792,
+   "ratingSource": "apple",
    "pageCount": 400,
    "year": "2017",
    "olKey": "/works/OL18203673W"
@@ -674,6 +787,7 @@
    "coverId": 11308545,
    "ratingAverage": 4,
    "ratingCount": 1,
+   "ratingSource": "openlibrary",
    "pageCount": 456,
    "year": "2021",
    "olKey": "/works/OL24630972W"
@@ -683,6 +797,7 @@
    "coverId": 9265063,
    "ratingAverage": 4,
    "ratingCount": 1,
+   "ratingSource": "openlibrary",
    "pageCount": 1,
    "year": "2018",
    "olKey": "/works/OL20643492W"
@@ -692,9 +807,10 @@
   },
   {
    "title": "Untamed",
-   "coverId": 9295686,
-   "ratingAverage": 3.9,
-   "ratingCount": 13,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/74/6a/63/746a6365-c125-77f9-a3fd-d3f33968bcc8/9781984801265.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 4064,
+   "ratingSource": "apple",
    "pageCount": 352,
    "year": "2020",
    "olKey": "/works/OL20652361W"
@@ -704,6 +820,7 @@
    "coverId": 14640925,
    "ratingAverage": 3.5,
    "ratingCount": 2,
+   "ratingSource": "openlibrary",
    "pageCount": 450,
    "year": "2021",
    "olKey": "/works/OL37516935W"
@@ -715,15 +832,17 @@
    "coverId": 15254278,
    "ratingAverage": 4,
    "ratingCount": 2,
+   "ratingSource": "openlibrary",
    "pageCount": 360,
    "year": "2025",
    "olKey": "/works/OL42414694W"
   },
   {
    "title": "The Safekeep",
-   "coverId": 14631041,
-   "ratingAverage": 4.3,
-   "ratingCount": 3,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/a5/ff/88/a5ff887f-ec0d-8e0c-ffbf-1864f47eaed1/9781668034361.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 388,
+   "ratingSource": "apple",
    "year": "2024",
    "olKey": "/works/OL37572547W"
   },
@@ -732,23 +851,26 @@
    "coverId": 14824259,
    "ratingAverage": 4,
    "ratingCount": 1,
+   "ratingSource": "openlibrary",
    "year": "2023",
    "olKey": "/works/OL28349234W"
   },
   {
    "title": "Demon Copperhead",
-   "coverId": 13141227,
-   "ratingAverage": 4.6,
-   "ratingCount": 7,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/37/41/49/374149d4-e176-69a7-c511-c168a13d65e5/9780063251991.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 8392,
+   "ratingSource": "apple",
    "pageCount": 560,
    "year": "2022",
    "olKey": "/works/OL27052926W"
   },
   {
    "title": "The Book of Form and Emptiness",
-   "coverId": 10633373,
-   "ratingAverage": 4,
-   "ratingCount": 1,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication112/v4/c4/0c/c9/c40cc99a-a432-087a-6f09-20ece248bdd3/9780399563652.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 111,
+   "ratingSource": "apple",
    "pageCount": 560,
    "year": "2021",
    "olKey": "/works/OL24197713W"
@@ -758,16 +880,18 @@
    "coverId": 10226290,
    "ratingAverage": 4.3,
    "ratingCount": 63,
+   "ratingSource": "openlibrary",
    "pageCount": 272,
    "year": "2020",
    "olKey": "/works/OL20893680W"
   },
   {
    "title": "Hamnet",
-   "coverId": 10306590,
-   "ratingAverage": 4.1,
-   "ratingCount": 15,
-   "pageCount": 355,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/c9/4b/d2/c94bd2a7-d4d2-d80a-955d-7ec1770528f4/9780525657613.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 2304,
+   "ratingSource": "apple",
+   "pageCount": 358,
    "year": "2020",
    "olKey": "/works/OL20743965W"
   },
@@ -776,42 +900,47 @@
    "coverId": 8289154,
    "ratingAverage": 3.7,
    "ratingCount": 11,
+   "ratingSource": "openlibrary",
    "pageCount": 320,
    "year": "2018",
    "olKey": "/works/OL18020218W"
   },
   {
    "title": "Home Fire",
-   "coverId": 15164839,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/e3/15/28/e31528fb-8759-5f14-d92a-77f4d813a130/9780735217706.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 4,
+   "ratingCount": 277,
+   "ratingSource": "apple",
    "pageCount": 288,
    "year": "2017",
    "olKey": "/works/OL17868253W"
   },
   {
    "title": "Flashlight",
-   "coverId": 15111652,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/c0/bb/69/c0bb6931-bc88-2d71-4ec1-1a6ce0d68962/9780374616380.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 1,
+   "ratingCount": 128,
+   "ratingSource": "apple",
    "pageCount": 464,
    "year": "2025",
    "olKey": "/works/OL42408368W"
   },
   {
    "title": "Heart the Lover",
-   "coverId": 15143628,
-   "ratingAverage": 4,
-   "ratingCount": 1,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/b3/82/05/b3820594-31d2-05b9-cde7-5906ac1282f1/9780802165183.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 1512,
+   "ratingSource": "apple",
    "pageCount": 256,
    "year": "2025",
    "olKey": "/works/OL43763830W"
   },
   {
    "title": "Dominion",
-   "coverId": 15111941,
-   "ratingAverage": 4,
-   "ratingCount": 1,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/7b/06/e0/7b06e0f4-a5ba-1857-5534-fc379dc28efe/9780374609351.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 46,
+   "ratingSource": "apple",
    "pageCount": 240,
    "year": "2025",
    "olKey": "/works/OL42441000W"
@@ -823,6 +952,7 @@
    "coverId": 14839786,
    "ratingAverage": 4.5,
    "ratingCount": 2,
+   "ratingSource": "openlibrary",
    "pageCount": 320,
    "year": "2024",
    "olKey": "/works/OL37871931W"
@@ -832,6 +962,7 @@
    "coverId": 15179944,
    "ratingAverage": 4,
    "ratingCount": 2,
+   "ratingSource": "openlibrary",
    "pageCount": 192,
    "year": "2025",
    "olKey": "/works/OL42418897W"
@@ -841,6 +972,7 @@
    "coverId": 13913814,
    "ratingAverage": 4,
    "ratingCount": 1,
+   "ratingSource": "openlibrary",
    "pageCount": 358,
    "year": "2021",
    "olKey": "/works/OL29330702W"
@@ -859,6 +991,7 @@
    "coverId": 10112533,
    "ratingAverage": 3,
    "ratingCount": 4,
+   "ratingSource": "openlibrary",
    "pageCount": 160,
    "year": "2018",
    "olKey": "/works/OL20812009W"
@@ -871,6 +1004,7 @@
    "coverId": 9189905,
    "ratingAverage": 3.7,
    "ratingCount": 3,
+   "ratingSource": "openlibrary",
    "pageCount": 256,
    "year": "2018",
    "olKey": "/works/OL20544257W"
@@ -883,6 +1017,7 @@
    "coverId": 8871646,
    "ratingAverage": 3.4,
    "ratingCount": 5,
+   "ratingSource": "openlibrary",
    "pageCount": 201,
    "year": "2017",
    "olKey": "/works/OL20047755W"
@@ -895,6 +1030,7 @@
    "coverId": 15213149,
    "ratingAverage": 4,
    "ratingCount": 1,
+   "ratingSource": "openlibrary",
    "year": "2026",
    "olKey": "/works/OL45187192W"
   }
@@ -903,8 +1039,9 @@
   {
    "title": "The Seven Husbands of Evelyn Hugo",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/1e/f4/8b/1ef48b3d-5a62-27a5-2853-0ed8dffe46d4/9781501139246.jpg/600x900bb.jpg",
-   "ratingAverage": 4.1,
-   "ratingCount": 186,
+   "ratingAverage": 4.5,
+   "ratingCount": 18792,
+   "ratingSource": "apple",
    "pageCount": 400,
    "year": "2017",
    "olKey": "/works/OL18203673W"
@@ -912,8 +1049,9 @@
   {
    "title": "It Ends with Us",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/c8/6d/26/c86d26a8-16a6-118f-450b-c7000989a640/9781501110375.jpg/600x900bb.jpg",
-   "ratingAverage": 4.2,
-   "ratingCount": 1057,
+   "ratingAverage": 4.5,
+   "ratingCount": 62555,
+   "ratingSource": "apple",
    "pageCount": 384,
    "year": "2016",
    "olKey": "/works/OL18020194W"
@@ -923,6 +1061,7 @@
    "coverId": 9426296,
    "ratingAverage": 3.7,
    "ratingCount": 31,
+   "ratingSource": "openlibrary",
    "pageCount": 376,
    "year": "2020",
    "olKey": "/works/OL20734329W"
@@ -932,15 +1071,17 @@
    "coverId": 14348537,
    "ratingAverage": 4.2,
    "ratingCount": 409,
+   "ratingSource": "openlibrary",
    "pageCount": 351,
    "year": "1813",
    "olKey": "/works/OL66554W"
   },
   {
    "title": "Outlander",
-   "coverId": 14428230,
-   "ratingAverage": 4.1,
-   "ratingCount": 66,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication118/v4/0e/d5/65/0ed565f5-caf7-6d1e-6117-3998f1adb198/9780440335160.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 5486,
+   "ratingSource": "apple",
    "pageCount": 672,
    "year": "1991",
    "olKey": "/works/OL3261155W"
@@ -950,6 +1091,7 @@
    "coverId": 14419339,
    "ratingAverage": 4.1,
    "ratingCount": 70,
+   "ratingSource": "openlibrary",
    "pageCount": 492,
    "year": "2012",
    "olKey": "/works/OL28353073W"
@@ -959,6 +1101,7 @@
    "coverId": 9171544,
    "ratingAverage": 4.2,
    "ratingCount": 197,
+   "ratingSource": "openlibrary",
    "pageCount": 440,
    "year": "2019",
    "olKey": "/works/OL20090688W"
@@ -968,6 +1111,7 @@
    "coverId": 9247684,
    "ratingAverage": 3.6,
    "ratingCount": 28,
+   "ratingSource": "openlibrary",
    "pageCount": 379,
    "year": "2016",
    "olKey": "/works/OL20032935W"
@@ -977,6 +1121,7 @@
    "coverId": 11567819,
    "ratingAverage": 4,
    "ratingCount": 12,
+   "ratingSource": "openlibrary",
    "pageCount": 408,
    "year": "2022",
    "olKey": "/works/OL24801992W"
@@ -985,7 +1130,8 @@
    "title": "Normal People",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication112/v4/5e/95/6b/5e956b26-dc05-454a-4159-cf8b867c7b13/9781984822192.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 81,
+   "ratingCount": 5631,
+   "ratingSource": "apple",
    "pageCount": 304,
    "year": "2019",
    "olKey": "/works/OL20150260W"
@@ -995,6 +1141,7 @@
    "coverId": 8580421,
    "ratingAverage": 3.6,
    "ratingCount": 13,
+   "ratingSource": "openlibrary",
    "pageCount": 437,
    "year": "2009",
    "olKey": "/works/OL15424701W"
@@ -1004,6 +1151,7 @@
    "coverId": 7382153,
    "ratingAverage": 3.6,
    "ratingCount": 26,
+   "ratingSource": "openlibrary",
    "pageCount": 244,
    "year": "1996",
    "olKey": "/works/OL54797W"
@@ -1013,8 +1161,9 @@
   {
    "title": "Atomic Habits",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/1f/1b/d3/1f1bd34a-aa29-25e8-b133-7e19b38a5702/9780735211308.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4,
-   "ratingCount": 1450,
+   "ratingAverage": 4.5,
+   "ratingCount": 7519,
+   "ratingSource": "apple",
    "pageCount": 323,
    "year": "2018",
    "olKey": "/works/OL17930368W"
@@ -1022,8 +1171,9 @@
   {
    "title": "The Body Keeps the Score",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication122/v4/15/95/8c/15958cfc-d869-dbc0-6d74-fea0e7b1ec8a/9781101608302.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4.1,
-   "ratingCount": 38,
+   "ratingAverage": 4.5,
+   "ratingCount": 958,
+   "ratingSource": "apple",
    "pageCount": 520,
    "year": "2014",
    "olKey": "/works/OL18147687W"
@@ -1033,33 +1183,37 @@
    "coverId": 8620497,
    "ratingAverage": 4.1,
    "ratingCount": 17,
+   "ratingSource": "openlibrary",
    "pageCount": 294,
    "year": "2010",
    "olKey": "/works/OL16929630W"
   },
   {
    "title": "Set Boundaries, Find Peace",
-   "coverId": 10543310,
-   "ratingAverage": 4.7,
-   "ratingCount": 6,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication125/v4/89/a8/77/89a877d6-e116-161d-f85d-5bf9a50f3b72/9780593192108.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 312,
+   "ratingSource": "apple",
    "pageCount": 304,
    "year": "2021",
    "olKey": "/works/OL24144951W"
   },
   {
    "title": "The Gifts of Imperfection",
-   "coverId": 7237826,
-   "ratingAverage": 4.1,
-   "ratingCount": 23,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/1a/23/4f/1a234fed-01d1-54c9-f4c0-781c033d9b1f/9781592859894.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 1115,
+   "ratingSource": "apple",
    "pageCount": 202,
-   "year": "2010",
+   "year": "2022",
    "olKey": "/works/OL16010306W"
   },
   {
    "title": "Daring Greatly",
-   "coverId": 7367250,
-   "ratingAverage": 3.8,
-   "ratingCount": 31,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/93/9b/40/939b4006-db55-6ecd-dc88-fbffea6ebce9/9781101594995.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 873,
+   "ratingSource": "apple",
    "pageCount": 251,
    "year": "2012",
    "olKey": "/works/OL16664399W"
@@ -1067,17 +1221,19 @@
   {
    "title": "Man's Search for Meaning",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication128/v4/cd/fb/d0/cdfbd09c-eba6-ec75-9048-3ed7737bb97b/9780807014288.jpg/600x900bb.jpg",
-   "ratingAverage": 3.4,
-   "ratingCount": 13,
+   "ratingAverage": 4.5,
+   "ratingCount": 2685,
+   "ratingSource": "apple",
    "pageCount": 192,
    "year": "2000",
    "olKey": "/works/OL24557376W"
   },
   {
    "title": "The Four Agreements",
-   "coverId": 924521,
-   "ratingAverage": 3.9,
-   "ratingCount": 71,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/48/ab/5d/48ab5d17-da47-9b8c-df17-cefea91b404a/9781934408018.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 233,
+   "ratingSource": "apple",
    "pageCount": 152,
    "year": "1997",
    "olKey": "/works/OL27203W"
@@ -1087,6 +1243,7 @@
    "coverId": 7438753,
    "ratingAverage": 4,
    "ratingCount": 43,
+   "ratingSource": "openlibrary",
    "pageCount": 353,
    "year": "2016",
    "olKey": "/works/OL17361140W"
@@ -1096,6 +1253,7 @@
    "coverId": 746414,
    "ratingAverage": 3.7,
    "ratingCount": 59,
+   "ratingSource": "openlibrary",
    "pageCount": 288,
    "year": "2006",
    "olKey": "/works/OL2003465W"
@@ -1105,28 +1263,31 @@
    "coverId": 7988607,
    "ratingAverage": 3.8,
    "ratingCount": 191,
+   "ratingSource": "openlibrary",
    "pageCount": 303,
    "year": "2016",
    "olKey": "/works/OL17713267W"
   },
   {
    "title": "How to Win Friends and Influence People",
-   "coverId": 13314878,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/b1/d7/3f/b1d73fe0-f437-50ba-0b5e-38ed88f20685/ed99bfb0-d0e9-4834-9d2a-1e7a2c832a38_cover_image.png/600x900bb.jpg",
    "ratingAverage": 4.2,
    "ratingCount": 446,
+   "ratingSource": "openlibrary",
    "pageCount": 283,
-   "year": "1936",
+   "year": "2026",
    "olKey": "/works/OL1063267W"
   }
  ],
  "fantasy": [
   {
    "title": "The Hobbit",
-   "coverId": 14627509,
-   "ratingAverage": 4.3,
-   "ratingCount": 500,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication122/v4/8a/d8/61/8ad861cd-9c83-512c-d13e-022e625ef4b6/9780547951973.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 1031,
+   "ratingSource": "apple",
    "pageCount": 310,
-   "year": "1937",
+   "year": "2012",
    "olKey": "/works/OL27482W"
   },
   {
@@ -1134,6 +1295,7 @@
    "coverId": 15254465,
    "ratingAverage": 3.9,
    "ratingCount": 148,
+   "ratingSource": "openlibrary",
    "pageCount": 454,
    "year": "2013",
    "olKey": "/works/OL17352669W"
@@ -1143,6 +1305,7 @@
    "coverId": 11480483,
    "ratingAverage": 4.3,
    "ratingCount": 255,
+   "ratingSource": "openlibrary",
    "pageCount": 736,
    "year": "2007",
    "olKey": "/works/OL8479867W"
@@ -1152,6 +1315,7 @@
    "coverId": 276518,
    "ratingAverage": 4,
    "ratingCount": 1,
+   "ratingSource": "openlibrary",
    "pageCount": 16,
    "year": "2000",
    "olKey": "/works/OL31306243W"
@@ -1160,6 +1324,7 @@
    "title": "Mistborn: The Final Empire",
    "ratingAverage": 4,
    "ratingCount": 1,
+   "ratingSource": "openlibrary",
    "year": "2017",
    "olKey": "/works/OL25870671W"
   },
@@ -1168,6 +1333,7 @@
    "coverId": 14658316,
    "ratingAverage": 4.5,
    "ratingCount": 166,
+   "ratingSource": "openlibrary",
    "pageCount": 1008,
    "year": "2010",
    "olKey": "/works/OL15358691W"
@@ -1177,6 +1343,7 @@
    "coverId": 8739376,
    "ratingAverage": 4.2,
    "ratingCount": 109,
+   "ratingSource": "openlibrary",
    "pageCount": 404,
    "year": "2018",
    "olKey": "/works/OL18012166W"
@@ -1184,8 +1351,9 @@
   {
    "title": "Fourth Wing",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/a7/eb/7a/a7eb7abe-cd2d-267b-fbdb-5cb1d62cd26d/9781649374080.jpg/600x900bb.jpg",
-   "ratingAverage": 4.2,
-   "ratingCount": 107,
+   "ratingAverage": 4.5,
+   "ratingCount": 24366,
+   "ratingSource": "apple",
    "pageCount": 518,
    "year": "2023",
    "olKey": "/works/OL29226517W"
@@ -1195,6 +1363,7 @@
    "coverId": 8773134,
    "ratingAverage": 4.1,
    "ratingCount": 68,
+   "ratingSource": "openlibrary",
    "pageCount": 512,
    "year": "2011",
    "olKey": "/works/OL16086747W"
@@ -1203,7 +1372,8 @@
    "title": "A Game of Thrones",
    "coverId": 9269962,
    "ratingAverage": 4.2,
-   "ratingCount": 762,
+   "ratingCount": 763,
+   "ratingSource": "openlibrary",
    "pageCount": 801,
    "year": "1996",
    "olKey": "/works/OL257943W"
@@ -1213,17 +1383,19 @@
    "coverId": 10226290,
    "ratingAverage": 4.3,
    "ratingCount": 63,
+   "ratingSource": "openlibrary",
    "pageCount": 272,
    "year": "2020",
    "olKey": "/works/OL20893680W"
   },
   {
    "title": "The Fellowship of the Ring",
-   "coverId": 14627060,
-   "ratingAverage": 4.3,
-   "ratingCount": 405,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication116/v4/07/1a/f4/071af4f1-c83c-aec8-6c09-27f15c42d22d/9780547952017.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 637,
+   "ratingSource": "apple",
    "pageCount": 492,
-   "year": "1954",
+   "year": "2012",
    "olKey": "/works/OL27513W"
   }
  ],
@@ -1232,7 +1404,8 @@
    "title": "Educated",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication116/v4/ac/b0/45/acb045ee-c0b2-4cae-ee27-4efadaa180ca/9780399590511.d.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 22,
+   "ratingCount": 20327,
+   "ratingSource": "apple",
    "pageCount": 384,
    "year": "2018",
    "olKey": "/works/OL18139176W"
@@ -1240,8 +1413,9 @@
   {
    "title": "Becoming",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication114/v4/40/85/6c/40856c45-c99f-f27e-8546-246000f0d91c/9781524763152.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4.4,
-   "ratingCount": 13,
+   "ratingAverage": 4.5,
+   "ratingCount": 11490,
+   "ratingSource": "apple",
    "pageCount": 464,
    "year": "2018",
    "olKey": "/works/OL17930367W"
@@ -1251,6 +1425,7 @@
    "coverId": 12855985,
    "ratingAverage": 4.3,
    "ratingCount": 75,
+   "ratingSource": "openlibrary",
    "pageCount": 320,
    "year": "2022",
    "olKey": "/works/OL26663382W"
@@ -1260,6 +1435,7 @@
    "coverId": 11463139,
    "ratingAverage": 4.2,
    "ratingCount": 42,
+   "ratingSource": "openlibrary",
    "pageCount": 232,
    "year": "2016",
    "olKey": "/works/OL17356252W"
@@ -1267,8 +1443,9 @@
   {
    "title": "Born a Crime",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/f3/11/91/f31191f8-8858-2d94-9459-6a04f2e0d78c/9780399588181.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4.6,
-   "ratingCount": 65,
+   "ratingAverage": 4.5,
+   "ratingCount": 5390,
+   "ratingSource": "apple",
    "pageCount": 304,
    "year": "2016",
    "olKey": "/works/OL17824318W"
@@ -1278,35 +1455,39 @@
    "coverId": 11517692,
    "ratingAverage": 4.4,
    "ratingCount": 53,
+   "ratingSource": "openlibrary",
    "pageCount": 347,
    "year": "2005",
    "olKey": "/works/OL46760W"
   },
   {
    "title": "Wild",
-   "coverId": 7249596,
-   "ratingAverage": 3.9,
-   "ratingCount": 42,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication4/v4/af/36/d3/af36d33d-786b-bd93-60f9-ccd3d977a9a9/9780307957658.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 6430,
+   "ratingSource": "apple",
    "pageCount": 363,
-   "year": "1767",
+   "year": "2012",
    "olKey": "/works/OL16142316W"
   },
   {
    "title": "Crying in H Mart",
-   "coverId": 10462708,
-   "ratingAverage": 3.8,
-   "ratingCount": 26,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/53/32/dd/5332ddd8-abe1-d551-79fa-ee4aec3646d7/9780525657750.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 1545,
+   "ratingSource": "apple",
    "pageCount": 256,
-   "year": "2020",
+   "year": "2021",
    "olKey": "/works/OL22448002W"
   },
   {
    "title": "Just Kids",
-   "coverId": 6671097,
-   "ratingAverage": 4.1,
-   "ratingCount": 29,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication/91/bf/23/mzi.ensiwmrf.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 1081,
+   "ratingSource": "apple",
    "pageCount": 320,
-   "year": "2006",
+   "year": "2010",
    "olKey": "/works/OL15474046W"
   },
   {
@@ -1314,6 +1495,7 @@
    "coverId": 9264396,
    "ratingAverage": 4.3,
    "ratingCount": 6,
+   "ratingSource": "openlibrary",
    "pageCount": 376,
    "year": "2019",
    "olKey": "/works/OL20336031W"
@@ -1323,6 +1505,7 @@
    "coverId": 8596019,
    "ratingAverage": 3.8,
    "ratingCount": 35,
+   "ratingSource": "openlibrary",
    "pageCount": 432,
    "year": "2019",
    "olKey": "/works/OL19791590W"
@@ -1332,6 +1515,7 @@
    "coverId": 13415348,
    "ratingAverage": 3.9,
    "ratingCount": 23,
+   "ratingSource": "openlibrary",
    "pageCount": 672,
    "year": "2023",
    "olKey": "/works/OL29240850W"
@@ -1343,6 +1527,7 @@
    "coverId": 14559680,
    "ratingAverage": 4.3,
    "ratingCount": 83,
+   "ratingSource": "openlibrary",
    "pageCount": 544,
    "year": "2014",
    "olKey": "/works/OL16821606W"
@@ -1352,6 +1537,7 @@
    "coverId": 8314147,
    "ratingAverage": 4.6,
    "ratingCount": 44,
+   "ratingSource": "openlibrary",
    "pageCount": 560,
    "year": "2000",
    "olKey": "/works/OL17116910W"
@@ -1361,6 +1547,7 @@
    "coverId": 8153054,
    "ratingAverage": 4.2,
    "ratingCount": 145,
+   "ratingSource": "openlibrary",
    "pageCount": 560,
    "year": "1998",
    "olKey": "/works/OL5819456W"
@@ -1370,15 +1557,17 @@
    "coverId": 8345848,
    "ratingAverage": 4,
    "ratingCount": 38,
+   "ratingSource": "openlibrary",
    "pageCount": 653,
    "year": "2009",
    "olKey": "/works/OL464512W"
   },
   {
    "title": "Pachinko",
-   "coverId": 8044605,
-   "ratingAverage": 4,
-   "ratingCount": 25,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication125/v4/d9/4a/e5/d94ae54d-9529-c42f-93b5-bbb07d7aa948/9781455563913.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 4050,
+   "ratingSource": "apple",
    "pageCount": 512,
    "year": "2017",
    "olKey": "/works/OL17762217W"
@@ -1388,6 +1577,7 @@
    "coverId": 9269909,
    "ratingAverage": 4.2,
    "ratingCount": 73,
+   "ratingSource": "openlibrary",
    "pageCount": 1040,
    "year": "1989",
    "olKey": "/works/OL1914022W"
@@ -1395,8 +1585,9 @@
   {
    "title": "The Song of Achilles",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication125/v4/8d/b1/fd/8db1fd98-753b-1975-6e83-c2668263b4e4/9780062060631.jpg/600x900bb.jpg",
-   "ratingAverage": 4.3,
-   "ratingCount": 139,
+   "ratingAverage": 4.5,
+   "ratingCount": 6272,
+   "ratingSource": "apple",
    "pageCount": 386,
    "year": "2012",
    "olKey": "/works/OL16509148W"
@@ -1404,8 +1595,9 @@
   {
    "title": "Lessons in Chemistry",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/49/13/65/491365c6-fa28-af90-b806-1566a07e2541/9780385547376.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4,
-   "ratingCount": 9,
+   "ratingAverage": 4.5,
+   "ratingCount": 17025,
+   "ratingSource": "apple",
    "pageCount": 464,
    "year": "2022",
    "olKey": "/works/OL25344431W"
@@ -1415,6 +1607,7 @@
    "coverId": 9260189,
    "ratingAverage": 4.1,
    "ratingCount": 7,
+   "ratingSource": "openlibrary",
    "pageCount": 444,
    "year": "2017",
    "olKey": "/works/OL20060313W"
@@ -1424,6 +1617,7 @@
    "coverId": 8381043,
    "ratingAverage": 3.7,
    "ratingCount": 49,
+   "ratingSource": "openlibrary",
    "pageCount": 384,
    "year": "2001",
    "olKey": "/works/OL1855944W"
@@ -1433,15 +1627,17 @@
    "coverId": 8387264,
    "ratingAverage": 4.3,
    "ratingCount": 117,
+   "ratingSource": "openlibrary",
    "pageCount": 479,
    "year": "2009",
    "olKey": "/works/OL11999891W"
   },
   {
    "title": "Beloved",
-   "coverId": 8261367,
-   "ratingAverage": 3.9,
-   "ratingCount": 75,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/2d/bc/0b/2dbc0bac-a99b-3d04-3008-ed3cc4caed52/9780307388629.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 931,
+   "ratingSource": "apple",
    "pageCount": 321,
    "year": "1987",
    "olKey": "/works/OL50548W"
@@ -1451,8 +1647,9 @@
   {
    "title": "Gone Girl",
    "coverId": 8368314,
-   "ratingAverage": 3.7,
-   "ratingCount": 72,
+   "ratingAverage": 3.8,
+   "ratingCount": 76,
+   "ratingSource": "openlibrary",
    "pageCount": 475,
    "year": "2011",
    "olKey": "/works/OL16239762W"
@@ -1461,6 +1658,7 @@
    "title": "The Girl with the Dragon Tattoo",
    "ratingAverage": 4,
    "ratingCount": 1,
+   "ratingSource": "openlibrary",
    "year": "2011",
    "olKey": "/works/OL31964906W"
   },
@@ -1468,7 +1666,8 @@
    "title": "And Then There Were None",
    "coverId": 11172296,
    "ratingAverage": 4.3,
-   "ratingCount": 173,
+   "ratingCount": 181,
+   "ratingSource": "openlibrary",
    "pageCount": 222,
    "year": "1939",
    "olKey": "/works/OL471565W"
@@ -1478,6 +1677,7 @@
    "coverId": 9407338,
    "ratingAverage": 4.1,
    "ratingCount": 209,
+   "ratingSource": "openlibrary",
    "pageCount": 352,
    "year": "2018",
    "olKey": "/works/OL19096402W"
@@ -1487,6 +1687,7 @@
    "coverId": 7352410,
    "ratingAverage": 4.2,
    "ratingCount": 35,
+   "ratingSource": "openlibrary",
    "pageCount": 512,
    "year": "2014",
    "olKey": "/works/OL17116911W"
@@ -1496,6 +1697,7 @@
    "coverId": 9255229,
    "ratingAverage": 3.9,
    "ratingCount": 194,
+   "ratingSource": "openlibrary",
    "pageCount": 489,
    "year": "2003",
    "olKey": "/works/OL76837W"
@@ -1505,6 +1707,7 @@
    "coverId": 1474730,
    "ratingAverage": 3.7,
    "ratingCount": 20,
+   "ratingSource": "openlibrary",
    "pageCount": 578,
    "year": "2001",
    "olKey": "/works/OL7989979W"
@@ -1514,6 +1717,7 @@
    "coverId": 8238729,
    "ratingAverage": 4.2,
    "ratingCount": 53,
+   "ratingSource": "openlibrary",
    "pageCount": 386,
    "year": "1938",
    "olKey": "/works/OL36633W"
@@ -1521,8 +1725,9 @@
   {
    "title": "The Thursday Murder Club",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/8d/88/28/8d882872-3da3-da5d-ecc8-e495c01e464e/9781984880970.d.jpg/600x900bb.jpg",
-   "ratingAverage": 3.7,
-   "ratingCount": 20,
+   "ratingAverage": 4,
+   "ratingCount": 2887,
+   "ratingSource": "apple",
    "pageCount": 449,
    "year": "2020",
    "olKey": "/works/OL20878311W"
@@ -1532,6 +1737,7 @@
    "coverId": 167973,
    "ratingAverage": 3.8,
    "ratingCount": 33,
+   "ratingSource": "openlibrary",
    "pageCount": 312,
    "year": "2006",
    "olKey": "/works/OL5842018W"
@@ -1541,6 +1747,7 @@
    "coverId": 7350360,
    "ratingAverage": 3.6,
    "ratingCount": 97,
+   "ratingSource": "openlibrary",
    "pageCount": 360,
    "year": "2014",
    "olKey": "/works/OL17112428W"
@@ -1550,6 +1757,7 @@
    "coverId": 13151356,
    "ratingAverage": 4.2,
    "ratingCount": 83,
+   "ratingSource": "openlibrary",
    "pageCount": 256,
    "year": "1926",
    "olKey": "/works/OL471932W"
@@ -1561,6 +1769,7 @@
    "coverId": 11481354,
    "ratingAverage": 4.3,
    "ratingCount": 448,
+   "ratingSource": "openlibrary",
    "pageCount": 608,
    "year": "1965",
    "olKey": "/works/OL893414W"
@@ -1569,7 +1778,8 @@
    "title": "Project Hail Mary",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/13/fb/63/13fb6355-fce2-0e4b-08b7-48452037759a/9780593135211.d.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 184,
+   "ratingCount": 16491,
+   "ratingSource": "apple",
    "pageCount": 496,
    "year": "2021",
    "olKey": "/works/OL21745884W"
@@ -1579,6 +1789,7 @@
    "coverId": 11447888,
    "ratingAverage": 4.4,
    "ratingCount": 337,
+   "ratingSource": "openlibrary",
    "pageCount": 407,
    "year": "2011",
    "olKey": "/works/OL17091839W"
@@ -1588,6 +1799,7 @@
    "coverId": 12996033,
    "ratingAverage": 4.4,
    "ratingCount": 417,
+   "ratingSource": "openlibrary",
    "pageCount": 330,
    "year": "1985",
    "olKey": "/works/OL49488W"
@@ -1597,6 +1809,7 @@
    "coverId": 7369961,
    "ratingAverage": 4.1,
    "ratingCount": 88,
+   "ratingSource": "openlibrary",
    "pageCount": 352,
    "year": "2014",
    "olKey": "/works/OL17202418W"
@@ -1606,6 +1819,7 @@
    "coverId": 10618463,
    "ratingAverage": 4.3,
    "ratingCount": 56,
+   "ratingSource": "openlibrary",
    "pageCount": 304,
    "year": "1969",
    "olKey": "/works/OL59800W"
@@ -1613,8 +1827,9 @@
   {
    "title": "Klara and the Sun",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication116/v4/ba/7b/b0/ba7bb051-38ad-3553-98a4-1c93b41c0fbd/9780593318188.d.jpg/600x900bb.jpg",
-   "ratingAverage": 3.8,
-   "ratingCount": 48,
+   "ratingAverage": 4,
+   "ratingCount": 2254,
+   "ratingSource": "apple",
    "pageCount": 334,
    "year": "2021",
    "olKey": "/works/OL20883297W"
@@ -1624,6 +1839,7 @@
    "coverId": 10526598,
    "ratingAverage": 4.4,
    "ratingCount": 36,
+   "ratingSource": "openlibrary",
    "pageCount": 562,
    "year": "2008",
    "olKey": "/works/OL16314245W"
@@ -1633,6 +1849,7 @@
    "coverId": 14612610,
    "ratingAverage": 4.1,
    "ratingCount": 308,
+   "ratingSource": "openlibrary",
    "pageCount": 240,
    "year": "1951",
    "olKey": "/works/OL46125W"
@@ -1642,6 +1859,7 @@
    "coverId": 12993656,
    "ratingAverage": 4,
    "ratingCount": 452,
+   "ratingSource": "openlibrary",
    "pageCount": 188,
    "year": "1953",
    "olKey": "/works/OL103123W"
@@ -1651,6 +1869,7 @@
    "coverId": 283860,
    "ratingAverage": 4.1,
    "ratingCount": 81,
+   "ratingSource": "openlibrary",
    "pageCount": 317,
    "year": "1984",
    "olKey": "/works/OL27258W"
@@ -1660,6 +1879,7 @@
    "coverId": 9267242,
    "ratingAverage": 4.3,
    "ratingCount": 436,
+   "ratingSource": "openlibrary",
    "pageCount": 318,
    "year": "1949",
    "olKey": "/works/OL1168083W"
@@ -1671,17 +1891,19 @@
    "coverId": 8235363,
    "ratingAverage": 4,
    "ratingCount": 186,
+   "ratingSource": "openlibrary",
    "pageCount": 480,
    "year": "1847",
    "olKey": "/works/OL1095427W"
   },
   {
    "title": "Wuthering Heights",
-   "coverId": 12818862,
-   "ratingAverage": 4.1,
-   "ratingCount": 301,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication113/v4/02/5b/cb/025bcbe1-afd5-71ee-5335-1e45f07c70e0/PD-Wuthering_Heights-Adj.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 5971,
+   "ratingSource": "apple",
    "pageCount": 318,
-   "year": "1846",
+   "year": "1847",
    "olKey": "/works/OL21177W"
   },
   {
@@ -1689,6 +1911,7 @@
    "coverId": 8775559,
    "ratingAverage": 4.1,
    "ratingCount": 126,
+   "ratingSource": "openlibrary",
    "pageCount": 423,
    "year": "1848",
    "olKey": "/works/OL29983W"
@@ -1698,6 +1921,7 @@
    "coverId": 10590366,
    "ratingAverage": 4,
    "ratingCount": 252,
+   "ratingSource": "openlibrary",
    "pageCount": 185,
    "year": "1920",
    "olKey": "/works/OL468431W"
@@ -1707,6 +1931,7 @@
    "coverId": 14351077,
    "ratingAverage": 4.1,
    "ratingCount": 273,
+   "ratingSource": "openlibrary",
    "pageCount": 320,
    "year": "1960",
    "olKey": "/works/OL3140822W"
@@ -1715,6 +1940,7 @@
    "title": "Anna Karenina",
    "ratingAverage": 4,
    "ratingCount": 1,
+   "ratingSource": "openlibrary",
    "year": "2016",
    "olKey": "/works/OL36073991W"
   },
@@ -1723,17 +1949,19 @@
    "coverId": 252882,
    "ratingAverage": 4.1,
    "ratingCount": 27,
+   "ratingSource": "openlibrary",
    "pageCount": 793,
    "year": "1800",
    "olKey": "/works/OL20867W"
   },
   {
    "title": "Frankenstein",
-   "coverId": 12356249,
-   "ratingAverage": 4,
-   "ratingCount": 228,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication114/v4/00/41/04/00410497-b64b-79a1-80c4-3a85d869abd6/cover.png/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 1336,
+   "ratingSource": "apple",
    "pageCount": 240,
-   "year": "1818",
+   "year": "1817",
    "olKey": "/works/OL450063W"
   },
   {
@@ -1741,6 +1969,7 @@
    "coverId": 14314858,
    "ratingAverage": 4.2,
    "ratingCount": 129,
+   "ratingSource": "openlibrary",
    "pageCount": 246,
    "year": "1890",
    "olKey": "/works/OL8193416W"
@@ -1750,6 +1979,7 @@
    "coverId": 13116014,
    "ratingAverage": 5,
    "ratingCount": 1,
+   "ratingSource": "openlibrary",
    "pageCount": 551,
    "year": "1941",
    "olKey": "/works/OL32525579W"
@@ -1759,6 +1989,7 @@
    "coverId": 9278312,
    "ratingAverage": 4,
    "ratingCount": 65,
+   "ratingSource": "openlibrary",
    "pageCount": 457,
    "year": "1815",
    "olKey": "/works/OL66513W"
@@ -1768,6 +1999,7 @@
    "coverId": 13322313,
    "ratingAverage": 3.8,
    "ratingCount": 162,
+   "ratingSource": "openlibrary",
    "pageCount": 482,
    "year": "1861",
    "olKey": "/works/OL8721462W"
@@ -1779,6 +2011,7 @@
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication124/v4/9b/da/27/9bda2792-1f9e-3a35-339e-a34dfe18b986/cover.jpg/600x900bb.jpg",
    "ratingAverage": 4.3,
    "ratingCount": 102,
+   "ratingSource": "openlibrary",
    "pageCount": 416,
    "year": "2020",
    "olKey": "/works/OL18766691W"
@@ -1786,8 +2019,9 @@
   {
    "title": "The Seven Husbands of Evelyn Hugo",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/1e/f4/8b/1ef48b3d-5a62-27a5-2853-0ed8dffe46d4/9781501139246.jpg/600x900bb.jpg",
-   "ratingAverage": 4.1,
-   "ratingCount": 186,
+   "ratingAverage": 4.5,
+   "ratingCount": 18792,
+   "ratingSource": "apple",
    "pageCount": 400,
    "year": "2017",
    "olKey": "/works/OL18203673W"
@@ -1795,8 +2029,9 @@
   {
    "title": "It Ends with Us",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/c8/6d/26/c86d26a8-16a6-118f-450b-c7000989a640/9781501110375.jpg/600x900bb.jpg",
-   "ratingAverage": 4.2,
-   "ratingCount": 1057,
+   "ratingAverage": 4.5,
+   "ratingCount": 62555,
+   "ratingSource": "apple",
    "pageCount": 384,
    "year": "2016",
    "olKey": "/works/OL18020194W"
@@ -1805,7 +2040,8 @@
    "title": "Project Hail Mary",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/13/fb/63/13fb6355-fce2-0e4b-08b7-48452037759a/9780593135211.d.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 184,
+   "ratingCount": 16491,
+   "ratingSource": "apple",
    "pageCount": 496,
    "year": "2021",
    "olKey": "/works/OL21745884W"
@@ -1813,8 +2049,9 @@
   {
    "title": "Tomorrow, and Tomorrow, and Tomorrow",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/0a/52/d9/0a52d9fc-a8cc-af1d-fe3a-5d27e9858212/9780593321218.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4.2,
-   "ratingCount": 26,
+   "ratingAverage": 4,
+   "ratingCount": 4836,
+   "ratingSource": "apple",
    "pageCount": 460,
    "year": "2022",
    "olKey": "/works/OL26004554W"
@@ -1822,8 +2059,9 @@
   {
    "title": "Lessons in Chemistry",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/49/13/65/491365c6-fa28-af90-b806-1566a07e2541/9780385547376.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4,
-   "ratingCount": 9,
+   "ratingAverage": 4.5,
+   "ratingCount": 17025,
+   "ratingSource": "apple",
    "pageCount": 464,
    "year": "2022",
    "olKey": "/works/OL25344431W"
@@ -1831,8 +2069,9 @@
   {
    "title": "The Midnight Library",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/07/0d/bf/070dbfea-a8a0-ce93-e119-5dcf299ad85a/9780525559481.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4,
-   "ratingCount": 86,
+   "ratingAverage": 4.5,
+   "ratingCount": 12261,
+   "ratingSource": "apple",
    "pageCount": 304,
    "year": "2020",
    "olKey": "/works/OL20965973W"
@@ -1840,8 +2079,9 @@
   {
    "title": "Fourth Wing",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/a7/eb/7a/a7eb7abe-cd2d-267b-fbdb-5cb1d62cd26d/9781649374080.jpg/600x900bb.jpg",
-   "ratingAverage": 4.2,
-   "ratingCount": 107,
+   "ratingAverage": 4.5,
+   "ratingCount": 24366,
+   "ratingSource": "apple",
    "pageCount": 518,
    "year": "2023",
    "olKey": "/works/OL29226517W"
@@ -1849,8 +2089,9 @@
   {
    "title": "The Song of Achilles",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication125/v4/8d/b1/fd/8db1fd98-753b-1975-6e83-c2668263b4e4/9780062060631.jpg/600x900bb.jpg",
-   "ratingAverage": 4.3,
-   "ratingCount": 139,
+   "ratingAverage": 4.5,
+   "ratingCount": 6272,
+   "ratingSource": "apple",
    "pageCount": 386,
    "year": "2012",
    "olKey": "/works/OL16509148W"
@@ -1858,8 +2099,9 @@
   {
    "title": "A Little Life",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication69/v4/12/c6/8d/12c68d22-2de1-bb15-19d5-28fb7bc5adbc/9780385539265.jpg/600x900bb.jpg",
-   "ratingAverage": 4,
-   "ratingCount": 128,
+   "ratingAverage": 4.5,
+   "ratingCount": 3380,
+   "ratingSource": "apple",
    "pageCount": 800,
    "year": "2015",
    "olKey": "/works/OL17370186W"
@@ -1867,8 +2109,9 @@
   {
    "title": "The Thursday Murder Club",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/8d/88/28/8d882872-3da3-da5d-ecc8-e495c01e464e/9781984880970.d.jpg/600x900bb.jpg",
-   "ratingAverage": 3.7,
-   "ratingCount": 20,
+   "ratingAverage": 4,
+   "ratingCount": 2887,
+   "ratingSource": "apple",
    "pageCount": 449,
    "year": "2020",
    "olKey": "/works/OL20878311W"
@@ -1877,7 +2120,8 @@
    "title": "Normal People",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication112/v4/5e/95/6b/5e956b26-dc05-454a-4159-cf8b867c7b13/9781984822192.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 81,
+   "ratingCount": 5631,
+   "ratingSource": "apple",
    "pageCount": 304,
    "year": "2019",
    "olKey": "/works/OL20150260W"
@@ -1887,8 +2131,9 @@
   {
    "title": "Atomic Habits",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/1f/1b/d3/1f1bd34a-aa29-25e8-b133-7e19b38a5702/9780735211308.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4,
-   "ratingCount": 1450,
+   "ratingAverage": 4.5,
+   "ratingCount": 7519,
+   "ratingSource": "apple",
    "pageCount": 323,
    "year": "2018",
    "olKey": "/works/OL17930368W"
@@ -1896,8 +2141,9 @@
   {
    "title": "Sapiens",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication128/v4/85/65/db/8565db0b-0a9d-0c64-f99f-7ef3e1123e94/9780062316103_marketingimage.jpg/600x900bb.jpg",
-   "ratingAverage": 4.2,
-   "ratingCount": 212,
+   "ratingAverage": 4.5,
+   "ratingCount": 3656,
+   "ratingSource": "apple",
    "pageCount": 456,
    "year": "2015",
    "olKey": "/works/OL17075811W"
@@ -1906,7 +2152,8 @@
    "title": "Educated",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication116/v4/ac/b0/45/acb045ee-c0b2-4cae-ee27-4efadaa180ca/9780399590511.d.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 22,
+   "ratingCount": 20327,
+   "ratingSource": "apple",
    "pageCount": 384,
    "year": "2018",
    "olKey": "/works/OL18139176W"
@@ -1914,8 +2161,9 @@
   {
    "title": "The Body Keeps the Score",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication122/v4/15/95/8c/15958cfc-d869-dbc0-6d74-fea0e7b1ec8a/9781101608302.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4.1,
-   "ratingCount": 38,
+   "ratingAverage": 4.5,
+   "ratingCount": 958,
+   "ratingSource": "apple",
    "pageCount": 520,
    "year": "2014",
    "olKey": "/works/OL18147687W"
@@ -1923,8 +2171,9 @@
   {
    "title": "Thinking, Fast and Slow",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication/v4/49/27/aa/4927aa90-d091-9e76-7518-a81adf07c367/9781429969352.jpg/600x900bb.jpg",
-   "ratingAverage": 4.1,
-   "ratingCount": 240,
+   "ratingAverage": 3.5,
+   "ratingCount": 2172,
+   "ratingSource": "apple",
    "pageCount": 548,
    "year": "2011",
    "olKey": "/works/OL15992072W"
@@ -1932,8 +2181,9 @@
   {
    "title": "Braiding Sweetgrass",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication113/v4/50/eb/9d/50eb9ddb-8356-908e-7779-8e92a38cf16a/9781571318718.jpg/600x900bb.jpg",
-   "ratingAverage": 4.6,
-   "ratingCount": 13,
+   "ratingAverage": 4.5,
+   "ratingCount": 466,
+   "ratingSource": "apple",
    "pageCount": 409,
    "year": "2013",
    "olKey": "/works/OL16819897W"
@@ -1941,8 +2191,9 @@
   {
    "title": "Born a Crime",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/f3/11/91/f31191f8-8858-2d94-9459-6a04f2e0d78c/9780399588181.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4.6,
-   "ratingCount": 65,
+   "ratingAverage": 4.5,
+   "ratingCount": 5390,
+   "ratingSource": "apple",
    "pageCount": 304,
    "year": "2016",
    "olKey": "/works/OL17824318W"
@@ -1950,8 +2201,9 @@
   {
    "title": "Quiet",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication116/v4/ed/11/5f/ed115f2c-dc5a-b03c-b132-f2851676964f/9780307452207.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4.1,
-   "ratingCount": 99,
+   "ratingAverage": 4.5,
+   "ratingCount": 1543,
+   "ratingSource": "apple",
    "pageCount": 368,
    "year": "2012",
    "olKey": "/works/OL16484595W"
@@ -1959,8 +2211,9 @@
   {
    "title": "Man's Search for Meaning",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication128/v4/cd/fb/d0/cdfbd09c-eba6-ec75-9048-3ed7737bb97b/9780807014288.jpg/600x900bb.jpg",
-   "ratingAverage": 3.4,
-   "ratingCount": 13,
+   "ratingAverage": 4.5,
+   "ratingCount": 2685,
+   "ratingSource": "apple",
    "pageCount": 192,
    "year": "2000",
    "olKey": "/works/OL24557376W"
@@ -1968,8 +2221,9 @@
   {
    "title": "Becoming",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication114/v4/40/85/6c/40856c45-c99f-f27e-8546-246000f0d91c/9781524763152.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4.4,
-   "ratingCount": 13,
+   "ratingAverage": 4.5,
+   "ratingCount": 11490,
+   "ratingSource": "apple",
    "pageCount": 464,
    "year": "2018",
    "olKey": "/works/OL17930367W"
@@ -1977,8 +2231,9 @@
   {
    "title": "Four Thousand Weeks",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication116/v4/f6/2f/67/f62f679e-7266-8d45-a279-2e670e842fa4/9780374715243.jpg/600x900bb.jpg",
-   "ratingAverage": 4.3,
-   "ratingCount": 20,
+   "ratingAverage": 4.5,
+   "ratingCount": 374,
+   "ratingSource": "apple",
    "pageCount": 280,
    "year": "2021",
    "olKey": "/works/OL22355777W"
@@ -1987,7 +2242,8 @@
    "title": "Why We Sleep",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication114/v4/d1/9d/4c/d19d4c34-2927-a349-878c-0dec2672134f/9781501144332.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 31,
+   "ratingCount": 662,
+   "ratingSource": "apple",
    "pageCount": 360,
    "year": "2017",
    "olKey": "/works/OL20168133W"
@@ -1996,42 +2252,55 @@
  "inklingsclub": [
   {
    "title": "East of Eden",
-   "coverId": 11386937,
-   "ratingAverage": 4.1,
-   "ratingCount": 100,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/c9/22/af/c922af7c-69d4-7640-f90e-f9994a08813b/9781440631320.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 1831,
+   "ratingSource": "apple",
    "pageCount": 613,
-   "year": "1952",
+   "year": "2002",
    "olKey": "/works/OL23166W"
   },
   {
    "title": "Madonna in a Fur Coat",
-   "coverId": 12762238,
-   "ratingAverage": 5,
-   "ratingCount": 2,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/a3/ef/f8/a3eff88f-1713-d5f8-b5e5-1d3a7abad42f/cover.png/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 31,
+   "ratingSource": "apple",
    "pageCount": 176,
-   "year": "2016",
+   "year": "2025",
    "olKey": "/works/OL21145161W"
   },
   {
-   "title": "She Who Remains"
+   "title": "She Who Remains",
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/56/45/82/5645829c-e464-eadb-aca2-d9ed96c10bd3/1063239337.jpg/600x900bb.jpg",
+   "year": "2026"
   },
   {
    "title": "The Emperor of Gladness",
-   "coverId": 15146234,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/17/00/df/1700dfc6-bdfa-87fe-d60b-e76c056c16fa/9780593831885.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 1,
+   "ratingCount": 339,
+   "ratingSource": "apple",
    "pageCount": 416,
    "year": "2025",
    "olKey": "/works/OL42394591W"
   },
   {
-   "title": "Rejection"
+   "title": "Rejection",
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/1b/c5/9c/1bc59c7a-7d90-d19d-8577-f4dc439944b8/9780063337893.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 173,
+   "ratingSource": "apple",
+   "pageCount": 271,
+   "year": "2024",
+   "olKey": "/works/OL37625451W"
   },
   {
    "title": "Nova Scotia House",
-   "coverId": 15135611,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/ca/71/50/ca7150e9-92bb-9708-7e0a-c3501dc3c007/9781643623238.jpg/600x900bb.jpg",
    "ratingAverage": 4,
    "ratingCount": 1,
+   "ratingSource": "openlibrary",
    "pageCount": 238,
    "year": "2025",
    "olKey": "/works/OL42406982W"
@@ -2039,55 +2308,66 @@
   {
    "title": "Martyr!",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/03/9c/ff/039cff07-bdaf-e68c-d44d-29b553501cd5/9780593537626.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4,
-   "ratingCount": 11,
+   "ratingAverage": 4.5,
+   "ratingCount": 571,
+   "ratingSource": "apple",
    "pageCount": 380,
    "year": "2024",
    "olKey": "/works/OL37505411W"
   },
   {
    "title": "Wuthering Heights",
-   "coverId": 12818862,
-   "ratingAverage": 4.1,
-   "ratingCount": 301,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication113/v4/02/5b/cb/025bcbe1-afd5-71ee-5335-1e45f07c70e0/PD-Wuthering_Heights-Adj.jpg/600x900bb.jpg",
+   "ratingAverage": 4,
+   "ratingCount": 5971,
+   "ratingSource": "apple",
    "pageCount": 318,
-   "year": "1846",
+   "year": "1847",
    "olKey": "/works/OL21177W"
   },
   {
    "title": "The Safekeep",
-   "coverId": 14631041,
-   "ratingAverage": 4.3,
-   "ratingCount": 3,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/a5/ff/88/a5ff887f-ec0d-8e0c-ffbf-1864f47eaed1/9781668034361.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 388,
+   "ratingSource": "apple",
    "year": "2024",
    "olKey": "/works/OL37572547W"
   },
   {
    "title": "Hamnet",
-   "coverId": 10306590,
-   "ratingAverage": 4.1,
-   "ratingCount": 15,
-   "pageCount": 355,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/c9/4b/d2/c94bd2a7-d4d2-d80a-955d-7ec1770528f4/9780525657613.d.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 2304,
+   "ratingSource": "apple",
+   "pageCount": 358,
    "year": "2020",
    "olKey": "/works/OL20743965W"
   },
   {
    "title": "Frankenstein",
-   "coverId": 12356249,
-   "ratingAverage": 4,
-   "ratingCount": 228,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication114/v4/00/41/04/00410497-b64b-79a1-80c4-3a85d869abd6/cover.png/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 1336,
+   "ratingSource": "apple",
    "pageCount": 240,
-   "year": "1818",
+   "year": "1817",
    "olKey": "/works/OL450063W"
   },
   {
-   "title": "The Coin"
+   "title": "The Coin",
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/29/d6/1b/29d61bee-6b78-6f93-4cc5-22f8ffb78230/9781646222117.d.jpg/600x900bb.jpg",
+   "ratingAverage": 3.5,
+   "ratingCount": 33,
+   "ratingSource": "apple",
+   "year": "2024"
   },
   {
    "title": "Evenings and Weekends",
-   "coverId": 14651259,
-   "ratingAverage": 4,
-   "ratingCount": 1,
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/22/c8/80/22c88004-8d9d-3692-a89f-e8a030d45e72/9780063319998.jpg/600x900bb.jpg",
+   "ratingAverage": 3.5,
+   "ratingCount": 32,
+   "ratingSource": "apple",
    "pageCount": 336,
    "year": "2024",
    "olKey": "/works/OL37571870W"
