@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense } from
 import { Book, TabType, WordItem } from './types';
 import { useReadingLife } from './hooks/useReadingLife';
 import { getCoverUrl, sameWork, withKnownRating } from './services/books';
+import { milestone } from './services/books/perf';
 import { DEFAULT_BOOKS } from './data/defaultBooks';
 import { useAppUpdate, applyUpdate, dismissUpdate, restartApp } from './services/appUpdate';
 
@@ -102,6 +103,8 @@ export default function App() {
     saveError,
   } = useReadingLife();
 
+  useEffect(() => { milestone('app-mounted'); }, []); // measurement only (see services/books/perf.ts)
+
   // "A new plant has arrived" prompts. A plant is marked as shown the moment it is queued (and that is saved),
   // so reloading the app or restoring a backup never shows the same prompt again.
   const [plantQueue, setPlantQueue] = useState<string[]>([]);
@@ -194,6 +197,9 @@ export default function App() {
     const rank = (b: Book) => (st[String(b.id)] === 'now' ? 0 : st[String(b.id)] === 'next' ? 1 : 2);
     return libraryBooks.filter(b => b.coverId || b.coverUrl).slice().sort((x, y) => rank(x) - rank(y)).slice(0, 72);
   }, [libraryBooks, state.status]);
+
+  // The books whose own rating wins (ratings policy, step 1). One array per library, so its index (see indexKnownRatings) is built once, not on every render.
+  const knownPool = useMemo(() => [...DEFAULT_BOOKS, ...libraryBooks], [libraryBooks]);
 
   // Remember the covers you'll see first (the nook shelves, then reading now / up next) so the next launch can start
   // loading them before the app code runs. Same 'M' size URLs the nook and cards request, so it is one shared cache.
@@ -488,7 +494,7 @@ export default function App() {
           ?? libraryBooks.find(b => sameWork(b, selectedBookForDetail, true));
         const ownKey = String(owned ? owned.id : selectedBookForDetail.id);
         // Search, Store and NYT copies of a book you own show YOUR copy's rating, so one book never shows two ratings
-        const shownBook = withKnownRating(selectedBookForDetail, [...DEFAULT_BOOKS, ...libraryBooks]);
+        const shownBook = withKnownRating(selectedBookForDetail, knownPool);
         return (
         <AppleBookDetailModal
           book={shownBook}

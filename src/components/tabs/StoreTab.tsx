@@ -5,6 +5,7 @@ import { BOOK_AWARDS } from '../../data/defaultBooks';
 import { searchBooks, fillMissingCovers } from '../../services/books';
 import { DEFAULT_SHELF_ORDER, SHELF_BY_ID, hiddenShelfIds } from '../../services/store/registry';
 import { loadStorePrefs, NO_PREFS, orderShelves, saveStorePrefs, toggleShelf, type StorePrefs } from '../../services/store/prefs';
+import { milestone } from '../../services/books/perf';
 import { CoverFace } from '../BookMeta';
 import { StoreShelf } from '../StoreShelf';
 import { StoreCustomize } from '../StoreCustomize';
@@ -29,6 +30,8 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
   const hiddenShelves = useMemo(() => hiddenShelfIds(storePrefs), [storePrefs]);
   const updateStorePrefs = useCallback((next: StorePrefs) => { setStorePrefs(next); saveStorePrefs(next); }, []);
   const reorderShelves = useCallback((order: string[]) => updateStorePrefs({ ...storePrefs, order }), [storePrefs, updateStorePrefs]);
+
+  useEffect(() => { milestone('store-mounted'); }, []); // measurement only
 
   // Store search & shelf data
   const [storeSearchQuery, setStoreSearchQuery] = useState('');

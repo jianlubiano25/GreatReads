@@ -5,6 +5,16 @@ import { CoverFace, RatingLine, AwardBadges } from './BookMeta';
 import { rememberHonor } from '../services/store/honors';
 import { withKnownRating } from '../services/books';
 import { DEFAULT_BOOKS } from '../data/defaultBooks';
+import { milestone } from '../services/books/perf';
+
+/** Every shelf gets the SAME pool array for the same `known` list, so the rating index (built once per array) is shared by all of them. */
+const pools = new WeakMap<Book[], Book[]>();
+const poolFor = (known?: Book[]): Book[] => {
+  if (!known) return DEFAULT_BOOKS;
+  let pool = pools.get(known);
+  if (!pool) { pool = [...DEFAULT_BOOKS, ...known]; pools.set(known, pool); }
+  return pool;
+};
 
 interface Props {
   id: string;
@@ -33,7 +43,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
   const holder = useRef<HTMLDivElement>(null);
   const raw = fixedBooks ?? loaded;
   // The same book must show the same rating on every screen: reuse the one you already have (ratings policy, step 1)
-  const pool = useMemo(() => [...DEFAULT_BOOKS, ...(known || [])], [known]);
+  const pool = useMemo(() => poolFor(known), [known]);
   const books = useMemo(() => (raw ? raw.map(b => withKnownRating(b, pool)) : raw), [raw, pool]);
 
   useEffect(() => {
@@ -51,11 +61,21 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
     if (fixedBooks || !visible || !source) return;
     let live = true;
     setFailed(false);
-    source.load(b => live && setLoaded(b))
-      .then(b => live && setLoaded(prev => prev ?? b))
+    // A shelf reports after EVERY book it resolves; drawing the whole shelf each time is wasted work, so the newest list is drawn at most every 100 ms
+    let latest: Book[] | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const draw = (b: Book[]) => {
+      latest = b;
+      if (timer) return;
+      timer = setTimeout(() => { timer = undefined; if (live && latest) setLoaded(latest); }, 100);
+    };
+    source.load(b => live && draw(b))
+      .then(b => { if (live) setLoaded(prev => prev ?? b); })
       .catch(() => live && setFailed(true));
-    return () => { live = false; };
+    return () => { live = false; clearTimeout(timer); };
   }, [id, visible, source, fixedBooks, attempt]);
+
+  useEffect(() => { if (loaded || fixedBooks) milestone('store-first-shelf'); }, [loaded, fixedBooks]); // measurement only
 
   // Honors & Awards: remember what each shelf calls its books, so the book info can list them all (see services/store/honors.ts)
   useEffect(() => { if (!fixedBooks) loaded?.forEach(rememberHonor); }, [loaded, fixedBooks]);

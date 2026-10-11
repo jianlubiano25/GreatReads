@@ -95,12 +95,16 @@ const RATING_SEARCHES = 4;
  */
 export async function findGoogleRating(q: { title: string; author?: string; isbn?: string }, opts: CallOpts = {}): Promise<{ hit: Hit | null; failed: boolean }> {
   let failed = false;
+  let unavailable = false; // rate limited, down or unreachable (a 400 for one odd query says nothing about the next)
   let searches = 0;
   const bestRated = (hits: Hit[]) => hits.filter(h => externalRating(h.book)).reduce<Hit | null>((b, h) => (!b || (h.book.ratingCount || 0) > (b.book.ratingCount || 0) ? h : b), null);
   const search = async (query: string): Promise<Hit[]> => {
     searches++;
     const r = await getJsonDetailed(withKey(searchUrl(query, 20)), { signal: opts.signal, retries: 1 });
-    if (!r.data) failed = true;
+    if (!r.data) {
+      failed = true;
+      if (r.status === 0 || r.status === 429 || r.status >= 500) unavailable = true;
+    }
     return (r.data?.items || []).map((i: any) => gbItemToHit(i));
   };
   const isbn = cleanIsbn(q.isbn);
@@ -112,7 +116,8 @@ export async function findGoogleRating(q: { title: string; author?: string; isbn
   const ok = (h: Hit) => titlesMatch(h.book.title, q.title) && authorListMatches(h.book.author, q.author || '');
   for (const title of titleVariants(q.title)) {
     for (const author of generic ? [undefined] : authorVariants(q.author)) {
-      if (searches >= RATING_SEARCHES || opts.signal?.aborted) return { hit: null, failed };
+      // After an API error (rate limit, outage) the next searches would fail the same way: stop instead of spending up to 4 x 2 requests per book
+      if (searches >= RATING_SEARCHES || unavailable || opts.signal?.aborted) return { hit: null, failed };
       const found = bestRated((await search(`intitle:"${title}"${author ? ` inauthor:"${author}"` : ''}`)).filter(ok));
       if (found) return { hit: found, failed: false };
     }

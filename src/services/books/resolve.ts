@@ -1,5 +1,6 @@
 import type { Book } from '../../types';
 import { dedupeInflight } from './http';
+import { bump } from './perf';
 import { persistentCache } from './cache';
 import { cleanIsbn, isbnPair, mergeIdentity } from './identity';
 import { mergeBooks } from './merge';
@@ -32,6 +33,12 @@ export interface Resolved {
   readers?: { ol?: number; google?: number; apple?: number };
   /** Category words from every source that answered (used to tell fiction from non-fiction). */
   words?: string[];
+  /**
+   * Set when the book is unrated only because Google could not be reached (an API error is not "Google has no rating"). The result is
+   * saved with it and reused until `at`; after that the book is asked again, and each failure waits longer (RETRY_BACKOFF_MS).
+   * Absent on a result that is final, and on results saved by older versions.
+   */
+  retry?: { at: number; tries: number };
 }
 
 const cache = persistentCache<Resolved | null>('readlife.resolved2', { ttl: 14 * 24 * 60 * 60 * 1000, max: 250 });
@@ -42,11 +49,11 @@ const cache = persistentCache<Resolved | null>('readlife.resolved2', { ttl: 14 *
 const misses = persistentCache<true>('readlife.resolvedmiss1', { ttl: 2 * 60 * 60 * 1000, max: 300 });
 const inflight = new Map<string, Promise<Resolved | null>>();
 /**
- * A result that is unrated only because Google could not be reached (an API error is not "Google has no rating"). It is reused for a couple of
- * minutes, not saved for two weeks, so reopening a shelf does not repeat the requests and the rating still arrives once Google answers.
+ * How long a result that is unrated only because Google failed is reused, by number of failures in a row. It is SAVED (with the result), so
+ * closing and reopening the app does not repeat the requests; before, it was kept in memory for 2 minutes and every launch asked again.
  */
-const GOOGLE_RETRY_MS = 2 * 60 * 1000;
-const googleRetry = new Map<string, { until: number; out: Resolved }>();
+const RETRY_BACKOFF_MS = [10 * 60 * 1000, 60 * 60 * 1000, 6 * 60 * 60 * 1000];
+const retryAfter = (tries: number) => Date.now() + RETRY_BACKOFF_MS[Math.min(tries, RETRY_BACKOFF_MS.length) - 1];
 
 const keyOf = (q: ResolveQuery) => {
   const isbn = cleanIsbn(q.isbn);
@@ -54,14 +61,20 @@ const keyOf = (q: ResolveQuery) => {
 };
 
 export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resolved | null> {
+  bump('resolve.calls');
   const key = keyOf(q);
   const hit = cache.get(key);
+  const waiting = !!hit?.retry && hit.retry.at > Date.now(); // unrated because Google failed: not asked again yet
   // Only a real result is reused for long. (Older versions also saved "not found" here for 14 days: those are looked up again.)
-  if (hit) return Promise.resolve({ ...hit, book: { ...hit.book, id: pickId(hit.book, q) } });
-  if (misses.get(key)) return Promise.resolve(null);
-  const pending = googleRetry.get(key);
-  if (pending && pending.until > Date.now()) return Promise.resolve({ ...pending.out, book: { ...pending.out.book, id: pickId(pending.out.book, q) } });
+  if (hit && (!hit.retry || waiting)) {
+    bump(waiting ? 'resolve.retryWait' : 'resolve.cacheHit');
+    return Promise.resolve({ ...hit, book: { ...hit.book, id: pickId(hit.book, q) } });
+  }
+  if (misses.get(key)) { bump('resolve.missHit'); return Promise.resolve(null); }
+  if (inflight.has(key)) bump('resolve.inflightShared');
+  const failedBefore = hit?.retry?.tries || 0;
   return dedupeInflight(inflight, key, async () => {
+    bump('resolve.network');
     const [ol, gb, ap] = await Promise.all([
       findOpenLibrary(q, opts),
       findGoogle(q, opts),
@@ -109,8 +122,8 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
       words: hits.flatMap(h => [...(h.flags.subjects || []), h.book.genre]),
     };
     if (!opts.signal?.aborted) {
-      if (googleFailed && !book.ratingAverage) googleRetry.set(key, { until: Date.now() + GOOGLE_RETRY_MS, out });
-      else cache.set(key, out);
+      if (googleFailed && !book.ratingAverage) out.retry = { at: retryAfter(failedBefore + 1), tries: failedBefore + 1 };
+      cache.set(key, out);
     }
     return { ...out, book: { ...out.book, id: pickId(out.book, q) } };
   });

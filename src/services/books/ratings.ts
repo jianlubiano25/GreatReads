@@ -1,5 +1,6 @@
 import type { Book } from '../../types';
-import { sameWork } from './identity';
+import { identityOf, sameWork, titleKeys } from './identity';
+import { timed } from './perf';
 
 /**
  * Ratings policy (one place, so every screen agrees).
@@ -61,13 +62,79 @@ export function chooseRating(c: { library?: RatingPair; apple?: RatingPair; ol?:
   return ladder.find(r => (r.count || 0) >= SUFFICIENT_RATINGS) ?? ladder[0];
 }
 
-/** The rating of the same book (any edition) in a list of books you already have, e.g. the library plus the built-in books. */
-export function knownRating(book: Pick<Book, 'id' | 'identity' | 'title' | 'author'>, known: readonly Book[]): RatingPair | undefined {
-  for (const k of known) {
+type Identified = Pick<Book, 'id' | 'identity' | 'title' | 'author'>;
+
+/**
+ * The rated books of a list, filed under every way sameWork can recognise them: ISBN-13 / ISBN-10 / Open Library edition / Google volume
+ * (same edition), Open Library work, and each main-title key (same title). A book is compared only with the few books filed under ITS
+ * keys, instead of with the whole list, and the real sameWork test still decides: the answer is the one a scan of the whole list gives
+ * (the first book of the list that is the same book), only found without visiting every other book. A shelf of 240 cards against a library
+ * of a few hundred books was tens of thousands of title comparisons on every update.
+ */
+export interface KnownRatings {
+  /** The rating of the same book (any edition) in the list this was built from, or undefined. */
+  of(book: Identified): RatingPair | undefined;
+}
+
+export function indexKnownRatings(known: readonly Book[]): KnownRatings {
+  const buckets = new Map<string, number[]>(); // key -> positions in `known` (ascending), rated books only
+  const rated = new Map<number, RatingPair>();
+  const file = (key: string | undefined, at: number) => {
+    if (!key) return;
+    const list = buckets.get(key);
+    if (!list) buckets.set(key, [at]);
+    else if (list[list.length - 1] !== at) list.push(at);
+  };
+  const keysOf = (b: Identified): string[] => {
+    const i = identityOf(b);
+    return [
+      ...(i.isbn13 ? [`i13:${i.isbn13}`] : []), ...(i.isbn10 ? [`i10:${i.isbn10}`] : []),
+      ...(i.olEdition ? [`oe:${i.olEdition}`] : []), ...(i.gbVolume ? [`gv:${i.gbVolume}`] : []),
+      ...(i.olWork ? [`ow:${i.olWork}`] : []), ...titleKeys(b.title).map(t => `t:${t}`),
+    ];
+  };
+  known.forEach((k, at) => {
     const r = ratingOf(k);
-    if (r && sameWork(k, book, true)) return { ...r, ...(inferRatingSource(k) ? { source: inferRatingSource(k) } : {}) };
+    if (!r) return;
+    rated.set(at, r);
+    keysOf(k).forEach(key => file(key, at));
+  });
+  return {
+    of(book) {
+      const seen = new Set<number>();
+      let best: number | undefined;
+      for (const key of keysOf(book)) {
+        for (const at of buckets.get(key) || []) {
+          if (best !== undefined && at > best) break; // positions are ascending: nothing later in this bucket can beat `best`
+          if (seen.has(at)) continue;
+          seen.add(at);
+          if (sameWork(known[at], book, true)) { best = at; break; }
+        }
+      }
+      return best === undefined ? undefined : withSource(known[best], rated.get(best)!);
+    },
+  };
+}
+
+const withSource = (k: Book, r: RatingPair): RatingPair => {
+  const source = inferRatingSource(k);
+  return { ...r, ...(source ? { source } : {}) };
+};
+
+/** One index per list: lists are not changed after they are built, and a new list is a new array. */
+const indexes = new WeakMap<readonly Book[], KnownRatings>();
+const indexFor = (known: readonly Book[]): KnownRatings => {
+  let idx = indexes.get(known);
+  if (!idx) {
+    idx = timed('ratings.index.build', () => indexKnownRatings(known));
+    indexes.set(known, idx);
   }
-  return undefined;
+  return idx;
+};
+
+/** The rating of the same book (any edition) in a list of books you already have, e.g. the library plus the built-in books. */
+export function knownRating(book: Identified, known: readonly Book[]): RatingPair | undefined {
+  return indexFor(known).of(book);
 }
 
 /** Ladder step 1: the same book in `known` supplies its average + count together; otherwise the book is returned as it was. */

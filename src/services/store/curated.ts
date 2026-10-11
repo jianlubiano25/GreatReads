@@ -112,12 +112,16 @@ export function resolvedMatchesSeed(found: Pick<Book, 'title' | 'author'>, title
   return shared >= Math.max(1, Math.ceil(Math.min(a.length, b.length) / 2));
 }
 
-/** Everything a shelf card needs from the network: a cover, a rating and a page count. A book is only looked up when one is missing. */
-export const needsLookup = (b: Pick<Book, 'coverId' | 'coverUrl' | 'ratingAverage' | 'pageCount'>): boolean =>
-  !(b.coverId || b.coverUrl) || !b.ratingAverage || !b.pageCount;
+/**
+ * What a shelf card needs from the network: a cover and a rating. A missing page count alone is NOT a reason to ask (the card does not show
+ * it, and the book info looks pages up when it opens): 32 of the 242 bundled books have none, so that rule sent them all to the network on
+ * every cold start. A book is only looked up when one of these two is missing, and a lookup already answered is reused (see resolveBook).
+ */
+export const needsLookup = (b: Pick<Book, 'coverId' | 'coverUrl' | 'ratingAverage'> & { pageCount?: number }): boolean =>
+  !(b.coverId || b.coverUrl) || !b.ratingAverage;
 
 /**
- * Looks up the missing cover / rating / page count 4 books at a time through the shared resolver, pushing each result to the shelf
+ * Looks up the missing cover / rating 4 books at a time through the shared resolver, pushing each result to the shelf
  * as it arrives. What the book already has (a bundled cover, pages, year) is kept: the lookup only fills gaps, so one book is never
  * given another edition's cover. Ratings come from the resolver as ONE source's average + count (see books/ratings.ts).
  * The shelf's own title, author, genre and pick label are always what is shown.

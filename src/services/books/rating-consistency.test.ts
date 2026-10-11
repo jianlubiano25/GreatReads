@@ -132,12 +132,14 @@ test('a Google API error is not remembered as "no rating": it is asked again lat
   const first = (await resolveBook({ title: 'Error Alpha', author: 'Bo Author' }))!.book;
   assert.equal(first.ratingAverage, undefined);
   await settle();
-  assert.equal(store.get('readlife.resolved2')?.includes('error alpha|bo author') ?? false, false); // not saved for two weeks
+  // saved WITH a retry time (so closing and reopening the app does not repeat the requests), not as a final "no rating"
+  const savedAlpha = JSON.parse(store.get('readlife.resolved2') || '{}')['error alpha|bo author']?.v;
+  assert.ok(savedAlpha?.retry?.at > Date.now() && savedAlpha.retry.tries === 1);
   const used = calls.length;
   await resolveBook({ title: 'Error Alpha', author: 'Bo Author' }); // reopened right away: no new requests
   assert.equal(calls.length, used);
 
-  mock.timers.enable({ apis: ['Date'], now: Date.now() + 3 * 60 * 1000 });
+  mock.timers.enable({ apis: ['Date'], now: Date.now() + 11 * 60 * 1000 }); // past the first retry time
   try {
     routeFetch([ol, olNoSummary, noApple, u => (isGoogle(u) ? { body: { items: [gbItem('x1', 'Error Alpha', 'Bo Author', { averageRating: 3.8, ratingsCount: 27 })] } } : undefined)]);
     assert.deepEqual(pairOf((await resolveBook({ title: 'Error Alpha', author: 'Bo Author' }))!.book), [3.8, 27, 'google']);

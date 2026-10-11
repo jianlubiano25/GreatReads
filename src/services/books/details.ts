@@ -75,7 +75,8 @@ export async function fetchBookMeta(book: Book): Promise<Partial<Book> | null> {
 
   // Fall back to the resolver for whatever Open Library did not have (a book it does not list, or lists without ratings)
   if (!meta.ratingAverage || !meta.pageCount || !meta.year) {
-    const r = await resolveBook({ title: book.title, author: isUnknownAuthor(book.author) ? '' : primaryAuthor(book.author), isbn: id.isbn13 || id.isbn10, fallbackId: book.id });
+    // apple: true is the same query the Store shelves make (same cache key), so a book opened from a card is already resolved: no second lookup
+    const r = await resolveBook({ title: book.title, author: isUnknownAuthor(book.author) ? '' : primaryAuthor(book.author), isbn: id.isbn13 || id.isbn10, fallbackId: book.id, apple: true });
     const rb = r?.book;
     if (rb) {
       const rp = externalRating(rb);

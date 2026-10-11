@@ -1,3 +1,5 @@
+import { bump, timed } from './perf';
+
 /** A small localStorage-backed map with an expiry and a size cap. Failures (private mode, full storage) are silent: it is only a cache. */
 
 export interface Cache<T> {
@@ -27,8 +29,12 @@ export function persistentCache<T>(storageKey: string, opts: { ttl: number; max:
     if (loaded) return;
     loaded = true;
     try {
-      const raw = JSON.parse(localStorage.getItem(storageKey) || '{}');
-      if (raw && typeof raw === 'object' && !Array.isArray(raw)) for (const [k, e] of Object.entries<any>(raw)) if (e && typeof e.t === 'number') mem.set(k, e);
+      timed(`cache.${storageKey}.load`, () => {
+        const text = localStorage.getItem(storageKey) || '{}';
+        bump(`cache.${storageKey}.loadBytes`, text.length);
+        const raw = JSON.parse(text);
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) for (const [k, e] of Object.entries<any>(raw)) if (e && typeof e.t === 'number') mem.set(k, e);
+      });
     } catch {}
   };
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -38,7 +44,11 @@ export function persistentCache<T>(storageKey: string, opts: { ttl: number; max:
       try {
         const keys = [...mem.keys()];
         if (keys.length > opts.max) keys.slice(0, keys.length - opts.max).forEach(k => mem.delete(k));
-        localStorage.setItem(storageKey, JSON.stringify(Object.fromEntries(mem)));
+        timed(`cache.${storageKey}.save`, () => {
+          const text = JSON.stringify(Object.fromEntries(mem));
+          bump(`cache.${storageKey}.saveBytes`, text.length);
+          localStorage.setItem(storageKey, text);
+        });
       } catch {}
     }, 400);
   };

@@ -1,3 +1,5 @@
+import { recordRequest } from './perf';
+
 /** The one place book APIs are called from: timeouts, cancellation, retry on server errors, and a small request pool. */
 
 export interface GetOpts {
@@ -17,10 +19,19 @@ export interface JsonResult {
  * Like getJson, but says WHY it failed (status code, timeout, a page that wasn't JSON...). The status of the LAST attempt is
  * reported. Never throws. Lets callers tell "the key isn't set" from "rate limited" from "offline".
  */
-export async function getJsonDetailed(url: string, { timeout = 6500, signal, retries = 0 }: GetOpts = {}): Promise<JsonResult> {
+export async function getJsonDetailed(url: string, opts: GetOpts = {}): Promise<JsonResult> {
+  const out = await fetchJson(url, opts);
+  recordRequest(url, out.result.status, out.result.data ? undefined : out.result.failure ?? 'empty', out.attempts); // measurement only
+  return out.result;
+}
+
+async function fetchJson(url: string, { timeout = 6500, signal, retries = 0 }: GetOpts): Promise<{ result: JsonResult; attempts: number }> {
+  let attempts = 0;
+  const finish = (result: JsonResult) => ({ result, attempts: Math.max(1, attempts) });
   let last: JsonResult = { data: null, status: 0, failure: 'network' };
   for (let i = 0; i <= retries; i++) {
-    if (signal?.aborted) return { data: null, status: 0, failure: 'aborted' };
+    if (signal?.aborted) return finish({ data: null, status: 0, failure: 'aborted' });
+    attempts++;
     const controller = new AbortController();
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeout);
@@ -30,14 +41,14 @@ export async function getJsonDetailed(url: string, { timeout = 6500, signal, ret
       const res = await fetch(url, { signal: controller.signal });
       if (res.ok) {
         try {
-          return { data: await res.json(), status: res.status };
+          return finish({ data: await res.json(), status: res.status });
         } catch {
           last = { data: null, status: res.status, failure: 'not-json' }; // e.g. a single-page-app fallback returned index.html
-          return last; // retrying will not turn HTML into JSON
+          return finish(last); // retrying will not turn HTML into JSON
         }
       }
       last = { data: null, status: res.status, failure: 'http' };
-      if (res.status < 500 && res.status !== 429) return last;
+      if (res.status < 500 && res.status !== 429) return finish(last);
     } catch {
       last = { data: null, status: 0, failure: signal?.aborted ? 'aborted' : timedOut ? 'timeout' : 'network' };
     } finally {
@@ -46,7 +57,7 @@ export async function getJsonDetailed(url: string, { timeout = 6500, signal, ret
     }
     if (i < retries) await new Promise(r => setTimeout(r, 700));
   }
-  return last;
+  return finish(last);
 }
 
 /** JSON from a URL, or null on any failure. Never throws. */
