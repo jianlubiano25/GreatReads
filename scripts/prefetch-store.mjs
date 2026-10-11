@@ -68,7 +68,9 @@ async function fromOpenLibrary(title, author) {
 async function fromGoogleBooks(title, author) {
   try {
     const q = encodeURIComponent(`intitle:${title} inauthor:${author}`);
-    const data = await getJson(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=3&printType=books`);
+    const key = process.env.VITE_GOOGLE_BOOKS_API_KEY || process.env.GOOGLE_BOOKS_API_KEY || '';
+    const url = `https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=3&printType=books${key ? `&key=${encodeURIComponent(key)}` : ''}`;
+    const data = await getJson(url);
     // editions of one book differ in whether Google rates them: prefer the first edition that has a valid rating pair
     const items = (data?.items || []).map(i => i.volumeInfo).filter(Boolean);
     const item = items.find(v => validPair(v.averageRating, v.ratingsCount)) || items[0];
