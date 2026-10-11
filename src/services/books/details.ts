@@ -2,11 +2,11 @@ import type { Book } from '../../types';
 import { getJson } from './http';
 import { persistentCache } from './cache';
 import { bookKey, identityOf, isUnknownAuthor, primaryAuthor } from './identity';
-import { ratingOf, type SourceRating } from './ratings';
+import { externalRating, type SourceRating } from './ratings';
 import { difficultyFor, genreFromSubjects, plainText } from './model';
 import { resolveBook } from './resolve';
 import { findApple } from './sources/appleBooks';
-import { findGoogle } from './sources/googleBooks';
+import { findGoogle, findGoogleRating } from './sources/googleBooks';
 import type { CallOpts } from './sources/types';
 import { findOpenLibrary, openLibraryDescription, openLibraryEditionPages, openLibraryRatings, openLibraryWorkRecord } from './sources/openLibrary';
 
@@ -60,7 +60,8 @@ export async function fetchBookMeta(book: Book): Promise<Partial<Book> | null> {
   let pages = d?.pageCount;
   const wid = workId || d?.identity?.olWork;
   if (!pages && wid) pages = (await openLibraryEditionPages(wid)) ?? 0;
-  if (d?.ratingAverage) { meta.ratingAverage = d.ratingAverage; meta.ratingCount = d.ratingCount; meta.ratingSource = 'openlibrary'; }
+  const olPair = externalRating(d);
+  if (olPair) { meta.ratingAverage = olPair.average; meta.ratingCount = olPair.count; meta.ratingSource = 'openlibrary'; }
   if (d?.year) meta.year = d.year;
   const genre = found ? genreFromSubjects(found.flags.subjects) : '';
   if (genre) meta.genre = genre;
@@ -71,7 +72,8 @@ export async function fetchBookMeta(book: Book): Promise<Partial<Book> | null> {
     const r = await resolveBook({ title: book.title, author: isUnknownAuthor(book.author) ? '' : primaryAuthor(book.author), isbn: id.isbn13 || id.isbn10, fallbackId: book.id });
     const rb = r?.book;
     if (rb) {
-      if (!meta.ratingAverage && rb.ratingAverage) { meta.ratingAverage = rb.ratingAverage; meta.ratingCount = rb.ratingCount; meta.ratingSource = rb.ratingSource; } // a pair, from one source
+      const rp = externalRating(rb);
+      if (!meta.ratingAverage && rp) { meta.ratingAverage = rp.average; meta.ratingCount = rp.count; meta.ratingSource = rb.ratingSource; } // a pair, from one source
       if (!meta.pageCount && rb.pageCount) meta.pageCount = rb.pageCount;
       if (!meta.year && rb.year) meta.year = rb.year;
       if (!meta.genre) { const g = genreFromSubjects(r!.flags.subjects); if (g) meta.genre = g; }
@@ -83,45 +85,55 @@ export async function fetchBookMeta(book: Book): Promise<Partial<Book> | null> {
   return Object.keys(meta).length ? meta : null;
 }
 
-const sourcesCache = persistentCache<SourceRating[]>('readlife.ratingsrc1', { ttl: 7 * 24 * 60 * 60 * 1000, max: 300 });
+const sourcesCache = persistentCache<SourceRating[]>('readlife.ratingsrc2', { ttl: 7 * 24 * 60 * 60 * 1000, max: 300 });
+/** When Google could not be reached, the partial answer is reused for a couple of minutes (not saved), so reopening a sheet does not repeat the requests. */
+const GOOGLE_RETRY_MS = 2 * 60 * 1000;
+const googleRetry = new Map<string, { until: number; out: SourceRating[] }>();
 
 /**
  * What each site says about this book, for the book info: Open Library, Google Books and Apple Books, each its own average + count
- * (never combined). Only sites that have a rating are returned. Cached per book; a site that cannot be reached is simply left out.
+ * (never combined). Only sites with a valid pair (average 1-5 and a count) are returned. Cached per book for a week, except while Google
+ * could not be reached: that is not "Google has no rating", so it is not saved and is asked again after GOOGLE_RETRY_MS.
  */
 export async function fetchRatingSources(book: Book, opts: CallOpts = {}): Promise<SourceRating[]> {
   const key = bookKey(book);
   const hit = sourcesCache.get(key);
   if (hit) return hit;
+  const pending = googleRetry.get(key);
+  if (pending && pending.until > Date.now()) return pending.out;
 
   const id = identityOf(book);
   const author = isUnknownAuthor(book.author) ? '' : primaryAuthor(book.author);
   const q = { title: book.title, author, isbn: id.isbn13 || id.isbn10 };
   const pair = async (source: SourceRating['source'], run: () => Promise<Pick<Book, 'ratingAverage' | 'ratingCount'> | null | undefined>): Promise<SourceRating | null> => {
     try {
-      const r = ratingOf(await run());
+      const r = externalRating(await run());
       return r ? { average: r.average, count: r.count, source } : null;
     } catch {
       return null;
     }
   };
+  let googleFailed = false;
   const [ol, google, apple] = await Promise.all([
     pair('openlibrary', async () => {
       const found = (id.olWork ? await openLibraryWorkRecord(id.olWork, opts) : null) ?? (await findOpenLibrary(q, opts));
-      const direct = ratingOf(found?.book);
+      const direct = externalRating(found?.book);
       if (direct) return found!.book;
       const wid = id.olWork || found?.book.identity?.olWork;
       const r = wid ? await openLibraryRatings(wid, opts) : null;
       return r ? { ratingAverage: r.average, ratingCount: r.count } : null;
     }),
     pair('google', async () => {
-      const exact = (await findGoogle(q, opts))?.book;
-      if (ratingOf(exact) || !q.isbn) return exact;
-      return (await findGoogle({ title: q.title, author: q.author }, opts))?.book ?? exact; // that edition has no ratings: another edition of the book may
+      const r = await findGoogleRating(q, opts);
+      googleFailed = r.failed && !r.hit;
+      return r.hit?.book;
     }),
     pair('apple', async () => (await findApple({ title: book.title, author }, opts))?.book),
   ]);
   const out = [ol, google, apple].filter((r): r is SourceRating => !!r);
-  if (!opts.signal?.aborted && out.length) sourcesCache.set(key, out);
+  if (!opts.signal?.aborted) {
+    if (googleFailed) googleRetry.set(key, { until: Date.now() + GOOGLE_RETRY_MS, out });
+    else if (out.length) sourcesCache.set(key, out);
+  }
   return out;
 }

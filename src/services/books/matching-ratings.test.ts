@@ -50,7 +50,7 @@ test('titleVariants: full title, then main title', () => {
 
 /* ---------- ratings policy ---------- */
 
-test('ratings ladder: library pair, else Open Library, else Google; one source only', () => {
+test('ratings ladder: library pair, else Apple, else Open Library, else Google; one source only', () => {
   const lib = { average: 4.6, count: 18400 };
   const ol = { average: 4.0, count: 500 };
   const gb = { average: 3.2, count: 90000 };
@@ -62,6 +62,12 @@ test('ratings ladder: library pair, else Open Library, else Google; one source o
   assert.deepEqual(chooseRating({ ol: { average: 5, count: 2 }, google: gb }), gb);
   assert.deepEqual(chooseRating({ ol: { average: 5, count: 2 }, google: { average: 4, count: 3 } }), { average: 5, count: 2 });
   assert.equal(ratingOf({ ratingAverage: 0, ratingCount: 50 }), undefined);
+  const ap = { average: 4.4, count: 60 };
+  assert.deepEqual(chooseRating({ library: lib, apple: ap, ol, google: gb }), lib);
+  assert.deepEqual(chooseRating({ apple: ap, ol, google: gb }), ap); // Apple before Open Library before Google
+  assert.deepEqual(chooseRating({ ol, google: gb }), ol);
+  assert.deepEqual(chooseRating({ apple: { average: 5, count: 3 }, ol, google: gb }), ol); // a thin Apple pair yields to a solid Open Library one (SUFFICIENT_RATINGS)
+  assert.deepEqual(chooseRating({ apple: { average: 5, count: 3 }, google: { average: 4, count: 2 } }), { average: 5, count: 3 });
 });
 
 test('same book in the library lends its rating as a pair, whatever the record id or subtitle', () => {
@@ -128,16 +134,24 @@ test('resolveBook: Google pair when Open Library has no rating; none when neithe
   assert.equal(none?.book.ratingCount, undefined);
 });
 
-test('resolveBook: Apple readers never become the stars', async () => {
-  routeFetch([
-    u => (u.hostname === 'openlibrary.org' && u.pathname === '/search.json' ? { body: olDoc('/works/OL84W', 'Ladder Delta', 'Di Author') } : undefined),
-    u => (u.hostname === 'openlibrary.org' ? { body: { summary: {} } } : undefined),
-    u => (u.hostname === 'www.googleapis.com' ? { body: { items: [] } } : undefined),
-    u => (u.hostname === 'itunes.apple.com' ? { body: { results: [{ trackId: 1, trackName: 'Ladder Delta', artistName: 'Di Author', artworkUrl100: 'https://a/100x100bb.jpg', averageUserRating: 4.9, userRatingCount: 70000 }] } } : undefined),
-  ]);
+test('resolveBook: Apple is the first outside source for the stars; without Apple the ladder is unchanged', async () => {
+  const routes = [
+    (u: URL) => (u.hostname === 'openlibrary.org' && u.pathname === '/search.json' ? { body: olDoc('/works/OL84W', 'Ladder Delta', 'Di Author', { ratings_average: 4.1, ratings_count: 300 }) } : undefined),
+    (u: URL) => (u.hostname === 'openlibrary.org' ? { body: { summary: {} } } : undefined),
+    (u: URL) => (u.hostname === 'www.googleapis.com' ? { body: { items: [] } } : undefined),
+    (u: URL) => (u.hostname === 'itunes.apple.com' ? { body: { results: [{ trackId: 1, trackName: 'Ladder Delta', artistName: 'Di Author', artworkUrl100: 'https://a/100x100bb.jpg', averageUserRating: 4.9, userRatingCount: 70000 }] } } : undefined),
+  ];
+  routeFetch(routes);
   const r = await resolveBook({ title: 'Ladder Delta', author: 'Di Author', apple: true });
-  assert.equal(r?.book.ratingAverage, undefined);
-  assert.equal(r?.readers?.apple, 70000); // still available to the popularity score
+  assert.equal(r?.book.ratingAverage, 4.9);
+  assert.equal(r?.book.ratingCount, 70000);
+  assert.equal(r?.book.ratingSource, 'apple');
+  assert.equal(r?.readers?.apple, 70000); // still feeds the popularity score too
+
+  routeFetch(routes);
+  const plain = await resolveBook({ title: 'Ladder Delta', author: 'Di Author' }); // Apple not asked: Open Library's pair
+  assert.equal(plain?.book.ratingAverage, 4.1);
+  assert.equal(plain?.book.ratingCount, 300);
 });
 
 /* ---------- Apple search ---------- */

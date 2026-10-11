@@ -10,8 +10,11 @@ import { sameWork } from './identity';
  *  - the whole pair comes from exactly one place, chosen by the ladder below. Nothing found -> no rating (the stars are hidden).
  *
  *   1. the same book (sameWork) already in the library / built-in list -> its average + count
- *   2. Open Library work ratings
- *   3. Google Books averageRating + ratingsCount
+ *   2. Apple Books
+ *   3. Open Library work ratings
+ *   4. Google Books averageRating + ratingsCount
+ *
+ * An outside site's pair is valid only with an average from 1 to 5 AND that site's own count above zero (see externalRating).
  *
  * Other gaps (cover, pages, year, ids) may still be filled from any source; only ratings follow this ladder.
  */
@@ -42,13 +45,19 @@ export function ratingOf(b?: Pick<Book, 'ratingAverage' | 'ratingCount'> & { rat
   return { average, count: b.ratingCount && b.ratingCount > 0 ? b.ratingCount : undefined, ...(source ? { source } : {}) };
 }
 
+/** An outside site's rating: an average from 1 to 5 together with that site's own count above zero, else nothing (never half a pair). */
+export function externalRating(b?: Pick<Book, 'ratingAverage' | 'ratingCount'> & { ratingSource?: Book['ratingSource'] } | null): RatingPair | undefined {
+  const r = ratingOf(b);
+  return r && r.average >= 1 && (r.count || 0) > 0 ? r : undefined;
+}
+
 /**
- * Pick ONE pair from the ladder. A `library` pair always wins. Otherwise the first of Open Library, Google that has a rating with
- * at least SUFFICIENT_RATINGS behind it; when none is that solid, the first one that has any rating at all.
+ * Pick ONE pair from the ladder. A `library` pair always wins. Otherwise the first of Apple, Open Library, Google that has a valid pair
+ * (externalRating) with at least SUFFICIENT_RATINGS behind it; when none is that solid, the first valid one.
  */
-export function chooseRating(c: { library?: RatingPair; ol?: RatingPair; google?: RatingPair }): RatingPair | undefined {
+export function chooseRating(c: { library?: RatingPair; apple?: RatingPair; ol?: RatingPair; google?: RatingPair }): RatingPair | undefined {
   if (c.library) return c.library;
-  const ladder = [c.ol, c.google].filter((r): r is RatingPair => !!r);
+  const ladder = [c.apple, c.ol, c.google].filter((r): r is RatingPair => !!r && !!externalRating({ ratingAverage: r.average, ratingCount: r.count }));
   return ladder.find(r => (r.count || 0) >= SUFFICIENT_RATINGS) ?? ladder[0];
 }
 
@@ -78,6 +87,21 @@ export function inferRatingSource(book: Pick<Book, 'ratingAverage' | 'ratingCoun
   const same = found.find(f => Math.abs(f.average - book.ratingAverage!) < 0.05 && (f.count || 0) === (book.ratingCount || 0));
   if (same) return same.source;
   return typeof book.id === 'number' || book.source === 'curated' ? 'library' : undefined; // the hand-written ratings of the built-in books
+}
+
+/**
+ * The main rating of the book info: the library's own pair when the book has one, else the ladder over what each site says,
+ * else the (valid) pair the book already carries. One source only; the other sites are listed by otherRatings.
+ */
+export function mainRating(book: Pick<Book, 'id' | 'source' | 'ratingAverage' | 'ratingCount' | 'ratingSource'>, found: readonly SourceRating[] = []): RatingPair | undefined {
+  const own = ratingOf(book);
+  const ownSource = inferRatingSource(book, found);
+  if (own && ownSource === 'library') return { ...own, source: 'library' };
+  const site = (s: SourceRating['source']) => found.find(f => f.source === s);
+  const picked = chooseRating({ apple: site('apple'), ol: site('openlibrary'), google: site('google') });
+  if (picked) return picked;
+  const kept = externalRating(book);
+  return kept && { ...kept, ...(ownSource ? { source: ownSource } : {}) };
 }
 
 /** Every site's rating except the one already shown as the main rating, in the order Open Library, Google, Apple. Nothing here is added together. */

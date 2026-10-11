@@ -3,7 +3,7 @@ import { dedupeInflight } from './http';
 import { persistentCache } from './cache';
 import { cleanIsbn, isbnPair, mergeIdentity } from './identity';
 import { mergeBooks } from './merge';
-import { chooseRating, ratingOf, setRating } from './ratings';
+import { chooseRating, externalRating, setRating } from './ratings';
 import type { ContentFlags } from './quality';
 import { findApple } from './sources/appleBooks';
 import { findGoogle } from './sources/googleBooks';
@@ -66,15 +66,16 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
     }
     let book: Book = hits.map(h => h.book).reduce((a, b) => mergeBooks(a, b));
     book.identity = mergeIdentity(book.identity, isbnPair(q.isbn));
-    // Ratings follow the ladder in ratings.ts: ONE source's average + count, never a mix and never a sum. Open Library first (its
-    // work-level ratings when the search record has none), then Google. Apple's readers still feed `readers` below, not the stars.
-    let olRating = ratingOf(ol?.book) && { ...ratingOf(ol?.book)!, source: 'openlibrary' as const };
+    // Ratings follow the ladder in ratings.ts: ONE source's average + count, never a mix and never a sum. Apple (when asked for) first,
+    // then Open Library (its work-level ratings when the search record has none), then Google. A site with no count has no rating.
+    const pairOf = (h: typeof ol, source: 'apple' | 'openlibrary' | 'google') => { const r = externalRating(h?.book); return r && { ...r, source }; };
+    let olRating = pairOf(ol, 'openlibrary');
     const workId = book.identity?.olWork;
     if (!olRating && workId) {
       const r = await openLibraryRatings(workId, opts);
-      if (r) olRating = { average: r.average, count: r.count || undefined, source: 'openlibrary' };
+      if (r && r.count > 0 && r.average >= 1) olRating = { average: r.average, count: r.count, source: 'openlibrary' };
     }
-    book = setRating(book, chooseRating({ ol: olRating, google: ratingOf(gb?.book) && { ...ratingOf(gb?.book)!, source: 'google' as const } }));
+    book = setRating(book, chooseRating({ apple: pairOf(ap, 'apple'), ol: olRating, google: pairOf(gb, 'google') }));
     if (q.genreHint && !book.genre) book.genre = q.genreHint;
     const flags: ContentFlags = {
       subjects: hits.flatMap(h => h.flags.subjects || []),

@@ -1,6 +1,7 @@
-import { getJson } from '../http';
+import { getJson, getJsonDetailed } from '../http';
 import { authorVariants, cleanIsbn, isbnPair, titleVariants, titlesMatch, authorListMatches } from '../identity';
 import { makeBook } from '../model';
+import { externalRating } from '../ratings';
 import type { CallOpts, Hit } from './types';
 
 const GB = 'https://www.googleapis.com/books/v1';
@@ -43,9 +44,10 @@ export function gbItemToHit(item: any, fallbackTitle = ''): Hit {
   return { book, flags: { subjects: v.categories, description: v.description ? String(v.description) : undefined, googleMaturity: v.maturityRating } };
 }
 
+const searchUrl = (q: string, max: number) => `${GB}/volumes?q=${encodeURIComponent(q)}&maxResults=${Math.min(40, max)}&printType=books&fields=${encodeURIComponent(`items(${FIELDS})`)}`;
+
 export async function searchGoogle(q: string, max: number, opts: CallOpts = {}): Promise<Hit[]> {
-  const url = `${GB}/volumes?q=${encodeURIComponent(q)}&maxResults=${Math.min(40, max)}&printType=books&fields=${encodeURIComponent(`items(${FIELDS})`)}`;
-  const data = await getJson(withKey(url), { signal: opts.signal });
+  const data = await getJson(withKey(searchUrl(q, max)), { signal: opts.signal });
   return (data?.items || []).map((i: any) => gbItemToHit(i));
 }
 
@@ -80,4 +82,40 @@ export async function findGoogle(q: { title: string; author?: string; isbn?: str
     }
   }
   return null;
+}
+
+/** Most searches spent looking for one book's Google rating (the ISBN edition, then title / author variants). */
+const RATING_SEARCHES = 4;
+
+/**
+ * The Google Books rating of a book: a hit whose averageRating (1-5) and ratingsCount (above 0) come as a pair. Editions of one book differ in
+ * whether Google rates them, so an unrated edition is not the end: the other matching editions of each title / author variant are tried
+ * (at most RATING_SEARCHES requests). `failed` tells an API / network error (5xx and 429 retried once) from a successful answer with no
+ * rated edition, so an error is never remembered as "Google has no rating".
+ */
+export async function findGoogleRating(q: { title: string; author?: string; isbn?: string }, opts: CallOpts = {}): Promise<{ hit: Hit | null; failed: boolean }> {
+  let failed = false;
+  let searches = 0;
+  const bestRated = (hits: Hit[]) => hits.filter(h => externalRating(h.book)).reduce<Hit | null>((b, h) => (!b || (h.book.ratingCount || 0) > (b.book.ratingCount || 0) ? h : b), null);
+  const search = async (query: string): Promise<Hit[]> => {
+    searches++;
+    const r = await getJsonDetailed(withKey(searchUrl(query, 20)), { signal: opts.signal, retries: 1 });
+    if (!r.data) failed = true;
+    return (r.data?.items || []).map((i: any) => gbItemToHit(i));
+  };
+  const isbn = cleanIsbn(q.isbn);
+  if (isbn) {
+    const exact = bestRated(await search(`isbn:${isbn}`));
+    if (exact) return { hit: exact, failed: false };
+  }
+  const generic = !q.author || /^(Unknown|Featured) Author$/.test(q.author);
+  const ok = (h: Hit) => titlesMatch(h.book.title, q.title) && authorListMatches(h.book.author, q.author || '');
+  for (const title of titleVariants(q.title)) {
+    for (const author of generic ? [undefined] : authorVariants(q.author)) {
+      if (searches >= RATING_SEARCHES || opts.signal?.aborted) return { hit: null, failed };
+      const found = bestRated((await search(`intitle:"${title}"${author ? ` inauthor:"${author}"` : ''}`)).filter(ok));
+      if (found) return { hit: found, failed: false };
+    }
+  }
+  return { hit: null, failed };
 }

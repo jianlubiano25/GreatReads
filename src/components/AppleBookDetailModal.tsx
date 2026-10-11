@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { Book } from '../types';
 import { DIFFICULTY_LABELS, SHELF_LABELS } from '../data/defaultBooks';
-import { enrichBookDetails, fetchBookMeta, fetchRatingSources, inferRatingSource, otherRatings, RATING_SOURCE_LABEL, type SourceRating } from '../services/books';
+import { enrichBookDetails, fetchBookMeta, fetchRatingSources, mainRating, otherRatings, RATING_SOURCE_LABEL, type SourceRating } from '../services/books';
 import { CoverFace, StarRating, compactCount, honorsListFor } from './BookMeta';
 import { X, BookOpen, Smartphone, Star, Award, ChevronDown, Check, Bookmark } from 'lucide-react';
 
@@ -99,7 +99,8 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
     fetchRatingSources(initialBook, { signal: ctl.signal }).then(r => { if (live) setSiteRatings(r); }).catch(() => {});
     return () => { live = false; ctl.abort(); };
   }, [initialBook.id]);
-  const mainSource = inferRatingSource(book, siteRatings);
+  const main = mainRating(book, siteRatings); // Library -> Apple -> Open Library -> Google; the other sites are listed beside it
+  const mainSource = main?.source;
   const otherSites = otherRatings(siteRatings, mainSource);
   const ratingsText = (r: { count?: number }) => (r.count ? `${compactCount(r.count)} ${r.count === 1 ? 'rating' : 'ratings'}` : '');
 
@@ -375,18 +376,18 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
         </div>
 
         {/* Ratings: the main rating (one site's average + count) and, beside it, what the other sites say */}
-        {book.ratingAverage || otherSites.length ? (
+        {main || otherSites.length ? (
           <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25]">
             <h4 className="font-serif-display text-lg mb-2">
-              Ratings{book.ratingAverage && mainSource ? <span className="font-sans text-sm font-normal text-[#706256] dark:text-[#a89a8a]"> · {RATING_SOURCE_LABEL[mainSource]}</span> : null}
+              Ratings{main && mainSource ? <span className="font-sans text-sm font-normal text-[#706256] dark:text-[#a89a8a]"> · {RATING_SOURCE_LABEL[mainSource]}</span> : null}
             </h4>
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-              {book.ratingAverage ? (
+              {main ? (
                 <div className="flex items-center gap-4">
-                  <span className="font-serif-display text-5xl leading-none">{book.ratingAverage.toFixed(1)}</span>
+                  <span className="font-serif-display text-5xl leading-none">{main.average.toFixed(1)}</span>
                   <div>
-                    <StarRating value={book.ratingAverage} className="text-lg" />
-                    {book.ratingCount ? <div className="text-sm text-[#706256] dark:text-[#a89a8a]">{compactCount(book.ratingCount)} ratings</div> : null}
+                    <StarRating value={main.average} className="text-lg" />
+                    {main.count ? <div className="text-sm text-[#706256] dark:text-[#a89a8a]">{compactCount(main.count)} ratings</div> : null}
                   </div>
                 </div>
               ) : null}
