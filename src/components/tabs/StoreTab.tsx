@@ -22,6 +22,13 @@ interface Props {
   onAddBook: () => void;
 }
 
+const PRIZE_TITLE = (
+  <>
+    <Award className="w-5 h-5 text-amber-500" />
+    <span>Prize winners from your lists</span>
+  </>
+);
+
 /** The Store tab: search, the shelves in the reader's own order, and Customize Store. */
 export function StoreTab({ active, allBooks, customizing, setCustomizing, handleOpenCover, onAddBook }: Props) {
   // Store layout: the reader's own shelf order and hidden shelves (prefs only; shelf data is never touched, see services/store/prefs.ts)
@@ -66,6 +73,12 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
       controller.abort();
     };
   }, [storeSearchQuery]);
+
+  // The shelves compare their books with yours only to share ratings. A new array for every reading-progress change would redraw every
+  // shelf (and rebuild the rating index), so `known` changes only when something a rating match depends on does.
+  const knownSig = allBooks.map(b => `${b.id}|${b.title}|${b.ratingAverage ?? ''}|${b.ratingCount ?? ''}|${b.ratingSource ?? ''}|${b.identity?.olWork ?? ''}|${b.identity?.isbn13 ?? ''}`).join('\n');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const known = useMemo(() => allBooks, [knownSig]);
 
   // Store shelves built from your own catalog
   const prizeBooks = useMemo(
@@ -163,19 +176,15 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
           )}
 
           {/* Shelves, in the reader's own order (Customize Store). Hidden shelves are not drawn, so they also load nothing. */}
-          {shelfOrder.filter(id => !hiddenShelves.includes(id)).map(id => {
+          {shelfOrder.filter(id => !hiddenShelves.includes(id)).map((id, position) => {
             const def = SHELF_BY_ID[id];
+            const priority = position < 2; // the first two shelves load their covers at once; the rest as they come near the screen
             if (def.library) {
               const books = def.library === 'prize' ? prizeBooks : easyBooks;
-              const title = def.library === 'prize' ? (
-                <>
-                  <Award className="w-5 h-5 text-amber-500" />
-                  <span>Prize winners from your lists</span>
-                </>
-              ) : def.title;
-              return <StoreShelf key={id} id={id} title={title} books={books} known={allBooks} onOpen={handleOpenCover} />;
+              const title = def.library === 'prize' ? PRIZE_TITLE : def.title;
+              return <StoreShelf key={id} id={id} title={title} books={books} known={known} priority={priority} onOpen={handleOpenCover} />;
             }
-            return <StoreShelf key={id} id={id} title={def.title} source={def.source} ranked={def.ranked} lazy={def.lazy} hideIfUnavailable={def.hideIfUnavailable} known={allBooks} onOpen={handleOpenCover} />;
+            return <StoreShelf key={id} id={id} title={def.title} source={def.source} ranked={def.ranked} lazy={def.lazy} hideIfUnavailable={def.hideIfUnavailable} known={known} priority={priority} onOpen={handleOpenCover} />;
           })}
           <p className="text-xs text-[#706256] dark:text-[#a89a8a]">Bestsellers from The New York Times. Covers and ratings from Open Library, Google Books and Apple Books readers.</p>
           </>

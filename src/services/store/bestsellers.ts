@@ -27,6 +27,8 @@ interface Saved { mode: Mode; books: Book[]; at: number }
 
 /** An official list is good for 6 hours (the NYT publishes weekly); the fallback only 20 minutes, so the official list returns soon after the NYT does. */
 export const FRESH_MS: Record<Mode, number> = { nyt: 6 * 60 * 60 * 1000, collated: 20 * 60 * 1000 };
+/** How old a saved list may be and still be drawn at once while a fresh one is requested. The NYT publishes weekly; the collated fallback changes faster. */
+export const SHOW_STALE_MS: Record<Mode, number> = { nyt: 10 * 24 * 60 * 60 * 1000, collated: 3 * 24 * 60 * 60 * 1000 };
 const saved = persistentCache<Saved>('readlife.top15', { ttl: 14 * 24 * 60 * 60 * 1000, max: 10 });
 
 /** The heading for a shelf: the official title, or marked as GreatReads' own when it is the collated fallback. */
@@ -114,9 +116,11 @@ export function bestsellerSource(shelf: NytShelf): ShelfSource {
       const key = (bs: Book[]) => bs.map(b => `${b.title}|${b.author}`).join('~');
       return before?.mode === 'nyt' && key(before.books) === key(books) ? 'unchanged' : 'updated';
     },
+    // Instant: the last list shown, even when it is due for a refresh (load() below asks again and the shelf swaps in the answer).
+    // Before, a list older than 6 hours (20 minutes for the fallback) drew an empty skeleton until the network answered.
     cached: () => {
       const s = saved.get(shelf.id);
-      if (!s || Date.now() - s.at > FRESH_MS[s.mode] || !s.books.length) return null;
+      if (!s || !s.books.length || Date.now() - s.at > SHOW_STALE_MS[s.mode]) return null;
       mode = s.mode;
       return s.books;
     },

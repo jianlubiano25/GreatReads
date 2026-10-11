@@ -4,7 +4,7 @@ import { bump } from './perf';
 import { persistentCache } from './cache';
 import { authorKey, cleanIsbn, isbnPair, mergeIdentity, titleKey } from './identity';
 import { mergeBooks } from './merge';
-import { chooseRating, externalRating, setRating, SUFFICIENT_RATINGS } from './ratings';
+import { chooseRating, externalRating, setRating, SUFFICIENT_RATINGS, type SourceRating } from './ratings';
 import type { ContentFlags } from './quality';
 import { lookupApple } from './sources/appleBooks';
 import { findGoogle, findGoogleRating } from './sources/googleBooks';
@@ -25,6 +25,12 @@ export interface ResolveQuery {
   fallbackId?: string | number; // used as the record id when no Open Library work is found
   genreHint?: string;
   apple?: boolean; // also ask Apple Books (adds ratings; one more request)
+  /**
+   * Also look for Google's rating on the book's other editions when the first Google match is unrated, even though Apple or Open Library
+   * already gave a solid rating. Costs up to 4 more Google requests for such a book, so only the offline prefetch script asks for it: that is
+   * how a Store book's Google rating reaches the book info without the app asking Google again.
+   */
+  allSources?: boolean;
 }
 export interface Resolved {
   book: Book;
@@ -33,6 +39,10 @@ export interface Resolved {
   readers?: { ol?: number; google?: number; apple?: number };
   /** Category words from every source that answered (used to tell fiction from non-fiction). */
   words?: string[];
+  /** Every site's OWN valid rating pair found while resolving (never combined; the book carries only the one the ladder chose). Absent on results saved by older versions. */
+  ratings?: SourceRating[];
+  /** The sites whose answer is final: they were asked and answered (a pair, or really none). A site not listed here was not asked or could not be reached, so the book info asks it itself. */
+  checked?: SourceRating['source'][];
   /**
    * Set when a source that could have changed the answer could not be reached (an API error is not "that site has no rating"):
    * Google while the book is unrated, or Apple (asked for) while the rating shown came from a lower step of the ladder. The result is
@@ -113,10 +123,12 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
     // Editions of one book differ in whether Google rates them: when the edition found is unrated and nothing above Google is solid,
     // the other matching editions are tried (findGoogleRating), so Google's rating reaches the Store cards the way it reaches the book info.
     const solid = (r?: { count?: number }) => (r?.count || 0) >= SUFFICIENT_RATINGS;
-    if (!google && !solid(apple) && !solid(olRating) && !opts.signal?.aborted) {
+    let googleChecked = !!google;
+    if (!google && (q.allSources || (!solid(apple) && !solid(olRating))) && !opts.signal?.aborted) {
       const found = await findGoogleRating({ title: q.title, author: q.author, isbn: q.isbn }, opts);
       google = pairOf(found.hit, 'google');
       googleFailed = found.failed && !found.hit;
+      googleChecked = !!google || !googleFailed; // an error is not "Google has no rating"
     }
     book = setRating(book, chooseRating({ apple, ol: olRating, google }));
     if (q.genreHint && !book.genre) book.genre = q.genreHint;
@@ -131,6 +143,8 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
       flags,
       readers: { ol: ol?.book.ratingCount, google: gb?.book.ratingCount, apple: ap?.book.ratingCount },
       words: hits.flatMap(h => [...(h.flags.subjects || []), h.book.genre]),
+      ratings: [olRating, google, apple].filter((r): r is SourceRating => !!r),
+      checked: [...(olRating ? ['openlibrary' as const] : []), ...(googleChecked ? ['google' as const] : []), ...(q.apple && !appleFailed ? ['apple' as const] : [])],
     };
     if (!opts.signal?.aborted) {
       // Apple (asked for) could not be reached and the stars came from a lower step (or there are none): Apple would have been first, so this is asked again soon

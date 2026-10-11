@@ -1,4 +1,5 @@
-import { getJson, getJsonDetailed } from '../http';
+import { getJsonDetailed, type GetOpts, type JsonResult } from '../http';
+import { bump } from '../perf';
 import { authorVariants, cleanIsbn, isbnPair, titleVariants, titlesMatch, authorListMatches } from '../identity';
 import { makeBook } from '../model';
 import { externalRating } from '../ratings';
@@ -16,7 +17,29 @@ const apiKey = (): string => {
   // `npm run prefetch:store` runs this same module in Node, where the key comes from the environment
   try { return String((globalThis as any).process?.env?.VITE_GOOGLE_BOOKS_API_KEY || (globalThis as any).process?.env?.GOOGLE_BOOKS_API_KEY || ''); } catch { return ''; }
 };
-const withKey = (url: string) => (apiKey() ? `${url}${url.includes('?') ? '&' : '?'}key=${encodeURIComponent(apiKey())}` : url);
+let keyRejected = false;
+const withKey = (url: string) => (apiKey() && !keyRejected ? `${url}${url.includes('?') ? '&' : '?'}key=${encodeURIComponent(apiKey())}` : url);
+
+/**
+ * Every Google Books request goes through here. A key that Google rejects (HTTP 400 "API key not valid", or 403 because the key is restricted to other sites
+ * or APIs) fails EVERY request, which looked exactly like "Google has no ratings". So a rejected key is noticed once (counters only, never the key itself),
+ * and the request is repeated without it (Google's shared anonymous quota), for the rest of this session. `__rlPerf()` shows `google.keyConfigured`
+ * and `google.keyRejected`, so a deployment whose key is missing from the build or refused by Google can be told apart from a book Google has not rated.
+ */
+async function googleJson(url: string, opts: GetOpts): Promise<JsonResult> {
+  bump(apiKey() ? 'google.keyConfigured' : 'google.keyMissing');
+  const r = await getJsonDetailed(withKey(url), opts);
+  if (r.data || !apiKey() || keyRejected || (r.status !== 400 && r.status !== 403)) return r;
+  // 400 / 403 can also be one odd query, so the key is blamed only when the same request WORKS without it
+  const again = await getJsonDetailed(url, opts);
+  if (!again.data) return r;
+  keyRejected = true;
+  bump('google.keyRejected');
+  try { console.warn(`[GreatReads] Google Books refused the configured API key (HTTP ${r.status}) but answers without it, so requests go without it. Check the key's website and API restrictions in Google Cloud.`); } catch {}
+  return again;
+}
+/** Tests only: forget that the key was refused. */
+export const resetGoogleKeyForTests = () => { keyRejected = false; };
 
 const cleanThumb = (raw: string) => raw.replace(/^http:\/\//i, 'https://').replace('&edge=curl', '');
 
@@ -49,7 +72,7 @@ export function gbItemToHit(item: any, fallbackTitle = ''): Hit {
 const searchUrl = (q: string, max: number) => `${GB}/volumes?q=${encodeURIComponent(q)}&maxResults=${Math.min(40, max)}&printType=books&fields=${encodeURIComponent(`items(${FIELDS})`)}`;
 
 export async function searchGoogle(q: string, max: number, opts: CallOpts = {}): Promise<Hit[]> {
-  const data = await getJson(withKey(searchUrl(q, max)), { signal: opts.signal });
+  const data = (await googleJson(searchUrl(q, max), { signal: opts.signal })).data;
   return (data?.items || []).map((i: any) => gbItemToHit(i));
 }
 
@@ -61,7 +84,7 @@ export async function googleByIsbn(isbn: string, opts: CallOpts = {}): Promise<H
 }
 
 export async function googleVolume(id: string, opts: CallOpts = {}): Promise<Hit | null> {
-  const item = await getJson(withKey(`${GB}/volumes/${encodeURIComponent(id)}?fields=${encodeURIComponent(FIELDS)}`), { signal: opts.signal });
+  const item = (await googleJson(`${GB}/volumes/${encodeURIComponent(id)}?fields=${encodeURIComponent(FIELDS)}`, { signal: opts.signal })).data;
   return item ? gbItemToHit(item) : null;
 }
 
@@ -102,7 +125,7 @@ export async function findGoogleRating(q: { title: string; author?: string; isbn
   const bestRated = (hits: Hit[]) => hits.filter(h => externalRating(h.book)).reduce<Hit | null>((b, h) => (!b || (h.book.ratingCount || 0) > (b.book.ratingCount || 0) ? h : b), null);
   const search = async (query: string): Promise<Hit[]> => {
     searches++;
-    const r = await getJsonDetailed(withKey(searchUrl(query, 20)), { signal: opts.signal, retries: 1 });
+    const r = await googleJson(searchUrl(query, 20), { signal: opts.signal, retries: 1 });
     if (!r.data) {
       failed = true;
       if (r.status === 0 || r.status === 429 || r.status >= 500) unavailable = true;

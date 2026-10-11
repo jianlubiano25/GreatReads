@@ -1,5 +1,5 @@
 import type { Resolved } from './resolve';
-import { externalRating } from './ratings';
+import { externalRating, type RatingSourceId } from './ratings';
 
 /**
  * The record `npm run prefetch:store` saves for one Store book (src/data/storeResolved.json), built from what the SHARED resolver
@@ -8,7 +8,7 @@ import { externalRating } from './ratings';
  */
 
 /** Bump when the rules that decide a record change: older records are fetched again by the next prefetch run. */
-export const PREFETCH_VERSION = 2;
+export const PREFETCH_VERSION = 3; // 3: every site's own rating is kept (sources / checked), not only the one the ladder chose
 
 export interface PrefetchedRecord {
   title: string; // so the app can tell if the shelf was edited after this was fetched
@@ -21,6 +21,10 @@ export interface PrefetchedRecord {
   pageCount?: number; // unknown stays unknown (never invented)
   year?: string;
   olKey?: string;
+  /** Each site's OWN rating as [average, count] (never combined), for the book info. Only valid pairs are saved. */
+  sources?: Partial<Record<Exclude<RatingSourceId, 'library'>, [number, number]>>;
+  /** The sites that were asked and answered (a pair, or really none): the book info does not ask those again. */
+  checked?: Exclude<RatingSourceId, 'library'>[];
 }
 
 export function toPrefetchedRecord(title: string, r: Resolved | null): PrefetchedRecord {
@@ -39,6 +43,12 @@ export function toPrefetchedRecord(title: string, r: Resolved | null): Prefetche
   if (b.pageCount) rec.pageCount = b.pageCount;
   if (b.year) rec.year = b.year;
   if (b.identity?.olWork) rec.olKey = `/works/${b.identity.olWork}`;
+  if (r.ratings) {
+    const sources: NonNullable<PrefetchedRecord['sources']> = {};
+    for (const x of r.ratings) if (x.count) sources[x.source] = [x.average, x.count];
+    if (Object.keys(sources).length) rec.sources = sources;
+  }
+  if (r.checked?.length) rec.checked = r.checked;
   if (!r.retry) rec.rv = PREFETCH_VERSION; // a result that is waiting for a failed source is not final
   return rec;
 }

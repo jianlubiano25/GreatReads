@@ -36,7 +36,7 @@ for (const shelf of shelves) {
   out[shelf.id] = out[shelf.id] || [];
   const tasks = shelf.seeds.map(([title, author], i) => async () => {
     if (!redoRatings && isCurrentRecord(out[shelf.id][i], title)) return; // saved by the current rules: kept
-    const r = await resolveBook({ title, author, apple: true });
+    const r = await resolveBook({ title, author, apple: true, allSources: true }); // allSources: Google's rating is looked for on every book, so the book info needs no Google request
     const rec = toPrefetchedRecord(title, r);
     if (!rec.rv) waiting++;
     out[shelf.id][i] = rec;

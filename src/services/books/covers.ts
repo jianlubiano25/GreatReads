@@ -18,8 +18,24 @@ import { olCoverById, olCoverByIsbn, searchOpenLibrary } from './sources/openLib
  */
 
 export type CoverSize = 'S' | 'M' | 'L';
+
+/**
+ * Apple Books art is saved (and used for the book info) at 600x900, but a Store / Library card is only ~125-140 CSS px wide. Decoding
+ * ~300 full-size JPEGs (about 2 MB of bitmap each) is what made shelves stutter and the first Store open download many MB. The same
+ * Apple CDN path serves any size, so a card asks for the size it draws: S 200x300, M 360x540 (about 3x a card), L the full 600x900.
+ * Only Apple's own `<w>x<h>bb.jpg|png` links are rewritten; every other URL (NYT, Google, Open Library, a custom one) is returned as it is.
+ */
+const APPLE_ART = /^(https:\/\/is\d-ssl\.mzstatic\.com\/.+\/)(\d+)x(\d+)bb\.(jpg|png)$/;
+const APPLE_SIZE: Record<CoverSize, [number, number] | null> = { S: [200, 300], M: [360, 540], L: null };
+export function sizedCoverUrl(url: string, size: CoverSize): string {
+  const m = APPLE_ART.exec(url);
+  const want = APPLE_SIZE[size];
+  if (!m || !want || Number(m[2]) <= want[0]) return url; // never ask for a bigger picture than the link already is
+  return `${m[1]}${want[0]}x${want[1]}bb.${m[4]}`;
+}
+
 export function getCoverUrl(coverId?: number, size: CoverSize = 'M', customUrl?: string): string {
-  if (customUrl) return customUrl;
+  if (customUrl) return sizedCoverUrl(customUrl, size);
   if (!coverId || coverId <= 0) return '';
   return olCoverById(coverId, size);
 }

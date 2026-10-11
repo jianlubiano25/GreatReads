@@ -48,7 +48,8 @@ async function build(onUpdate: (b: Book[]) => void): Promise<Book[] | null> {
 
 export const trendingSource: ShelfSource = {
   id: SHELF_ID,
-  cached: () => dynamicShelves.get(SHELF_ID) ?? null,
+  // Instant: the last list (kept for 7 days), fresh or not; load() rebuilds it when it is due and the shelf swaps in the answer
+  cached: () => dynamicShelves.get(SHELF_ID) ?? dynamicShelves.peek(SHELF_ID)?.value ?? null,
   info: () => {
     const p = dynamicShelves.peek(SHELF_ID);
     return {

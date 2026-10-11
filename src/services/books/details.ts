@@ -4,6 +4,7 @@ import { persistentCache } from './cache';
 import { bookKey, identityOf, isUnknownAuthor, primaryAuthor } from './identity';
 import { externalRating, type SourceRating } from './ratings';
 import { difficultyFor, genreFromSubjects, isKnownGenre, plainText } from './model';
+import { prefetchedSourceRatings } from './prefetchIndex';
 import { resolveBook } from './resolve';
 import { lookupApple } from './sources/appleBooks';
 import { findGoogle, findGoogleRating } from './sources/googleBooks';
@@ -122,10 +123,22 @@ export async function fetchRatingSources(book: Book, opts: CallOpts = {}): Promi
       return null;
     }
   };
+  // 1. What is already known: the Store's prefetched record, then the shared resolver (its saved result when the Store or the NYT list already
+  //    resolved this book; otherwise the same lookup fetchBookMeta is making right now, shared with it). Each site that was asked and answered
+  //    there is not asked again; only a site that was not asked, or could not be reached, is looked up below.
+  const known = new Map<SourceRating['source'], SourceRating>();
+  const checked = new Set<SourceRating['source']>();
+  const learn = (from?: { ratings?: SourceRating[]; checked?: SourceRating['source'][] } | null) => {
+    from?.ratings?.forEach(r => { if (!known.has(r.source)) known.set(r.source, r); });
+    from?.checked?.forEach(c => checked.add(c));
+  };
+  learn(prefetchedSourceRatings(book));
+  if (checked.size < 3) learn(await resolveBook({ title: book.title, author, isbn: q.isbn, fallbackId: book.id, apple: true }, opts).catch(() => null));
+
   let googleFailed = false;
   let appleFailed = false;
   const [ol, google, apple] = await Promise.all([
-    pair('openlibrary', async () => {
+    checked.has('openlibrary') ? known.get('openlibrary') ?? null : pair('openlibrary', async () => {
       const found = (id.olWork ? await openLibraryWorkRecord(id.olWork, opts) : null) ?? (await findOpenLibrary(q, opts));
       const direct = externalRating(found?.book);
       if (direct) return found!.book;
@@ -133,12 +146,12 @@ export async function fetchRatingSources(book: Book, opts: CallOpts = {}): Promi
       const r = wid ? await openLibraryRatings(wid, opts) : null;
       return r ? { ratingAverage: r.average, ratingCount: r.count } : null;
     }),
-    pair('google', async () => {
+    checked.has('google') ? known.get('google') ?? null : pair('google', async () => {
       const r = await findGoogleRating(q, opts);
       googleFailed = r.failed && !r.hit;
       return r.hit?.book;
     }),
-    pair('apple', async () => {
+    checked.has('apple') ? known.get('apple') ?? null : pair('apple', async () => {
       const r = await lookupApple({ title: book.title, author }, opts);
       appleFailed = r.failed && !r.hit;
       return r.hit?.book;
