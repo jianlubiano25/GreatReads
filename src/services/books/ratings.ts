@@ -157,18 +157,20 @@ export function inferRatingSource(book: Pick<Book, 'ratingAverage' | 'ratingCoun
 }
 
 /**
- * The main rating of the book info: the library's own pair when the book has one, else the ladder over what each site says,
- * else the (valid) pair the book already carries. One source only; the other sites are listed by otherRatings.
+ * The main rating of the book info. It is the rating the book ALREADY carries (the one its Store card showed), so a card and its sheet can
+ * never disagree: the library's own pair, or an outside site's valid pair whose source is known (saved on the book, or the one site whose own
+ * rating is exactly that pair). Only a book with no such rating takes the ladder over what each site says live (Apple, Open Library, Google).
+ * One source only; the other sites are listed beside it by otherRatings.
  */
 export function mainRating(book: Pick<Book, 'id' | 'source' | 'ratingAverage' | 'ratingCount' | 'ratingSource'>, found: readonly SourceRating[] = []): RatingPair | undefined {
   const own = ratingOf(book);
   const ownSource = inferRatingSource(book, found);
   if (own && ownSource === 'library') return { ...own, source: 'library' };
+  const kept = externalRating(book);
+  if (kept && ownSource) return { ...kept, source: ownSource }; // what the card showed
   const site = (s: SourceRating['source']) => found.find(f => f.source === s);
   const picked = chooseRating({ apple: site('apple'), ol: site('openlibrary'), google: site('google') });
-  if (picked) return picked;
-  const kept = externalRating(book);
-  return kept && { ...kept, ...(ownSource ? { source: ownSource } : {}) };
+  return picked ?? (kept ? { ...kept } : undefined);
 }
 
 /** Every site's rating except the one already shown as the main rating, in the order Open Library, Google, Apple. Nothing here is added together. */

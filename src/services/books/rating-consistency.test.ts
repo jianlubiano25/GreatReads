@@ -133,7 +133,7 @@ test('a Google API error is not remembered as "no rating": it is asked again lat
   assert.equal(first.ratingAverage, undefined);
   await settle();
   // saved WITH a retry time (so closing and reopening the app does not repeat the requests), not as a final "no rating"
-  const savedAlpha = JSON.parse(store.get('readlife.resolved2') || '{}')['error alpha|bo author']?.v;
+  const savedAlpha = JSON.parse(store.get('readlife.resolved3') || '{}')['error alpha|bo author']?.v;
   assert.ok(savedAlpha?.retry?.at > Date.now() && savedAlpha.retry.tries === 1);
   const used = calls.length;
   await resolveBook({ title: 'Error Alpha', author: 'Bo Author' }); // reopened right away: no new requests
@@ -152,7 +152,7 @@ test('a Google API error is not remembered as "no rating": it is asked again lat
   const saved = ok.length;
   await resolveBook({ title: 'Error Beta', author: 'Cy Author' });
   assert.equal(ok.length, saved);
-  assert.ok(store.get('readlife.resolved2')?.includes('error beta|cy author'));
+  assert.ok(store.get('readlife.resolved3')?.includes('error beta|cy author'));
 });
 
 test('book meta without a rating (an API error) is not saved for a month; with a rating it is', async () => {
@@ -162,7 +162,7 @@ test('book meta without a rating (an API error) is not saved for a month; with a
   const first = await fetchBookMeta(b);
   assert.equal(first?.ratingAverage, undefined);
   await settle();
-  assert.equal(store.get('readlife.meta5')?.includes('meta-err') ?? false, false);
+  assert.equal(store.get('readlife.meta6')?.includes('meta alpha') ?? false, false);
   const used = calls.length;
   await fetchBookMeta(b); // reopened right away: no new requests
   assert.equal(calls.length, used);
@@ -174,5 +174,5 @@ test('book meta without a rating (an API error) is not saved for a month; with a
     assert.deepEqual([later?.ratingAverage, later?.ratingCount, later?.ratingSource], [4.5, 18, 'google']);
   } finally { mock.timers.reset(); }
   await settle();
-  assert.ok(store.get('readlife.meta5')?.includes('meta-err'));
+  assert.ok(store.get('readlife.meta6')?.includes('meta alpha'));
 });

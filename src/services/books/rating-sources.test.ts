@@ -105,7 +105,7 @@ test('an API error is told apart from "no rating": it is not remembered, and is 
   const used = calls.length;
   await fetchRatingSources(b); // reopened right away: no new requests
   assert.equal(calls.length, used);
-  assert.equal(store.get('readlife.ratingsrc2')?.includes(bookKey(b)) ?? false, false); // the partial answer was not saved for a week
+  assert.equal(store.get('readlife.ratingsrc3')?.includes(bookKey(b)) ?? false, false); // the partial answer was not saved for a week
 
   // a successful answer with no rated edition IS saved: asking again makes no requests
   const b2 = book({ id: 'err2', title: 'Err Beta', author: 'Sol Author' });

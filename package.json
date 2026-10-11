@@ -10,7 +10,7 @@
     "preview": "vite preview --port=3000 --host=0.0.0.0",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "prefetch:store": "node scripts/prefetch-store.mjs",
+    "prefetch:store": "tsx scripts/prefetch-store.ts",
     "check:shelves": "tsx scripts/check-shelves.ts",
     "test": "tsx --test src/services/*.test.ts src/services/*/*.test.ts",
     "check:nyt": "tsx scripts/check-nyt-lists.ts",

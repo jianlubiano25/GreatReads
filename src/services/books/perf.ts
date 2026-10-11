@@ -17,7 +17,7 @@ const failures: FailedRequest[] = [];
 const LOG_KEY = 'readlife.perflog';
 const MAX_FAILURES = 40;
 
-/** Count one thing (or `n` of it): "net.itunes.apple.com", "resolve.cacheHit", "cache.readlife.resolved2.saveBytes" ... */
+/** Count one thing (or `n` of it): "net.itunes.apple.com", "resolve.cacheHit", "cache.readlife.resolved3.saveBytes" ... */
 export function bump(name: string, n = 1): void {
   counters[name] = (counters[name] || 0) + n;
 }

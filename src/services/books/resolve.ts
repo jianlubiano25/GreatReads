@@ -2,11 +2,11 @@ import type { Book } from '../../types';
 import { dedupeInflight } from './http';
 import { bump } from './perf';
 import { persistentCache } from './cache';
-import { cleanIsbn, isbnPair, mergeIdentity } from './identity';
+import { authorKey, cleanIsbn, isbnPair, mergeIdentity, titleKey } from './identity';
 import { mergeBooks } from './merge';
 import { chooseRating, externalRating, setRating, SUFFICIENT_RATINGS } from './ratings';
 import type { ContentFlags } from './quality';
-import { findApple } from './sources/appleBooks';
+import { lookupApple } from './sources/appleBooks';
 import { findGoogle, findGoogleRating } from './sources/googleBooks';
 import { findOpenLibrary, openLibraryRatings } from './sources/openLibrary';
 import type { CallOpts } from './sources/types';
@@ -34,14 +34,15 @@ export interface Resolved {
   /** Category words from every source that answered (used to tell fiction from non-fiction). */
   words?: string[];
   /**
-   * Set when the book is unrated only because Google could not be reached (an API error is not "Google has no rating"). The result is
+   * Set when a source that could have changed the answer could not be reached (an API error is not "that site has no rating"):
+   * Google while the book is unrated, or Apple (asked for) while the rating shown came from a lower step of the ladder. The result is
    * saved with it and reused until `at`; after that the book is asked again, and each failure waits longer (RETRY_BACKOFF_MS).
    * Absent on a result that is final, and on results saved by older versions.
    */
   retry?: { at: number; tries: number };
 }
 
-const cache = persistentCache<Resolved | null>('readlife.resolved2', { ttl: 14 * 24 * 60 * 60 * 1000, max: 250 });
+const cache = persistentCache<Resolved | null>('readlife.resolved3', { ttl: 14 * 24 * 60 * 60 * 1000, max: 250 });
 /**
  * Books no source could place. Remembered only briefly: "not found" is often a dropped connection or a rate limit, and a miss
  * that lasted two weeks (as saved results do) left covers blank long after the network was fine again.
@@ -55,10 +56,15 @@ const inflight = new Map<string, Promise<Resolved | null>>();
 const RETRY_BACKOFF_MS = [10 * 60 * 1000, 60 * 60 * 1000, 6 * 60 * 60 * 1000];
 const retryAfter = (tries: number) => Date.now() + RETRY_BACKOFF_MS[Math.min(tries, RETRY_BACKOFF_MS.length) - 1];
 
-const keyOf = (q: ResolveQuery) => {
+/**
+ * One key per BOOK (same as bookKey in identity.ts: the ISBN-13 when there is one, else normalised title + first author), so the Store card, the
+ * book info and the NYT list reach the same saved result however each spells the author. `apple` is part of the key: it is a different question.
+ */
+export const resolveKey = (q: Pick<ResolveQuery, 'title' | 'author' | 'isbn' | 'apple'>) => {
   const isbn = cleanIsbn(q.isbn);
-  return `${isbn ? isbnPair(isbn).isbn13 : `${q.title}|${q.author || ''}`.toLowerCase()}${q.apple ? '|a' : ''}`;
+  return `${isbn ? isbnPair(isbn).isbn13 : `${titleKey(q.title)}|${authorKey(q.author || '')}`}${q.apple ? '|a' : ''}`;
 };
+const keyOf = resolveKey;
 
 export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resolved | null> {
   bump('resolve.calls');
@@ -75,18 +81,23 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
   const failedBefore = hit?.retry?.tries || 0;
   return dedupeInflight(inflight, key, async () => {
     bump('resolve.network');
-    const [ol, gb, ap] = await Promise.all([
+    const [ol, gb, apLookup] = await Promise.all([
       findOpenLibrary(q, opts),
       findGoogle(q, opts),
-      q.apple ? findApple(q, opts) : Promise.resolve(null),
+      q.apple ? lookupApple(q, opts) : Promise.resolve({ hit: null, failed: false }),
     ]);
+    const ap = apLookup.hit;
+    const appleFailed = apLookup.failed && !ap;
     const hits = [ol, gb, ap].filter((h): h is NonNullable<typeof h> => !!h);
     if (!hits.length) {
-      if (!opts.signal?.aborted) misses.set(key, true);
+      if (!opts.signal?.aborted && !appleFailed) misses.set(key, true); // an unreachable Apple is not "no such book"
       return null;
     }
     let book: Book = hits.map(h => h.book).reduce((a, b) => mergeBooks(a, b));
     book.identity = mergeIdentity(book.identity, isbnPair(q.isbn));
+    // Apple's 600x900 art, when Apple (asked for, and matched on title AND author) has the book, is the cover. Every caller that asks Apple
+    // (Store cards, the book info, the prefetch script) therefore gets the same cover, instead of each picking the first source that had one.
+    if (ap?.book.coverUrl) book = { ...book, coverUrl: ap.book.coverUrl, coverId: undefined };
     // Ratings follow the ladder in ratings.ts: ONE source's average + count, never a mix and never a sum. Apple (when asked for) first,
     // then Open Library (its work-level ratings when the search record has none), then Google. A site with no count has no rating.
     const pairOf = (h: typeof ol, source: 'apple' | 'openlibrary' | 'google') => { const r = externalRating(h?.book); return r && { ...r, source }; };
@@ -122,7 +133,9 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
       words: hits.flatMap(h => [...(h.flags.subjects || []), h.book.genre]),
     };
     if (!opts.signal?.aborted) {
-      if (googleFailed && !book.ratingAverage) out.retry = { at: retryAfter(failedBefore + 1), tries: failedBefore + 1 };
+      // Apple (asked for) could not be reached and the stars came from a lower step (or there are none): Apple would have been first, so this is asked again soon
+      const appleMissed = appleFailed && book.ratingSource !== 'apple';
+      if ((googleFailed && !book.ratingAverage) || appleMissed) out.retry = { at: retryAfter(failedBefore + 1), tries: failedBefore + 1 };
       cache.set(key, out);
     }
     return { ...out, book: { ...out.book, id: pickId(out.book, q) } };

@@ -12,7 +12,9 @@ const FIELDS = 'id,volumeInfo(title,authors,description,categories,pageCount,pub
  * Set VITE_GOOGLE_BOOKS_API_KEY in .env.local (local) or in the Cloudflare Pages build variables (deployed).
  */
 const apiKey = (): string => {
-  try { return String((import.meta as any).env?.VITE_GOOGLE_BOOKS_API_KEY || ''); } catch { return ''; }
+  try { const k = (import.meta as any).env?.VITE_GOOGLE_BOOKS_API_KEY; if (k) return String(k); } catch {}
+  // `npm run prefetch:store` runs this same module in Node, where the key comes from the environment
+  try { return String((globalThis as any).process?.env?.VITE_GOOGLE_BOOKS_API_KEY || (globalThis as any).process?.env?.GOOGLE_BOOKS_API_KEY || ''); } catch { return ''; }
 };
 const withKey = (url: string) => (apiKey() ? `${url}${url.includes('?') ? '&' : '?'}key=${encodeURIComponent(apiKey())}` : url);
 

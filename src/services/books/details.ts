@@ -3,9 +3,9 @@ import { getJson } from './http';
 import { persistentCache } from './cache';
 import { bookKey, identityOf, isUnknownAuthor, primaryAuthor } from './identity';
 import { externalRating, type SourceRating } from './ratings';
-import { difficultyFor, genreFromSubjects, plainText } from './model';
+import { difficultyFor, genreFromSubjects, isKnownGenre, plainText } from './model';
 import { resolveBook } from './resolve';
-import { findApple } from './sources/appleBooks';
+import { lookupApple } from './sources/appleBooks';
 import { findGoogle, findGoogleRating } from './sources/googleBooks';
 import type { CallOpts } from './sources/types';
 import { findOpenLibrary, openLibraryDescription, openLibraryEditionPages, openLibraryRatings, openLibraryWorkRecord } from './sources/openLibrary';
@@ -39,76 +39,76 @@ export async function enrichBookDetails(book: Book): Promise<Book> {
   return { ...book, summary: summary || book.summary, authorBio: authorBio || book.authorBio };
 }
 
-const metaCache = persistentCache<Partial<Book>>('readlife.meta5', { ttl: 30 * 24 * 60 * 60 * 1000, max: 400 }); // ratings and page counts refresh monthly
+const metaCache = persistentCache<Partial<Book>>('readlife.meta6', { ttl: 30 * 24 * 60 * 60 * 1000, max: 400 }); // ratings and page counts refresh monthly
 
-/** Meta that found no rating is not saved for a month (the lookup may have hit an API error): it is reused briefly, then asked again. */
+/** Meta that found no rating (or was rated without Apple, which could not be reached) is not saved for a month: it is reused briefly, then asked again. */
 const META_RETRY_MS = 10 * 60 * 1000;
 const metaRetry = new Map<string, { until: number; meta: Partial<Book> }>();
 
 /**
- * Real pages / genre / year / ratings for a book (curated, store, searched or saved). Cached per book.
- * Open Library answers first. When it has nothing, or has no rating / pages / year, the shared resolver (Open Library + Google Books)
- * fills the gaps. Ratings follow ratings.ts: one source's average + count together, Open Library before Google.
+ * Real pages / genre / year / ratings for a book (curated, store, searched or saved). Cached per book (bookKey: the same key the
+ * resolver uses, so a book opened from a Store card is already resolved: no second lookup, and the same answer).
+ * The shared resolver answers first (Open Library + Google Books + Apple Books); the rating it carries follows ratings.ts: ONE source's
+ * average + count, Apple, then Open Library, then Google. Open Library's own work record only fills what the resolver could not find.
  */
 export async function fetchBookMeta(book: Book): Promise<Partial<Book> | null> {
-  const key = String(book.id);
+  const key = bookKey(book);
   const hit = metaCache.get(key);
   if (hit) return hit;
   const pending = metaRetry.get(key);
   if (pending && pending.until > Date.now()) return pending.meta;
 
   const id = identityOf(book);
-  const workId = id.olWork;
-  const found = (workId ? await openLibraryWorkRecord(workId) : null) ?? (await findOpenLibrary({ title: book.title, author: primaryAuthor(book.author), isbn: id.isbn13 }));
-  const d = found?.book;
+  const r = await resolveBook({ title: book.title, author: isUnknownAuthor(book.author) ? '' : primaryAuthor(book.author), isbn: id.isbn13 || id.isbn10, fallbackId: book.id, apple: true });
+  const rb = r?.book;
 
   const meta: Partial<Book> = {};
-  let pages = d?.pageCount;
-  const wid = workId || d?.identity?.olWork;
-  if (!pages && wid) pages = (await openLibraryEditionPages(wid)) ?? 0;
-  const olPair = externalRating(d);
-  if (olPair) { meta.ratingAverage = olPair.average; meta.ratingCount = olPair.count; meta.ratingSource = 'openlibrary'; }
-  if (d?.year) meta.year = d.year;
-  const genre = found ? genreFromSubjects(found.flags.subjects) : '';
+  const pair = externalRating(rb);
+  if (pair) { meta.ratingAverage = pair.average; meta.ratingCount = pair.count; meta.ratingSource = rb!.ratingSource; } // a pair, from one source
+  if (rb?.year) meta.year = rb.year;
+  const genre = r ? genreFromSubjects(r.flags.subjects) : '';
   if (genre) meta.genre = genre;
-  if (pages) meta.pageCount = pages;
+  if (rb?.pageCount) meta.pageCount = rb.pageCount;
 
-  // Fall back to the resolver for whatever Open Library did not have (a book it does not list, or lists without ratings)
-  if (!meta.ratingAverage || !meta.pageCount || !meta.year) {
-    // apple: true is the same query the Store shelves make (same cache key), so a book opened from a card is already resolved: no second lookup
-    const r = await resolveBook({ title: book.title, author: isUnknownAuthor(book.author) ? '' : primaryAuthor(book.author), isbn: id.isbn13 || id.isbn10, fallbackId: book.id, apple: true });
-    const rb = r?.book;
-    if (rb) {
-      const rp = externalRating(rb);
-      if (!meta.ratingAverage && rp) { meta.ratingAverage = rp.average; meta.ratingCount = rp.count; meta.ratingSource = rb.ratingSource; } // a pair, from one source
-      if (!meta.pageCount && rb.pageCount) meta.pageCount = rb.pageCount;
-      if (!meta.year && rb.year) meta.year = rb.year;
-      if (!meta.genre) { const g = genreFromSubjects(r!.flags.subjects); if (g) meta.genre = g; }
-    }
+  // Whatever the resolver did not find: the book's own Open Library work (an id saved on the book is exact, and is only asked when the resolver
+  // found a different book or none: otherwise it already holds that record), then its editions' median page count
+  const workId = id.olWork || rb?.identity?.olWork;
+  if (id.olWork && rb?.identity?.olWork !== id.olWork && (!meta.ratingAverage || !meta.pageCount || !meta.year || !meta.genre)) {
+    const d = (await openLibraryWorkRecord(id.olWork))?.book;
+    const olPair = externalRating(d);
+    if (!meta.ratingAverage && olPair) { meta.ratingAverage = olPair.average; meta.ratingCount = olPair.count; meta.ratingSource = 'openlibrary'; }
+    if (!meta.year && d?.year) meta.year = d.year;
+    if (!meta.pageCount && d?.pageCount) meta.pageCount = d.pageCount;
+    if (!meta.genre && isKnownGenre(d?.genre)) meta.genre = d!.genre;
+  }
+  if (!meta.pageCount && workId) {
+    const pages = await openLibraryEditionPages(workId);
+    if (pages) meta.pageCount = pages;
   }
   if (meta.pageCount) meta.difficulty = difficultyFor(meta.pageCount);
 
   if (!Object.keys(meta).length) return null;
-  if (meta.ratingAverage) metaCache.set(key, meta);
+  if (meta.ratingAverage && !r?.retry) metaCache.set(key, meta);
   else metaRetry.set(key, { until: Date.now() + META_RETRY_MS, meta });
   return meta;
 }
 
-const sourcesCache = persistentCache<SourceRating[]>('readlife.ratingsrc2', { ttl: 7 * 24 * 60 * 60 * 1000, max: 300 });
-/** When Google could not be reached, the partial answer is reused for a couple of minutes (not saved), so reopening a sheet does not repeat the requests. */
-const GOOGLE_RETRY_MS = 2 * 60 * 1000;
-const googleRetry = new Map<string, { until: number; out: SourceRating[] }>();
+const sourcesCache = persistentCache<SourceRating[]>('readlife.ratingsrc3', { ttl: 7 * 24 * 60 * 60 * 1000, max: 300 });
+/** When Google or Apple could not be reached, the partial answer is reused for a couple of minutes (not saved), so reopening a sheet does not repeat the requests. */
+const PARTIAL_RETRY_MS = 2 * 60 * 1000;
+const partialRetry = new Map<string, { until: number; out: SourceRating[] }>();
 
 /**
  * What each site says about this book, for the book info: Open Library, Google Books and Apple Books, each its own average + count
  * (never combined). Only sites with a valid pair (average 1-5 and a count) are returned. Cached per book for a week, except while Google
- * could not be reached: that is not "Google has no rating", so it is not saved and is asked again after GOOGLE_RETRY_MS.
+ * or Apple could not be reached: that is not "that site has no rating", so a partial answer is never saved (a week of "Open Library only")
+ * and is asked again after PARTIAL_RETRY_MS.
  */
 export async function fetchRatingSources(book: Book, opts: CallOpts = {}): Promise<SourceRating[]> {
   const key = bookKey(book);
   const hit = sourcesCache.get(key);
   if (hit) return hit;
-  const pending = googleRetry.get(key);
+  const pending = partialRetry.get(key);
   if (pending && pending.until > Date.now()) return pending.out;
 
   const id = identityOf(book);
@@ -123,6 +123,7 @@ export async function fetchRatingSources(book: Book, opts: CallOpts = {}): Promi
     }
   };
   let googleFailed = false;
+  let appleFailed = false;
   const [ol, google, apple] = await Promise.all([
     pair('openlibrary', async () => {
       const found = (id.olWork ? await openLibraryWorkRecord(id.olWork, opts) : null) ?? (await findOpenLibrary(q, opts));
@@ -137,11 +138,15 @@ export async function fetchRatingSources(book: Book, opts: CallOpts = {}): Promi
       googleFailed = r.failed && !r.hit;
       return r.hit?.book;
     }),
-    pair('apple', async () => (await findApple({ title: book.title, author }, opts))?.book),
+    pair('apple', async () => {
+      const r = await lookupApple({ title: book.title, author }, opts);
+      appleFailed = r.failed && !r.hit;
+      return r.hit?.book;
+    }),
   ]);
   const out = [ol, google, apple].filter((r): r is SourceRating => !!r);
   if (!opts.signal?.aborted) {
-    if (googleFailed) googleRetry.set(key, { until: Date.now() + GOOGLE_RETRY_MS, out });
+    if (googleFailed || appleFailed) partialRetry.set(key, { until: Date.now() + PARTIAL_RETRY_MS, out });
     else if (out.length) sourcesCache.set(key, out);
   }
   return out;

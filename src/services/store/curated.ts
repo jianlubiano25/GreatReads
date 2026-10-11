@@ -15,8 +15,8 @@ import type { ShelfSource } from './shelves';
 const PREFETCHED = resolvedData as unknown as Record<string, (Partial<Book> & { olKey?: string } | null)[]>;
 
 const SEED_COLORS = ['#6b6f80', '#8a5a3b', '#2e5934', '#925838', '#3a7d80', '#7a4a6a'];
-// v2: shelves saved by older versions could hold a cover that belonged to another book (a reused slot); they are looked up again once
-const cache = persistentCache<{ sig: string; books: Book[] }>('readlife.curated2', { ttl: 7 * 24 * 60 * 60 * 1000, max: 40 });
+// v3: shelves saved by older versions could hold a cover that belonged to another book, or stars picked by older rating rules; they are looked up again once
+const cache = persistentCache<{ sig: string; books: Book[] }>('readlife.curated3', { ttl: 7 * 24 * 60 * 60 * 1000, max: 40 });
 
 /** Changes whenever the shelf's books or pick labels change, so an edited shelf never shows an old cached one. */
 const shelfSig = (shelf: CuratedShelf) => shelf.seeds.map(s => `${s[0]}|${s[1]}|${s[2] || ''}`).join('~');

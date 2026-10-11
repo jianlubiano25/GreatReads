@@ -117,7 +117,7 @@ test('a result that is unrated because Google failed is not asked again on the n
   await settle();
   const cold = calls.length;
   assert.ok(cold > 0);
-  const saved = JSON.parse(store.get('readlife.resolved2') || '{}');
+  const saved = JSON.parse(store.get('readlife.resolved3') || '{}');
   assert.equal(saved['warm alpha|bea author|a']?.v?.retry?.tries, 1); // the failure state is on disk, so a relaunch sees it
 
   // 9 minutes later (the old in-memory rule asked again after 2): a warm open makes no request at all
@@ -133,7 +133,7 @@ test('a result that is unrated because Google failed is not asked again on the n
     assert.ok(calls.length > cold);
     const again = calls.length;
     await settle();
-    assert.equal(JSON.parse(store.get('readlife.resolved2') || '{}')['warm alpha|bea author|a']?.v?.retry?.tries, 2);
+    assert.equal(JSON.parse(store.get('readlife.resolved3') || '{}')['warm alpha|bea author|a']?.v?.retry?.tries, 2);
     mock.timers.reset();
     mock.timers.enable({ apis: ['Date'], now: Date.now() + 40 * MIN });
     await curatedSource(shelf).load(() => {});
