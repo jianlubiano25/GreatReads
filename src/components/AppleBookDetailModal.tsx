@@ -289,19 +289,19 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
         <div className="grid grid-cols-4 sm:flex sm:items-stretch justify-around py-3 px-2 sm:px-4 border-b border-[#e3d7c3] dark:border-[#382f25] text-center bg-[#fdfaf3] dark:bg-[#1f1914]">
           <div className="flex flex-col items-center justify-center p-1 sm:px-3 sm:flex-1 border-r border-[#e3d7c3]/60 dark:border-[#382f25]">
             <span className="text-[10px] sm:text-[11px] uppercase font-bold tracking-wider text-[#706256] dark:text-[#a89a8a] line-clamp-1">
-              {book.ratingCount ? `${compactCount(book.ratingCount)} Ratings` : 'Rating'}
+              {main?.count ? `${compactCount(main.count)} Ratings` : 'Rating'}
             </span>
             <div className="font-bold text-base sm:text-lg text-[#201a15] dark:text-[#f0e6d6] flex items-center justify-center gap-1 my-0.5">
-              {book.ratingAverage ? (
+              {main ? (
                 <>
                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 inline" />
-                  <span>{book.ratingAverage.toFixed(1)}</span>
+                  <span>{main.average.toFixed(1)}</span>
                 </>
               ) : (
                 <span className="text-[#706256] dark:text-[#a89a8a]">—</span>
               )}
             </div>
-            <span className="text-[10px] sm:text-[11px] text-[#706256] dark:text-[#a89a8a]">Readers</span>
+            <span className="text-[10px] sm:text-[11px] text-[#706256] dark:text-[#a89a8a]">{main?.source ? RATING_SOURCE_LABEL[main.source] : 'Readers'}</span>
           </div>
 
           <div className="flex flex-col items-center justify-center p-1 sm:px-3 sm:flex-1 border-r border-[#e3d7c3]/60 dark:border-[#382f25]">

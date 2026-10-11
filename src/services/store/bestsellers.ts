@@ -54,7 +54,7 @@ export function bestsellerSource(shelf: NytShelf): ShelfSource {
         try {
           const out = [...provisional];
           await mapPool(top, 3, async (e, i) => {
-            const r = await resolveBook({ title: e.title, author: e.author, isbn: e.isbn13 || e.isbn10, fallbackId: provisional[i].id, genreHint: shelf.genre });
+            const r = await resolveBook({ title: e.title, author: e.author, isbn: e.isbn13 || e.isbn10, fallbackId: provisional[i].id, genreHint: shelf.genre, apple: true });
             out[i] = combineWithNyt(provisional[i], r?.book ?? null);
             onUpdate([...out]);
           });

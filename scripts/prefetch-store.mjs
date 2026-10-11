@@ -19,6 +19,9 @@ async function getJson(url, timeoutMs = 5000) {
   return null;
 }
 
+/** An outside site's rating is valid only as an average from 1 to 5 together with its own count above zero (src/services/books/ratings.ts: externalRating). */
+const validPair = (average, count) => Number.isFinite(Number(average)) && Number(average) >= 1 && Number(average) <= 5 && Number(count) > 0;
+
 /** 1. Apple Books (iTunes API) — high-res 600x900 cover, rating, year */
 async function fromAppleBooks(title, author) {
   try {
@@ -66,7 +69,9 @@ async function fromGoogleBooks(title, author) {
   try {
     const q = encodeURIComponent(`intitle:${title} inauthor:${author}`);
     const data = await getJson(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=3&printType=books`);
-    const item = data?.items?.[0]?.volumeInfo;
+    // editions of one book differ in whether Google rates them: prefer the first edition that has a valid rating pair
+    const items = (data?.items || []).map(i => i.volumeInfo).filter(Boolean);
+    const item = items.find(v => validPair(v.averageRating, v.ratingsCount)) || items[0];
     if (!item) return null;
     const thumb = (item.imageLinks?.thumbnail || item.imageLinks?.smallThumbnail || '').replace(/^http:/, 'https:').replace('&edge=curl', '');
     return {
@@ -94,13 +99,14 @@ async function resolveBook(title, author) {
   else if (gb?.coverUrl) rec.coverUrl = gb.coverUrl;
 
   // A rating is ONE source's average + count, taken together (never an average from one site with another's count, never a sum).
-  // Ladder, as in src/services/books/ratings.ts: Open Library, then Google Books; Apple's readers are not used for the stars.
-  // A source with fewer than 10 ratings only wins when no other source has a rating.
-  const ladder = [ol, gb].filter(r => r?.ratingAverage);
-  const pick = ladder.find(r => (r.ratingCount || 0) >= 10) || ladder[0];
+  // Ladder, as in src/services/books/ratings.ts: Apple Books, then Open Library, then Google Books. Only valid pairs count, and a source
+  // with fewer than 10 ratings only wins when no other source has a rating. The source is saved so the app knows where the stars came from.
+  const ladder = [['apple', apple], ['openlibrary', ol], ['google', gb]].filter(([, r]) => r && validPair(r.ratingAverage, r.ratingCount));
+  const pick = ladder.find(([, r]) => r.ratingCount >= 10) || ladder[0];
   if (pick) {
-    rec.ratingAverage = pick.ratingAverage;
-    if (pick.ratingCount) rec.ratingCount = pick.ratingCount;
+    rec.ratingAverage = pick[1].ratingAverage;
+    rec.ratingCount = pick[1].ratingCount;
+    rec.ratingSource = pick[0];
   }
 
   const pages = ol?.pages || gb?.pages; // unknown stays unknown (never invent a page count)
@@ -133,7 +139,7 @@ for (const shelf of shelves) {
   // Resolve books in shelf in chunks of 4 concurrent
   const tasks = shelf.seeds.map(([title, author], i) => async () => {
     const existing = out[shelf.id][i];
-    if (!redoRatings && existing && existing.title === title && (existing.coverUrl || existing.coverId) && existing.ratingAverage) {
+    if (!redoRatings && existing && existing.title === title && (existing.coverUrl || existing.coverId) && existing.ratingAverage && existing.ratingSource) { // an entry saved without its source predates the ladder: fetched again
       return;
     }
     const resolved = await resolveBook(title, author);

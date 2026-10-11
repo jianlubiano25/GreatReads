@@ -76,6 +76,7 @@ export function persistentCache<T>(storageKey: string, opts: { ttl: number; max:
 export const LEGACY_BOOK_CACHE_KEYS = [
   'readlife.store1', 'readlife.store2', 'readlife.store3', 'readlife.meta2', 'readlife.meta3',
   'readlife.covers1', 'readlife.coverMiss1', 'readlife.coverNone1', 'readlife.coverNone2', 'readlife.ratingsrc1',
+  'readlife.resolved1', 'readlife.meta4', // kept ratings from before Google editions and the validity rules were fixed
 ];
 export const dropLegacyBookCaches = () => {
   try { LEGACY_BOOK_CACHE_KEYS.forEach(k => localStorage.removeItem(k)); } catch {}

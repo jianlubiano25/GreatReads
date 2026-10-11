@@ -3,10 +3,10 @@ import { dedupeInflight } from './http';
 import { persistentCache } from './cache';
 import { cleanIsbn, isbnPair, mergeIdentity } from './identity';
 import { mergeBooks } from './merge';
-import { chooseRating, externalRating, setRating } from './ratings';
+import { chooseRating, externalRating, setRating, SUFFICIENT_RATINGS } from './ratings';
 import type { ContentFlags } from './quality';
 import { findApple } from './sources/appleBooks';
-import { findGoogle } from './sources/googleBooks';
+import { findGoogle, findGoogleRating } from './sources/googleBooks';
 import { findOpenLibrary, openLibraryRatings } from './sources/openLibrary';
 import type { CallOpts } from './sources/types';
 
@@ -34,13 +34,19 @@ export interface Resolved {
   words?: string[];
 }
 
-const cache = persistentCache<Resolved | null>('readlife.resolved1', { ttl: 14 * 24 * 60 * 60 * 1000, max: 250 });
+const cache = persistentCache<Resolved | null>('readlife.resolved2', { ttl: 14 * 24 * 60 * 60 * 1000, max: 250 });
 /**
  * Books no source could place. Remembered only briefly: "not found" is often a dropped connection or a rate limit, and a miss
  * that lasted two weeks (as saved results do) left covers blank long after the network was fine again.
  */
 const misses = persistentCache<true>('readlife.resolvedmiss1', { ttl: 2 * 60 * 60 * 1000, max: 300 });
 const inflight = new Map<string, Promise<Resolved | null>>();
+/**
+ * A result that is unrated only because Google could not be reached (an API error is not "Google has no rating"). It is reused for a couple of
+ * minutes, not saved for two weeks, so reopening a shelf does not repeat the requests and the rating still arrives once Google answers.
+ */
+const GOOGLE_RETRY_MS = 2 * 60 * 1000;
+const googleRetry = new Map<string, { until: number; out: Resolved }>();
 
 const keyOf = (q: ResolveQuery) => {
   const isbn = cleanIsbn(q.isbn);
@@ -53,6 +59,8 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
   // Only a real result is reused for long. (Older versions also saved "not found" here for 14 days: those are looked up again.)
   if (hit) return Promise.resolve({ ...hit, book: { ...hit.book, id: pickId(hit.book, q) } });
   if (misses.get(key)) return Promise.resolve(null);
+  const pending = googleRetry.get(key);
+  if (pending && pending.until > Date.now()) return Promise.resolve({ ...pending.out, book: { ...pending.out.book, id: pickId(pending.out.book, q) } });
   return dedupeInflight(inflight, key, async () => {
     const [ol, gb, ap] = await Promise.all([
       findOpenLibrary(q, opts),
@@ -75,7 +83,18 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
       const r = await openLibraryRatings(workId, opts);
       if (r && r.count > 0 && r.average >= 1) olRating = { average: r.average, count: r.count, source: 'openlibrary' };
     }
-    book = setRating(book, chooseRating({ apple: pairOf(ap, 'apple'), ol: olRating, google: pairOf(gb, 'google') }));
+    const apple = pairOf(ap, 'apple');
+    let google = pairOf(gb, 'google');
+    let googleFailed = false;
+    // Editions of one book differ in whether Google rates them: when the edition found is unrated and nothing above Google is solid,
+    // the other matching editions are tried (findGoogleRating), so Google's rating reaches the Store cards the way it reaches the book info.
+    const solid = (r?: { count?: number }) => (r?.count || 0) >= SUFFICIENT_RATINGS;
+    if (!google && !solid(apple) && !solid(olRating) && !opts.signal?.aborted) {
+      const found = await findGoogleRating({ title: q.title, author: q.author, isbn: q.isbn }, opts);
+      google = pairOf(found.hit, 'google');
+      googleFailed = found.failed && !found.hit;
+    }
+    book = setRating(book, chooseRating({ apple, ol: olRating, google }));
     if (q.genreHint && !book.genre) book.genre = q.genreHint;
     const flags: ContentFlags = {
       subjects: hits.flatMap(h => h.flags.subjects || []),
@@ -89,7 +108,10 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
       readers: { ol: ol?.book.ratingCount, google: gb?.book.ratingCount, apple: ap?.book.ratingCount },
       words: hits.flatMap(h => [...(h.flags.subjects || []), h.book.genre]),
     };
-    if (!opts.signal?.aborted) cache.set(key, out);
+    if (!opts.signal?.aborted) {
+      if (googleFailed && !book.ratingAverage) googleRetry.set(key, { until: Date.now() + GOOGLE_RETRY_MS, out });
+      else cache.set(key, out);
+    }
     return { ...out, book: { ...out.book, id: pickId(out.book, q) } };
   });
 }

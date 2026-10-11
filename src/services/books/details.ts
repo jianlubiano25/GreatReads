@@ -39,7 +39,11 @@ export async function enrichBookDetails(book: Book): Promise<Book> {
   return { ...book, summary: summary || book.summary, authorBio: authorBio || book.authorBio };
 }
 
-const metaCache = persistentCache<Partial<Book>>('readlife.meta4', { ttl: 30 * 24 * 60 * 60 * 1000, max: 400 }); // ratings and page counts refresh monthly
+const metaCache = persistentCache<Partial<Book>>('readlife.meta5', { ttl: 30 * 24 * 60 * 60 * 1000, max: 400 }); // ratings and page counts refresh monthly
+
+/** Meta that found no rating is not saved for a month (the lookup may have hit an API error): it is reused briefly, then asked again. */
+const META_RETRY_MS = 10 * 60 * 1000;
+const metaRetry = new Map<string, { until: number; meta: Partial<Book> }>();
 
 /**
  * Real pages / genre / year / ratings for a book (curated, store, searched or saved). Cached per book.
@@ -50,6 +54,8 @@ export async function fetchBookMeta(book: Book): Promise<Partial<Book> | null> {
   const key = String(book.id);
   const hit = metaCache.get(key);
   if (hit) return hit;
+  const pending = metaRetry.get(key);
+  if (pending && pending.until > Date.now()) return pending.meta;
 
   const id = identityOf(book);
   const workId = id.olWork;
@@ -81,8 +87,10 @@ export async function fetchBookMeta(book: Book): Promise<Partial<Book> | null> {
   }
   if (meta.pageCount) meta.difficulty = difficultyFor(meta.pageCount);
 
-  if (Object.keys(meta).length) metaCache.set(key, meta);
-  return Object.keys(meta).length ? meta : null;
+  if (!Object.keys(meta).length) return null;
+  if (meta.ratingAverage) metaCache.set(key, meta);
+  else metaRetry.set(key, { until: Date.now() + META_RETRY_MS, meta });
+  return meta;
 }
 
 const sourcesCache = persistentCache<SourceRating[]>('readlife.ratingsrc2', { ttl: 7 * 24 * 60 * 60 * 1000, max: 300 });

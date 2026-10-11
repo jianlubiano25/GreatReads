@@ -7,6 +7,7 @@ import { authorKey, authorsCompatible, titleKey, titlesMatch, workIdFromKey } fr
 import { makeBook } from '../books/model';
 import { getCoverUrl } from '../books/covers';
 import { mergeBooks } from '../books/merge';
+import { externalRating } from '../books/ratings';
 import { resolveBook } from '../books/resolve';
 import type { ShelfSource } from './shelves';
 
@@ -69,6 +70,7 @@ export function seedPlaceholders(shelf: CuratedShelf): Book[] {
   return shelf.seeds.map(([t, a, award], i) => {
     const r = prefetchedFor(shelf.id, i, t, a);
     const olWork = r.olKey ? workIdFromKey(r.olKey) : undefined;
+    const pair = externalRating(r); // a prefetched pair counts only as an average from 1 to 5 with its own count, as everywhere else
     return makeBook({
       id: r.olKey ? `ol_${r.olKey.replace(/\W/g, '_')}` : seedId(shelf.id, t, a),
       awardLabel: award,
@@ -80,8 +82,9 @@ export function seedPlaceholders(shelf: CuratedShelf): Book[] {
       source: 'openlibrary',
       coverId: r.coverId,
       coverUrl: r.coverUrl,
-      ratingAverage: r.ratingAverage,
-      ratingCount: r.ratingCount,
+      ratingAverage: pair?.average,
+      ratingCount: pair?.count,
+      ratingSource: pair ? r.ratingSource : undefined,
       year: r.year || '',
       pageCount: r.pageCount || 0,
       identity: olWork ? { olWork } : undefined,
@@ -124,7 +127,7 @@ export async function resolveCuratedShelf(shelf: CuratedShelf, current: Book[], 
   await mapPool(shelf.seeds, 4, async ([title, author, award], i) => {
     const have = out[i];
     if (!needsLookup(have)) return;
-    const r = await resolveBook({ title, author, fallbackId: have.id, genreHint: shelf.genre });
+    const r = await resolveBook({ title, author, fallbackId: have.id, genreHint: shelf.genre, apple: true });
     if (!r || !resolvedMatchesSeed(r.book, title, author)) return;
     const hadCover = !!(have.coverId || have.coverUrl);
     // `have` goes first so it wins every gap; ids and identity (Open Library work, ISBN) are taken from the resolved book

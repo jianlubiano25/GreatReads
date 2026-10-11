@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react'
 import { Book } from '../types';
 import { BOOK_AWARDS } from '../data/defaultBooks';
 import { honorKind, mergeHonors } from '../services/store/honors';
-import { starFills } from '../services/books';
+import { externalRating, ratingOf, starFills } from '../services/books';
 import { coverKey, getCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, reportMissingCover, clearMissingCover } from '../services/books';
 
 export type AwardKind = 'w' | 's' | 'c'; // winner, shortlist, other pick (book club, series...)
@@ -17,10 +17,6 @@ export const awardsFor = (b: Book): { type: AwardKind; label: string }[] => {
 /** For the book info (Honors & Awards): everything awardsFor shows plus every other label shelves have given this book, so a book club pick that also won a prize lists both. Not used on the Store covers. */
 export const honorsListFor = (b: Book): { type: AwardKind; label: string }[] => mergeHonors(awardsFor(b), b);
 
-export const stars = (r: number) => {
-  const count = Math.max(0, Math.min(5, Math.round(r) || 0));
-  return '★'.repeat(count) + '☆'.repeat(5 - count);
-};
 /** Five stars, each filled by exactly its share of the rating: 4.0 is four full stars, 4.5 four and a half, 3.2 three full, one filled 20%, one empty. */
 export function StarRating({ value, className = '' }: { value: number; className?: string }) {
   return (
@@ -39,13 +35,21 @@ export function StarRating({ value, className = '' }: { value: number; className
 
 export const compactCount = (n?: number) => (!n ? '' : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
-/** ★★★★☆ 4.2 · 11k ratings (renders nothing if the book has no rating) */
+/**
+ * Stars + average + count (renders nothing without a rating). The stars are the same fractional StarRating the book info uses, so 4.3 and 3.7
+ * are drawn as 4.3 and 3.7, never rounded. A rating that carries a source is an outside site's pair and must be valid (average 1-5 with its own
+ * count); the library's own ratings (no source) only need an average.
+ */
 export function RatingLine({ book, className = '', compact = false }: { book: Book; className?: string; compact?: boolean }) {
-  if (typeof book.ratingAverage !== 'number' || !book.ratingAverage) return null;
+  const r = book.ratingSource && book.ratingSource !== 'library' ? externalRating(book) : ratingOf(book);
+  if (!r) return null;
   return (
-    <div className={`text-xs text-[#706256] dark:text-[#a89a8a] ${className}`}>
-      <span className="rl-stars">{stars(book.ratingAverage)}</span> {book.ratingAverage.toFixed(1)}
-      {book.ratingCount ? ` · ${compactCount(book.ratingCount)}${compact ? '' : ' ratings'}` : ''}
+    <div className={`flex items-center gap-1 text-xs text-[#706256] dark:text-[#a89a8a] ${className}`}>
+      <StarRating value={r.average} />
+      <span>
+        {r.average.toFixed(1)}
+        {r.count ? ` · ${compactCount(r.count)}${compact ? '' : ' ratings'}` : ''}
+      </span>
     </div>
   );
 }
