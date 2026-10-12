@@ -15,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveBook } from '../src/services/books/resolve';
 import { isCurrentRecord, toPrefetchedRecord, type PrefetchedRecord } from '../src/services/books/prefetchRecord';
+import { perfSnapshot } from '../src/services/books/perf';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SEEDS = path.join(root, 'src/data/storeSeeds.json');
@@ -48,5 +49,9 @@ for (const shelf of shelves) {
 }
 
 if (waiting) console.log(`\n${waiting} book(s) had a site that could not be reached (rate limit or offline): run the command again to settle them.`);
+// Counts only (never the key or a URL): how many Google Books requests this run made, and how they failed by HTTP status
+// (e.g. net.failed.www.googleapis.com.403 = key restricted / API not enabled, .429 = quota). Shown so "no Google ratings" can be told apart from "Google refused".
+const googleCounters = Object.entries(perfSnapshot().counters).filter(([k]) => k === 'net.www.googleapis.com' || k.startsWith('google.') || k.startsWith('net.failed.www.googleapis.com'));
+console.log('Google Books requests this run:', googleCounters.length ? JSON.stringify(Object.fromEntries(googleCounters)) : 'none');
 console.log('\nSaved to src/data/storeResolved.json');
 setTimeout(() => process.exit(0), 600); // the app's caches flush on a timer; nothing is saved from here

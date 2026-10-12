@@ -7,7 +7,7 @@
  * bytes (a redeploy of the same code, a changed asset list) is activated silently and never bothers you.
  */
 import { useSyncExternalStore } from 'react';
-import { parseVersion, shouldPrompt } from './updateRule';
+import { autoUpdatePlan, parseTried, parseVersion, shouldPrompt } from './updateRule';
 
 declare const __APP_BUILD__: string;
 export const APP_BUILD: string = typeof __APP_BUILD__ !== 'undefined' ? __APP_BUILD__ : 'dev';
@@ -41,6 +41,47 @@ let lastCheck = 0;
 /** The newest build the site says it has (from version.json), whether or not a service worker has downloaded it yet. */
 let siteBuild: string | null = null;
 const CHECK_EVERY = 10 * 60 * 1000;
+/** The build id of the service worker that is waiting (when it differs from this app's own). */
+let waitingBuild: string | null = null;
+/** When the app last came back to the front, and how long it had been away: a natural moment to apply an update (see autoUpdatePlan). */
+let resume = { at: 0, hiddenFor: 0 };
+let hiddenAt = 0;
+const TRIED_KEY = 'readlife.autoUpdate1'; // one tiny control record: the last automatic reload (build + time); never user data
+
+/** Something is in progress: a text field has focus, or a sheet / dialog is open. */
+function isBusy(): boolean {
+  try {
+    const a = document.activeElement as HTMLElement | null;
+    if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return true;
+    return !!document.querySelector('[role="dialog"],[aria-modal="true"],.fixed.inset-0');
+  } catch {
+    return true; // cannot tell: do not reload on our own
+  }
+}
+
+/**
+ * A newer build is available. Apply it ourselves only at a natural pause (the app was just opened, or just came back after minutes
+ * away) with nothing in progress, and never more than once per build (a failed attempt leaves the banner, not a reload loop).
+ * Anywhere else the banner is shown and the reader picks the moment.
+ */
+function considerAutoApply() {
+  if (!snapshot.available || applying || reloading) return;
+  const target = siteBuild && siteBuild !== APP_BUILD ? siteBuild : waitingBuild;
+  const now = Date.now();
+  const plan = autoUpdatePlan({
+    appBuild: APP_BUILD,
+    targetBuild: target,
+    online: typeof navigator === 'undefined' ? true : navigator.onLine !== false,
+    msSinceLaunch: typeof performance !== 'undefined' ? performance.now() : Infinity,
+    hiddenForMs: now - resume.at < 20_000 ? resume.hiddenFor : 0,
+    busy: isBusy(),
+    tried: (() => { try { return parseTried(localStorage.getItem(TRIED_KEY)); } catch { return null; } })(),
+    now,
+  });
+  if (plan !== 'reload' || !target) return;
+  try { localStorage.setItem(TRIED_KEY, JSON.stringify({ build: target, at: now })); } catch { return; } // cannot remember the attempt: not safe to repeat
+  applyUpdate();
+}
 
 /** Ask a service worker which build it belongs to. Resolves null if it does not answer. */
 function askBuild(worker: ServiceWorker): Promise<string | null> {
@@ -68,8 +109,10 @@ async function inspectWaiting(r: ServiceWorkerRegistration, manual = false) {
     waiting.postMessage({ type: 'SKIP_WAITING' }); // same code as you are running: nothing to tell you about
     return;
   }
-  if (!manual && build && build === dismissedBuild) return;
+  waitingBuild = build;
+  if (!manual && build && build === dismissedBuild) { considerAutoApply(); return; }
   set({ available: true, upToDate: false });
+  considerAutoApply();
 }
 
 function waitUntilInstalled(worker: ServiceWorker | null, ms = 10000): Promise<void> {
@@ -105,7 +148,7 @@ export async function checkForUpdate(manual = false): Promise<void> {
   try {
     // 1) the site itself says which build it is serving: works with or without a service worker
     siteBuild = await fetchSiteBuild();
-    if (shouldPrompt({ appBuild: APP_BUILD, remoteBuild: siteBuild, dismissed: dismissedBuild, manual })) set({ available: true, upToDate: false });
+    if (shouldPrompt({ appBuild: APP_BUILD, remoteBuild: siteBuild, dismissed: dismissedBuild, manual })) { set({ available: true, upToDate: false }); considerAutoApply(); }
     // 2) a service worker that has already downloaded a different build
     if (reg) {
       await reg.update();
@@ -124,7 +167,7 @@ export function registerServiceWorker() {
   if (!('serviceWorker' in navigator) || !import.meta.env.PROD) return;
   window.addEventListener('load', async () => {
     try {
-      reg = await navigator.serviceWorker.register('/sw.js');
+      reg = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }); // the worker file itself is always asked for, never taken from the HTTP cache
     } catch (err) {
       console.warn('Service worker not registered:', err);
       return;
@@ -149,7 +192,13 @@ export function registerServiceWorker() {
     // iOS home-screen apps stay alive for days; look for updates whenever you come back to the app
     const check = () => void checkForUpdate(false);
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') check();
+      if (document.visibilityState === 'hidden') hiddenAt = Date.now();
+      else if (document.visibilityState === 'visible') {
+        resume = { at: Date.now(), hiddenFor: hiddenAt ? Date.now() - hiddenAt : 0 };
+        if (snapshot.available) considerAutoApply(); // an update found while the app was in the background
+        if (resume.hiddenFor >= 5 * 60_000) lastCheck = 0; // away for a while: ask the site now, not at the next 10-minute mark
+        check();
+      }
     });
     window.addEventListener('online', check);
     setInterval(check, 30 * 60 * 1000);

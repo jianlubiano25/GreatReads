@@ -52,7 +52,7 @@ export interface Resolved {
   retry?: { at: number; tries: number };
 }
 
-const cache = persistentCache<Resolved | null>('readlife.resolved3', { ttl: 14 * 24 * 60 * 60 * 1000, max: 250 });
+const cache = persistentCache<Resolved | null>('readlife.resolved3', { ttl: 14 * 24 * 60 * 60 * 1000, max: 250, validate: v => v === null || (!!v && typeof v === 'object' && !!v.book && typeof v.book.title === 'string') });
 /**
  * Books no source could place. Remembered only briefly: "not found" is often a dropped connection or a rate limit, and a miss
  * that lasted two weeks (as saved results do) left covers blank long after the network was fine again.

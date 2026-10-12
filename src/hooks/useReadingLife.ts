@@ -9,7 +9,7 @@ import { applyAddBook, type AddDestination } from '../services/library';
 import { clearableCacheKeys } from '../services/books/cache';
 
 // Small helper lists that are not persistentCache instances but can be rebuilt (never user data)
-const EXTRA_CLEARABLE = ['readlife.preload', 'readlife.loaded', 'readlife.phoneticTried'];
+export const EXTRA_CLEARABLE = ['readlife.preload', 'readlife.loaded', 'readlife.phoneticTried'];
 
 const STORAGE_KEY = 'readlife.v2';
 const LEGACY_KEY = 'readlife.v1';

@@ -40,7 +40,7 @@ export async function enrichBookDetails(book: Book): Promise<Book> {
   return { ...book, summary: summary || book.summary, authorBio: authorBio || book.authorBio };
 }
 
-const metaCache = persistentCache<Partial<Book>>('readlife.meta6', { ttl: 30 * 24 * 60 * 60 * 1000, max: 400 }); // ratings and page counts refresh monthly
+const metaCache = persistentCache<Partial<Book>>('readlife.meta6', { ttl: 30 * 24 * 60 * 60 * 1000, max: 400, validate: v => !!v && typeof v === 'object' && !Array.isArray(v) }); // ratings and page counts refresh monthly
 
 /** Meta that found no rating (or was rated without Apple, which could not be reached) is not saved for a month: it is reused briefly, then asked again. */
 const META_RETRY_MS = 10 * 60 * 1000;
@@ -94,7 +94,7 @@ export async function fetchBookMeta(book: Book): Promise<Partial<Book> | null> {
   return meta;
 }
 
-const sourcesCache = persistentCache<SourceRating[]>('readlife.ratingsrc3', { ttl: 7 * 24 * 60 * 60 * 1000, max: 300 });
+const sourcesCache = persistentCache<SourceRating[]>('readlife.ratingsrc3', { ttl: 7 * 24 * 60 * 60 * 1000, max: 300, validate: v => Array.isArray(v) && v.every(r => !!r && typeof r.average === 'number' && typeof r.source === 'string') });
 /** When Google or Apple could not be reached, the partial answer is reused for a couple of minutes (not saved), so reopening a sheet does not repeat the requests. */
 const PARTIAL_RETRY_MS = 2 * 60 * 1000;
 const partialRetry = new Map<string, { until: number; out: SourceRating[] }>();

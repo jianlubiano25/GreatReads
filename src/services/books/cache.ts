@@ -19,7 +19,16 @@ export const registerClearableKey = (key: string) => { clearableKeys.add(key); }
 /** Keys that are safe to clear: registered caches plus the old cache keys older versions used. */
 export const clearableCacheKeys = (): string[] => [...new Set([...clearableKeys, ...LEGACY_BOOK_CACHE_KEYS, 'readlife.curated1', 'readlife.curated2'])];
 
-export function persistentCache<T>(storageKey: string, opts: { ttl: number; max: number; keepStale?: number }): Cache<T> {
+export function persistentCache<T>(storageKey: string, opts: {
+  ttl: number;
+  max: number;
+  keepStale?: number;
+  /**
+   * Safe migration: an entry saved by another version of the app in a shape this version cannot use is dropped (alone) when the cache is read,
+   * instead of crashing a screen or being trusted. The other entries, and everything outside this cache, are left as they are.
+   */
+  validate?: (value: any) => boolean;
+}): Cache<T> {
   registerClearableKey(storageKey);
   type Entry = { t: number; v: T };
   const mem = new Map<string, Entry>();
@@ -33,10 +42,11 @@ export function persistentCache<T>(storageKey: string, opts: { ttl: number; max:
         const text = localStorage.getItem(storageKey) || '{}';
         bump(`cache.${storageKey}.loadBytes`, text.length);
         const raw = JSON.parse(text);
-        if (raw && typeof raw === 'object' && !Array.isArray(raw)) for (const [k, e] of Object.entries<any>(raw)) if (e && typeof e.t === 'number') mem.set(k, e);
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) for (const [k, e] of Object.entries<any>(raw)) if (e && typeof e.t === 'number' && usable(e.v)) mem.set(k, e);
       });
     } catch {}
   };
+  const usable = (v: unknown) => { try { return !opts.validate || opts.validate(v); } catch { return false; } };
   let timer: ReturnType<typeof setTimeout> | undefined;
   const save = () => {
     clearTimeout(timer);

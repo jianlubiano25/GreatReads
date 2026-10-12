@@ -16,10 +16,30 @@ const PREFETCHED = resolvedData as unknown as Record<string, (Partial<Book> & { 
 
 const SEED_COLORS = ['#6b6f80', '#8a5a3b', '#2e5934', '#925838', '#3a7d80', '#7a4a6a'];
 // v3: shelves saved by older versions could hold a cover that belonged to another book, or stars picked by older rating rules; they are looked up again once
-const cache = persistentCache<{ sig: string; books: Book[] }>('readlife.curated3', { ttl: 7 * 24 * 60 * 60 * 1000, max: 40 });
+const cache = persistentCache<{ sig: string; books: Book[] }>('readlife.curated3', { ttl: 7 * 24 * 60 * 60 * 1000, max: 40, validate: v => !!v && typeof v.sig === 'string' && Array.isArray(v.books) });
 
-/** Changes whenever the shelf's books or pick labels change, so an edited shelf never shows an old cached one. */
-const shelfSig = (shelf: CuratedShelf) => shelf.seeds.map(s => `${s[0]}|${s[1]}|${s[2] || ''}`).join('~');
+/** A short fingerprint of text (not for security): equal text, equal fingerprint. */
+const fingerprint = (text: string): string => {
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+};
+const dataSigs = new Map<string, string>();
+/**
+ * Fingerprint of the BUNDLED (prefetched) data of one shelf. A shelf saved in readlife.curated3 holds what was bundled when it was saved,
+ * merged with later lookups; when a new version of the app ships regenerated data (new covers, ratings, years), that saved copy must not
+ * win over it for up to a week. The fingerprint is part of the saved shelf's signature, so a regenerated bundle retires the old copy by itself,
+ * with no one-off migration and without touching any other key.
+ */
+export const bundledDataSig = (shelfId: string, records: unknown = PREFETCHED[shelfId]): string => {
+  if (records !== PREFETCHED[shelfId]) return fingerprint(JSON.stringify(records ?? null));
+  let sig = dataSigs.get(shelfId);
+  if (sig === undefined) { sig = fingerprint(JSON.stringify(records ?? null)); dataSigs.set(shelfId, sig); }
+  return sig;
+};
+
+/** Changes whenever the shelf's books or pick labels change, or the bundled data for it does, so an edited shelf or a regenerated bundle never shows an old cached one. */
+export const shelfSig = (shelf: CuratedShelf, records: unknown = PREFETCHED[shelf.id]) => `${shelf.seeds.map(s => `${s[0]}|${s[1]}|${s[2] || ''}`).join('~')}#${bundledDataSig(shelf.id, records)}`;
 
 /**
  * Prefetched cover/rating data (npm run prefetch:store) is stored in the order of the BUNDLED seed list, so slot numbers only mean

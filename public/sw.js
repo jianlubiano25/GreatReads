@@ -4,7 +4,7 @@
  *  index.html (navigation) ... network-first with a short timeout, cached copy as offline fallback
  *  Book covers (any host) .... cache-first, capped so storage never balloons
  *  Dictionary / Wikipedia .... cache-first for 30 days (definitions rarely change)
- *  Open Library / Google ..... cached for 12 hours, stale copy used when offline
+ *  Open Library / Google ..... cached for 12 hours, the last good copy is used when offline or when the site answers with an error
  *  Google Fonts .............. cached after first load
  *
  * The build id and the list of built files are filled in by vite.config.ts at build time.
@@ -190,7 +190,10 @@ async function ttlFetch(req, name, ttl) {
     if (res.ok) {
       await cache.put(req, await stamp(res.clone()));
       trim(name);
+      return res;
     }
+    // The site answered with an error (rate limit, outage): the last good copy is better than that error, and it stays in the cache untouched
+    if (hit) return hit;
     return res;
   } catch (e) {
     if (hit) return hit;
