@@ -1,6 +1,7 @@
 import type { Book } from '../../types';
 import { mapPool } from '../books/http';
 import { persistentCache } from '../books/cache';
+import { CONTENT_FILTER_VERSION, filterEligible } from '../books/eligibility';
 import { resolveBook } from '../books/resolve';
 import { NYT_FAILURE_TEXT, lastNytFailure, loadNytList } from '../books/sources/nyt';
 import { enrichPool, gatherPool, rankPool } from './collate';
@@ -23,7 +24,7 @@ export { NYT_SHELVES, NYT_EXTRA_SHELVES, type NytShelf, combineWithNyt, nytEntry
  */
 
 type Mode = 'nyt' | 'collated';
-interface Saved { mode: Mode; books: Book[]; at: number }
+interface Saved { mode: Mode; books: Book[]; at: number; /** content-filter version a GreatReads-collated list was built under (see books/eligibility.ts); absent on lists saved before it existed */ v?: number }
 
 /** An official list is good for 6 hours (the NYT publishes weekly); the fallback only 20 minutes, so the official list returns soon after the NYT does. */
 export const FRESH_MS: Record<Mode, number> = { nyt: 6 * 60 * 60 * 1000, collated: 20 * 60 * 1000 };
@@ -36,12 +37,25 @@ export const shelfHeading = (shelf: Pick<NytShelf, 'title'>, mode: Mode | null) 
 
 const refining = new Set<string>();
 
+/**
+ * The saved list for a shelf, safe to draw. The official NYT list is returned exactly as saved (the NYT decides which books, nothing
+ * downstream drops one). A GreatReads-collated fallback list is a discovery list, so it is held to the content-eligibility rules:
+ * one saved before they existed (no version, or an older one) is not trusted, and any book judged ineligible since is taken out.
+ */
+function savedList(id: string): Saved | undefined {
+  const s = saved.get(id);
+  if (!s || s.mode !== 'collated') return s;
+  if (s.v !== CONTENT_FILTER_VERSION) return undefined;
+  const books = filterEligible(s.books);
+  return books.length ? (books === s.books ? s : { ...s, books }) : undefined;
+}
+
 export function bestsellerSource(shelf: NytShelf): ShelfSource {
   let mode: Mode | null = null;
   /** `at` is when the LIST was fetched; improving its covers afterwards passes the original time, so "last updated" does not creep forward. */
   const remember = (m: Mode, books: Book[], at = Date.now()) => {
     mode = m;
-    saved.set(shelf.id, { mode: m, books, at });
+    saved.set(shelf.id, { mode: m, books, at, ...(m === 'collated' ? { v: CONTENT_FILTER_VERSION } : {}) });
   };
 
   /** The official NYT path. Slot i stays slot i: the rank never moves. */
@@ -96,7 +110,7 @@ export function bestsellerSource(shelf: NytShelf): ShelfSource {
     id: shelf.id,
     label: () => shelfHeading(shelf, mode),
     info: () => {
-      const s = saved.get(shelf.id);
+      const s = savedList(shelf.id);
       const m = s?.mode ?? mode;
       const failed = lastNytFailure(shelf.list);
       const why = failed && (!s || s.mode !== 'nyt') ? ` · not loading right now: ${NYT_FAILURE_TEXT[failed]}` : '';
@@ -109,7 +123,7 @@ export function bestsellerSource(shelf: NytShelf): ShelfSource {
     },
     // Manual refresh: ask the NYT again now (the saved list stays as the fallback). Only the official list counts as a success.
     refresh: async (): Promise<RefreshResult> => {
-      const before = saved.get(shelf.id);
+      const before = savedList(shelf.id);
       const nyt = await loadNytList(shelf.list, { force: true });
       if (!nyt.entries?.length || nyt.stale) return 'failed';
       const books = await official(nyt.entries, () => {});
@@ -119,13 +133,13 @@ export function bestsellerSource(shelf: NytShelf): ShelfSource {
     // Instant: the last list shown, even when it is due for a refresh (load() below asks again and the shelf swaps in the answer).
     // Before, a list older than 6 hours (20 minutes for the fallback) drew an empty skeleton until the network answered.
     cached: () => {
-      const s = saved.get(shelf.id);
+      const s = savedList(shelf.id);
       if (!s || !s.books.length || Date.now() - s.at > SHOW_STALE_MS[s.mode]) return null;
       mode = s.mode;
       return s.books;
     },
     load: async onUpdate => {
-      const s = saved.get(shelf.id);
+      const s = savedList(shelf.id);
       if (s && s.books.length && Date.now() - s.at <= FRESH_MS[s.mode]) { mode = s.mode; return s.books; }
 
       // 1. the official list (a list saved up to 10 days ago still counts when a refresh fails: the NYT publishes weekly)

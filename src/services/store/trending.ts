@@ -1,4 +1,5 @@
 import type { Book } from '../../types';
+import { filterEligible } from '../books/eligibility';
 import { enrichPool, gatherPool, rankPool, SIGNAL_WEIGHTS, pickDiverse, scoreCandidate } from './collate';
 import { dynamicShelves, SHELF_TTL, type RefreshResult, type ShelfSource } from './shelves';
 
@@ -11,6 +12,10 @@ import { dynamicShelves, SHELF_TTL, type RefreshResult, type ShelfSource } from 
  *
  * If a source fails, the others keep contributing and the weights are rescaled; the list only fails when NO source answers
  * (and then the last list that was shown, however old, is used instead of an error).
+ *
+ * Content eligibility (books/quality.ts): explicit books never reach this shelf. rankPool judges every candidate before any list is
+ * made, and every list that comes out of a saved copy (the instant one, the stale one, the last-resort one) is checked again against
+ * the books already judged (books/eligibility.ts), so a list saved before a book was excluded cannot put its card back on screen.
  */
 
 export { SIGNAL_WEIGHTS, pickDiverse, scoreCandidate };
@@ -31,9 +36,11 @@ async function build(onUpdate: (b: Book[]) => void): Promise<Book[] | null> {
         // Closer look at the best candidates (covers, ratings from every source, categories, content flags), then re-rank
         await enrichPool(pool, { max: 24 });
         const final = rankPool(pool, { limit: 15 }).map(r => r.book);
-        if (final.length >= Math.min(8, first.length)) {
-          dynamicShelves.set(SHELF_ID, final);
-          onUpdate(final);
+        // A short final list is not a reason to keep the first impression as it was: the closer look may have excluded books from it
+        const next = final.length >= Math.min(8, first.length) ? final : filterEligible(first);
+        if (next.length) {
+          dynamicShelves.set(SHELF_ID, next);
+          onUpdate(next);
         }
       } catch {
         /* the first-impression shelf stays */
@@ -46,10 +53,17 @@ async function build(onUpdate: (b: Book[]) => void): Promise<Book[] | null> {
   return first;
 }
 
+/** A saved copy of the shelf, with every book already judged ineligible taken out; null when nothing is left to show. */
+const eligibleCopy = (books: Book[] | null | undefined): Book[] | null => {
+  if (!books) return null;
+  const kept = filterEligible(books);
+  return kept.length ? kept : null;
+};
+
 export const trendingSource: ShelfSource = {
   id: SHELF_ID,
   // Instant: the last list (kept for 7 days), fresh or not; load() rebuilds it when it is due and the shelf swaps in the answer
-  cached: () => dynamicShelves.get(SHELF_ID) ?? dynamicShelves.peek(SHELF_ID)?.value ?? null,
+  cached: () => eligibleCopy(dynamicShelves.get(SHELF_ID) ?? dynamicShelves.peek(SHELF_ID)?.value),
   info: () => {
     const p = dynamicShelves.peek(SHELF_ID);
     return {
@@ -64,9 +78,9 @@ export const trendingSource: ShelfSource = {
     try { return (await build(() => {})) ? 'updated' : 'failed'; } catch { return 'failed'; }
   },
   load: async onUpdate => {
-    const cached = dynamicShelves.get(SHELF_ID);
+    const cached = eligibleCopy(dynamicShelves.get(SHELF_ID));
     if (cached) return cached;
-    const stale = dynamicShelves.peek(SHELF_ID)?.value;
+    const stale = eligibleCopy(dynamicShelves.peek(SHELF_ID)?.value);
     const books = await build(onUpdate);
     if (books) return books;
     if (stale?.length) return stale; // every source is down: yesterday's list beats an error

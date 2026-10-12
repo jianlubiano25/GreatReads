@@ -1,10 +1,11 @@
 import type { Book } from '../../types';
+import { rememberExcluded } from '../books/eligibility';
 import { mapPool } from '../books/http';
 import { bookKey, identityOf, sameWork } from '../books/identity';
 import { kindFromSources, type BookKind } from '../books/kind';
 import { mergeBooks } from '../books/merge';
 import { genreFromSubjects, hasRealSummary, isKnownGenre, makeBook, shrunkRating } from '../books/model';
-import { EXPLICIT_FILTER_AT, EXPLICIT_PENALTY_AT, explicitScore, type ContentFlags } from '../books/quality';
+import { EXPLICIT_FILTER_AT, EXPLICIT_PENALTY_AT, explicitScore, isExplicit, type ContentFlags } from '../books/quality';
 import { resolveBook } from '../books/resolve';
 import { loadAppleCharts, type AppleChartEntry } from '../books/sources/appleCharts';
 import { loadNytList, type NytEntry } from '../books/sources/nyt';
@@ -60,6 +61,8 @@ export interface Candidate {
   nyt?: number; // 1-based rank on a NYT list
   readers: { ol?: number; google?: number; apple?: number };
   enriched?: boolean;
+  /** A closer look (Open Library / Google / Apple) actually answered, so the content flags are the book's real ones and not just a chart's title and genre */
+  vetted?: boolean;
 }
 
 export interface Pool {
@@ -157,17 +160,27 @@ export function pickDiverse<T extends { book: Book; score: number }>(items: T[],
 
 export interface Ranked { book: Book; score: number; parts: Partial<Record<SignalId, number>> }
 
-/** The best `limit` books in the pool: explicit ones left out, optionally one kind only (never mixing fiction and non-fiction). */
+/**
+ * The best `limit` books in the pool: explicit ones left out, optionally one kind only (never mixing fiction and non-fiction).
+ *
+ * Content eligibility (books/quality.ts) is applied here, to every candidate, before any list exists, so no shelf built from a
+ * pool (Trending, the collated Top 15) can contain an excluded book:
+ *  - at or above EXPLICIT_FILTER_AT: left out, and remembered (books/eligibility.ts) so a saved list from another shelf cannot bring it back;
+ *  - at or above EXPLICIT_PENALTY_AT: held back until a closer look has answered (`vetted`): a chart gives only a title and a genre,
+ *    so a suspicious one is not shown on that alone. Once vetted it may appear, ranked well down.
+ */
 export function rankPool(pool: Pool, opts: { limit: number; kind?: BookKind; now?: Date }): Ranked[] {
   const usageCounts = readUsage();
   const usage = usageCounts && usageCounts.size ? { counts: usageCounts, max: Math.max(...usageCounts.values()) } : null;
   const available = new Set(pool.available);
   if (usage) available.add('usage');
 
+  // Every candidate is judged, whatever shelf is being ranked (a book of unknown kind is on no fiction / non-fiction shelf, but must not come back through another)
+  for (const c of pool.candidates) if (isExplicit(c.book.title, c.flags)) rememberExcluded(c.book);
   let scored = pool.candidates
     .filter(c => (opts.kind ? kindOfCandidate(c) === opts.kind : true))
-    .map(c => ({ c, ...scoreCandidate(c, available, usage, opts.now) }))
-    .filter(x => x.explicit < EXPLICIT_FILTER_AT);
+    .map(c => ({ c, ...scoreCandidate(c, available, usage, opts.now) }));
+  scored = scored.filter(x => x.explicit < EXPLICIT_FILTER_AT && !(x.explicit >= EXPLICIT_PENALTY_AT && !x.c.vetted));
   const withCover = scored.filter(x => x.c.book.coverId || x.c.book.coverUrl);
   if (withCover.length >= opts.limit) scored = withCover; // prefer books that can show a cover, unless that leaves the shelf short
   return pickDiverse(scored.map(x => ({ book: x.c.book, score: x.score, parts: x.parts })), opts.limit);
@@ -185,7 +198,7 @@ function upsert(list: Candidate[], book: Book, flags: ContentFlags, words: strin
     c.readers = { ...c.readers, ...Object.fromEntries(Object.entries(readers).filter(([, v]) => v)) };
     c.book = mergeBooks(c.book, book);
     if (words?.length) c.wordSets.push(words);
-    c.flags = { ...c.flags, subjects: [...(c.flags.subjects || []), ...(flags.subjects || [])], description: c.flags.description || flags.description };
+    c.flags = { ...c.flags, subjects: [...(c.flags.subjects || []), ...(flags.subjects || [])], description: c.flags.description || flags.description, publisher: c.flags.publisher || flags.publisher };
   } else {
     list.push({ book, flags, wordSets: words?.length ? [words] : [], readers: { ...readers }, ...patch });
   }
@@ -283,7 +296,12 @@ export async function enrichPool(pool: Pool, opts: { kind?: BookKind; max?: numb
   const available = new Set(pool.available);
   const order = pool.candidates
     .filter(c => !c.enriched && (!opts.kind || kindOfCandidate(c) !== (opts.kind === 'fiction' ? 'nonfiction' : 'fiction')))
-    .map(c => ({ c, score: scoreCandidate(c, available).score }))
+    .map(c => {
+      const s = scoreCandidate(c, available);
+      // A suspicious book is looked at too (that is how it is cleared or excluded), so its content penalty must not push it out of the lookups
+      return { c, explicit: s.explicit, score: s.score + (s.explicit >= EXPLICIT_PENALTY_AT ? SUGGESTIVE_PENALTY : 0) };
+    })
+    .filter(x => x.explicit < EXPLICIT_FILTER_AT) // already excluded: never looked up (no request is spent on a book that cannot be shown)
     .sort((a, b) => b.score - a.score)
     .slice(0, opts.max ?? 24)
     .map(x => x.c);
@@ -292,6 +310,7 @@ export async function enrichPool(pool: Pool, opts: { kind?: BookKind; max?: numb
     const r = await resolveBook({ title: c.book.title, author: c.book.author, isbn: id.isbn13 || id.isbn10, fallbackId: c.book.id, apple: true }).catch(() => null);
     c.enriched = true;
     if (!r) return;
+    c.vetted = true;
     const keepId = String(r.book.id).startsWith('ol_') ? r.book.id : c.book.id;
     c.book = { ...mergeBooks(c.book, r.book), id: keepId };
     c.flags = {
@@ -299,6 +318,7 @@ export async function enrichPool(pool: Pool, opts: { kind?: BookKind; max?: numb
       description: r.flags.description || c.flags.description,
       googleMaturity: r.flags.googleMaturity || c.flags.googleMaturity,
       appleAdvisory: r.flags.appleAdvisory || c.flags.appleAdvisory,
+      publisher: r.flags.publisher || c.flags.publisher,
     };
     if (r.words?.length) c.wordSets.push(r.words);
     c.readers = { ...c.readers, ...Object.fromEntries(Object.entries(r.readers || {}).filter(([, v]) => v)) };

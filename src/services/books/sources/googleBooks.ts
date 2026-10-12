@@ -6,7 +6,7 @@ import { externalRating } from '../ratings';
 import type { CallOpts, Hit } from './types';
 
 const GB = 'https://www.googleapis.com/books/v1';
-const FIELDS = 'id,volumeInfo(title,authors,description,categories,pageCount,publishedDate,averageRating,ratingsCount,maturityRating,imageLinks,industryIdentifiers)';
+const FIELDS = 'id,volumeInfo(title,authors,publisher,description,categories,pageCount,publishedDate,averageRating,ratingsCount,maturityRating,imageLinks,industryIdentifiers)';
 
 /**
  * Optional API key (higher quota). It ships inside the app, so restrict it to this site's address in the Google Cloud console.
@@ -66,7 +66,7 @@ export function gbItemToHit(item: any, fallbackTitle = ''): Hit {
     source: 'google',
     identity: { gbVolume: item?.id, ...isbn },
   });
-  return { book, flags: { subjects: v.categories, description: v.description ? String(v.description) : undefined, googleMaturity: v.maturityRating } };
+  return { book, flags: { subjects: v.categories, description: v.description ? String(v.description) : undefined, googleMaturity: v.maturityRating, publisher: v.publisher ? String(v.publisher) : undefined } };
 }
 
 const searchUrl = (q: string, max: number) => `${GB}/volumes?q=${encodeURIComponent(q)}&maxResults=${Math.min(40, max)}&printType=books&fields=${encodeURIComponent(`items(${FIELDS})`)}`;

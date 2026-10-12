@@ -139,6 +139,7 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
       description: hits.map(h => h.flags.description).find(Boolean),
       googleMaturity: hits.map(h => h.flags.googleMaturity).find(Boolean),
       appleAdvisory: hits.map(h => h.flags.appleAdvisory).find(Boolean),
+      publisher: hits.map(h => h.flags.publisher).find(Boolean),
     };
     const out: Resolved = {
       book,
