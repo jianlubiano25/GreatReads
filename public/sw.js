@@ -4,7 +4,7 @@
  *  index.html (navigation) ... network-first with a short timeout, cached copy as offline fallback
  *  Book covers (any host) .... cache-first, capped so storage never balloons
  *  Dictionary / Wikipedia .... cache-first for 30 days (definitions rarely change)
- *  Open Library / Google ..... cached for 12 hours, stale copy used when offline
+ *  Open Library / Google ..... cached for 12 hours, the last good copy is used when offline or when the site answers with an error
  *  Google Fonts .............. cached after first load
  *
  * The build id and the list of built files are filled in by vite.config.ts at build time.
@@ -89,7 +89,7 @@ self.addEventListener('fetch', (event) => {
 
   // ---- same origin ----
   if (url.origin === self.location.origin) {
-    if (url.pathname === '/sw.js' || url.pathname.endsWith('.zip')) return;
+    if (url.pathname === '/sw.js' || url.pathname === '/version.json' || url.pathname.endsWith('.zip') || url.pathname.startsWith('/api/')) return; // always the network: these must never be stale
     if (req.mode === 'navigate') return event.respondWith(navigate(req));
     if (url.pathname.startsWith('/assets/')) return event.respondWith(cacheFirst(req, SHELL));
     if (url.pathname === '/' || url.pathname.endsWith('.html')) return event.respondWith(networkFirst(req, SHELL, 4000));
@@ -101,6 +101,8 @@ self.addEventListener('fetch', (event) => {
   if (req.destination === 'image') return event.respondWith(coverImage(req));
   if (host === 'fonts.googleapis.com') return event.respondWith(staleWhileRevalidate(event, req, FONT));
   if (host === 'fonts.gstatic.com') return event.respondWith(cacheFirst(req, FONT));
+  // Wikipedia's API also feeds the Store's prize shelves (Oprah, Women's Prize, International Booker): those answers must stay fresh
+  if (host === 'en.wikipedia.org' && url.pathname === '/w/api.php') return event.respondWith(ttlFetch(req, API, 12 * HOUR));
   if (DICT_HOSTS.includes(host)) return event.respondWith(ttlFetch(req, API, 30 * DAY));
   if (BOOK_HOSTS.includes(host)) return event.respondWith(ttlFetch(req, API, 12 * HOUR));
 });
@@ -188,7 +190,10 @@ async function ttlFetch(req, name, ttl) {
     if (res.ok) {
       await cache.put(req, await stamp(res.clone()));
       trim(name);
+      return res;
     }
+    // The site answered with an error (rate limit, outage): the last good copy is better than that error, and it stays in the cache untouched
+    if (hit) return hit;
     return res;
   } catch (e) {
     if (hit) return hit;

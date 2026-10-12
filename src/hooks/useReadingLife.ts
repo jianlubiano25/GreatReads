@@ -5,13 +5,17 @@ import { INITIAL_WORDS } from '../data/defaultWords';
 import { normalizeV2, normalizeLegacy, parseBackup } from '../services/stateSanitizer';
 import { computeSnapshot, currentStreakFor, evaluateGarden, markCelebrated, movePlant as movePlantIn, pendingCelebrations, seedGarden } from '../services/garden';
 import { dateKey } from '../services/dates';
+import { applyAddBook, type AddDestination } from '../services/library';
+import { clearableCacheKeys } from '../services/books/cache';
+
+// Small helper lists that are not persistentCache instances but can be rebuilt (never user data)
+export const EXTRA_CLEARABLE = ['readlife.preload', 'readlife.loaded', 'readlife.phoneticTried'];
 
 const STORAGE_KEY = 'readlife.v2';
 const LEGACY_KEY = 'readlife.v1';
 const RECOVERY_KEY = 'readlife.v2.recovery';
 const SAVE_DELAY_MS = 350;
-// Things the app can download again if they are ever lost; safe to clear when storage is full
-const CACHE_KEYS = ['readlife.store1', 'readlife.store2', 'readlife.meta2', 'readlife.meta3', 'readlife.covers1', 'readlife.preload', 'readlife.loaded', 'readlife.phoneticTried'];
+// Things the app can download again live in one registry (books/cache.ts); the cleanup below clears exactly those
 
 export function getTodayKey(): string {
   return dateKey(); // "YYYY-MM-DD" in local time
@@ -35,6 +39,15 @@ function buildDefaultState(): ReadingState {
     words: [...INITIAL_WORDS],
     // Starter plants are owned from the first launch (no celebration prompt for them).
     garden: seedGarden({ dailyLog: {}, goal: 10, status: {}, todayKey: getTodayKey() }),
+  };
+}
+
+/** Everything blank: no books (catalog books hidden), no words, no highlights, no reading history, fresh garden. */
+function buildEmptyState(): ReadingState {
+  return {
+    ...buildDefaultState(),
+    words: [],
+    hiddenBookIds: Object.fromEntries(DEFAULT_BOOKS.map(b => [String(b.id), true as const])),
   };
 }
 
@@ -83,9 +96,10 @@ export function useReadingLife() {
 
   const [saveError, setSaveError] = useState(false);
 
+  const resetting = useRef(false); // true while "Reset everything" is wiping the device: nothing may be written back
   const flushSave = useCallback(() => {
     clearTimeout(saveTimer.current);
-    if (!dirty.current) return;
+    if (!dirty.current || resetting.current) return;
     const write = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(latestState.current));
     try {
       write();
@@ -95,7 +109,7 @@ export function useReadingLife() {
       console.error('Failed to save to localStorage:', e);
       // Storage is full or blocked. Throw away the re-downloadable caches first, then try once more.
       try {
-        for (const k of CACHE_KEYS) localStorage.removeItem(k);
+        for (const k of [...clearableCacheKeys(), ...EXTRA_CLEARABLE]) localStorage.removeItem(k);
         write();
         dirty.current = false;
         setSaveError(false);
@@ -294,37 +308,8 @@ export function useReadingLife() {
     });
   }, []);
 
-  const addBook = useCallback((newBook: Book, destination: 'device' | 'library' | 'now' | 'next' = 'library') => {
-    setState(prev => {
-      const idKey = String(newBook.id);
-      const isDevice = destination === 'device';
-      const existingCustom = prev.customBooks.find(b => String(b.id) === idKey);
-
-      let updatedCustom: Book[];
-      if (existingCustom) {
-        updatedCustom = prev.customBooks.map(b =>
-          String(b.id) === idKey ? { ...b, ...newBook, isOnDevice: isDevice || b.isOnDevice } : b
-        );
-      } else {
-        const bookWithDev = { ...newBook, isOnDevice: isDevice };
-        updatedCustom = [bookWithDev, ...prev.customBooks];
-      }
-
-
-      return {
-        ...prev,
-        customBooks: updatedCustom,
-        onDeviceOverrides: {
-          ...prev.onDeviceOverrides,
-          [idKey]: isDevice ? true : (prev.onDeviceOverrides[idKey] ?? false),
-        },
-        // Adding to the library or device never promotes a book to "Up next"; that is your choice.
-        status: {
-          ...prev.status,
-          [idKey]: destination === 'now' || destination === 'next' ? destination : (prev.status[idKey] || 'list'),
-        },
-      };
-    });
+  const addBook = useCallback((incoming: Book, destination: AddDestination = 'library') => {
+    setState(prev => applyAddBook(prev, incoming, destination));
   }, []);
 
   const removeBook = useCallback((bookId: string | number) => {
@@ -423,7 +408,8 @@ export function useReadingLife() {
   }, []);
 
   const setGoal = useCallback((goal: number) => {
-    setState(prev => ({ ...prev, goal: Math.max(1, goal) }));
+    // One goal for every day: changing it re-judges your whole history (streaks, best week, plants) with the new number.
+    setState(prev => (Math.max(1, goal) === prev.goal ? prev : { ...prev, goal: Math.max(1, goal) }));
   }, []);
 
   const addWord = useCallback((newWord: WordItem) => {
@@ -465,6 +451,47 @@ export function useReadingLife() {
       ...prev,
       words: prev.words.filter(w => w.id !== wordId),
     }));
+  }, []);
+
+  /** Remove every book from the library (catalog books are only hidden, so "Restore hidden books" can bring them back). */
+  const clearLibrary = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      customBooks: [],
+      hiddenBookIds: { ...prev.hiddenBookIds, ...Object.fromEntries(DEFAULT_BOOKS.map(b => [String(b.id), true as const])) },
+      status: {},
+      currentPage: {},
+      totalPages: {},
+      notes: {},
+      highlights: {},
+      onDeviceOverrides: {},
+    }));
+  }, []);
+
+  /** Take every book off the device. Books stay in the library; nothing else changes. */
+  const clearOnDevice = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      onDeviceOverrides: Object.fromEntries([...DEFAULT_BOOKS, ...prev.customBooks].map(b => [String(b.id), false])),
+      customBooks: prev.customBooks.map(b => (b.isOnDevice ? { ...b, isOnDevice: false } : b)),
+    }));
+  }, []);
+
+  /** Erase everything this app keeps on the device (library, device books, words, quotes, reading history, garden, caches, settings) and start blank. */
+  const resetEverything = useCallback(() => {
+    resetting.current = true; // nothing may be written back while we wipe
+    clearTimeout(saveTimer.current);
+    try {
+      const mine: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && /^(readlife|greatreads)/i.test(k)) mine.push(k);
+      }
+      mine.forEach(k => localStorage.removeItem(k));
+      // Start from a truly empty state rather than "no save", which would bring back the built-in books and starter words
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(buildEmptyState()));
+    } catch {}
+    window.location.reload();
   }, []);
 
   const exportBackup = useCallback(() => {
@@ -515,6 +542,9 @@ export function useReadingLife() {
     deleteWord,
     exportBackup,
     importBackup,
+    clearLibrary,
+    clearOnDevice,
+    resetEverything,
     saveError,
   };
 }

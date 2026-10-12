@@ -30,7 +30,7 @@ export class ErrorBoundary extends Component<Props, State> {
       const url = URL.createObjectURL(new Blob([raw], { type: 'application/json' }));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `my-reading-life-data-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `my-reading-life-data-${new Date().toLocaleDateString('en-CA')}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -46,7 +46,11 @@ export class ErrorBoundary extends Component<Props, State> {
       // Keep a safety copy under a separate key, then clear the live data.
       const raw = localStorage.getItem('readlife.v2');
       if (raw) localStorage.setItem('readlife.v2.backup', raw);
+      const legacy = localStorage.getItem('readlife.v1');
+      if (legacy) localStorage.setItem('readlife.v1.backup', legacy);
       localStorage.removeItem('readlife.v2');
+      localStorage.removeItem('readlife.v1');
+      localStorage.removeItem('readlife.v2.recovery');
       sessionStorage.clear();
     } catch {}
     window.location.reload();

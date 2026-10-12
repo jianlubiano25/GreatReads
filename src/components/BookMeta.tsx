@@ -1,31 +1,55 @@
 import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import { Book } from '../types';
 import { BOOK_AWARDS } from '../data/defaultBooks';
-import { getCoverUrl, findFallbackCover } from '../services/bookSearch';
-import { subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, reportMissingCover, clearMissingCover } from '../services/coverRepair';
+import { honorKind, mergeHonors } from '../services/store/honors';
+import { externalRating, ratingOf, starFills } from '../services/books';
+import { coverKey, getCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, reportMissingCover, clearMissingCover } from '../services/books';
 
 export type AwardKind = 'w' | 's' | 'c'; // winner, shortlist, other pick (book club, series...)
-
-const PRIZE_WORDS = /prize|award|winner|booker|pulitzer|costa|nobel|medal|goncourt|carnegie/i;
 
 /** Prize wins get a trophy, shortlists a medal, and anything else (e.g. "Service95 Pick") a plain book badge. */
 export const awardsFor = (b: Book): { type: AwardKind; label: string }[] => {
   const base: { type: AwardKind; label: string }[] = typeof b.id === 'number' ? BOOK_AWARDS[b.id] || [] : [];
   if (!b.awardLabel) return base;
-  const type: AwardKind = /shortlist|longlist/i.test(b.awardLabel) ? 's' : PRIZE_WORDS.test(b.awardLabel) ? 'w' : 'c';
-  return [...base, { type, label: b.awardLabel }];
+  return [...base, { type: honorKind(b.awardLabel), label: b.awardLabel }];
 };
 
-export const stars = (r: number) => '★'.repeat(Math.round(r)) + '☆'.repeat(5 - Math.round(r));
+/** For the book info (Honors & Awards): everything awardsFor shows plus every other label shelves have given this book, so a book club pick that also won a prize lists both. Not used on the Store covers. */
+export const honorsListFor = (b: Book): { type: AwardKind; label: string }[] => mergeHonors(awardsFor(b), b);
+
+/** Five stars, each filled by exactly its share of the rating: 4.0 is four full stars, 4.5 four and a half, 3.2 three full, one filled 20%, one empty. */
+export function StarRating({ value, className = '' }: { value: number; className?: string }) {
+  return (
+    <span className={`inline-flex gap-px leading-none ${className}`} role="img" aria-label={`${value.toFixed(1)} out of 5 stars`}>
+      {starFills(value).map((fill, i) => (
+        <span key={i} aria-hidden="true" className="relative inline-block">
+          <span style={{ color: '#d9a441', opacity: 0.28 }}>★</span>
+          {fill > 0 && (
+            <span className="absolute left-0 top-0 overflow-hidden whitespace-nowrap" style={{ width: `${fill * 100}%`, color: '#d9a441' }}>★</span>
+          )}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 export const compactCount = (n?: number) => (!n ? '' : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
-/** ★★★★☆ 4.2 · 11k ratings (renders nothing if the book has no rating) */
+/**
+ * Stars + average + count (renders nothing without a rating). The stars are the same fractional StarRating the book info uses, so 4.3 and 3.7
+ * are drawn as 4.3 and 3.7, never rounded. A rating that carries a source is an outside site's pair and must be valid (average 1-5 with its own
+ * count); the library's own ratings (no source) only need an average.
+ */
 export function RatingLine({ book, className = '', compact = false }: { book: Book; className?: string; compact?: boolean }) {
-  if (!book.ratingAverage) return null;
+  const r = book.ratingSource && book.ratingSource !== 'library' ? externalRating(book) : ratingOf(book);
+  if (!r) return null;
   return (
-    <div className={`text-xs text-[#706256] dark:text-[#a89a8a] ${className}`}>
-      <span className="rl-stars">{stars(book.ratingAverage)}</span> {book.ratingAverage.toFixed(1)}
-      {book.ratingCount ? ` · ${compactCount(book.ratingCount)}${compact ? '' : ' ratings'}` : ''}
+    <div className={`flex items-center gap-1 text-xs text-[#706256] dark:text-[#a89a8a] ${className}`}>
+      <StarRating value={r.average} />
+      <span>
+        {r.average.toFixed(1)}
+        {r.count ? ` · ${compactCount(r.count)}${compact ? '' : ' ratings'}` : ''}
+      </span>
     </div>
   );
 }
@@ -59,7 +83,8 @@ const SIZES = {
 const LOADED_KEY = 'readlife.loaded';
 const loadedCovers = new Set<string>((() => {
   try {
-    return JSON.parse(localStorage.getItem(LOADED_KEY) || '[]');
+    const saved = JSON.parse(localStorage.getItem(LOADED_KEY) || '[]');
+    return Array.isArray(saved) ? saved : [];
   } catch {
     return [];
   }
@@ -78,19 +103,21 @@ function recordLoadedCover(url: string) {
   }, 1500);
 }
 
-export function warmBookCover(book: Book, imgSize: 'S' | 'M' | 'L' = 'M') {
-  const url = getCoverFix(book) || getCoverUrl(book.coverId, imgSize, book.coverUrl);
-  if (!url || loadedCovers.has(url)) return;
-  const im = new Image();
-  im.src = url;
-  im.onload = () => recordLoadedCover(url);
-}
-
 /**
  * Cover contents. The real cover image is shown on its own; the title/author text
  * appears gracefully as the book jacket while loading or when no cover exists.
  */
-export const CoverFace = React.memo(function CoverFace({ book, size = 'md', imgSize = 'M', badge = true, eager = false }: { book: Book; size?: keyof typeof SIZES; imgSize?: 'S' | 'M' | 'L'; badge?: boolean; eager?: boolean }) {
+type CoverFaceProps = { book: Book; size?: keyof typeof SIZES; imgSize?: 'S' | 'M' | 'L'; badge?: boolean; eager?: boolean };
+
+/**
+ * Cover state belongs to one book. Keying the inner component ensures that when a different book takes a reused shelf slot,
+ * retries and replacement covers from the previous book are discarded.
+ */
+export const CoverFace = React.memo(function CoverFace(props: CoverFaceProps) {
+  return <CoverFaceFor key={coverKey(props.book)} {...props} />;
+});
+
+function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = false }: CoverFaceProps) {
   // Re-render when "Reload missing covers" repairs one; a repaired cover wins over the original link
   useSyncExternalStore(subscribeCovers, getCoversVersion, getCoversVersion);
   const baseUrl = getCoverFix(book) || getCoverUrl(book.coverId, imgSize, book.coverUrl);
@@ -120,7 +147,7 @@ export const CoverFace = React.memo(function CoverFace({ book, size = 'md', imgS
   }, [src]);
 
   const giveUp = () => {
-    findFallbackCover(book.title, book.author).then(u => setSt(u ? { ...cur, alt: u } : { ...cur, dead: true }));
+    resolveCover(book).then(u => setSt(u ? { ...cur, alt: u } : { ...cur, dead: true }));
   };
   useEffect(() => {
     if (!baseUrl && !cur.alt && !cur.dead) giveUp();
@@ -184,4 +211,4 @@ export const CoverFace = React.memo(function CoverFace({ book, size = 'md', imgS
       ) : null}
     </>
   );
-});
+}

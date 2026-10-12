@@ -3,6 +3,9 @@ import App from './App.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { registerServiceWorker } from './services/appUpdate.ts';
 import './index.css';
+import { milestone } from './services/books/perf.ts';
+
+milestone('main-start');
 
 createRoot(document.getElementById('root')!).render(
   <ErrorBoundary>

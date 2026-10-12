@@ -59,7 +59,7 @@
 .book-cover-3d {
   position: relative;
   border-radius: 3px 8px 8px 3px;
-  box-shadow: 
+  box-shadow:
     inset 5px 0 0 rgba(0, 0, 0, 0.25),
     inset 7px 0 3px rgba(255, 255, 255, 0.15),
     2px 5px 12px rgba(0, 0, 0, 0.18),
@@ -68,14 +68,24 @@
   overflow: hidden;
 }
 
-.book-cover-3d:hover {
-  transform: translateY(-3px) scale(1.02);
-  box-shadow: 
-    inset 5px 0 0 rgba(0, 0, 0, 0.25),
-    inset 7px 0 3px rgba(255, 255, 255, 0.15),
-    4px 10px 20px rgba(0, 0, 0, 0.25),
-    0 2px 5px rgba(0, 0, 0, 0.15);
+/* Touch screens have no hover: without this a tap or a scroll can leave a cover "lifted", and every shelf card keeps a shadow transition to track */
+@media (hover: hover) {
+  .book-cover-3d:hover {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow:      inset 5px 0 0 rgba(0, 0, 0, 0.25),
+      inset 7px 0 3px rgba(255, 255, 255, 0.15),
+      4px 10px 20px rgba(0, 0, 0, 0.25),
+      0 2px 5px rgba(0, 0, 0, 0.15);
+  }
 }
+@media (hover: none) {
+  .book-cover-3d { transition: none; }
+}
+
+/* Store shelves: the browser skips layout and painting of shelves that are off-screen (a Store has ~20 shelves and ~300 covers) and
+   keeps each one's last measured height, so the page does not jump while scrolling. A shelf's contents already sit inside its own
+   scroller, so nothing visible is clipped. */
+.rl-shelf { content-visibility: auto; contain-intrinsic-size: auto 330px; }
 
 .book-cover-modal-3d {
   position: relative;
@@ -352,3 +362,8 @@
   }
   .rl-scene .plant-label { opacity: 1; transform: translateX(-50%); }
 }
+
+/* Blinking colon on the nook's digital clock (stays steady for people who prefer reduced motion) */
+@keyframes rl-colon-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0.12; } }
+.rl-colon { animation: rl-colon-blink 1s steps(1, end) infinite; }
+@media (prefers-reduced-motion: reduce) { .rl-colon { animation: none; } }

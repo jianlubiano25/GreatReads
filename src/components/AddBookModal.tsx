@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useModalA11y } from '../hooks/useModalA11y';
 import { Book, ShelfKey } from '../types';
-import { searchOnlineBooks, getCoverUrl } from '../services/bookSearch';
+import { searchBooks, getCoverUrl, fillMissingCovers } from '../services/books';
 import { SHELF_LABELS } from '../data/defaultBooks';
 import { Search, Plus, Smartphone, BookOpen, Check, X, Loader2 } from 'lucide-react';
 
@@ -15,6 +16,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
   onClose,
   onAddBook,
 }) => {
+  useModalA11y(onClose);
   const [destination, setDestination] = useState<'device' | 'library'>(
     initialIsDevice ? 'device' : 'library'
   );
@@ -35,43 +37,54 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
   const [manualYear, setManualYear] = useState('');
   const [manualShelf, setManualShelf] = useState<ShelfKey>('mine');
   const [manualNotes, setManualNotes] = useState('');
-  const [manualSummary, setManualSummary] = useState('');
   const [manualSuccess, setManualSuccess] = useState(false);
+
+  const searchAbort = useRef<AbortController | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => {
+    searchAbort.current?.abort();
+    clearTimeout(closeTimer.current);
+  }, []);
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!searchTitle.trim()) return;
 
+    searchAbort.current?.abort();
+    const controller = new AbortController();
+    searchAbort.current = controller;
     setIsSearching(true);
     setSearchError('');
     try {
-      const results = await searchOnlineBooks(searchTitle, searchAuthor);
+      const results = await searchBooks(searchTitle, searchAuthor, 10, controller.signal);
+      if (controller.signal.aborted) return;
       if (results.length === 0) {
         setSearchError('No matching books found. Try checking the spelling or use Manual Entry.');
       }
       setSearchResults(results);
-    } catch (err) {
+      fillMissingCovers(results, r => { if (!controller.signal.aborted) setSearchResults(r); }, controller.signal); // covers fill in after the list is already showing
+    } catch {
+      if (controller.signal.aborted) return;
       setSearchError('Search failed. Switch to Manual Entry to add your book directly.');
     } finally {
-      setIsSearching(false);
+      if (!controller.signal.aborted) setIsSearching(false);
     }
   };
 
   const handleAddSearchResult = (book: Book) => {
+    if (Object.keys(addedIds).length > 0) return;
     const updatedBook = {
       ...book,
       isOnDevice: destination === 'device',
     };
     onAddBook(updatedBook, destination);
     setAddedIds(prev => ({ ...prev, [String(book.id)]: true }));
-    setTimeout(() => {
-      onClose();
-    }, 600);
+    closeTimer.current = setTimeout(onClose, 600);
   };
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualTitle.trim()) return;
+    if (!manualTitle.trim() || manualSuccess) return;
 
     const newBook: Book = {
       id: `manual_${Date.now()}`,
@@ -83,7 +96,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
       isOnDevice: destination === 'device',
       year: manualYear.trim(),
       genre: SHELF_LABELS[manualShelf]?.label || 'Book',
-      summary: manualSummary.trim(),
+      summary: '',
       authorBio: '',
       pageCount: Math.max(0, Math.round(Number(manualPages)) || 0), // 0 = unknown (looked up later)
       spineColor: SHELF_LABELS[manualShelf]?.color || '#6b6f80',
@@ -93,9 +106,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
 
     onAddBook(newBook, destination);
     setManualSuccess(true);
-    setTimeout(() => {
-      onClose();
-    }, 600);
+    closeTimer.current = setTimeout(onClose, 600);
   };
 
   return (
@@ -123,6 +134,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
             </p>
           </div>
           <button
+            type="button"
+            aria-label="Close"
             onClick={onClose}
             className="p-1.5 rounded-full text-[#706256] dark:text-[#a89a8a] hover:bg-black/10 dark:hover:bg-white/10"
           >
@@ -249,12 +262,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
                 <span className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a]">
                   Matches ({searchResults.length})
                 </span>
-                {searchResults.map(b => {
+                {searchResults.map((b, idx) => {
                   const isAdded = addedIds[String(b.id)];
                   const cover = getCoverUrl(b.coverId, 'S', b.coverUrl);
                   return (
                     <div
-                      key={b.id}
+                      key={`${b.id}-${idx}`}
                       className="p-3 rounded-xl bg-[#f5f0e6] dark:bg-[#181410] border border-[#e3d7c3] dark:border-[#382f25] flex items-center gap-3"
                     >
                       <div className="w-12 h-16 rounded bg-[#2e5934] shrink-0 overflow-hidden relative shadow">
@@ -279,7 +292,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
 
                       <button
                         onClick={() => handleAddSearchResult(b)}
-                        disabled={isAdded}
+                        disabled={isAdded || Object.keys(addedIds).length > 0}
                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 shrink-0 transition-all ${
                           isAdded
                             ? 'bg-emerald-600 text-white'

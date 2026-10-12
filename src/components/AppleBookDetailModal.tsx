@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useModalA11y } from '../hooks/useModalA11y';
 import { Book } from '../types';
-import { BOOK_AWARDS, DIFFICULTY_LABELS, SHELF_LABELS } from '../data/defaultBooks';
-import { getCoverUrl, searchOnlineBooks, enrichBookDetails, fetchBookMeta } from '../services/bookSearch';
-import { CoverFace, stars, compactCount, awardsFor } from './BookMeta';
-import { X, BookOpen, Smartphone, Star, Award, ChevronDown, Check, Plus, Bookmark } from 'lucide-react';
+import { DIFFICULTY_LABELS, SHELF_LABELS } from '../data/defaultBooks';
+import { enrichBookDetails, fetchBookMeta, fetchRatingSources, mainRating, otherRatings, RATING_SOURCE_LABEL, type SourceRating } from '../services/books';
+import { CoverFace, StarRating, compactCount, honorsListFor } from './BookMeta';
+import { X, BookOpen, Smartphone, Star, Award, ChevronDown, Check, Bookmark } from 'lucide-react';
 
 interface AppleBookDetailModalProps {
   book: Book;
@@ -28,17 +29,16 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   readingStatus,
   currentPage = 0,
   totalPages: propTotalPages,
-  note,
   highlightsCount = 0,
   onClose,
   onAddToLibrary,
   onAddToDevice,
-  onUpdateProgress,
   onOpenHighlights,
 }) => {
+  useModalA11y(onClose);
   const [book, setBook] = useState<Book>(initialBook);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [, setLoadingDetails] = useState(false);
   const [activeTabAction, setActiveTabAction] = useState<'idle' | 'lib' | 'dev'>('idle');
 
   // Load richer details if missing summary or page count
@@ -82,7 +82,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           if (prev.year && prev.year !== 'N/A') next.year = prev.year;
           if (prev.difficulty) next.difficulty = prev.difficulty;
           // What the card showed is what the sheet shows; live data only fills the gaps
-          if (prev.ratingAverage) { next.ratingAverage = prev.ratingAverage; next.ratingCount = prev.ratingCount; }
+          if (prev.ratingAverage) { next.ratingAverage = prev.ratingAverage; next.ratingCount = prev.ratingCount; next.ratingSource = prev.ratingSource; }
           if (prev.pageCount) next.pageCount = prev.pageCount;
           return next;
         });
@@ -91,8 +91,20 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
     return () => { live = false; };
   }, [initialBook.id]);
 
-  const awards = awardsFor(book);
-  const coverUrl = getCoverUrl(book.coverId, 'L', book.coverUrl);
+  // What each site says about the book (shown beside the main rating). Loaded quietly; the sheet never waits for it.
+  const [siteRatings, setSiteRatings] = useState<SourceRating[]>([]);
+  useEffect(() => {
+    let live = true;
+    const ctl = new AbortController();
+    fetchRatingSources(initialBook, { signal: ctl.signal }).then(r => { if (live) setSiteRatings(r); }).catch(() => {});
+    return () => { live = false; ctl.abort(); };
+  }, [initialBook.id]);
+  const main = mainRating(book, siteRatings); // Library -> Apple -> Open Library -> Google; the other sites are listed beside it
+  const mainSource = main?.source;
+  const otherSites = otherRatings(siteRatings, mainSource);
+  const ratingsText = (r: { count?: number }) => (r.count ? `${compactCount(r.count)} ${r.count === 1 ? 'rating' : 'ratings'}` : '');
+
+  const awards = honorsListFor(book);
   const displayPages = propTotalPages || book.pageCount || 0;
   const shelfInfo = SHELF_LABELS[book.shelf] || { label: book.genre || 'Book', emoji: '📖', color: book.spineColor || '#2e5934' };
   // Under the genre: the curated shelf (🧠 Heal) — or where a store book came from.
@@ -277,19 +289,19 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
         <div className="grid grid-cols-4 sm:flex sm:items-stretch justify-around py-3 px-2 sm:px-4 border-b border-[#e3d7c3] dark:border-[#382f25] text-center bg-[#fdfaf3] dark:bg-[#1f1914]">
           <div className="flex flex-col items-center justify-center p-1 sm:px-3 sm:flex-1 border-r border-[#e3d7c3]/60 dark:border-[#382f25]">
             <span className="text-[10px] sm:text-[11px] uppercase font-bold tracking-wider text-[#706256] dark:text-[#a89a8a] line-clamp-1">
-              {book.ratingCount ? `${compactCount(book.ratingCount)} Ratings` : 'Rating'}
+              {main?.count ? `${compactCount(main.count)} Ratings` : 'Rating'}
             </span>
             <div className="font-bold text-base sm:text-lg text-[#201a15] dark:text-[#f0e6d6] flex items-center justify-center gap-1 my-0.5">
-              {book.ratingAverage ? (
+              {main ? (
                 <>
                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 inline" />
-                  <span>{book.ratingAverage.toFixed(1)}</span>
+                  <span>{main.average.toFixed(1)}</span>
                 </>
               ) : (
                 <span className="text-[#706256] dark:text-[#a89a8a]">—</span>
               )}
             </div>
-            <span className="text-[10px] sm:text-[11px] text-[#706256] dark:text-[#a89a8a]">Readers</span>
+            <span className="text-[10px] sm:text-[11px] text-[#706256] dark:text-[#a89a8a]">{main?.source ? RATING_SOURCE_LABEL[main.source] : 'Readers'}</span>
           </div>
 
           <div className="flex flex-col items-center justify-center p-1 sm:px-3 sm:flex-1 border-r border-[#e3d7c3]/60 dark:border-[#382f25]">
@@ -332,7 +344,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
                   key={idx}
                   className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-[#e8efe7] dark:bg-[#243422] text-[#2e5934] dark:text-[#86b880] border border-[#2e5934]/20"
                 >
-                  <span>{aw.type === 'w' ? '🏆' : '🎖️'}</span>
+                  <span>{aw.type === 'w' ? '🏆' : aw.type === 'c' ? '📖' : '🎖️'}</span>
                   <span>{aw.label}</span>
                 </span>
               ))}
@@ -363,16 +375,33 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           )}
         </div>
 
-        {/* Ratings */}
-        {book.ratingAverage ? (
+        {/* Ratings: the main rating (one site's average + count) and, beside it, what the other sites say */}
+        {main || otherSites.length ? (
           <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25]">
-            <h4 className="font-serif-display text-lg mb-2">Ratings</h4>
-            <div className="flex items-center gap-4">
-              <span className="font-serif-display text-5xl leading-none">{book.ratingAverage.toFixed(1)}</span>
-              <div>
-                <span className="rl-stars text-lg">{stars(book.ratingAverage)}</span>
-                {book.ratingCount ? <div className="text-sm text-[#706256] dark:text-[#a89a8a]">{compactCount(book.ratingCount)} ratings</div> : null}
-              </div>
+            <h4 className="font-serif-display text-lg mb-2">
+              Ratings{main && mainSource ? <span className="font-sans text-sm font-normal text-[#706256] dark:text-[#a89a8a]"> · {RATING_SOURCE_LABEL[mainSource]}</span> : null}
+            </h4>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+              {main ? (
+                <div className="flex items-center gap-4">
+                  <span className="font-serif-display text-5xl leading-none">{main.average.toFixed(1)}</span>
+                  <div>
+                    <StarRating value={main.average} className="text-lg" />
+                    {main.count ? <div className="text-sm text-[#706256] dark:text-[#a89a8a]">{compactCount(main.count)} ratings</div> : null}
+                  </div>
+                </div>
+              ) : null}
+              {otherSites.length ? (
+                <ul className="flex flex-col gap-1 text-xs text-[#706256] dark:text-[#a89a8a]" aria-label="Ratings from other sites">
+                  {otherSites.map(r => (
+                    <li key={r.source} className="flex items-center gap-1.5">
+                      <span className="font-semibold">{RATING_SOURCE_LABEL[r.source]}</span>
+                      <StarRating value={r.average} className="text-xs" />
+                      <span>{r.average.toFixed(1)}{r.count ? ` · ${ratingsText(r)}` : ''}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
           </div>
         ) : null}

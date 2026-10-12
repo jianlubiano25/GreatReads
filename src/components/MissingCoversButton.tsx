@@ -6,7 +6,7 @@ import {
   getMissingCount,
   repairMissingCovers,
   type RepairResult,
-} from '../services/coverRepair';
+} from '../services/books';
 
 /**
  * Appears only when some book covers failed to load. One tap re-fetches just those covers.
@@ -38,9 +38,12 @@ export function MissingCoversButton() {
 
   const run = async (includeNotFound = false) => {
     setResult(null);
+    setProgress({ done: 0, total: 0 });
     setRunning(true);
     try {
       setResult(await repairMissingCovers({ includeNotFound, onProgress: (done, total) => setProgress({ done, total }) }));
+    } catch (error) {
+      console.warn('Cover repair failed:', error);
     } finally {
       setRunning(false);
     }

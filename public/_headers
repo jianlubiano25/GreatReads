@@ -1,8 +1,19 @@
+# Applies to every file
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), payment=(), geolocation=(self)
+
 # Cloudflare Pages: page shell and service worker are always re-checked, so updates are noticed
+# ("/" is the address the Home Screen app opens; "/index.html" is the same file)
+/
+  Cache-Control: no-cache
 /index.html
   Cache-Control: no-cache
 /sw.js
   Cache-Control: no-cache
+/version.json
+  Cache-Control: no-store
 /manifest.json
   Cache-Control: no-cache
 

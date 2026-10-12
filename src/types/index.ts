@@ -21,10 +21,26 @@ export interface Book {
   coverUrl?: string;
   ratingAverage?: number;
   ratingCount?: number;
+  /** Which site ratingAverage + ratingCount came from (the two always come from the same one). Older saved books have none; it is then worked out when needed. */
+  ratingSource?: 'openlibrary' | 'google' | 'apple' | 'library';
   spineColor?: string;
-  source?: 'curated' | 'openlibrary' | 'google' | 'manual';
+  source?: 'curated' | 'openlibrary' | 'google' | 'apple' | 'nyt' | 'manual';
   addedAt?: number;
   awardLabel?: string; // e.g. "International Booker 2026" or "Service95 Pick"
+  /** Where this book sits in the outside world (work + edition ids). Separate from `id`, which is GreatReads' own record id and never changes. */
+  identity?: BookIdentity;
+}
+
+/**
+ * Work = the book as a creation (Open Library work id). Edition = one publication of it (ISBNs, Open Library edition id,
+ * Google Books volume id). Used only to recognise the same book across sources and to pick exact-edition covers.
+ */
+export interface BookIdentity {
+  olWork?: string; // "OL123W"
+  olEdition?: string; // "OL456M"
+  gbVolume?: string; // Google Books volume id
+  isbn13?: string;
+  isbn10?: string;
 }
 
 export interface WordItem {

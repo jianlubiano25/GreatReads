@@ -1,84 +1,132 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Book } from '../types';
-import { loadShelf, getCachedShelf, getCachedCurated, seedPlaceholders, resolveCuratedShelf } from '../services/bookSearch';
-import type { CuratedShelf } from '../data/storeCatalog';
+import type { ShelfSource } from '../services/store/shelves';
 import { CoverFace, RatingLine, AwardBadges } from './BookMeta';
+import { rememberHonor } from '../services/store/honors';
+import { withKnownRating } from '../services/books';
+import { DEFAULT_BOOKS } from '../data/defaultBooks';
+import { milestone } from '../services/books/perf';
+
+/** Every shelf gets the SAME pool array for the same `known` list, so the rating index (built once per array) is shared by all of them. */
+const pools = new WeakMap<Book[], Book[]>();
+const poolFor = (known?: Book[]): Book[] => {
+  if (!known) return DEFAULT_BOOKS;
+  let pool = pools.get(known);
+  if (!pool) { pool = [...DEFAULT_BOOKS, ...known]; pools.set(known, pool); }
+  return pool;
+};
 
 interface Props {
   id: string;
   title: React.ReactNode;
-  url?: string;
-  curated?: CuratedShelf;
+  /** Where the books come from (a curated list, the NYT list, Trending...). The shelf does not care which. */
+  source?: ShelfSource;
   /** A ready-made list (e.g. prize winners from your own catalog): no loading at all */
   books?: Book[];
+  /** Show 1, 2, 3... on the covers (the order is the source's ranking) */
   ranked?: boolean;
-  minRatings?: number;
+  /** Only start loading when the shelf is about to scroll into view (long lists of curated shelves) */
+  lazy?: boolean;
+  /** Draw nothing (instead of an error box) when the source can't load: for optional shelves such as the extra NYT lists */
+  hideIfUnavailable?: boolean;
+  /** Books you already have: when a shelf book is the same book as one of these, it shows that book's rating (average + count together) */
+  known?: Book[];
+  /** One of the first shelves on the page: its first covers load at once. Every other shelf's covers load as they come near the screen. */
+  priority?: boolean;
   onOpen: (b: Book) => void;
 }
 
-/**
- * One horizontally scrolling store shelf.
- * - books: a ready-made list
- * - curated: titles draw instantly from the built-in list; covers/ratings fill in (and are cached for a week)
- * - url: a live Open Library list (e.g. weekly trending), cached for a few hours
- */
-export const StoreShelf = React.memo(function StoreShelf({ id, title, url, curated, books: fixedBooks, ranked, minRatings, onOpen }: Props) {
-  const [loaded, setLoaded] = useState<Book[] | null>(() => {
-    if (fixedBooks) return null;
-    if (!curated) return getCachedShelf(id);
-    const seeded = seedPlaceholders(curated);
-    // Fully prefetched shelves need no lookups and no cache at all
-    return seeded.every(b => b.coverId || b.coverUrl) ? seeded : getCachedCurated(curated) || seeded;
-  });
-  const [failed, setFailed] = useState(false);
-  const [visible, setVisible] = useState(!curated);
-  const holder = useRef<HTMLDivElement>(null);
-  const books = fixedBooks ?? loaded;
+/** Is `b` the shelf already drawn (same books, covers and ratings)? Then it is kept as it is, and nothing is drawn twice. */
+const sameShelf = (a: Book[], b: Book[]): boolean =>
+  a === b || (a.length === b.length && a.every((x, i) => x === b[i] || (x.id === b[i].id && x.title === b[i].title && x.coverId === b[i].coverId && x.coverUrl === b[i].coverUrl && x.ratingAverage === b[i].ratingAverage && x.ratingCount === b[i].ratingCount)));
 
-  // Curated shelves only start looking things up when they're about to scroll into view
+/** Same card shape as a real one, so a shelf that has not drawn its books yet holds the height they will take (no jump when they appear). Static: nothing animates off-screen. */
+function ShelfSkeleton({ pulse }: { pulse: boolean }) {
+  return (
+    <div className="flex gap-4 overflow-hidden pb-3" aria-busy="true">
+      {[0, 1, 2, 3].map(i => (
+        <div key={i} className="w-[125px] sm:w-[140px] shrink-0 flex flex-col gap-1.5">
+          <div className={`w-full h-[180px] sm:h-[200px] rounded-md bg-[#e3d7c3]/60 dark:bg-[#382f25]/60 ${pulse ? 'animate-pulse' : ''}`} />
+          <div className="h-3 w-4/5 rounded bg-[#e3d7c3]/40 dark:bg-[#382f25]/40" />
+          <div className="h-3 w-3/5 rounded bg-[#e3d7c3]/40 dark:bg-[#382f25]/40" />
+          <div className="h-3 w-2/5 rounded bg-[#e3d7c3]/40 dark:bg-[#382f25]/40" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** One horizontally scrolling store shelf, fed by a ShelfSource. */
+export const StoreShelf = React.memo(function StoreShelf({ id, title, source, books: fixedBooks, ranked, lazy, hideIfUnavailable, known, priority, onOpen }: Props) {
+  const [loaded, setLoaded] = useState<Book[] | null>(() => (fixedBooks || !source || lazy ? null : source.cached()));
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0); // "Try again" reloads the shelf
+  const [visible, setVisible] = useState(!lazy);
+  const holder = useRef<HTMLDivElement>(null);
+  // A shelf that waits to scroll into view reads its saved books only then (its first draw is a cheap skeleton, not a row of covers)
+  const saved = useMemo(() => (!fixedBooks && source && lazy && visible ? source.cached() : null), [fixedBooks, source, lazy, visible]);
+  const raw = fixedBooks ?? loaded ?? saved;
+  const shown = useRef<Book[] | null>(null);
+  shown.current = raw ?? null;
+  // The same book must show the same rating on every screen: reuse the one you already have (ratings policy, step 1)
+  const pool = useMemo(() => poolFor(known), [known]);
+  const books = useMemo(() => (raw ? raw.map(b => withKnownRating(b, pool)) : raw), [raw, pool]);
+
   useEffect(() => {
-    if (fixedBooks || !curated || visible) return;
+    if (fixedBooks || !lazy || visible) return;
     const el = holder.current;
     if (!el || !('IntersectionObserver' in window)) { setVisible(true); return; }
     const io = new IntersectionObserver(es => {
       if (es.some(e => e.isIntersecting)) { setVisible(true); io.disconnect(); }
-    }, { rootMargin: '500px' });
+    }, { rootMargin: '700px' });
     io.observe(el);
     return () => io.disconnect();
-  }, [fixedBooks, curated, visible]);
+  }, [fixedBooks, lazy, visible]);
 
   useEffect(() => {
-    if (fixedBooks || !visible) return;
+    if (fixedBooks || !visible || !source) return;
     let live = true;
-    if (curated) {
-      resolveCuratedShelf(curated, loaded || seedPlaceholders(curated), b => live && setLoaded(b));
-      return () => { live = false; };
-    }
-    if (!url) return;
     setFailed(false);
-    loadShelf(id, url, { limit: ranked ? 15 : 12, minRatings, onUpdate: b => live && setLoaded(b) })
-      .then(b => live && setLoaded(prev => (prev === b ? prev : b)))
-      .catch(() => live && setFailed(true));
-    return () => { live = false; };
-  }, [id, url, visible, curated, fixedBooks]);
+    // A shelf reports after EVERY book it resolves; drawing the whole shelf each time is wasted work, so the newest list is drawn at most every 100 ms
+    let latest: Book[] | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const draw = (b: Book[]) => {
+      latest = b;
+      if (timer) return;
+      timer = setTimeout(() => { timer = undefined; if (live && latest) setLoaded(latest); }, 100);
+    };
+    source.load(b => live && draw(b))
+      // The answer replaces what was drawn first (a saved list shown while this loaded), unless a newer update already arrived
+      .then(b => { if (live && !latest) setLoaded(prev => { const cur = prev ?? shown.current; return cur && sameShelf(cur, b) ? prev ?? cur : b; }); })
+      // A failed refresh never takes away a list that is already on screen
+      .catch(() => { if (live && !shown.current) setFailed(true); });
+    return () => { live = false; clearTimeout(timer); };
+  }, [id, visible, source, fixedBooks, attempt]);
+
+  useEffect(() => { if (raw) milestone('store-first-shelf'); }, [raw]); // measurement only
+
+  // Honors & Awards: remember what each shelf calls its books, so the book info can list them all (see services/store/honors.ts)
+  useEffect(() => { if (!fixedBooks) (loaded ?? saved)?.forEach(rememberHonor); }, [loaded, saved, fixedBooks]);
 
   if (fixedBooks && fixedBooks.length === 0) return null;
+  if (failed && hideIfUnavailable) return null;
 
   return (
-    <div ref={holder} className="flex flex-col gap-3">
-      <h3 className="font-serif-display text-xl text-[#201a15] dark:text-[#f0e6d6] flex items-center gap-2">{title}</h3>
+    <div ref={holder} className="rl-shelf flex flex-col gap-3">
+      <h3 className="font-serif-display text-xl text-[#201a15] dark:text-[#f0e6d6] flex items-center gap-2">{source?.label?.() ?? title}</h3>
       {failed ? (
-        <p className="text-sm text-[#706256] dark:text-[#a89a8a]">Couldn't load this shelf. The store needs an internet connection.</p>
-      ) : !books ? (
-        <div className="flex gap-4 overflow-hidden" aria-busy="true">
-          {[0, 1, 2, 3].map(i => (
-            <div key={i} className="w-[125px] sm:w-[140px] h-[180px] sm:h-[200px] shrink-0 rounded-md bg-[#e3d7c3]/60 dark:bg-[#382f25]/60 animate-pulse" />
-          ))}
+        <div className="flex items-center gap-3 flex-wrap text-sm text-[#706256] dark:text-[#a89a8a]">
+          <p>Couldn't load this shelf. The store needs an internet connection.</p>
+          <button type="button" onClick={() => setAttempt(n => n + 1)} className="px-3 py-1 rounded-lg text-xs font-semibold border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] active:scale-95 transition-all">
+            Try again
+          </button>
         </div>
+      ) : !books ? (
+        <ShelfSkeleton pulse={visible} />
       ) : (
         <div className="flex gap-4 overflow-x-auto pb-3 no-scrollbar">
           {books.map((b, i) => (
-            <div key={b.id} className="w-[125px] sm:w-[140px] shrink-0 flex flex-col gap-1.5">
+            <div key={`${b.id}|${b.title}`} className="w-[125px] sm:w-[140px] shrink-0 flex flex-col gap-1.5">
               <div className="relative">
                 {ranked && (
                   <span className="absolute top-2 left-2 z-30 px-2 py-0.5 rounded-md text-xs font-bold bg-[#fbf7ee] dark:bg-[#231d17] text-[#201a15] dark:text-[#f0e6d6] shadow">
@@ -92,7 +140,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, url, curat
                   style={{ backgroundColor: b.spineColor || '#6b6f80' }}
                   aria-label={`${b.title} by ${b.author}`}
                 >
-                  <CoverFace book={b} size="md" eager={i < 6} />
+                  <CoverFace book={b} size="md" eager={!!priority && i < 4} />
                 </button>
               </div>
               <h4 className="font-serif-display text-xs sm:text-sm font-semibold leading-tight line-clamp-2">

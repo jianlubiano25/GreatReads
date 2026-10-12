@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useModalA11y } from '../hooks/useModalA11y';
 import { GardenState, UserProfile } from '../types';
 import { Camera, Moon, Sun, Monitor, RefreshCw, Copy, Check, Upload, X, Download } from 'lucide-react';
 import { copyText } from '../services/clipboard';
@@ -39,6 +40,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   onImportBackup,
   onOpenBackupModal,
 }) => {
+  // Dismissing the sheet (outside tap, X, Escape) keeps your edits, just like Save & Close
+  useModalA11y(() => handleSave());
   const [name, setName] = useState(profile.name);
   const [pageGoal, setPageGoal] = useState(String(goal));
   const [theme, setTheme] = useState(profile.theme);
@@ -52,9 +55,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const plantsEarned = MILESTONES.filter(m => garden.achievements[m.id]).length;
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const input = e.target;
+    const file = input.files?.[0];
+    input.value = '';
     if (!file) return;
     const reader = new FileReader();
+    reader.onerror = () => alert("That photo couldn't be read. Please try a different image.");
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
@@ -79,6 +85,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           onUpdateProfile({ photo: dataUrl });
         }
       };
+      img.onerror = () => alert("That image couldn't be opened. Try a JPG or PNG.");
       img.src = reader.result as string;
     };
     reader.readAsDataURL(file);
@@ -86,9 +93,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
   const handleSave = () => {
     onUpdateProfile({ name: name.trim(), theme });
-    const g = Number(pageGoal);
-    if (g && g > 0) {
-      onUpdateGoal(g);
+    const g = Math.round(Number(pageGoal));
+    if (Number.isFinite(g) && g >= 1) {
+      onUpdateGoal(Math.min(500, g));
     }
     onClose();
   };
@@ -107,6 +114,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const handlePasteBackup = () => {
     const jsonStr = prompt('Paste your backup JSON here:');
     if (!jsonStr) return;
+    if (!window.confirm('Replace ALL current reading data with this backup? This cannot be undone.')) return;
     const ok = onImportBackup(jsonStr);
     if (ok) {
       setImportStatus('success');
@@ -121,7 +129,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 overflow-y-auto animate-in fade-in duration-200"
-      onClick={onClose}
+      onClick={() => handleSave()}
     >
       <div
         className="relative w-full max-w-[500px] max-h-[92dvh] sm:max-h-[88dvh] bg-[#fbf7ee] dark:bg-[#231d17] text-[#201a15] dark:text-[#f0e6d6] rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-y-auto overscroll-contain flex flex-col border border-[#e3d7c3] dark:border-[#382f25]"
@@ -135,7 +143,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             Profile &amp; Settings
           </h3>
           <button
-            onClick={onClose}
+            type="button"
+            aria-label="Close"
+            onClick={() => handleSave()}
             className="p-1.5 rounded-full text-[#706256] dark:text-[#a89a8a] hover:bg-black/10 dark:hover:bg-white/10"
           >
             <X className="w-5 h-5" />

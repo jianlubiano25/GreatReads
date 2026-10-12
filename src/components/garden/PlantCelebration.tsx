@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { useModalA11y } from '../../hooks/useModalA11y';
 import { getPlantDef, MILESTONE_BY_ID } from '../../data/gardenCatalog';
 import type { GardenState } from '../../types';
 import { PlantArt } from './PlantArt';
@@ -11,13 +12,11 @@ export function PlantCelebration({ plantId, garden, onClose }: { plantId: string
   const owned = garden.plants[plantId];
   const m = owned ? MILESTONE_BY_ID[owned.milestoneId] : undefined;
   const btn = useRef<HTMLButtonElement>(null);
+  useModalA11y(onClose); // shared Escape handling and focus trap (declared before the focus effect so the button keeps focus)
 
   useEffect(() => {
     btn.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, plantId]);
+  }, [plantId]);
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
