@@ -4,6 +4,9 @@ import { mergeBooks, sameWork } from './books';
 
 export type AddDestination = 'device' | 'library' | 'now' | 'next';
 
+/** `book` with the rating fields of `from` (the rest untouched). */
+const withRatingFrom = (from: Book, book: Book): Book => ({ ...book, ratingAverage: from.ratingAverage, ratingCount: from.ratingCount, ratingSource: from.ratingSource });
+
 /**
  * Adds a book to the library (pure, so it can be tested without React).
  * The same book arriving under a different record id (search vs Store vs NYT) is the book you already have, not a second copy.
@@ -18,7 +21,9 @@ export function applyAddBook(prev: ReadingState, incoming: Book, destination: Ad
 
   let updatedCustom: Book[] = prev.customBooks;
   if (existingCustom) {
-    const merged = dupe ? mergeBooks(existingCustom, incoming) : { ...existingCustom, ...incoming };
+    // Re-adding a book refreshes it, but only the rating fields are decided by the ladder (mergeBooks(incoming, saved)): a card with no rating
+    // (or a lower-ranked site's) must not wipe or replace the saved pair of a better-ranked site; the same site's newer pair still wins.
+    const merged = dupe ? mergeBooks(existingCustom, incoming) : withRatingFrom(mergeBooks(incoming, existingCustom), { ...existingCustom, ...incoming });
     updatedCustom = prev.customBooks.map(b => (String(b.id) === idKey ? { ...merged, id: existingCustom.id, isOnDevice: isDevice || existingCustom.isOnDevice } : b));
   } else if (!isCatalogDupe) {
     updatedCustom = [{ ...incoming, isOnDevice: isDevice }, ...prev.customBooks];

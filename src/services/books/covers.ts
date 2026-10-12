@@ -156,7 +156,7 @@ async function search(b: MissingBook): Promise<string> {
   // exact edition first
   const isbn = id.isbn13 || id.isbn10;
   if (isbn && (url = await accept(olCoverByIsbn(isbn, 'L')))) return url;
-  const gb = id.gbVolume ? await googleVolume(id.gbVolume) : isbn ? await findGoogle({ title: b.title, author, isbn }) : null;
+  const gb = id.gbVolume ? await googleVolume(id.gbVolume) : isbn ? await findGoogle({ title: b.title, author, isbn }, {}, ['cover']) : null;
   if (gb?.book.coverUrl && (url = await accept(gb.book.coverUrl))) return url;
 
   // then by name, always checking the title and author really match

@@ -1,5 +1,5 @@
 import { getJsonDetailed } from '../http';
-import { authorListMatches, titleVariants, titlesMatch } from '../identity';
+import { authorListMatches, subtitleKey, titleKey, titleVariants, titlesMatch } from '../identity';
 import { genreFromSubjects, makeBook, plainText } from '../model';
 import type { CallOpts, Hit } from './types';
 
@@ -18,7 +18,14 @@ export async function lookupApple(q: { title: string; author?: string }, opts: C
     const term = encodeURIComponent(`${title} ${generic ? '' : q.author}`.trim());
     const r = await getJsonDetailed(`https://itunes.apple.com/search?media=ebook&entity=ebook&limit=6&term=${term}`, { timeout: 4500, signal: opts.signal });
     if (!r.data && !opts.signal?.aborted && (r.status === 0 || r.status === 429 || r.status >= 500 || r.failure === 'not-json')) failed = true; // a malformed answer is not "no such book"
-    m = (r.data?.results || []).find((it: any) => it.artworkUrl100 && titlesMatch(String(it.trackName || ''), q.title) && authorListMatches(it.artistName, q.author || ''));
+    // The same book can be listed more than once (editions, re-listings). Apple's first match stays the book, but when that listing is unrated,
+    // an identically titled duplicate that Apple's readers rated (the most ratings) is taken instead: an unrated duplicate must not hide the
+    // rating. A differently titled listing (a study guide, a bundle) is never a stand-in.
+    const matches: any[] = (r.data?.results || []).filter((it: any) => it.artworkUrl100 && titlesMatch(String(it.trackName || ''), q.title) && authorListMatches(it.artistName, q.author || ''));
+    const rated = (it: any) => (it.averageUserRating && it.userRatingCount > 0 ? Number(it.userRatingCount) : 0);
+    const first = matches[0];
+    const sameListing = (it: any) => titleKey(String(it.trackName || '')) === titleKey(String(first.trackName || '')) && subtitleKey(String(it.trackName || '')) === subtitleKey(String(first.trackName || ''));
+    m = first && !rated(first) ? matches.filter(sameListing).reduce<any>((best, it) => (rated(it) > rated(best) ? it : best), first) : first;
     if (m || opts.signal?.aborted) break;
   }
   if (!m) return { hit: null, failed };

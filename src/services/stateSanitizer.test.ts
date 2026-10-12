@@ -45,3 +45,22 @@ test('profile photos accept supported image data and secure URLs only', () => {
   assert.equal(sanitizeProfile({ photo: 'https://images.example/avatar.jpg' }, fallback).photo, 'https://images.example/avatar.jpg');
   assert.equal(sanitizeProfile({ photo: 'data:image/jpeg;base64,abc' }, fallback).photo, 'data:image/jpeg;base64,abc');
 });
+test('saved books keep each rating pair and the site it came from; an unknown source or a missing rating keeps none', () => {
+  const books = sanitizeCustomBooks([
+    { id: 'a', title: 'Apple rated', ratingAverage: 4.4, ratingCount: 700, ratingSource: 'apple' },
+    { id: 'g', title: 'Google rated', ratingAverage: 4.2, ratingCount: 1, ratingSource: 'google' },
+    { id: 'o', title: 'OL rated', ratingAverage: 3.9, ratingCount: 55, ratingSource: 'openlibrary' },
+    { id: 7, title: 'Hand written', ratingAverage: 4.6, ratingCount: 18, ratingSource: 'library' },
+    { id: 'bad', title: 'Odd source', ratingAverage: 4, ratingCount: 9, ratingSource: 'goodreads' },
+    { id: 'none', title: 'No rating', ratingSource: 'apple' },
+    { id: 'old', title: 'Saved before sources existed', ratingAverage: 4, ratingCount: 9 },
+  ]);
+  const pair = (i: number) => [books[i].ratingAverage, books[i].ratingCount, books[i].ratingSource];
+  assert.deepEqual(pair(0), [4.4, 700, 'apple']);
+  assert.deepEqual(pair(1), [4.2, 1, 'google']);
+  assert.deepEqual(pair(2), [3.9, 55, 'openlibrary']);
+  assert.deepEqual(pair(3), [4.6, 18, 'library']);
+  assert.deepEqual(pair(4), [4, 9, undefined]);
+  assert.deepEqual(pair(5), [undefined, undefined, undefined]);
+  assert.deepEqual(pair(6), [4, 9, undefined]); // older saved books: unchanged (the source is worked out when needed)
+});

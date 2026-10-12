@@ -137,10 +137,24 @@ export function knownRating(book: Identified, known: readonly Book[]): RatingPai
   return indexFor(known).of(book);
 }
 
-/** Ladder step 1: the same book in `known` supplies its average + count together; otherwise the book is returned as it was. */
+/**
+ * Ladder step 1: the same book in `known` supplies its average + count together; otherwise the book is returned as it was.
+ * Only the library's OWN pair (hand-written ratings of the built-in books and of manual books) overrides what a card carries. A pair that was
+ * saved from an outside site is that site's rating as it was when saved: it fills a book with no rating, and is otherwise ranked against the
+ * book's own pair by the ladder (Apple -> Open Library -> Google), so a stale saved Open Library pair cannot hide a card's Apple rating.
+ */
 export function withKnownRating<T extends Book>(book: T, known: readonly Book[]): T {
   const r = knownRating(book, known);
   if (!r || (r.average === book.ratingAverage && r.count === book.ratingCount)) return book;
+  const own = r.source !== 'library' ? externalRating(book) : undefined;
+  if (own) {
+    const ownSource = book.ratingSource && book.ratingSource !== 'library' ? book.ratingSource : undefined;
+    if (!ownSource || !r.source) return book; // cannot rank what is not attributed: the card keeps what it shows
+    const mine: RatingPair = { ...own, source: ownSource };
+    const at = (s: RatingSourceId) => [r, mine].find(x => x.source === s);
+    const best = chooseRating({ apple: at('apple'), ol: at('openlibrary'), google: at('google') });
+    return !best || best.source === ownSource ? book : { ...book, ratingAverage: best.average, ratingCount: best.count, ratingSource: best.source };
+  }
   return { ...book, ratingAverage: r.average, ratingCount: r.count, ratingSource: r.source };
 }
 
@@ -157,20 +171,27 @@ export function inferRatingSource(book: Pick<Book, 'ratingAverage' | 'ratingCoun
 }
 
 /**
- * The main rating of the book info. It is the rating the book ALREADY carries (the one its Store card showed), so a card and its sheet can
- * never disagree: the library's own pair, or an outside site's valid pair whose source is known (saved on the book, or the one site whose own
- * rating is exactly that pair). Only a book with no such rating takes the ladder over what each site says live (Apple, Open Library, Google).
- * One source only; the other sites are listed beside it by otherRatings.
+ * The main rating of the book info: one source only, chosen by the ladder library -> Apple -> Open Library -> Google (chooseRating).
+ *  - the library's own hand-written pair always wins;
+ *  - otherwise each provider's rating is a candidate: what each site says live (`found`), and the pair the book already carries (the
+ *    Store card, a saved copy) ONLY as the stand-in for its own provider, and only when `found` has nothing for that provider yet.
+ *    A carried pair never outranks a higher provider: a card resolved before Apple answered (or while Apple was unreachable) carries
+ *    Open Library's pair, and must not hide Apple's rating once it is known. The other sites are listed beside it by otherRatings.
+ *  - a carried pair whose provider cannot be told (no ratingSource, matches no site exactly) is used only when nothing else is rated.
  */
 export function mainRating(book: Pick<Book, 'id' | 'source' | 'ratingAverage' | 'ratingCount' | 'ratingSource'>, found: readonly SourceRating[] = []): RatingPair | undefined {
   const own = ratingOf(book);
   const ownSource = inferRatingSource(book, found);
   if (own && ownSource === 'library') return { ...own, source: 'library' };
   const kept = externalRating(book);
-  if (kept && ownSource) return { ...kept, source: ownSource }; // what the card showed
   const site = (s: SourceRating['source']) => found.find(f => f.source === s);
-  const picked = chooseRating({ apple: site('apple'), ol: site('openlibrary'), google: site('google') });
-  return picked ?? (kept ? { ...kept } : undefined);
+  const candidate = (s: SourceRating['source']): RatingPair | undefined => {
+    const live = site(s);
+    if (live) return live; // what the site says now beats what a card or a saved copy remembers of it
+    return kept && ownSource === s ? { ...kept, source: s } : undefined;
+  };
+  const picked = chooseRating({ apple: candidate('apple'), ol: candidate('openlibrary'), google: candidate('google') });
+  return picked ?? (kept ? { ...kept, ...(ownSource ? { source: ownSource } : {}) } : undefined);
 }
 
 /** Every site's rating except the one already shown as the main rating, in the order Open Library, Google, Apple. Nothing here is added together. */

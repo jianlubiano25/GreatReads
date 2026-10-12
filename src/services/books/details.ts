@@ -25,7 +25,7 @@ export async function lookupSummary(book: Book): Promise<string> {
   if (!workId) workId = (await findOpenLibrary({ title: book.title, author: generic ? '' : book.author, isbn: id.isbn13 }))?.book.identity?.olWork;
   if (workId) summary = (await openLibraryDescription(workId)) || '';
   if (weak(summary)) {
-    const gb = await findGoogle({ title: book.title, author: generic ? '' : book.author, isbn: id.isbn13 || id.isbn10 });
+    const gb = await findGoogle({ title: book.title, author: generic ? '' : book.author, isbn: id.isbn13 || id.isbn10 }, {}, ['text']);
     const desc = gb?.flags.description ? plainText(gb.flags.description) : '';
     if (desc.length > 60) summary = desc.slice(0, 600);
   }
