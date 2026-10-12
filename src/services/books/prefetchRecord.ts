@@ -53,6 +53,10 @@ export function toPrefetchedRecord(title: string, r: Resolved | null): Prefetche
   return rec;
 }
 
-/** Is a saved record final for `title` (made by the current rules, with a cover and a rating)? Anything else is fetched again. */
+/**
+ * Is a saved record final for `title` (made by the current rules, with a cover and a rating)? Anything else is fetched again.
+ * The prefetch asks every site, so a final record has Google among the sites that were asked AND answered (`checked`): one saved while Google
+ * could not be reached says nothing about Google, and is fetched again (a refused key or a blocked network, once fixed, then fills it in).
+ */
 export const isCurrentRecord = (rec: PrefetchedRecord | null | undefined, title: string): boolean =>
-  !!rec && rec.rv === PREFETCH_VERSION && rec.title === title && !!(rec.coverUrl || rec.coverId) && !!rec.ratingAverage && !!rec.ratingSource;
+  !!rec && rec.rv === PREFETCH_VERSION && rec.title === title && !!(rec.coverUrl || rec.coverId) && !!rec.ratingAverage && !!rec.ratingSource && !!rec.checked?.includes('google');

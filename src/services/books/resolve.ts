@@ -151,7 +151,9 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
     if (!opts.signal?.aborted) {
       // Apple (asked for) could not be reached and the stars came from a lower step (or there are none): Apple would have been first, so this is asked again soon
       const appleMissed = appleFailed && book.ratingSource !== 'apple';
-      if ((googleFailed && !book.ratingAverage) || appleMissed) out.retry = { at: retryAfter(failedBefore + 1), tries: failedBefore + 1 };
+      // Google that could not be reached is worth asking again when the book has no rating, and ALWAYS when every site was asked for the offline prefetch:
+      // that run saves what Google says as final, and a failure saved as final is never asked again (see isCurrentRecord)
+      if ((googleFailed && (q.allSources || !book.ratingAverage)) || appleMissed) out.retry = { at: retryAfter(failedBefore + 1), tries: failedBefore + 1 };
       cache.set(key, out);
     }
     return { ...out, book: { ...out.book, id: pickId(out.book, q) } };
