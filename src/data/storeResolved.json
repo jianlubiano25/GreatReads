@@ -4,7 +4,7 @@
    "title": "Kin",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/ff/41/14/ff4114ef-0ef7-b674-98e0-3ac40814b7ac/9780525659198.d.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 532,
+   "ratingCount": 533,
    "ratingSource": "apple",
    "pageCount": 368,
    "year": "2026",
@@ -12,10 +12,11 @@
    "sources": {
     "apple": [
      4.5,
-     532
+     533
     ]
    },
    "checked": [
+    "google",
     "apple"
    ],
    "rv": 3
@@ -41,6 +42,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -60,6 +62,7 @@
     ]
    },
    "checked": [
+    "google",
     "apple"
    ],
    "rv": 3
@@ -79,6 +82,7 @@
     ]
    },
    "checked": [
+    "google",
     "apple"
    ],
    "rv": 3
@@ -103,6 +107,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -111,7 +116,7 @@
    "title": "Cool Machine",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/03/4e/e7/034ee726-235c-48bc-2d5d-861f131159f3/9780385550512.d.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 139,
+   "ratingCount": 140,
    "ratingSource": "apple",
    "year": "2026",
    "olKey": "/works/OL45345738W",
@@ -122,11 +127,12 @@
     ],
     "apple": [
      4.5,
-     139
+     140
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -146,6 +152,7 @@
     ]
    },
    "checked": [
+    "google",
     "apple"
    ],
    "rv": 3
@@ -171,6 +178,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -195,6 +203,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -203,7 +212,7 @@
    "title": "Our Perfect Storm",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/24/a7/3a/24a73a0c-a4ca-2228-63e6-b82a5745fe06/9780593953235.d.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 1109,
+   "ratingCount": 1110,
    "ratingSource": "apple",
    "year": "2026",
    "olKey": "/works/OL45398621W",
@@ -214,11 +223,12 @@
     ],
     "apple": [
      4.5,
-     1109
+     1110
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -244,6 +254,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -269,6 +280,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -296,6 +308,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -322,8 +335,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Lost Lambs",
@@ -345,6 +357,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -370,6 +383,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -381,8 +395,10 @@
    "year": "2026",
    "olKey": "/works/OL45587968W",
    "checked": [
+    "google",
     "apple"
-   ]
+   ],
+   "rv": 3
   },
   {
    "title": "So Late in the Day",
@@ -404,6 +420,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -425,6 +442,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -450,6 +468,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -468,6 +487,7 @@
     ]
    },
    "checked": [
+    "google",
     "apple"
    ],
    "rv": 3
@@ -488,6 +508,7 @@
     ]
    },
    "checked": [
+    "google",
     "apple"
    ],
    "rv": 3
@@ -506,6 +527,7 @@
     ]
    },
    "checked": [
+    "google",
     "apple"
    ],
    "rv": 3
@@ -531,6 +553,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -556,6 +579,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -582,8 +606,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "This House of Grief",
@@ -606,6 +629,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -626,6 +650,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -651,6 +676,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -669,6 +695,7 @@
     ]
    },
    "checked": [
+    "google",
     "apple"
    ],
    "rv": 3
@@ -694,6 +721,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -719,6 +747,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -737,6 +766,7 @@
     ]
    },
    "checked": [
+    "google",
     "apple"
    ],
    "rv": 3
@@ -755,6 +785,7 @@
     ]
    },
    "checked": [
+    "google",
     "apple"
    ],
    "rv": 3
@@ -780,6 +811,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -805,6 +837,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -826,6 +859,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -851,6 +885,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -876,6 +911,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -901,6 +937,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -909,7 +946,7 @@
    "title": "Trust",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/b2/5e/e7/b25ee752-9c39-fff3-0172-a7cfb2ce2e64/9780593420331.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 2035,
+   "ratingCount": 2036,
    "ratingSource": "apple",
    "pageCount": 416,
    "year": "2022",
@@ -921,11 +958,12 @@
     ],
     "apple": [
      4,
-     2035
+     2036
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -951,6 +989,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -976,6 +1015,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1001,6 +1041,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1021,6 +1062,7 @@
     ]
    },
    "checked": [
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1046,6 +1088,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1072,8 +1115,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Pachinko",
@@ -1096,6 +1138,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1121,6 +1164,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1148,6 +1192,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1173,6 +1218,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1198,6 +1244,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1223,6 +1270,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1248,6 +1296,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1273,6 +1322,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1298,6 +1348,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1323,6 +1374,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1348,6 +1400,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1368,6 +1421,7 @@
     ]
    },
    "checked": [
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1389,6 +1443,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1414,6 +1469,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4960,6 +5016,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4985,6 +5042,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5010,6 +5068,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5035,6 +5094,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5060,6 +5120,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5085,6 +5146,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5110,6 +5172,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5135,6 +5198,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5160,6 +5224,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5185,6 +5250,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5210,6 +5276,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5218,7 +5285,7 @@
    "title": "Normal People",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication112/v4/5e/95/6b/5e956b26-dc05-454a-4159-cf8b867c7b13/9781984822192.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 5632,
+   "ratingCount": 5633,
    "ratingSource": "apple",
    "pageCount": 304,
    "year": "2018",
@@ -5230,11 +5297,12 @@
     ],
     "apple": [
      4,
-     5632
+     5633
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5262,6 +5330,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5287,6 +5356,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5295,7 +5365,7 @@
    "title": "Educated",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication116/v4/ac/b0/45/acb045ee-c0b2-4cae-ee27-4efadaa180ca/9780399590511.d.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 20329,
+   "ratingCount": 20330,
    "ratingSource": "apple",
    "pageCount": 384,
    "year": "2018",
@@ -5307,11 +5377,12 @@
     ],
     "apple": [
      4.5,
-     20329
+     20330
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5337,6 +5408,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5362,6 +5434,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5387,6 +5460,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5412,6 +5486,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5437,6 +5512,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5457,8 +5533,7 @@
    },
    "checked": [
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Becoming",
@@ -5481,6 +5556,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5506,6 +5582,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5531,6 +5608,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5558,6 +5636,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5583,6 +5662,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5592,8 +5672,10 @@
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/56/45/82/5645829c-e464-eadb-aca2-d9ed96c10bd3/1063239337.jpg/600x900bb.jpg",
    "year": "2026",
    "checked": [
+    "google",
     "apple"
-   ]
+   ],
+   "rv": 3
   },
   {
    "title": "The Emperor of Gladness",
@@ -5616,6 +5698,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5641,6 +5724,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5662,6 +5746,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5688,8 +5773,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Wuthering Heights",
@@ -5712,6 +5796,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5736,6 +5821,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5761,6 +5847,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5786,6 +5873,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5804,6 +5892,7 @@
     ]
    },
    "checked": [
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5829,6 +5918,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
