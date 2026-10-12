@@ -50,15 +50,16 @@
   {
    "title": "Exit Party",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/22/4a/27/224a2741-7c05-53f2-3b13-aecf4d23eea1/9780593321478.d.jpg/600x900bb.jpg",
-   "ratingAverage": 4,
-   "ratingCount": 107,
+   "ratingAverage": 4.5,
+   "ratingCount": 111,
    "ratingSource": "apple",
+   "pageCount": 321,
    "year": "2026",
    "olKey": "/works/OL46028544W",
    "sources": {
     "apple": [
-     4,
-     107
+     4.5,
+     111
     ]
    },
    "checked": [
@@ -73,6 +74,7 @@
    "ratingAverage": 4,
    "ratingCount": 39,
    "ratingSource": "apple",
+   "pageCount": 641,
    "year": "2026",
    "olKey": "/works/OL45862992W",
    "sources": {
@@ -91,7 +93,7 @@
    "title": "John of John",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/07/c9/ab/07c9ab1e-af9b-74cf-1597-fbbbd4910901/9780802167279.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 306,
+   "ratingCount": 309,
    "ratingSource": "apple",
    "year": "2026",
    "olKey": "/works/OL45691929W",
@@ -102,7 +104,7 @@
     ],
     "apple": [
      4.5,
-     306
+     309
     ]
    },
    "checked": [
@@ -118,6 +120,7 @@
    "ratingAverage": 4.5,
    "ratingCount": 140,
    "ratingSource": "apple",
+   "pageCount": 369,
    "year": "2026",
    "olKey": "/works/OL45345738W",
    "sources": {
@@ -141,14 +144,15 @@
    "title": "London Falling",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/1c/0d/79/1c0d79ae-1230-6969-fb01-de3e83944ae2/9780385548540.d.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 610,
+   "ratingCount": 615,
    "ratingSource": "apple",
+   "pageCount": 385,
    "year": "2026",
    "olKey": "/works/OL45399274W",
    "sources": {
     "apple": [
      4.5,
-     610
+     615
     ]
    },
    "checked": [
@@ -161,7 +165,7 @@
    "title": "Yesteryear",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/83/35/a9/8335a977-61f3-2f2c-22e2-a0551cf8707f/9780593804223.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 2959,
+   "ratingCount": 2963,
    "ratingSource": "apple",
    "pageCount": 400,
    "year": "2026",
@@ -173,7 +177,7 @@
     ],
     "apple": [
      4,
-     2959
+     2963
     ]
    },
    "checked": [
@@ -189,6 +193,7 @@
    "ratingAverage": 4.5,
    "ratingCount": 414,
    "ratingSource": "apple",
+   "pageCount": 417,
    "year": "2026",
    "olKey": "/works/OL45187492W",
    "sources": {
@@ -214,6 +219,7 @@
    "ratingAverage": 4.5,
    "ratingCount": 1110,
    "ratingSource": "apple",
+   "pageCount": 433,
    "year": "2026",
    "olKey": "/works/OL45398621W",
    "sources": {
@@ -263,7 +269,7 @@
    "title": "Strangers",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/0f/0a/db/0f0adb9f-8dd7-7c5a-0458-79ced91d5e39/9780593733325.d.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 2832,
+   "ratingCount": 2836,
    "ratingSource": "apple",
    "pageCount": 256,
    "year": "2026",
@@ -275,7 +281,7 @@
     ],
     "apple": [
      4.5,
-     2832
+     2836
     ]
    },
    "checked": [
@@ -291,7 +297,7 @@
    "title": "Klara and the Sun",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication116/v4/ba/7b/b0/ba7bb051-38ad-3553-98a4-1c93b41c0fbd/9780593318188.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 2254,
+   "ratingCount": 2256,
    "ratingSource": "apple",
    "pageCount": 334,
    "year": "2019",
@@ -303,7 +309,7 @@
     ],
     "apple": [
      4,
-     2254
+     2256
     ]
    },
    "checked": [
@@ -334,8 +340,10 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
-   ]
+   ],
+   "rv": 3
   },
   {
    "title": "Lost Lambs",
@@ -406,6 +414,7 @@
    "ratingAverage": 4,
    "ratingCount": 74,
    "ratingSource": "apple",
+   "pageCount": 51,
    "year": "2023",
    "olKey": "/works/OL35762090W",
    "sources": {
@@ -437,6 +446,10 @@
    "sources": {
     "openlibrary": [
      4,
+     1
+    ],
+    "google": [
+     5,
      1
     ]
    },
@@ -479,6 +492,7 @@
    "ratingAverage": 4.5,
    "ratingCount": 5,
    "ratingSource": "apple",
+   "pageCount": 188,
    "year": "2024",
    "sources": {
     "apple": [
@@ -519,6 +533,7 @@
    "ratingAverage": 4,
    "ratingCount": 12,
    "ratingSource": "apple",
+   "pageCount": 129,
    "year": "2024",
    "sources": {
     "apple": [
@@ -545,6 +560,10 @@
     "openlibrary": [
      4,
      136
+    ],
+    "google": [
+     3.5,
+     7
     ],
     "apple": [
      4.5,
@@ -605,8 +624,10 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
-   ]
+   ],
+   "rv": 3
   },
   {
    "title": "This House of Grief",
@@ -640,6 +661,7 @@
    "ratingAverage": 4,
    "ratingCount": 1,
    "ratingSource": "openlibrary",
+   "pageCount": 114,
    "year": "2025",
    "olKey": "/works/OL42545060W",
    "sources": {
@@ -669,6 +691,10 @@
      3.3,
      3
     ],
+    "google": [
+     5,
+     1
+    ],
     "apple": [
      5,
      74
@@ -687,6 +713,7 @@
    "ratingAverage": 4,
    "ratingCount": 9,
    "ratingSource": "apple",
+   "pageCount": 165,
    "year": "2023",
    "sources": {
     "apple": [
@@ -758,6 +785,7 @@
    "ratingAverage": 4,
    "ratingCount": 606,
    "ratingSource": "apple",
+   "pageCount": 673,
    "year": "2023",
    "sources": {
     "apple": [
@@ -777,8 +805,13 @@
    "ratingAverage": 4,
    "ratingCount": 681,
    "ratingSource": "apple",
-   "year": "2019",
+   "pageCount": 257,
+   "year": "2018",
    "sources": {
+    "google": [
+     2.5,
+     2
+    ],
     "apple": [
      4,
      681
@@ -811,10 +844,8 @@
    },
    "checked": [
     "openlibrary",
-    "google",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Lincoln in the Bardo",
@@ -837,10 +868,8 @@
    },
    "checked": [
     "openlibrary",
-    "google",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Noughts & Crosses",
@@ -859,10 +888,8 @@
    },
    "checked": [
     "openlibrary",
-    "google",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Say Nothing",
@@ -885,10 +912,8 @@
    },
    "checked": [
     "openlibrary",
-    "google",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Swimming in the Dark",
@@ -911,10 +936,8 @@
    },
    "checked": [
     "openlibrary",
-    "google",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Crying in H Mart",
@@ -937,16 +960,14 @@
    },
    "checked": [
     "openlibrary",
-    "google",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Trust",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/b2/5e/e7/b25ee752-9c39-fff3-0172-a7cfb2ce2e64/9780593420331.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 2036,
+   "ratingCount": 2035,
    "ratingSource": "apple",
    "pageCount": 416,
    "year": "2022",
@@ -958,7 +979,7 @@
     ],
     "apple": [
      4,
-     2036
+     2035
     ]
    },
    "checked": [
@@ -989,10 +1010,8 @@
    },
    "checked": [
     "openlibrary",
-    "google",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "The Guest",
@@ -1015,10 +1034,8 @@
    },
    "checked": [
     "openlibrary",
-    "google",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "The Vanishing Half",
@@ -1041,10 +1058,8 @@
    },
    "checked": [
     "openlibrary",
-    "google",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "One Hundred Years of Solitude",
@@ -1088,10 +1103,8 @@
    },
    "checked": [
     "openlibrary",
-    "google",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Half of a Yellow Sun",
@@ -1107,6 +1120,10 @@
      4.3,
      35
     ],
+    "google": [
+     5,
+     5
+    ],
     "apple": [
      4.5,
      421
@@ -1114,8 +1131,10 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
-   ]
+   ],
+   "rv": 3
   },
   {
    "title": "Pachinko",
@@ -1157,6 +1176,10 @@
      4.2,
      15
     ],
+    "google": [
+     5,
+     2
+    ],
     "apple": [
      4.5,
      777
@@ -1185,6 +1208,10 @@
      4.3,
      500
     ],
+    "google": [
+     5,
+     7
+    ],
     "apple": [
      4.5,
      1031
@@ -1210,6 +1237,10 @@
     "openlibrary": [
      4.3,
      405
+    ],
+    "google": [
+     4.5,
+     13
     ],
     "apple": [
      4.5,
@@ -1237,6 +1268,10 @@
      4.1,
      123
     ],
+    "google": [
+     5,
+     1
+    ],
     "apple": [
      4.5,
      1991
@@ -1262,6 +1297,10 @@
     "openlibrary": [
      4.1,
      29
+    ],
+    "google": [
+     4.5,
+     3
     ],
     "apple": [
      4.5,
@@ -1289,6 +1328,10 @@
      4,
      32
     ],
+    "google": [
+     4,
+     37
+    ],
     "apple": [
      4.5,
      67
@@ -1315,6 +1358,10 @@
      4.4,
      234
     ],
+    "google": [
+     5,
+     5
+    ],
     "apple": [
      5,
      379
@@ -1340,6 +1387,10 @@
     "openlibrary": [
      4.5,
      108
+    ],
+    "google": [
+     4.5,
+     76
     ],
     "apple": [
      5,
@@ -1393,6 +1444,10 @@
      4,
      109
     ],
+    "google": [
+     4,
+     8
+    ],
     "apple": [
      4.5,
      1258
@@ -1443,16 +1498,14 @@
    },
    "checked": [
     "openlibrary",
-    "google",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "The Silmarillion",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication112/v4/dc/cf/ae/dccfaea1-6ac0-e247-a2e3-1ffde5451a2b/9780547951980.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 332,
+   "ratingCount": 331,
    "ratingSource": "apple",
    "pageCount": 424,
    "year": "1977",
@@ -1464,7 +1517,7 @@
     ],
     "apple": [
      4.5,
-     332
+     331
     ]
    },
    "checked": [
@@ -1490,6 +1543,10 @@
      3.9,
      75
     ],
+    "google": [
+     4,
+     5
+    ],
     "apple": [
      4.5,
      931
@@ -1497,6 +1554,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1523,8 +1581,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "The Covenant of Water",
@@ -1546,6 +1603,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1564,6 +1622,10 @@
      4.6,
      7
     ],
+    "google": [
+     5,
+     1
+    ],
     "apple": [
      4.5,
      8393
@@ -1571,6 +1633,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1597,8 +1660,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Wild",
@@ -1614,6 +1676,10 @@
      3.9,
      42
     ],
+    "google": [
+     3.5,
+     73
+    ],
     "apple": [
      4.5,
      6430
@@ -1621,6 +1687,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1647,8 +1714,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Lila",
@@ -1671,6 +1737,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1679,7 +1746,7 @@
    "title": "Deacon King Kong",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/4f/d6/3f/4fd63fef-9583-d9f8-935e-fc78f3352ed7/9780735216747.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 2190,
+   "ratingCount": 2189,
    "ratingSource": "apple",
    "pageCount": 544,
    "year": "2020",
@@ -1691,14 +1758,13 @@
     ],
     "apple": [
      4,
-     2190
+     2189
     ]
    },
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Gilead",
@@ -1722,8 +1788,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Cane River",
@@ -1746,6 +1811,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1765,8 +1831,7 @@
    },
    "checked": [
     "apple"
-   ],
-   "rv": 3
+   ]
   }
  ],
  "reeses": [
@@ -1784,6 +1849,10 @@
      4.3,
      102
     ],
+    "google": [
+     3.5,
+     9
+    ],
     "apple": [
      4.5,
      52360
@@ -1791,6 +1860,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1809,6 +1879,10 @@
      3.9,
      45
     ],
+    "google": [
+     4,
+     1
+    ],
     "apple": [
      4.5,
      7729
@@ -1816,6 +1890,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1841,6 +1916,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1859,6 +1935,10 @@
      4.2,
      33
     ],
+    "google": [
+     5,
+     1
+    ],
     "apple": [
      4.5,
      7931
@@ -1866,6 +1946,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1874,7 +1955,7 @@
    "title": "The Alice Network",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication128/v4/26/8f/d6/268fd6d0-189c-a57e-86d8-5b614e6be6bd/9780062654205_marketingimage.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 6045,
+   "ratingCount": 6046,
    "ratingSource": "apple",
    "pageCount": 444,
    "year": "2017",
@@ -1884,13 +1965,18 @@
      4.1,
      7
     ],
+    "google": [
+     4,
+     3
+    ],
     "apple": [
      4.5,
-     6045
+     6046
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1916,6 +2002,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1924,7 +2011,7 @@
    "title": "The Seven Husbands of Evelyn Hugo",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/1e/f4/8b/1ef48b3d-5a62-27a5-2853-0ed8dffe46d4/9781501139246.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 18795,
+   "ratingCount": 18794,
    "ratingSource": "apple",
    "pageCount": 400,
    "year": "2017",
@@ -1934,13 +2021,18 @@
      4.1,
      189
     ],
+    "google": [
+     5,
+     2
+    ],
     "apple": [
      4.5,
-     18795
+     18794
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1966,6 +2058,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -1991,6 +2084,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2003,12 +2097,17 @@
    "ratingSource": "apple",
    "year": "2020",
    "sources": {
+    "google": [
+     3,
+     2
+    ],
     "apple": [
      4,
      9583
     ]
    },
    "checked": [
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2027,6 +2126,10 @@
      3.9,
      13
     ],
+    "google": [
+     5,
+     2
+    ],
     "apple": [
      4.5,
      4065
@@ -2034,6 +2137,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2052,6 +2156,10 @@
      3.5,
      2
     ],
+    "google": [
+     3,
+     1
+    ],
     "apple": [
      3.5,
      2622
@@ -2059,6 +2167,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2069,7 +2178,7 @@
    "title": "The Correspondent",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/64/45/5d/64455dfa-1086-92dd-7874-b3a33b607246/9780593798447.d.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 5310,
+   "ratingCount": 5318,
    "ratingSource": "apple",
    "pageCount": 360,
    "year": "2025",
@@ -2081,11 +2190,12 @@
     ],
     "apple": [
      4.5,
-     5310
+     5318
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2096,6 +2206,7 @@
    "ratingAverage": 4.5,
    "ratingCount": 388,
    "ratingSource": "apple",
+   "pageCount": 288,
    "year": "2024",
    "olKey": "/works/OL37572547W",
    "sources": {
@@ -2111,8 +2222,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Brotherless Night",
@@ -2120,6 +2230,7 @@
    "ratingAverage": 4.5,
    "ratingCount": 24,
    "ratingSource": "apple",
+   "pageCount": 308,
    "year": "2023",
    "olKey": "/works/OL28349234W",
    "sources": {
@@ -2134,6 +2245,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2152,6 +2264,10 @@
      4.6,
      7
     ],
+    "google": [
+     5,
+     1
+    ],
     "apple": [
      4.5,
      8393
@@ -2159,6 +2275,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2184,6 +2301,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2192,7 +2310,7 @@
    "title": "Piranesi",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication116/v4/2c/2e/b4/2c2eb4b8-6a28-c926-b0ed-03fbd7ed2ce0/1031214040.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 1706,
+   "ratingCount": 1707,
    "ratingSource": "apple",
    "pageCount": 272,
    "year": "2020",
@@ -2204,11 +2322,12 @@
     ],
     "apple": [
      4.5,
-     1706
+     1707
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2234,6 +2353,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2259,6 +2379,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2284,6 +2405,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2309,6 +2431,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2334,6 +2457,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2359,6 +2483,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2387,8 +2512,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Heart Lamp",
@@ -2411,6 +2535,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2436,6 +2561,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2446,6 +2572,7 @@
    "ratingAverage": 4,
    "ratingCount": 27,
    "ratingSource": "apple",
+   "pageCount": 253,
    "year": "2022",
    "olKey": "/works/OL26513113W",
    "sources": {
@@ -2460,6 +2587,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2467,6 +2595,7 @@
   {
    "title": "Tomb of Sand",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication122/v4/69/63/91/69639148-31cf-6c61-eb3e-fcfaf449e594/9780063299429.jpg/600x900bb.jpg",
+   "pageCount": 395,
    "year": "2023",
    "checked": [
     "apple"
@@ -2493,6 +2622,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2521,6 +2651,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2539,6 +2670,7 @@
     ]
    },
    "checked": [
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2565,8 +2697,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "The Vegetarian",
@@ -2574,14 +2705,20 @@
    "ratingAverage": 4,
    "ratingCount": 618,
    "ratingSource": "apple",
+   "pageCount": 209,
    "year": "2016",
    "sources": {
+    "google": [
+     4,
+     2
+    ],
     "apple": [
      4,
      618
     ]
    },
    "checked": [
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2607,8 +2744,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   }
  ],
  "romance": [
@@ -2616,7 +2752,7 @@
    "title": "The Seven Husbands of Evelyn Hugo",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/1e/f4/8b/1ef48b3d-5a62-27a5-2853-0ed8dffe46d4/9781501139246.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 18795,
+   "ratingCount": 18794,
    "ratingSource": "apple",
    "pageCount": 400,
    "year": "2017",
@@ -2626,13 +2762,18 @@
      4.1,
      189
     ],
+    "google": [
+     5,
+     2
+    ],
     "apple": [
      4.5,
-     18795
+     18794
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2651,6 +2792,10 @@
      4.2,
      1057
     ],
+    "google": [
+     4.5,
+     5
+    ],
     "apple": [
      4.5,
      62556
@@ -2658,6 +2803,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2684,8 +2830,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Pride and Prejudice",
@@ -2708,6 +2853,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2716,7 +2862,7 @@
    "title": "Outlander",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication118/v4/0e/d5/65/0ed565f5-caf7-6d1e-6117-3998f1adb198/9780440335160.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 5486,
+   "ratingCount": 5487,
    "ratingSource": "apple",
    "pageCount": 672,
    "year": "1991",
@@ -2728,14 +2874,13 @@
     ],
     "apple": [
      4.5,
-     5486
+     5487
     ]
    },
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Me Before You",
@@ -2751,6 +2896,10 @@
      4.1,
      70
     ],
+    "google": [
+     4,
+     15
+    ],
     "apple": [
      4.5,
      6914
@@ -2758,6 +2907,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2776,6 +2926,10 @@
      4.2,
      197
     ],
+    "google": [
+     4.5,
+     4
+    ],
     "apple": [
      4.5,
      6168
@@ -2783,6 +2937,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2809,8 +2964,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Book Lovers",
@@ -2826,6 +2980,10 @@
      4,
      12
     ],
+    "google": [
+     5,
+     3
+    ],
     "apple": [
      4.5,
      5632
@@ -2833,6 +2991,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2841,7 +3000,7 @@
    "title": "Normal People",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication112/v4/5e/95/6b/5e956b26-dc05-454a-4159-cf8b867c7b13/9781984822192.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 5632,
+   "ratingCount": 5633,
    "ratingSource": "apple",
    "pageCount": 304,
    "year": "2018",
@@ -2851,13 +3010,18 @@
      4,
      81
     ],
+    "google": [
+     3,
+     2
+    ],
     "apple": [
      4,
-     5632
+     5633
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2876,6 +3040,10 @@
      3.6,
      13
     ],
+    "google": [
+     5,
+     1
+    ],
     "apple": [
      4,
      1088
@@ -2883,6 +3051,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2901,6 +3070,10 @@
      3.6,
      26
     ],
+    "google": [
+     4,
+     6
+    ],
     "apple": [
      4.5,
      1732
@@ -2908,6 +3081,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2928,6 +3102,10 @@
      4,
      1450
     ],
+    "google": [
+     4,
+     4
+    ],
     "apple": [
      4.5,
      7521
@@ -2935,6 +3113,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2953,6 +3132,10 @@
      4.1,
      38
     ],
+    "google": [
+     3.5,
+     3
+    ],
     "apple": [
      4.5,
      958
@@ -2960,6 +3143,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -2981,6 +3165,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3006,6 +3191,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3031,6 +3217,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3041,21 +3228,16 @@
    "ratingAverage": 4,
    "ratingCount": 873,
    "ratingSource": "apple",
-   "pageCount": 251,
+   "pageCount": 302,
    "year": "2012",
-   "olKey": "/works/OL16664399W",
    "sources": {
-    "openlibrary": [
-     3.8,
-     31
-    ],
     "apple": [
      4,
      873
     ]
    },
    "checked": [
-    "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3069,12 +3251,17 @@
    "year": "1968",
    "olKey": "/works/OL31263386W",
    "sources": {
+    "google": [
+     4.5,
+     26
+    ],
     "apple": [
      4.5,
      92
     ]
    },
    "checked": [
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3093,6 +3280,10 @@
      3.9,
      71
     ],
+    "google": [
+     3,
+     11
+    ],
     "apple": [
      4.5,
      233
@@ -3100,6 +3291,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3125,6 +3317,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3143,6 +3336,10 @@
      3.7,
      59
     ],
+    "google": [
+     4.5,
+     11
+    ],
     "apple": [
      4.5,
      1025
@@ -3150,6 +3347,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3168,6 +3366,10 @@
      3.8,
      191
     ],
+    "google": [
+     5,
+     1
+    ],
     "apple": [
      4.5,
      743
@@ -3175,16 +3377,17 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
   },
   {
    "title": "How to Win Friends and Influence People",
-   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/b1/d7/3f/b1d73fe0-f437-50ba-0b5e-38ed88f20685/ed99bfb0-d0e9-4834-9d2a-1e7a2c832a38_cover_image.png/600x900bb.jpg",
-   "ratingAverage": 4.2,
-   "ratingCount": 446,
-   "ratingSource": "openlibrary",
+   "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/0c/08/06/0c080625-18d4-ba37-d2e5-2cd4d5fc006c/9781982171476.jpg/600x900bb.jpg",
+   "ratingAverage": 4.5,
+   "ratingCount": 144,
+   "ratingSource": "apple",
    "pageCount": 283,
    "year": "1936",
    "olKey": "/works/OL1063267W",
@@ -3192,10 +3395,19 @@
     "openlibrary": [
      4.2,
      446
+    ],
+    "google": [
+     4,
+     4
+    ],
+    "apple": [
+     4.5,
+     144
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3216,6 +3428,10 @@
      4.3,
      500
     ],
+    "google": [
+     5,
+     7
+    ],
     "apple": [
      4.5,
      1031
@@ -3223,6 +3439,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3231,7 +3448,7 @@
    "title": "A Court of Thorns and Roses",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/f1/0e/01/f10e0143-7d9a-9656-684d-b503e6bec53c/1029998265.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 28747,
+   "ratingCount": 28753,
    "ratingSource": "apple",
    "pageCount": 454,
    "year": "2013",
@@ -3243,11 +3460,12 @@
     ],
     "apple": [
      4.5,
-     28747
+     28753
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3266,6 +3484,10 @@
      4.3,
      255
     ],
+    "google": [
+     5,
+     1
+    ],
     "apple": [
      4.5,
      671
@@ -3273,6 +3495,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3291,6 +3514,10 @@
      4,
      1
     ],
+    "google": [
+     4.5,
+     9
+    ],
     "apple": [
      4.5,
      10803
@@ -3298,6 +3525,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3324,8 +3552,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "The Way of Kings",
@@ -3341,6 +3568,10 @@
      4.5,
      166
     ],
+    "google": [
+     4.5,
+     127
+    ],
     "apple": [
      4.5,
      10630
@@ -3348,6 +3579,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3356,7 +3588,7 @@
    "title": "Circe",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication113/v4/a4/fa/48/a4fa4887-5d06-88e8-77e0-5638afc376cd/9780316556330.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 4817,
+   "ratingCount": 4818,
    "ratingSource": "apple",
    "pageCount": 404,
    "year": "2018",
@@ -3368,11 +3600,12 @@
     ],
     "apple": [
      4.5,
-     4817
+     4818
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3381,7 +3614,7 @@
    "title": "Fourth Wing",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/a7/eb/7a/a7eb7abe-cd2d-267b-fbdb-5cb1d62cd26d/9781649374080.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 24376,
+   "ratingCount": 24380,
    "ratingSource": "apple",
    "pageCount": 518,
    "year": "2023",
@@ -3393,11 +3626,12 @@
     ],
     "apple": [
      4.5,
-     24376
+     24380
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3406,7 +3640,7 @@
    "title": "The Night Circus",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/6c/1f/19/6c1f192c-52e1-ab88-7504-20a3c3d5c5ef/9780385534642.d.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 6811,
+   "ratingCount": 6812,
    "ratingSource": "apple",
    "pageCount": 512,
    "year": "2011",
@@ -3416,13 +3650,18 @@
      4.1,
      68
     ],
+    "google": [
+     4,
+     113
+    ],
     "apple": [
      4.5,
-     6811
+     6812
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3441,6 +3680,10 @@
      4.2,
      763
     ],
+    "google": [
+     4,
+     143
+    ],
     "apple": [
      4.5,
      2092
@@ -3448,6 +3691,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3456,7 +3700,7 @@
    "title": "Piranesi",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication116/v4/2c/2e/b4/2c2eb4b8-6a28-c926-b0ed-03fbd7ed2ce0/1031214040.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 1706,
+   "ratingCount": 1707,
    "ratingSource": "apple",
    "pageCount": 272,
    "year": "2020",
@@ -3468,11 +3712,12 @@
     ],
     "apple": [
      4.5,
-     1706
+     1707
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3491,6 +3736,10 @@
      4.3,
      405
     ],
+    "google": [
+     4.5,
+     13
+    ],
     "apple": [
      4.5,
      637
@@ -3498,6 +3747,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3508,7 +3758,7 @@
    "title": "Educated",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication116/v4/ac/b0/45/acb045ee-c0b2-4cae-ee27-4efadaa180ca/9780399590511.d.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 20329,
+   "ratingCount": 20330,
    "ratingSource": "apple",
    "pageCount": 384,
    "year": "2018",
@@ -3518,13 +3768,18 @@
      4.5,
      22
     ],
+    "google": [
+     4.5,
+     5
+    ],
     "apple": [
      4.5,
-     20329
+     20330
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3550,6 +3805,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3575,6 +3831,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3601,14 +3858,13 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Born a Crime",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/f3/11/91/f31191f8-8858-2d94-9459-6a04f2e0d78c/9780399588181.d.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 5389,
+   "ratingCount": 5391,
    "ratingSource": "apple",
    "pageCount": 304,
    "year": "2016",
@@ -3618,13 +3874,18 @@
      4.6,
      65
     ],
+    "google": [
+     5,
+     3
+    ],
     "apple": [
      4.5,
-     5389
+     5391
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3643,6 +3904,10 @@
      4.4,
      53
     ],
+    "google": [
+     4.5,
+     157
+    ],
     "apple": [
      4.5,
      4440
@@ -3650,6 +3915,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3668,6 +3934,10 @@
      3.9,
      42
     ],
+    "google": [
+     3.5,
+     73
+    ],
     "apple": [
      4.5,
      6430
@@ -3675,6 +3945,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3701,8 +3972,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Just Kids",
@@ -3726,8 +3996,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Know My Name",
@@ -3750,6 +4019,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3760,21 +4030,16 @@
    "ratingAverage": 4.5,
    "ratingCount": 842,
    "ratingSource": "apple",
-   "pageCount": 432,
+   "pageCount": 433,
    "year": "2019",
-   "olKey": "/works/OL19791590W",
    "sources": {
-    "openlibrary": [
-     3.8,
-     35
-    ],
     "apple": [
      4.5,
      842
     ]
    },
    "checked": [
-    "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3800,6 +4065,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3820,6 +4086,10 @@
      4.3,
      83
     ],
+    "google": [
+     4.5,
+     4
+    ],
     "apple": [
      4.5,
      11884
@@ -3827,6 +4097,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3845,6 +4116,10 @@
      4.6,
      44
     ],
+    "google": [
+     4.5,
+     7
+    ],
     "apple": [
      4.5,
      22410
@@ -3852,6 +4127,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3870,6 +4146,10 @@
      4.2,
      145
     ],
+    "google": [
+     4.5,
+     10
+    ],
     "apple": [
      4.5,
      6436
@@ -3877,6 +4157,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3895,6 +4176,10 @@
      4,
      38
     ],
+    "google": [
+     4,
+     16
+    ],
     "apple": [
      4,
      1104
@@ -3902,6 +4187,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3927,6 +4213,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3945,6 +4232,10 @@
      4.2,
      73
     ],
+    "google": [
+     5,
+     4
+    ],
     "apple": [
      4.5,
      3256
@@ -3952,6 +4243,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3970,6 +4262,10 @@
      4.3,
      139
     ],
+    "google": [
+     5,
+     1
+    ],
     "apple": [
      4.5,
      6274
@@ -3977,6 +4273,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -3985,7 +4282,7 @@
    "title": "Lessons in Chemistry",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/49/13/65/491365c6-fa28-af90-b806-1566a07e2541/9780385547376.d.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 17025,
+   "ratingCount": 17026,
    "ratingSource": "apple",
    "pageCount": 464,
    "year": "2022",
@@ -3997,11 +4294,12 @@
     ],
     "apple": [
      4.5,
-     17025
+     17026
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4010,7 +4308,7 @@
    "title": "The Alice Network",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication128/v4/26/8f/d6/268fd6d0-189c-a57e-86d8-5b614e6be6bd/9780062654205_marketingimage.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 6045,
+   "ratingCount": 6046,
    "ratingSource": "apple",
    "pageCount": 444,
    "year": "2017",
@@ -4020,13 +4318,18 @@
      4.1,
      7
     ],
+    "google": [
+     4,
+     3
+    ],
     "apple": [
      4.5,
-     6045
+     6046
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4045,6 +4348,10 @@
      3.7,
      49
     ],
+    "google": [
+     5,
+     1
+    ],
     "apple": [
      4,
      406
@@ -4052,6 +4359,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4060,23 +4368,22 @@
    "title": "The Help",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication111/v4/de/bd/a9/debda939-ca99-1708-1a2a-91dc744e6549/9781440697661.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 37934,
+   "ratingCount": 37935,
    "ratingSource": "apple",
-   "pageCount": 479,
+   "pageCount": 464,
    "year": "2009",
-   "olKey": "/works/OL11999891W",
    "sources": {
-    "openlibrary": [
-     4.3,
-     117
+    "google": [
+     4.5,
+     7
     ],
     "apple": [
      4.5,
-     37934
+     37935
     ]
    },
    "checked": [
-    "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4095,6 +4402,10 @@
      3.9,
      75
     ],
+    "google": [
+     4,
+     5
+    ],
     "apple": [
      4.5,
      931
@@ -4102,6 +4413,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4122,6 +4434,10 @@
      3.8,
      76
     ],
+    "google": [
+     3,
+     3
+    ],
     "apple": [
      4,
      13472
@@ -4129,6 +4445,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4139,7 +4456,8 @@
    "ratingAverage": 4.5,
    "ratingCount": 7312,
    "ratingSource": "apple",
-   "year": "2008",
+   "pageCount": 533,
+   "year": "2009",
    "sources": {
     "apple": [
      4.5,
@@ -4147,6 +4465,7 @@
     ]
    },
    "checked": [
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4157,13 +4476,12 @@
    "ratingAverage": 4.5,
    "ratingCount": 2371,
    "ratingSource": "apple",
-   "pageCount": 222,
-   "year": "1939",
-   "olKey": "/works/OL471565W",
+   "pageCount": 216,
+   "year": "1983",
    "sources": {
-    "openlibrary": [
-     4.3,
-     181
+    "google": [
+     5,
+     1
     ],
     "apple": [
      4.5,
@@ -4171,7 +4489,7 @@
     ]
    },
    "checked": [
-    "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4190,6 +4508,10 @@
      4.1,
      209
     ],
+    "google": [
+     3,
+     4
+    ],
     "apple": [
      4.5,
      27446
@@ -4197,6 +4519,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4207,21 +4530,15 @@
    "ratingAverage": 4.5,
    "ratingCount": 7955,
    "ratingSource": "apple",
-   "pageCount": 512,
    "year": "2014",
-   "olKey": "/works/OL17116911W",
    "sources": {
-    "openlibrary": [
-     4.2,
-     35
-    ],
     "apple": [
      4.5,
      7955
     ]
    },
    "checked": [
-    "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4232,13 +4549,12 @@
    "ratingAverage": 4.5,
    "ratingCount": 2253,
    "ratingSource": "apple",
-   "pageCount": 489,
-   "year": "2003",
-   "olKey": "/works/OL76837W",
+   "pageCount": 484,
+   "year": "2004",
    "sources": {
-    "openlibrary": [
-     3.9,
-     194
+    "google": [
+     5,
+     2
     ],
     "apple": [
      4.5,
@@ -4246,7 +4562,7 @@
     ]
    },
    "checked": [
-    "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4257,21 +4573,16 @@
    "ratingAverage": 4,
    "ratingCount": 2589,
    "ratingSource": "apple",
-   "pageCount": 578,
-   "year": "2001",
-   "olKey": "/works/OL7989979W",
+   "pageCount": 499,
+   "year": "2008",
    "sources": {
-    "openlibrary": [
-     3.6,
-     20
-    ],
     "apple": [
      4,
      2589
     ]
    },
    "checked": [
-    "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4290,6 +4601,10 @@
      4.2,
      53
     ],
+    "google": [
+     4.5,
+     2
+    ],
     "apple": [
      4.5,
      217
@@ -4297,6 +4612,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4305,7 +4621,7 @@
    "title": "The Thursday Murder Club",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/8d/88/28/8d882872-3da3-da5d-ecc8-e495c01e464e/9781984880970.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 2887,
+   "ratingCount": 2889,
    "ratingSource": "apple",
    "pageCount": 449,
    "year": "2020",
@@ -4315,13 +4631,18 @@
      3.6,
      20
     ],
+    "google": [
+     4.5,
+     3
+    ],
     "apple": [
      4,
-     2887
+     2889
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4340,6 +4661,10 @@
      3.8,
      33
     ],
+    "google": [
+     3.5,
+     30
+    ],
     "apple": [
      4,
      5292
@@ -4347,6 +4672,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4357,13 +4683,12 @@
    "ratingAverage": 4.5,
    "ratingCount": 27546,
    "ratingSource": "apple",
-   "pageCount": 360,
-   "year": "2014",
-   "olKey": "/works/OL17112428W",
+   "pageCount": 354,
+   "year": "2015",
    "sources": {
-    "openlibrary": [
-     3.6,
-     97
+    "google": [
+     4,
+     16
     ],
     "apple": [
      4.5,
@@ -4371,7 +4696,7 @@
     ]
    },
    "checked": [
-    "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4382,24 +4707,17 @@
    "ratingAverage": 4.5,
    "ratingCount": 900,
    "ratingSource": "apple",
-   "pageCount": 256,
-   "year": "1926",
-   "olKey": "/works/OL471932W",
+   "pageCount": 254,
+   "year": "2022",
    "sources": {
-    "openlibrary": [
-     4.2,
-     83
-    ],
     "apple": [
      4.5,
      900
     ]
    },
    "checked": [
-    "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   }
  ],
  "scifi": [
@@ -4417,6 +4735,10 @@
      4.3,
      448
     ],
+    "google": [
+     4.5,
+     25
+    ],
     "apple": [
      4.5,
      8272
@@ -4424,6 +4746,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4442,6 +4765,10 @@
      4.5,
      184
     ],
+    "google": [
+     5,
+     2
+    ],
     "apple": [
      4.5,
      16501
@@ -4449,6 +4776,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4474,6 +4802,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4500,8 +4829,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Station Eleven",
@@ -4517,6 +4845,10 @@
      4.1,
      88
     ],
+    "google": [
+     4,
+     3
+    ],
     "apple": [
      4,
      3345
@@ -4524,6 +4856,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4549,6 +4882,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4557,7 +4891,7 @@
    "title": "Klara and the Sun",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication116/v4/ba/7b/b0/ba7bb051-38ad-3553-98a4-1c93b41c0fbd/9780593318188.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 2254,
+   "ratingCount": 2256,
    "ratingSource": "apple",
    "pageCount": 334,
    "year": "2019",
@@ -4569,11 +4903,12 @@
     ],
     "apple": [
      4,
-     2254
+     2256
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4586,12 +4921,17 @@
    "ratingSource": "apple",
    "year": "2014",
    "sources": {
+    "google": [
+     4,
+     1
+    ],
     "apple": [
      4.5,
      2726
     ]
    },
    "checked": [
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4610,6 +4950,10 @@
      4.1,
      308
     ],
+    "google": [
+     4.5,
+     81
+    ],
     "apple": [
      4.5,
      2174
@@ -4617,6 +4961,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4635,6 +4980,10 @@
      4,
      452
     ],
+    "google": [
+     4,
+     11
+    ],
     "apple": [
      4,
      1797
@@ -4642,6 +4991,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4660,6 +5010,10 @@
      4.1,
      81
     ],
+    "google": [
+     5,
+     1
+    ],
     "apple": [
      4.5,
      1458
@@ -4667,6 +5021,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4688,6 +5043,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4708,6 +5064,10 @@
      4,
      186
     ],
+    "google": [
+     4.5,
+     152
+    ],
     "apple": [
      4.5,
      3491
@@ -4715,6 +5075,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4723,7 +5084,7 @@
    "title": "Wuthering Heights",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication113/v4/02/5b/cb/025bcbe1-afd5-71ee-5335-1e45f07c70e0/PD-Wuthering_Heights-Adj.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 5971,
+   "ratingCount": 5973,
    "ratingSource": "apple",
    "pageCount": 318,
    "year": "1846",
@@ -4735,11 +5096,12 @@
     ],
     "apple": [
      4,
-     5971
+     5973
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4766,8 +5128,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "The Great Gatsby",
@@ -4791,8 +5152,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "To Kill a Mockingbird",
@@ -4808,6 +5168,10 @@
      4.1,
      273
     ],
+    "google": [
+     4,
+     131
+    ],
     "apple": [
      4.5,
      5507
@@ -4815,6 +5179,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4823,7 +5188,7 @@
    "title": "Anna Karenina",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication123/v4/f6/53/d8/f653d8be-8f52-0d8c-2e1c-ff02e808abe8/PD_Anna_Karenina-Adj.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 3845,
+   "ratingCount": 3846,
    "ratingSource": "apple",
    "year": "2016",
    "olKey": "/works/OL36073991W",
@@ -4832,13 +5197,18 @@
      4,
      1
     ],
+    "google": [
+     4,
+     1
+    ],
     "apple": [
      4.5,
-     3845
+     3846
     ]
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4864,6 +5234,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4889,6 +5260,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4915,8 +5287,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Crime and Punishment",
@@ -4940,8 +5311,7 @@
    "checked": [
     "openlibrary",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Emma",
@@ -4957,6 +5327,10 @@
      4,
      65
     ],
+    "google": [
+     4.5,
+     7
+    ],
     "apple": [
      4,
      4094
@@ -4964,6 +5338,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -4982,6 +5357,10 @@
      3.8,
      162
     ],
+    "google": [
+     4,
+     5
+    ],
     "apple": [
      4,
      4863
@@ -4989,6 +5368,7 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
    ],
    "rv": 3
@@ -5009,6 +5389,10 @@
      4.3,
      102
     ],
+    "google": [
+     3.5,
+     9
+    ],
     "apple": [
      4.5,
      52360
@@ -5025,7 +5409,7 @@
    "title": "The Seven Husbands of Evelyn Hugo",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/1e/f4/8b/1ef48b3d-5a62-27a5-2853-0ed8dffe46d4/9781501139246.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 18795,
+   "ratingCount": 18794,
    "ratingSource": "apple",
    "pageCount": 400,
    "year": "2017",
@@ -5035,9 +5419,13 @@
      4.1,
      189
     ],
+    "google": [
+     5,
+     2
+    ],
     "apple": [
      4.5,
-     18795
+     18794
     ]
    },
    "checked": [
@@ -5060,6 +5448,10 @@
     "openlibrary": [
      4.2,
      1057
+    ],
+    "google": [
+     4.5,
+     5
     ],
     "apple": [
      4.5,
@@ -5087,6 +5479,10 @@
      4.5,
      184
     ],
+    "google": [
+     5,
+     2
+    ],
     "apple": [
      4.5,
      16501
@@ -5103,7 +5499,7 @@
    "title": "Tomorrow, and Tomorrow, and Tomorrow",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/0a/52/d9/0a52d9fc-a8cc-af1d-fe3a-5d27e9858212/9780593321218.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 4836,
+   "ratingCount": 4838,
    "ratingSource": "apple",
    "pageCount": 460,
    "year": "2022",
@@ -5115,7 +5511,7 @@
     ],
     "apple": [
      4,
-     4836
+     4838
     ]
    },
    "checked": [
@@ -5129,7 +5525,7 @@
    "title": "Lessons in Chemistry",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/49/13/65/491365c6-fa28-af90-b806-1566a07e2541/9780385547376.d.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 17025,
+   "ratingCount": 17026,
    "ratingSource": "apple",
    "pageCount": 464,
    "year": "2022",
@@ -5141,7 +5537,7 @@
     ],
     "apple": [
      4.5,
-     17025
+     17026
     ]
    },
    "checked": [
@@ -5155,7 +5551,7 @@
    "title": "The Midnight Library",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication211/v4/07/0d/bf/070dbfea-a8a0-ce93-e119-5dcf299ad85a/9780525559481.d.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 12262,
+   "ratingCount": 12263,
    "ratingSource": "apple",
    "pageCount": 304,
    "year": "2020",
@@ -5165,9 +5561,13 @@
      4,
      86
     ],
+    "google": [
+     5,
+     3
+    ],
     "apple": [
      4.5,
-     12262
+     12263
     ]
    },
    "checked": [
@@ -5181,7 +5581,7 @@
    "title": "Fourth Wing",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication126/v4/a7/eb/7a/a7eb7abe-cd2d-267b-fbdb-5cb1d62cd26d/9781649374080.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 24376,
+   "ratingCount": 24380,
    "ratingSource": "apple",
    "pageCount": 518,
    "year": "2023",
@@ -5193,7 +5593,7 @@
     ],
     "apple": [
      4.5,
-     24376
+     24380
     ]
    },
    "checked": [
@@ -5217,6 +5617,10 @@
      4.3,
      139
     ],
+    "google": [
+     5,
+     1
+    ],
     "apple": [
      4.5,
      6274
@@ -5233,7 +5637,7 @@
    "title": "A Little Life",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication69/v4/12/c6/8d/12c68d22-2de1-bb15-19d5-28fb7bc5adbc/9780385539265.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 3380,
+   "ratingCount": 3381,
    "ratingSource": "apple",
    "pageCount": 800,
    "year": "2008",
@@ -5243,9 +5647,13 @@
      4,
      128
     ],
+    "google": [
+     4,
+     1
+    ],
     "apple": [
      4.5,
-     3380
+     3381
     ]
    },
    "checked": [
@@ -5259,7 +5667,7 @@
    "title": "The Thursday Murder Club",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/8d/88/28/8d882872-3da3-da5d-ecc8-e495c01e464e/9781984880970.d.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 2887,
+   "ratingCount": 2889,
    "ratingSource": "apple",
    "pageCount": 449,
    "year": "2020",
@@ -5269,9 +5677,13 @@
      3.6,
      20
     ],
+    "google": [
+     4.5,
+     3
+    ],
     "apple": [
      4,
-     2887
+     2889
     ]
    },
    "checked": [
@@ -5294,6 +5706,10 @@
     "openlibrary": [
      4,
      81
+    ],
+    "google": [
+     3,
+     2
     ],
     "apple": [
      4,
@@ -5322,6 +5738,10 @@
     "openlibrary": [
      4,
      1450
+    ],
+    "google": [
+     4,
+     4
     ],
     "apple": [
      4.5,
@@ -5356,10 +5776,8 @@
    },
    "checked": [
     "openlibrary",
-    "google",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Educated",
@@ -5374,6 +5792,10 @@
     "openlibrary": [
      4.5,
      22
+    ],
+    "google": [
+     4.5,
+     5
     ],
     "apple": [
      4.5,
@@ -5400,6 +5822,10 @@
     "openlibrary": [
      4.1,
      38
+    ],
+    "google": [
+     3.5,
+     3
     ],
     "apple": [
      4.5,
@@ -5434,10 +5860,8 @@
    },
    "checked": [
     "openlibrary",
-    "google",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Braiding Sweetgrass",
@@ -5460,16 +5884,14 @@
    },
    "checked": [
     "openlibrary",
-    "google",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Born a Crime",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/f3/11/91/f31191f8-8858-2d94-9459-6a04f2e0d78c/9780399588181.d.jpg/600x900bb.jpg",
    "ratingAverage": 4.5,
-   "ratingCount": 5389,
+   "ratingCount": 5391,
    "ratingSource": "apple",
    "pageCount": 304,
    "year": "2016",
@@ -5479,9 +5901,13 @@
      4.6,
      65
     ],
+    "google": [
+     5,
+     3
+    ],
     "apple": [
      4.5,
-     5389
+     5391
     ]
    },
    "checked": [
@@ -5512,10 +5938,8 @@
    },
    "checked": [
     "openlibrary",
-    "google",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Man's Search for Meaning",
@@ -5526,14 +5950,20 @@
    "year": "1968",
    "olKey": "/works/OL31263386W",
    "sources": {
+    "google": [
+     4.5,
+     26
+    ],
     "apple": [
      4.5,
      92
     ]
    },
    "checked": [
+    "google",
     "apple"
-   ]
+   ],
+   "rv": 3
   },
   {
    "title": "Becoming",
@@ -5582,10 +6012,8 @@
    },
    "checked": [
     "openlibrary",
-    "google",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Why We Sleep",
@@ -5600,6 +6028,10 @@
     "openlibrary": [
      4.5,
      31
+    ],
+    "google": [
+     5,
+     4
     ],
     "apple": [
      4.5,
@@ -5655,6 +6087,10 @@
      5,
      2
     ],
+    "google": [
+     5,
+     1
+    ],
     "apple": [
      4.5,
      31
@@ -5670,7 +6106,8 @@
   {
    "title": "She Who Remains",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication221/v4/56/45/82/5645829c-e464-eadb-aca2-d9ed96c10bd3/1063239337.jpg/600x900bb.jpg",
-   "year": "2026",
+   "pageCount": 138,
+   "year": "2025",
    "checked": [
     "google",
     "apple"
@@ -5772,14 +6209,16 @@
    },
    "checked": [
     "openlibrary",
+    "google",
     "apple"
-   ]
+   ],
+   "rv": 3
   },
   {
    "title": "Wuthering Heights",
    "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Publication113/v4/02/5b/cb/025bcbe1-afd5-71ee-5335-1e45f07c70e0/PD-Wuthering_Heights-Adj.jpg/600x900bb.jpg",
    "ratingAverage": 4,
-   "ratingCount": 5971,
+   "ratingCount": 5973,
    "ratingSource": "apple",
    "pageCount": 318,
    "year": "1846",
@@ -5791,7 +6230,7 @@
     ],
     "apple": [
      4,
-     5971
+     5973
     ]
    },
    "checked": [
@@ -5807,6 +6246,7 @@
    "ratingAverage": 4.5,
    "ratingCount": 388,
    "ratingSource": "apple",
+   "pageCount": 288,
    "year": "2024",
    "olKey": "/works/OL37572547W",
    "sources": {
@@ -5821,10 +6261,8 @@
    },
    "checked": [
     "openlibrary",
-    "google",
     "apple"
-   ],
-   "rv": 3
+   ]
   },
   {
    "title": "Hamnet",
@@ -5884,6 +6322,7 @@
    "ratingAverage": 3.5,
    "ratingCount": 33,
    "ratingSource": "apple",
+   "pageCount": 193,
    "year": "2024",
    "sources": {
     "apple": [
