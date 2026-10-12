@@ -92,7 +92,7 @@ test('an unrated matching edition is not the end: other editions and author vari
   const many = routeFetch([u => (google(u) ? { body: { items: [gbItem('n1', 'Edition Delta', 'Rae Middle Author')] } } : undefined)]);
   const none = await findGoogleRating({ title: 'Edition Delta: A Long Subtitle', author: 'Rae Middle Author' });
   assert.deepEqual([none.hit, none.failed], [null, false]);
-  assert.ok(googleCalls(many) <= 4);
+  assert.ok(googleCalls(many) <= 5); // up to 4 strict searches (RATING_SEARCHES) + the one loose fallback
 });
 
 test('an API error is told apart from "no rating": it is not remembered, and is asked again later, not repeatedly', async () => {

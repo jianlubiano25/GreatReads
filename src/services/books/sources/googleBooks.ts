@@ -122,6 +122,9 @@ export function fillGoogleGaps(base: Hit, others: readonly Hit[]): Hit {
 /** Most searches spent looking for another edition to fill an exact-ISBN volume's gaps (the ISBN lookup itself is not counted): one, as the book is named. */
 const SPARSE_SEARCHES = 1;
 
+/** The plain search "Title Author" (no intitle:/inauthor: operators): the one fallback tried after the strict searches found nothing. */
+const looseQuery = (title: string, author?: string): string => `${title} ${author || ''}`.trim();
+
 /** The matching editions of the first title / author variant whose search finds any (at most `maxSearches` searches). */
 async function matchingEditions(q: { title: string; author?: string }, opts: CallOpts, maxSearches = Infinity): Promise<Hit[]> {
   const generic = !q.author || /^(Unknown|Featured) Author$/.test(q.author);
@@ -136,6 +139,9 @@ async function matchingEditions(q: { title: string; author?: string }, opts: Cal
       if (matches.length || opts.signal?.aborted) return matches;
     }
   }
+  // Strict intitle:/inauthor: often finds nothing although a plain "Title Author" search finds the book: ONE loose search, same filter.
+  // Not when the caller capped the searches (an exact-ISBN volume only looks for gaps to fill): that must not cost more requests.
+  if (maxSearches === Infinity) return (await searchGoogle(looseQuery(q.title, generic ? undefined : q.author), 10, opts)).filter(h => isWanted(h, q));
   return [];
 }
 
@@ -194,10 +200,15 @@ export async function findGoogleRating(q: { title: string; author?: string; isbn
   for (const title of titleVariants(q.title)) {
     for (const author of generic ? [undefined] : authorVariants(q.author)) {
       // After an API error (rate limit, outage) the next searches would fail the same way: stop instead of spending up to 4 x 2 requests per book
-      if (searches >= RATING_SEARCHES || unavailable || opts.signal?.aborted) return { hit: null, failed };
+      if (unavailable || opts.signal?.aborted) return { hit: null, failed };
+      if (searches >= RATING_SEARCHES) break; // the strict budget is spent: only the single loose fallback below may follow
       const found = bestRated((await search(`intitle:"${title}"${author ? ` inauthor:"${author}"` : ''}`)).filter(ok));
       if (found) return { hit: found, failed: false };
     }
   }
+  // Strict intitle:/inauthor: often finds nothing although a plain "Title Author" search finds the book. ONE extra search (outside RATING_SEARCHES), same `ok` filter.
+  if (unavailable || opts.signal?.aborted) return { hit: null, failed };
+  const loose = bestRated((await search(looseQuery(q.title, generic ? undefined : q.author))).filter(ok));
+  if (loose) return { hit: loose, failed: false };
   return { hit: null, failed };
 }
