@@ -3,6 +3,7 @@ import { Book, TabType, WordItem } from './types';
 import { useReadingLife } from './hooks/useReadingLife';
 import { getCoverUrl, sameWork, withKnownRating } from './services/books';
 import { milestone } from './services/books/perf';
+import { enrichInBackground } from './services/books/infoQueue';
 import { DEFAULT_BOOKS } from './data/defaultBooks';
 import { useAppUpdate, applyUpdate, dismissUpdate, restartApp } from './services/appUpdate';
 
@@ -200,6 +201,16 @@ export default function App() {
 
   // The books whose own rating wins (ratings policy, step 1). One array per library, so its index (see indexKnownRatings) is built once, not on every render.
   const knownPool = useMemo(() => [...DEFAULT_BOOKS, ...libraryBooks], [libraryBooks]);
+
+  // Fill in missing ratings / pages / year / synopsis / author bio in the background while the app is open (a few books at a time, paused when hidden or
+  // offline; see services/books/infoQueue.ts), so Book Info already has them. Reading now / up next first, then the library, then the built-in books.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      enrichInBackground([...nowReadingBooks, ...upNextBooks, ...libraryBooks], 0);
+      enrichInBackground(DEFAULT_BOOKS, 1);
+    }, 4000); // not during startup: the screen comes first
+    return () => clearTimeout(t);
+  }, [nowReadingBooks, upNextBooks, libraryBooks]);
 
   // Remember the covers you'll see first (the nook shelves, then reading now / up next) so the next launch can start
   // loading them before the app code runs. Same 'M' size URLs the nook and cards request, so it is one shared cache.

@@ -13,6 +13,8 @@ export interface JsonResult {
   data: any | null;
   status: number; // HTTP status, 0 when there was no response at all
   failure?: FetchFailure;
+  /** The JSON body of an ERROR answer (4xx / 5xx), when it had one: e.g. a Cloudflare function saying why it failed. `data` stays null for errors. */
+  body?: any;
 }
 
 /**
@@ -21,9 +23,19 @@ export interface JsonResult {
  */
 export async function getJsonDetailed(url: string, opts: GetOpts = {}): Promise<JsonResult> {
   const out = await fetchJson(url, opts);
+  if (!out.result.data && isTransient(out.result)) transient++;
   recordRequest(url, out.result.status, out.result.data ? undefined : out.result.failure ?? 'empty', out.attempts); // measurement only
   return out.result;
 }
+
+/**
+ * Requests that failed in a way that says NOTHING about the book: no connection, a timeout, a rate limit (429), a refusal (403), a server error,
+ * or an answer that was not JSON. A 404 or an empty answer is different: that is the site really not having the book. Book Info's cache counts
+ * these (before / after a lookup) so a temporary failure is retried soon and never remembered as "no data".
+ */
+let transient = 0;
+export const transientFailureCount = (): number => transient;
+const isTransient = (r: JsonResult): boolean => r.failure === 'network' || r.failure === 'timeout' || r.failure === 'not-json' || r.status === 429 || r.status === 403 || r.status >= 500;
 
 async function fetchJson(url: string, { timeout = 6500, signal, retries = 0 }: GetOpts): Promise<{ result: JsonResult; attempts: number }> {
   let attempts = 0;
@@ -48,6 +60,7 @@ async function fetchJson(url: string, { timeout = 6500, signal, retries = 0 }: G
         }
       }
       last = { data: null, status: res.status, failure: 'http' };
+      try { const body = await res.json(); if (body && typeof body === 'object') last.body = body; } catch {}
       if (res.status < 500 && res.status !== 429) return finish(last);
     } catch {
       last = { data: null, status: 0, failure: signal?.aborted ? 'aborted' : timedOut ? 'timeout' : 'network' };

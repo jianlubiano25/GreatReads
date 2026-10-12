@@ -4,7 +4,9 @@
 //
 // Only SUCCESSFUL answers are cached. Errors (a missing key, a 401 from a key that isn't enabled for the Books API yet, a 429
 // rate limit) must never be cached, or one bad moment would hide the list for an hour. Errors come back as small JSON so the
-// app can tell them apart: { "error": "not_configured" | "unauthorized" | "rate_limited" | "upstream_error" }.
+// app can tell them apart: { "error": "not_configured" | "unauthorized" | "rate_limited" | "list_not_found" | "upstream_error" }.
+// "list_not_found" (HTTP 404, published: false) = the NYT does not publish that list name (any more); "upstream_error" with upstream: 404 and
+// published: true = the name is published but the request still failed.
 const json = (body, status, cache = 'no-store') =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': cache } });
 
@@ -14,6 +16,18 @@ const json = (body, status, cache = 'no-store') =>
 const KEEP_MS = 10 * 24 * 60 * 60 * 1000;
 const savedKey = list => new Request(`https://greatreads-nyt-saved.invalid/${list}`);
 const savedStore = () => { try { return typeof caches !== 'undefined' ? caches.default : null; } catch { return null; } };
+
+/** The list names the NYT currently publishes (list_name_encoded), or null when they cannot be read. Only a successful answer is cached at the edge. */
+async function publishedNames(key) {
+  try {
+    const res = await fetch(`https://api.nytimes.com/svc/books/v3/lists/names.json?api-key=${encodeURIComponent(key)}`, { cf: { cacheEverything: true, cacheTtlByStatus: { '200-299': 21600, '400-599': -1 } } });
+    if (!res.ok) return null;
+    const names = ((await res.json())?.results || []).map(n => n && n.list_name_encoded).filter(Boolean);
+    return names.length ? names : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function onRequestGet({ request, env, waitUntil }) {
   const list = new URL(request.url).searchParams.get('list') || '';
@@ -53,6 +67,17 @@ export async function onRequestGet({ request, env, waitUntil }) {
   if (res.status === 429 || res.status >= 500) {
     const old = await stale();
     if (old) return old;
+  }
+  // A 404 means the NYT has no list under this name. Ask its own list of names whether the name is published: if it is not, the list was removed or
+  // renamed (the shelf should hide, not retry); if it is, the 404 is something else (a routing or upstream fault). The key never appears in a response.
+  if (res.status === 404) {
+    const names = await publishedNames(env.NYT_API_KEY);
+    if (names && !names.includes(list)) {
+      const words = list.split('-').filter(w => w.length > 3);
+      const suggestions = names.filter(n => words.some(w => n.includes(w))).slice(0, 8);
+      return json({ error: 'list_not_found', upstream: 404, published: false, suggestions }, 404);
+    }
+    return json({ error: 'upstream_error', upstream: 404, published: names ? true : null }, 502);
   }
   const error = res.status === 401 || res.status === 403 ? 'unauthorized' : res.status === 429 ? 'rate_limited' : 'upstream_error';
   return json({ error, upstream: res.status }, res.status === 429 ? 429 : 502);

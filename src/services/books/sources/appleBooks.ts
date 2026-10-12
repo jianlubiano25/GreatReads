@@ -17,7 +17,7 @@ export async function lookupApple(q: { title: string; author?: string }, opts: C
   for (const title of titleVariants(q.title)) {
     const term = encodeURIComponent(`${title} ${generic ? '' : q.author}`.trim());
     const r = await getJsonDetailed(`https://itunes.apple.com/search?media=ebook&entity=ebook&limit=6&term=${term}`, { timeout: 4500, signal: opts.signal });
-    if (!r.data && !opts.signal?.aborted && (r.status === 0 || r.status === 429 || r.status >= 500)) failed = true;
+    if (!r.data && !opts.signal?.aborted && (r.status === 0 || r.status === 429 || r.status >= 500 || r.failure === 'not-json')) failed = true; // a malformed answer is not "no such book"
     m = (r.data?.results || []).find((it: any) => it.artworkUrl100 && titlesMatch(String(it.trackName || ''), q.title) && authorListMatches(it.artistName, q.author || ''));
     if (m || opts.signal?.aborted) break;
   }

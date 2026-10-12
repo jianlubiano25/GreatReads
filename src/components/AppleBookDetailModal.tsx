@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { Book } from '../types';
 import { DIFFICULTY_LABELS, SHELF_LABELS } from '../data/defaultBooks';
-import { enrichBookDetails, fetchBookMeta, fetchRatingSources, mainRating, otherRatings, RATING_SOURCE_LABEL, type SourceRating } from '../services/books';
+import { useBookInfo } from '../hooks/useBookInfo';
+import { mainRating, otherRatings, RATING_SOURCE_LABEL, type SourceRating } from '../services/books';
 import { CoverFace, StarRating, compactCount, honorsListFor } from './BookMeta';
 import { X, BookOpen, Smartphone, Star, Award, ChevronDown, Check, Bookmark } from 'lucide-react';
 
@@ -36,69 +37,12 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   onOpenHighlights,
 }) => {
   useModalA11y(onClose);
-  const [book, setBook] = useState<Book>(initialBook);
+  // Everything already found about this book is here on the first render (no loading state); what is missing is fetched in the background,
+  // joining any lookup already running, and each field appears as it is found. See services/books/infoStore.ts.
+  const { book, siteRatings, loading } = useBookInfo(initialBook);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [, setLoadingDetails] = useState(false);
   const [activeTabAction, setActiveTabAction] = useState<'idle' | 'lib' | 'dev'>('idle');
 
-  // Load richer details if missing summary or page count
-  useEffect(() => {
-    let isMounted = true;
-    if (!book.pageCount || (book.summary || '').length < 60 || (book.summary || '').startsWith('A distinguished work') || !book.authorBio) {
-      setLoadingDetails(true);
-      (async () => {
-        try {
-          const enriched = await enrichBookDetails(book);
-          // Merge only what enrichment found, so it can't wipe ratings/pages that arrived meanwhile
-          if (isMounted) setBook(prev => ({ ...prev, summary: enriched.summary, authorBio: enriched.authorBio }));
-        } catch (e) {
-          console.warn('Enrichment failed', e);
-        } finally {
-          if (isMounted) setLoadingDetails(false);
-        }
-      })();
-    }
-    return () => {
-      isMounted = false;
-    };
-  }, [book.id]);
-
-  // Fill in real pages / genre / year / ratings from Open Library (cached after first load).
-  // Curated catalog books keep their hand-written genre; store books get the looked-up one.
-  useEffect(() => {
-    let live = true;
-    const isCurated = typeof initialBook.id === 'number';
-    const needsMeta =
-      isCurated ||
-      !initialBook.pageCount ||
-      !initialBook.genre || initialBook.genre === 'Book' ||
-      !initialBook.ratingAverage;
-    if (needsMeta) {
-      fetchBookMeta(initialBook).then(m => {
-        if (!live || !m) return;
-        setBook(prev => {
-          const next = { ...prev, ...m };
-          if (isCurated || (prev.genre && prev.genre !== 'Book')) next.genre = prev.genre;
-          if (prev.year && prev.year !== 'N/A') next.year = prev.year;
-          if (prev.difficulty) next.difficulty = prev.difficulty;
-          // What the card showed is what the sheet shows; live data only fills the gaps
-          if (prev.ratingAverage) { next.ratingAverage = prev.ratingAverage; next.ratingCount = prev.ratingCount; next.ratingSource = prev.ratingSource; }
-          if (prev.pageCount) next.pageCount = prev.pageCount;
-          return next;
-        });
-      });
-    }
-    return () => { live = false; };
-  }, [initialBook.id]);
-
-  // What each site says about the book (shown beside the main rating). Loaded quietly; the sheet never waits for it.
-  const [siteRatings, setSiteRatings] = useState<SourceRating[]>([]);
-  useEffect(() => {
-    let live = true;
-    const ctl = new AbortController();
-    fetchRatingSources(initialBook, { signal: ctl.signal }).then(r => { if (live) setSiteRatings(r); }).catch(() => {});
-    return () => { live = false; ctl.abort(); };
-  }, [initialBook.id]);
   const main = mainRating(book, siteRatings); // Library -> Apple -> Open Library -> Google; the other sites are listed beside it
   const mainSource = main?.source;
   const otherSites = otherRatings(siteRatings, mainSource);
@@ -362,7 +306,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
               isExpanded ? '' : 'line-clamp-5'
             }`}
           >
-            {book.summary || 'A rich, thoughtful reading journey curated for your library.'}
+            {book.summary || (loading.text ? 'Loading synopsis…' : 'A rich, thoughtful reading journey curated for your library.')}
           </p>
           {book.summary && book.summary.length > 160 && (
             <button
@@ -404,6 +348,8 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
               ) : null}
             </div>
           </div>
+        ) : loading.ratings ? (
+          <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25] text-sm text-[#706256] dark:text-[#a89a8a]" role="status" aria-live="polite">Loading ratings…</div>
         ) : null}
 
         {/* Information */}
@@ -424,6 +370,9 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
         </div>
 
         {/* About the Author */}
+        {!book.authorBio && loading.text && (
+          <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25] text-sm text-[#706256] dark:text-[#a89a8a]" role="status" aria-live="polite">Loading author info…</div>
+        )}
         {book.authorBio && !book.authorBio.startsWith('No author') && (
           <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25]">
             <h4 className="font-serif-display text-lg text-[#201a15] dark:text-[#f0e6d6] mb-2">

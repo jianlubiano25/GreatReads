@@ -1,5 +1,5 @@
 import type { Book } from '../../types';
-import { getJson } from './http';
+import { getJson, getJsonDetailed, transientFailureCount } from './http';
 import { persistentCache } from './cache';
 import { bookKey, identityOf, isUnknownAuthor, primaryAuthor } from './identity';
 import { externalRating, type SourceRating } from './ratings';
@@ -13,30 +13,39 @@ import { findOpenLibrary, openLibraryDescription, openLibraryEditionPages, openL
 
 /** Book detail sheet helpers: a real synopsis and author bio, and refreshed pages / genre / year / ratings. */
 
-const weak = (t?: string) => !t || t.length < 60 || t.startsWith('A distinguished work') || /^.+ by .+\.$/.test(t);
+export const weak = (t?: string) => !t || t.length < 60 || t.startsWith('A distinguished work') || /^.+ by .+\.$/.test(t);
+export const weakBio = (t?: string) => !t || t.length < 40 || /is an author published worldwide|is the author of this work/.test(t) || t.startsWith('No author');
+
+/** The best synopsis found (Open Library -> Google Books), or '' when neither has one; a caller that needs a real one checks `weak`. Lookups only: nothing is saved here (see infoStore.ts). */
+export async function lookupSummary(book: Book): Promise<string> {
+  const generic = isUnknownAuthor(book.author);
+  const id = identityOf(book);
+  let summary = '';
+  let workId = id.olWork;
+  if (!workId) workId = (await findOpenLibrary({ title: book.title, author: generic ? '' : book.author, isbn: id.isbn13 }))?.book.identity?.olWork;
+  if (workId) summary = (await openLibraryDescription(workId)) || '';
+  if (weak(summary)) {
+    const gb = await findGoogle({ title: book.title, author: generic ? '' : book.author, isbn: id.isbn13 || id.isbn10 });
+    const desc = gb?.flags.description ? plainText(gb.flags.description) : '';
+    if (desc.length > 60) summary = desc.slice(0, 600);
+  }
+  return summary;
+}
+
+/** The author's Wikipedia summary (first three sentences), or '' when Wikipedia has no page for that name. A missing page (404) is a real answer, so it is not an error. */
+export async function lookupAuthorBio(book: Book): Promise<string> {
+  if (isUnknownAuthor(book.author)) return '';
+  const w = (await getJsonDetailed(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(primaryAuthor(book.author).replace(/ /g, '_'))}`, { timeout: 8000 })).data;
+  if (w && w.type !== 'disambiguation' && w.extract) return String(w.extract).split(/(?<=\.)\s/).slice(0, 3).join(' ');
+  return '';
+}
 
 /** Fill in a real synopsis and author bio (Open Library -> Google Books for the synopsis, Wikipedia for the author). */
 export async function enrichBookDetails(book: Book): Promise<Book> {
   let summary = book.summary;
   let authorBio = book.authorBio;
-  const generic = isUnknownAuthor(book.author);
-  const id = identityOf(book);
-
-  if (weak(summary)) {
-    let workId = id.olWork;
-    if (!workId) workId = (await findOpenLibrary({ title: book.title, author: generic ? '' : book.author, isbn: id.isbn13 }))?.book.identity?.olWork;
-    if (workId) summary = (await openLibraryDescription(workId)) || summary;
-    if (weak(summary)) {
-      const gb = await findGoogle({ title: book.title, author: generic ? '' : book.author, isbn: id.isbn13 || id.isbn10 });
-      const desc = gb?.flags.description ? plainText(gb.flags.description) : '';
-      if (desc.length > 60) summary = desc.slice(0, 600);
-    }
-  }
-
-  if ((!authorBio || authorBio.length < 40 || /is an author published worldwide|is the author of this work/.test(authorBio)) && !generic) {
-    const w = await getJson(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(primaryAuthor(book.author).replace(/ /g, '_'))}`, { timeout: 8000 });
-    if (w && w.type !== 'disambiguation' && w.extract) authorBio = String(w.extract).split(/(?<=\.)\s/).slice(0, 3).join(' ');
-  }
+  if (weak(summary)) summary = (await lookupSummary(book)) || summary;
+  if (weakBio(authorBio) && !isUnknownAuthor(book.author)) authorBio = (await lookupAuthorBio(book)) || authorBio;
   return { ...book, summary: summary || book.summary, authorBio: authorBio || book.authorBio };
 }
 
@@ -59,6 +68,15 @@ export async function fetchBookMeta(book: Book): Promise<Partial<Book> | null> {
   const pending = metaRetry.get(key);
   if (pending && pending.until > Date.now()) return pending.meta;
 
+  const { meta, retry } = await lookupMeta(book);
+  if (!Object.keys(meta).length) return null;
+  if (meta.ratingAverage && !retry) metaCache.set(key, meta);
+  else metaRetry.set(key, { until: Date.now() + META_RETRY_MS, meta });
+  return meta;
+}
+
+/** What the sources know about a book, with nothing saved: the lookup behind fetchBookMeta and Book Info's own cache (infoStore.ts). `retry`: a source that could have changed the answer could not be reached. */
+export async function lookupMeta(book: Book): Promise<{ meta: Partial<Book>; retry: boolean }> {
   const id = identityOf(book);
   const r = await resolveBook({ title: book.title, author: isUnknownAuthor(book.author) ? '' : primaryAuthor(book.author), isbn: id.isbn13 || id.isbn10, fallbackId: book.id, apple: true });
   const rb = r?.book;
@@ -87,11 +105,7 @@ export async function fetchBookMeta(book: Book): Promise<Partial<Book> | null> {
     if (pages) meta.pageCount = pages;
   }
   if (meta.pageCount) meta.difficulty = difficultyFor(meta.pageCount);
-
-  if (!Object.keys(meta).length) return null;
-  if (meta.ratingAverage && !r?.retry) metaCache.set(key, meta);
-  else metaRetry.set(key, { until: Date.now() + META_RETRY_MS, meta });
-  return meta;
+  return { meta, retry: !!r?.retry };
 }
 
 const sourcesCache = persistentCache<SourceRating[]>('readlife.ratingsrc3', { ttl: 7 * 24 * 60 * 60 * 1000, max: 300, validate: v => Array.isArray(v) && v.every(r => !!r && typeof r.average === 'number' && typeof r.source === 'string') });
@@ -112,6 +126,24 @@ export async function fetchRatingSources(book: Book, opts: CallOpts = {}): Promi
   const pending = partialRetry.get(key);
   if (pending && pending.until > Date.now()) return pending.out;
 
+  const { ratings: out, failed } = await lookupRatingSources(book, opts);
+  if (!opts.signal?.aborted) {
+    if (failed.includes('google') || failed.includes('apple')) partialRetry.set(key, { until: Date.now() + PARTIAL_RETRY_MS, out });
+    else if (out.length) sourcesCache.set(key, out);
+  }
+  return out;
+}
+
+type RatingSite = SourceRating['source'];
+export const RATING_SITES: readonly RatingSite[] = ['openlibrary', 'google', 'apple'];
+
+/**
+ * Each site's own rating of a book, with nothing saved: the lookup behind fetchRatingSources and Book Info's own cache (infoStore.ts).
+ * `only` limits which sites are asked (the others are skipped, neither answered nor failed). `failed` lists the asked sites that could not be
+ * reached (an error, a timeout, a rate limit): that is not "this site has no rating". An asked site in neither `ratings` nor `failed` really has none.
+ */
+export async function lookupRatingSources(book: Book, opts: CallOpts & { only?: readonly RatingSite[] } = {}): Promise<{ ratings: SourceRating[]; failed: RatingSite[] }> {
+  const want = (s: RatingSite) => !opts.only || opts.only.includes(s);
   const id = identityOf(book);
   const author = isUnknownAuthor(book.author) ? '' : primaryAuthor(book.author);
   const q = { title: book.title, author, isbn: id.isbn13 || id.isbn10 };
@@ -135,10 +167,12 @@ export async function fetchRatingSources(book: Book, opts: CallOpts = {}): Promi
   learn(prefetchedSourceRatings(book));
   if (checked.size < 3) learn(await resolveBook({ title: book.title, author, isbn: q.isbn, fallbackId: book.id, apple: true }, opts).catch(() => null));
 
+  const troubleBefore = transientFailureCount();
   let googleFailed = false;
   let appleFailed = false;
+  const skip = async () => null;
   const [ol, google, apple] = await Promise.all([
-    checked.has('openlibrary') ? known.get('openlibrary') ?? null : pair('openlibrary', async () => {
+    !want('openlibrary') ? skip() : checked.has('openlibrary') ? known.get('openlibrary') ?? null : pair('openlibrary', async () => {
       const found = (id.olWork ? await openLibraryWorkRecord(id.olWork, opts) : null) ?? (await findOpenLibrary(q, opts));
       const direct = externalRating(found?.book);
       if (direct) return found!.book;
@@ -146,21 +180,30 @@ export async function fetchRatingSources(book: Book, opts: CallOpts = {}): Promi
       const r = wid ? await openLibraryRatings(wid, opts) : null;
       return r ? { ratingAverage: r.average, ratingCount: r.count } : null;
     }),
-    checked.has('google') ? known.get('google') ?? null : pair('google', async () => {
+    !want('google') ? skip() : checked.has('google') ? known.get('google') ?? null : pair('google', async () => {
       const r = await findGoogleRating(q, opts);
       googleFailed = r.failed && !r.hit;
       return r.hit?.book;
     }),
-    checked.has('apple') ? known.get('apple') ?? null : pair('apple', async () => {
+    !want('apple') ? skip() : checked.has('apple') ? known.get('apple') ?? null : pair('apple', async () => {
       const r = await lookupApple({ title: book.title, author }, opts);
       appleFailed = r.failed && !r.hit;
       return r.hit?.book;
     }),
   ]);
-  const out = [ol, google, apple].filter((r): r is SourceRating => !!r);
-  if (!opts.signal?.aborted) {
-    if (googleFailed || appleFailed) partialRetry.set(key, { until: Date.now() + PARTIAL_RETRY_MS, out });
-    else if (out.length) sourcesCache.set(key, out);
-  }
-  return out;
+  const ratings = [ol, google, apple].filter((r): r is SourceRating => !!r);
+  const failed: RatingSite[] = [];
+  if (googleFailed) failed.push('google');
+  if (appleFailed) failed.push('apple');
+  // Open Library's lookups do not report errors themselves: when anything went wrong during this lookup and Open Library has no rating, it is asked again
+  // soon (one cheap request) rather than remembered as "no rating": the safe side of not knowing whose error it was
+  if (want('openlibrary') && !ol && !checked.has('openlibrary') && transientFailureCount() > troubleBefore) failed.push('openlibrary');
+  return { ratings, failed };
+}
+
+/** What the older caches (readlife.meta6, readlife.ratingsrc3) already hold for a book. Read-only: Book Info's own cache starts from it so nothing already loaded is fetched again. */
+export function legacyBookInfo(book: Book): { meta?: Partial<Book>; ratings: SourceRating[] } {
+  const key = bookKey(book);
+  const meta = metaCache.get(key);
+  return { meta, ratings: sourcesCache.get(key) ?? [] };
 }

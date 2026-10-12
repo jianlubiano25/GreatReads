@@ -1,5 +1,5 @@
 import type { Book } from '../../types';
-import { dedupeInflight } from './http';
+import { dedupeInflight, transientFailureCount } from './http';
 import { bump } from './perf';
 import { persistentCache } from './cache';
 import { authorKey, cleanIsbn, isbnPair, mergeIdentity, titleKey } from './identity';
@@ -91,6 +91,7 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
   const failedBefore = hit?.retry?.tries || 0;
   return dedupeInflight(inflight, key, async () => {
     bump('resolve.network');
+    const troubleBefore = transientFailureCount();
     const [ol, gb, apLookup] = await Promise.all([
       findOpenLibrary(q, opts),
       findGoogle(q, opts),
@@ -100,7 +101,8 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
     const appleFailed = apLookup.failed && !ap;
     const hits = [ol, gb, ap].filter((h): h is NonNullable<typeof h> => !!h);
     if (!hits.length) {
-      if (!opts.signal?.aborted && !appleFailed) misses.set(key, true); // an unreachable Apple is not "no such book"
+      // An unreachable Apple, or ANY site failing meanwhile (offline, timeout, rate limit, malformed answer), is not "no such book"
+      if (!opts.signal?.aborted && !appleFailed && transientFailureCount() === troubleBefore) misses.set(key, true);
       return null;
     }
     let book: Book = hits.map(h => h.book).reduce((a, b) => mergeBooks(a, b));

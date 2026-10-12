@@ -6,6 +6,7 @@ import { rememberHonor } from '../services/store/honors';
 import { withKnownRating } from '../services/books';
 import { DEFAULT_BOOKS } from '../data/defaultBooks';
 import { milestone } from '../services/books/perf';
+import { enrichInBackground } from '../services/books/infoQueue';
 
 /** Every shelf gets the SAME pool array for the same `known` list, so the rating index (built once per array) is shared by all of them. */
 const pools = new WeakMap<Book[], Book[]>();
@@ -104,6 +105,9 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
   }, [id, visible, source, fixedBooks, attempt]);
 
   useEffect(() => { if (raw) milestone('store-first-shelf'); }, [raw]); // measurement only
+
+  // A shelf on screen: its books get their missing Book Info in the background, ahead of books nobody is looking at (services/books/infoQueue.ts)
+  useEffect(() => { if (visible && raw?.length) enrichInBackground(raw, 0); }, [raw, visible]);
 
   // Honors & Awards: remember what each shelf calls its books, so the book info can list them all (see services/store/honors.ts)
   useEffect(() => { if (!fixedBooks) (loaded ?? saved)?.forEach(rememberHonor); }, [loaded, saved, fixedBooks]);
