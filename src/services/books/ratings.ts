@@ -38,6 +38,19 @@ export interface SourceRating extends RatingPair {
 /** Fewer ratings than this is "thin": a preferred source that is thin yields to a lower step that has more. */
 export const SUFFICIENT_RATINGS = 10;
 
+/**
+ * One site's pair after a fresh lookup, given the pair that site gave before (a saved result):
+ *  - the fresh pair when it is valid (fresh data wins), unless it is thin (fewer than SUFFICIENT_RATINGS) and the old pair is solid;
+ *  - otherwise the old pair, when it is still a valid pair: a request that failed, or came back without a usable rating, never erases a rating
+ *    the site really gave. Nothing is ever made up: with no valid pair on either side there is none.
+ */
+export function settleSiteRating<T extends RatingPair>(fresh: T | undefined, had: T | undefined): T | undefined {
+  const valid = (r?: T) => (r && externalRating({ ratingAverage: r.average, ratingCount: r.count }) ? r : undefined);
+  const f = valid(fresh), h = valid(had);
+  if (!f) return h;
+  return h && (h.count || 0) >= SUFFICIENT_RATINGS && (f.count || 0) < SUFFICIENT_RATINGS ? h : f;
+}
+
 /** The rating a book carries, as a pair (undefined when it has none). */
 export function ratingOf(b?: Pick<Book, 'ratingAverage' | 'ratingCount'> & { ratingSource?: Book['ratingSource'] } | null): RatingPair | undefined {
   const average = Number(b?.ratingAverage);

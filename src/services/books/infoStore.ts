@@ -4,6 +4,7 @@ import { persistentCache } from './cache';
 import { authorKey, isUnknownAuthor, titleKey } from './identity';
 import { difficultyFor } from './model';
 import { chooseRating, externalRating, setRating, type SourceRating } from './ratings';
+import { prefetchedSourceRatings } from './prefetchIndex';
 import { RATING_SITES, legacyBookInfo, lookupAuthorBio, lookupMeta, lookupRatingSources, lookupSummary, weak, weakBio } from './details';
 
 /**
@@ -57,7 +58,7 @@ let clock = () => Date.now();
 /** Tests only. */
 export const setInfoClockForTests = (fn?: () => number) => { clock = fn ?? (() => Date.now()); };
 /** Tests only: forget in-memory state (saved data is the test's own storage). */
-export const resetInfoStoreForTests = () => { seeded.clear(); inflightNow.clear(); versions.clear(); };
+export const resetInfoStoreForTests = () => { seeded.clear(); inflightNow.clear(); versions.clear(); adopted.clear(); };
 
 /**
  * One key per book, the same normalised title + first author the resolver uses when there is no ISBN, so a Store card, the NYT list, a search result and
@@ -79,14 +80,39 @@ function seedFromLegacy(book: Book): InfoEntry {
   return e;
 }
 
+/**
+ * The ratings shipped with the app (storeResolved.json, one pair per site, Google included) fill every site a saved entry has no VALID rating for (none, or a pair that is not valid, such as a count of 0).
+ * An entry saved on this device before those ratings were bundled (or while Google could not be reached) holds "no Google rating", or a wait before
+ * asking again, and the bundled pair was only ever read inside a lookup that such an entry blocks: a phone that had opened the book earlier kept
+ * showing no Google rating, while a browser or a reinstalled app (empty storage) showed it. Only GAPS are filled: a valid pair already saved for a site is
+ * left to the normal refresh, and the same book's wait for that site is lifted, because a rating is now known. The result is the same object until the
+ * saved entry changes (useSyncExternalStore), and is saved with the next normal update.
+ */
+const adopted = new Map<string, { base: InfoEntry; out: InfoEntry }>();
+function withBundledRatings(book: Book, base: InfoEntry, key: string): InfoEntry {
+  const bundled = prefetchedSourceRatings(book);
+  const validSaved = (site: RatingSite) => { const s = base.ratings[site]; return !!s && !!externalRating({ ratingAverage: s.average, ratingCount: s.count }); };
+  const gaps = bundled?.ratings.filter(r => !validSaved(r.source) && externalRating({ ratingAverage: r.average, ratingCount: r.count })) ?? [];
+  if (!gaps.length) return base;
+  const memo = adopted.get(key);
+  if (memo && memo.base === base) return memo.out;
+  const t = clock();
+  const ratings = { ...base.ratings };
+  const miss = { ...base.miss };
+  for (const r of gaps) { ratings[r.source] = { average: r.average, count: r.count as number, at: t }; delete miss[`rating:${r.source}` as InfoField]; }
+  const out: InfoEntry = { ...base, ratings, miss };
+  adopted.set(key, { base, out });
+  return out;
+}
+
 /** What is saved about a book (instantly, no network). Always the same object until something changes: safe for useSyncExternalStore. */
 export function getInfo(book: Book): InfoEntry {
   const key = infoKey(book);
   const saved = store.peek(key)?.value;
-  if (saved) return saved;
+  if (saved) return withBundledRatings(book, saved, key);
   let s = seeded.get(key);
   if (!s) { s = seedFromLegacy(book); seeded.set(key, s); }
-  return s;
+  return withBundledRatings(book, s, key);
 }
 
 // ---- subscribers (screens re-draw when what they show was found) ----
@@ -106,6 +132,7 @@ function update(book: Book, change: (e: InfoEntry) => InfoEntry) {
   const next = change(getInfo(book));
   store.set(key, next);
   seeded.delete(key);
+  adopted.delete(key);
   notify(key);
 }
 

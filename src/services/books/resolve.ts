@@ -4,7 +4,7 @@ import { bump } from './perf';
 import { persistentCache } from './cache';
 import { authorKey, cleanIsbn, isbnPair, mergeIdentity, titleKey } from './identity';
 import { mergeBooks } from './merge';
-import { chooseRating, externalRating, setRating, SUFFICIENT_RATINGS, type SourceRating } from './ratings';
+import { chooseRating, externalRating, setRating, settleSiteRating, SUFFICIENT_RATINGS, type SourceRating } from './ratings';
 import type { ContentFlags } from './quality';
 import { lookupApple } from './sources/appleBooks';
 import { findGoogle, findGoogleRating } from './sources/googleBooks';
@@ -52,7 +52,7 @@ export interface Resolved {
   retry?: { at: number; tries: number };
 }
 
-const cache = persistentCache<Resolved | null>('readlife.resolved3', { ttl: 14 * 24 * 60 * 60 * 1000, max: 250, validate: v => v === null || (!!v && typeof v === 'object' && !!v.book && typeof v.book.title === 'string') });
+const cache = persistentCache<Resolved | null>('readlife.resolved3', { ttl: 14 * 24 * 60 * 60 * 1000, keepStale: 90 * 24 * 60 * 60 * 1000, max: 250, validate: v => v === null || (!!v && typeof v === 'object' && !!v.book && typeof v.book.title === 'string') });
 /**
  * Books no source could place. Remembered only briefly: "not found" is often a dropped connection or a rate limit, and a miss
  * that lasted two weeks (as saved results do) left covers blank long after the network was fine again.
@@ -89,6 +89,8 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
   if (misses.get(key)) { bump('resolve.missHit'); return Promise.resolve(null); }
   if (inflight.has(key)) bump('resolve.inflightShared');
   const failedBefore = hit?.retry?.tries || 0;
+  // What this book's sites gave last time (also a result past its two weeks, kept for this): a lookup that fails or finds nothing must not erase it
+  const had = (hit ?? cache.peek(key)?.value)?.ratings;
   return dedupeInflight(inflight, key, async () => {
     bump('resolve.network');
     const troubleBefore = transientFailureCount();
@@ -132,7 +134,13 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
       googleFailed = found.failed && !found.hit;
       googleChecked = !!google || !googleFailed; // an error is not "Google has no rating"
     }
-    book = setRating(book, chooseRating({ apple, ol: olRating, google }));
+    // A site that answered nothing usable this time (an error, a timeout, or no rating) keeps the valid pair it gave before; a valid fresh pair replaces it
+    const prior = (site: SourceRating['source']) => had?.find(r => r.source === site);
+    olRating = settleSiteRating(olRating, prior('openlibrary'));
+    google = settleSiteRating(google, prior('google'));
+    const appleRating = settleSiteRating(apple, prior('apple'));
+    if (google) googleChecked = true;
+    book = setRating(book, chooseRating({ apple: appleRating, ol: olRating, google }));
     if (q.genreHint && !book.genre) book.genre = q.genreHint;
     const flags: ContentFlags = {
       subjects: hits.flatMap(h => h.flags.subjects || []),
@@ -146,7 +154,7 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
       flags,
       readers: { ol: ol?.book.ratingCount, google: gb?.book.ratingCount, apple: ap?.book.ratingCount },
       words: hits.flatMap(h => [...(h.flags.subjects || []), h.book.genre]),
-      ratings: [olRating, google, apple].filter((r): r is SourceRating => !!r),
+      ratings: [olRating, google, appleRating].filter((r): r is SourceRating => !!r),
       checked: [...(olRating ? ['openlibrary' as const] : []), ...(googleChecked ? ['google' as const] : []), ...(q.apple && !appleFailed ? ['apple' as const] : [])],
     };
     if (!opts.signal?.aborted) {
