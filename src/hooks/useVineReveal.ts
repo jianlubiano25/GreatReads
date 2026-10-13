@@ -10,7 +10,12 @@ export function useVineReveal(target: number, reduced: boolean): number {
   const [shown, setShown] = useState(reduced ? target : 0);
   const current = useRef(shown);
   useEffect(() => {
-    const frames = typeof requestAnimationFrame === 'undefined' ? undefined : { raf: requestAnimationFrame, caf: cancelAnimationFrame };
+    const frames = typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function'
+      ? undefined
+      : {
+          raf: (callback: (now: number) => void) => window.requestAnimationFrame(callback),
+          caf: (id: number) => window.cancelAnimationFrame(id),
+        };
     return runReveal(current.current, target, reduced, v => { current.current = v; setShown(v); }, frames);
   }, [target, reduced]);
   return shown;
