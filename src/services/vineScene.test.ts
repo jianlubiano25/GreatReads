@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { buildVine, vineLeaves, type VineGeometry } from './vinePath';
-import { runReveal, revealValue, revealDuration, type FrameScheduler } from './vineReveal';
+import { runReveal, revealValue, revealDuration, browserFrames, type FrameScheduler } from './vineReveal';
 import { vineForDays, vineFor, emptyPeaks, emptyGarden, computeSnapshot, evaluateGarden, currentStreakFor, goalDaysFor } from './garden';
 import { VineDrawing } from '../components/VineOverlay';
 
@@ -132,6 +132,28 @@ test('a new target glides from where the vine is, and stopping the animation can
   const same: number[] = [];
   runReveal(0.5, 0.5, false, v => same.push(v), f.frames);
   assert.deepEqual(same, [], 'nothing to animate when already there');
+});
+
+test('the real window\'s animation frame functions are only ever called on the window (no "Illegal invocation")', () => {
+  // A window like the browser's: its frame methods throw when they are not called on it
+  const win: any = {
+    queue: [] as ((n: number) => void)[], cancelled: [] as number[],
+    requestAnimationFrame(cb: (n: number) => void) { if (this !== win) throw new TypeError('Illegal invocation'); win.queue.push(cb); return win.queue.length; },
+    cancelAnimationFrame(id: number) { if (this !== win) throw new TypeError('Illegal invocation'); win.cancelled.push(id); },
+  };
+  const frames = browserFrames(win)!;
+  assert.ok(frames, 'frames exist when the window has them');
+  const seen: number[] = [];
+  const stop = runReveal(0, 0.6, false, v => seen.push(v), frames); // schedules through frames.raf (this is the wrapper, not the window)
+  for (let t = 0; win.queue.length && t < 20000; t += 16) win.queue.shift()!(t);
+  assert.equal(seen[seen.length - 1], 0.6);
+  stop();
+  assert.equal(win.cancelled.length, 1);
+  // the copy-the-method way that crashed the app really does fail on such a window
+  const detached: FrameScheduler = { raf: win.requestAnimationFrame, caf: win.cancelAnimationFrame };
+  assert.throws(() => runReveal(0, 0.6, false, () => {}, detached), /Illegal invocation/);
+  assert.equal(browserFrames(undefined), undefined);
+  assert.equal(browserFrames({}), undefined, 'no animation frames: the complete vine shows at once');
 });
 
 /* ---------- taps ---------- */

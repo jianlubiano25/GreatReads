@@ -15,6 +15,15 @@ export function revealValue(from: number, to: number, elapsed: number, duration:
 export interface FrameScheduler { raf: (cb: (now: number) => void) => number; caf: (id: number) => void }
 
 /**
+ * Animation frames from a window. The browser's requestAnimationFrame only works when called ON the window ("Illegal invocation"
+ * otherwise), so these are small wrappers that always call it as `win.requestAnimationFrame(...)`, never a detached copy.
+ */
+export function browserFrames(win?: { requestAnimationFrame?: (cb: (now: number) => void) => number; cancelAnimationFrame?: (id: number) => void }): FrameScheduler | undefined {
+  if (!win || typeof win.requestAnimationFrame !== 'function' || typeof win.cancelAnimationFrame !== 'function') return undefined;
+  return { raf: cb => win.requestAnimationFrame!(cb), caf: id => win.cancelAnimationFrame!(id) };
+}
+
+/**
  * Grow from `from` to `to`, reporting each step to `onValue`. With reduced motion (or no animation frames available) it reports `to`
  * at once, so the complete vine shows. Returns a function that stops it (used when the inputs change or the layer goes away).
  */
@@ -25,10 +34,10 @@ export function runReveal(from: number, to: number, reduced: boolean, onValue: (
   }
   if (from === to) return () => {};
   const duration = revealDuration(from, to);
-  let start = 0;
+  let start = -1;
   let id = 0;
   const step = (now: number) => {
-    if (!start) start = now;
+    if (start < 0) start = now;
     onValue(revealValue(from, to, now - start, duration));
     if (now - start < duration) id = frames.raf(step);
   };
