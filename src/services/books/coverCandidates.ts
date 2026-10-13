@@ -1,6 +1,6 @@
 import type { Book } from '../../types';
 import { persistentCache } from './cache';
-import { COVER_SOURCE_LABEL, type CoverSource } from './coverPicks';
+import { COVER_SOURCE_LABEL, type CoverSource } from './coverRecords';
 import { coverKey } from './covers';
 import { transientFailureCount } from './http';
 import { identityOf, isUnknownAuthor, primaryAuthor } from './identity';

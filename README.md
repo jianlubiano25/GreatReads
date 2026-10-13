@@ -53,6 +53,16 @@ Nothing generated is presented as an official ranking.
 | Reese's Book Club | Wikipedia's picks table (a stand-in, not Reese's own list) | weekly |
 | Inklings (both), Top Fiction / Non-fiction, Classics | hand-picked: no reliable public machine-readable source has been found or verified (Classics are evergreen); covers and ratings still re-resolve | edit `storeSeeds.json` |
 
+### Shared book covers (owner only)
+The cover you star in a book's cover viewer can be published so every user sees it. The tools are hidden: tap your name in the Today greeting
+5 times (again 5 times to hide), then use the cover icon in book info and **Profile > Publish book covers** (review the list, ✎ change, ✕ remove, Publish).
+The published set is one small JSON served by `functions/api/covers.js` (the app checks it at most every 10 minutes, with an ETag, and keeps a copy on the device).
+One-time setup in Cloudflare Pages:
+1. Storage & databases > KV: create a namespace (any name), then Pages project > Settings > Bindings (Functions) > **KV namespace**, variable name **`COVERS`**.
+2. Settings > Variables and Secrets: add a **Secret** named **`COVER_ADMIN_TOKEN`** (16+ random characters). Type it once in the Publish screen; it stays on that device and is never in a backup.
+3. Redeploy. Without these the app works as before and Publish says the store is not set up.
+Hiding the buttons is only tidiness: the token is what stops anyone else from publishing.
+
 NYT quota: lists are cached 6 h in the browser and at Cloudflare's edge (`functions/api/nyt.js`), and extra lists only load when scrolled into view.
 Wikipedia lists are cached 12 h by the service worker (`public/sw.js`). To change a source or schedule, edit its entry in `DYNAMIC_SPECS`.
 

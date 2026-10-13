@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, useSyncExternalStore, lazy, Suspense } from 'react';
 import { Book, TabType, WordItem } from './types';
 import { useReadingLife } from './hooks/useReadingLife';
-import { getCoverPick, getCoverUrl, sameWork, withKnownRating } from './services/books';
+import { getCoverPick, getCoverUrl, sameWork, withKnownRating, isCoverAdminOn, subscribeCoverAdmin, tapSecret, syncSharedCovers } from './services/books';
 import { milestone } from './services/books/perf';
 import { enrichInBackground } from './services/books/infoQueue';
 import { DEFAULT_BOOKS } from './data/defaultBooks';
@@ -60,6 +60,7 @@ const AppleLookUpModal = lazyModal<typeof import('./components/AppleLookUpModal'
 const AddBookModal = lazyModal<typeof import('./components/AddBookModal').AddBookModal>(() => import('./components/AddBookModal'), 'AddBookModal');
 const HighlightsModal = lazyModal<typeof import('./components/HighlightsModal').HighlightsModal>(() => import('./components/HighlightsModal'), 'HighlightsModal');
 const ProfileModal = lazyModal<typeof import('./components/ProfileModal').ProfileModal>(() => import('./components/ProfileModal'), 'ProfileModal');
+const CoverPublishModal = lazyModal<typeof import('./components/CoverPublishModal').CoverPublishModal>(() => import('./components/CoverPublishModal'), 'CoverPublishModal');
 const BackupModal = lazyModal<typeof import('./components/BackupModal').BackupModal>(() => import('./components/BackupModal'), 'BackupModal');
 const WordPracticeModal = lazyModal<typeof import('./components/WordPracticeModal').WordPracticeModal>(() => import('./components/WordPracticeModal'), 'WordPracticeModal');
 const BulkImportModal = lazyModal<typeof import('./components/BulkImportModal').BulkImportModal>(() => import('./components/BulkImportModal'), 'BulkImportModal');
@@ -136,6 +137,28 @@ export default function App() {
     existingWord?: WordItem | null;
   }>({ open: false });
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showCoverPublish, setShowCoverPublish] = useState(false);
+
+  // The owner's hidden cover tools: five taps on the greeting switch them on (or off). Everyone else never sees them.
+  const coverTools = useSyncExternalStore(subscribeCoverAdmin, isCoverAdminOn, isCoverAdminOn);
+  const [toolsNote, setToolsNote] = useState('');
+  const seenTools = useRef(coverTools);
+  useEffect(() => {
+    if (seenTools.current === coverTools) return;
+    seenTools.current = coverTools;
+    setToolsNote(coverTools ? 'Cover tools on' : 'Cover tools hidden');
+    const t = setTimeout(() => setToolsNote(''), 2200);
+    return () => clearTimeout(t);
+  }, [coverTools]);
+
+  // Covers published for everyone: one quiet check shortly after launch and when the app comes back to the front.
+  // It is throttled inside (10 min, ETag), never blocks drawing, and a failure just keeps the saved copy.
+  useEffect(() => {
+    const t = setTimeout(() => void syncSharedCovers(), 3000);
+    const onShow = () => { if (document.visibilityState === 'visible') void syncSharedCovers(); };
+    document.addEventListener('visibilitychange', onShow);
+    return () => { clearTimeout(t); document.removeEventListener('visibilitychange', onShow); };
+  }, []);
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showWordPracticeModal, setShowWordPracticeModal] = useState(false);
@@ -267,9 +290,15 @@ export default function App() {
         {/* Header: Large greeting on left, Share & Profile on right */}
         <header className="flex items-center justify-between gap-4">
           <div className="flex-1 min-w-0 pr-2">
-            <h1 className="font-serif-display text-3xl sm:text-4xl md:text-5xl leading-tight text-[#201a15] dark:text-[#f0e6d6]">
+            <h1
+              className={`font-serif-display text-3xl sm:text-4xl md:text-5xl leading-tight text-[#201a15] dark:text-[#f0e6d6]${tab === 'today' ? ' select-none' : ''}`}
+              style={tab === 'today' ? { touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' } : undefined}
+              onClick={tab === 'today' ? () => void tapSecret() : undefined}
+            >
               {tab === 'today' ? `Hello${state.profile.name ? `, ${state.profile.name}` : ''}` : TAB_TITLES[tab] || 'My reading life'}
             </h1>
+            <span className="sr-only" role="status" aria-live="polite">{toolsNote}</span>
+            {toolsNote && <span className="inline-block mt-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#e8efe7] dark:bg-[#243422] text-[#2e5934] dark:text-[#86b880]" aria-hidden="true">{toolsNote}</span>}
             {tab === 'today' && (
               <p className="text-sm sm:text-base text-[#706256] dark:text-[#a89a8a] mt-1 ">
                 A quiet corner, a warm cup, and {state.goal} pages.
@@ -591,8 +620,11 @@ export default function App() {
           onExportBackup={exportBackup}
           onImportBackup={importBackup}
           onOpenBackupModal={() => setShowBackupModal(true)}
+          onOpenCoverPublish={coverTools ? () => setShowCoverPublish(true) : undefined}
         />
       )}
+
+      {coverTools && showCoverPublish && <CoverPublishModal onClose={() => setShowCoverPublish(false)} />}
 
       {/* Modal 6: Word Practice / Quiz Modal */}
       {showWordPracticeModal && (

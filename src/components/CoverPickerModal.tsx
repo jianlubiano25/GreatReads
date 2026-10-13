@@ -10,6 +10,7 @@ import {
   coverSourceOf,
   getCoverFix,
   getCoverPickInfo,
+  getMyCoverPick,
   getCoverUrl,
   getCoversVersion,
   imageKey,
@@ -102,10 +103,14 @@ export function CoverPickerModal({ book, onClose }: Props) {
   };
 
   const starred = !!current && current.key === pickKey;
+  const mine = getMyCoverPick(book);
+  const [note, setNote] = useState('');
+  useEffect(() => setNote(''), [at]);
   const toggleStar = () => {
     if (!current) return;
-    if (starred) clearCoverPick(book);
-    else setCoverPick(book, { url: current.url, source: current.source });
+    if (!starred) setCoverPick(book, { url: current.url, source: current.source });
+    else if (mine) clearCoverPick(book);
+    else setNote('Published for everyone. To take it off, use the ✕ in Profile › Publish book covers.'); // nothing of yours to unstar
   };
 
   const tip = current ? `${coverSourceLabel(current.source)}${current.key === autoKey ? ' · default cover' : ''}${dims[current.key] ? ` · ${dims[current.key]}` : ''}` : '';
@@ -199,8 +204,8 @@ export function CoverPickerModal({ book, onClose }: Props) {
             <ChevronRight className="w-5 h-5" />
           </button>
         </div>
-        <div className="text-[11px] text-white/50 min-h-[14px]">
-          {starred ? 'Your pick · used for this book across the app' : visible.length ? `${at + 1} of ${visible.length}` : ''}
+        <div className="text-[11px] text-white/50 min-h-[14px] text-center max-w-[300px]" aria-live="polite">
+          {note || (starred ? (mine ? 'Your pick · on this device until you publish it' : 'Published for everyone') : visible.length ? `${at + 1} of ${visible.length}` : '')}
         </div>
       </div>
     </div>

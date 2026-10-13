@@ -21,7 +21,9 @@ test('a pick is saved per book and found however the title and author are writte
   assert.equal(c.setCoverPick(book, { url: APPLE, source: 'apple' }), true);
   assert.equal(c.getCoverPickInfo({ title: '  PICK me ', author: 'ann AUTHOR' })?.url, APPLE);
   assert.equal(c.getCoverPickInfo({ title: 'Other Book', author: 'Ann Author' }), undefined);
-  assert.deepEqual(JSON.parse(store.get(c.PICKS_KEY)!)['pick me|ann author'].source, 'apple');
+  const saved = JSON.parse(store.get(c.PICKS_KEY)!)['pick me|ann author'];
+  assert.equal(saved.source, 'apple');
+  assert.deepEqual([saved.title, saved.author], ['Pick Me', 'Ann Author']); // kept as typed, so a list of picks can name its books
 });
 
 test('a card gets the picked cover at its own size (Apple art resized, an Open Library id at S / M / L)', async () => {
