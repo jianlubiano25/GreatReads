@@ -48,6 +48,7 @@ registerClearableKey(FIX_KEY);
 registerClearableKey(NONE_KEY);
 const NONE_TTL = 24 * 60 * 60 * 1000;
 const MAX_FIXES = 400;
+const FIX_TTL = 30 * 24 * 60 * 60 * 1000; // a repaired cover is trusted over the book's own link for 30 days at most
 
 export type MissingBook = Pick<Book, 'id' | 'title' | 'author' | 'coverId' | 'coverUrl' | 'identity'>;
 export type RepairResult = { fixed: number; notFound: number; failed: number; total: number };
@@ -66,7 +67,8 @@ const write = (key: string, value: unknown) => {
 
 export const coverKey = (b: { title?: string; author?: string }) => `${(b.title || '').trim()}|${(b.author || '').trim()}`.toLowerCase();
 
-let fixes: Record<string, { url: string; t: number }> = read(FIX_KEY);
+type CoverFix = { url: string; t: number; own?: string };
+let fixes: Record<string, CoverFix> = read(FIX_KEY);
 let fixVersion = 0;
 const fixListeners = new Set<() => void>();
 export const subscribeCovers = (l: () => void) => { fixListeners.add(l); return () => { fixListeners.delete(l); }; };
@@ -86,11 +88,28 @@ const emitMissing = () => {
   emitTimer = setTimeout(() => { missingVersion++; missingListeners.forEach(l => l()); }, 250);
 };
 
-/** A repaired cover URL for this book, or '' */
-export const getCoverFix = (book: { title?: string; author?: string }): string => fixes[coverKey(book)]?.url || '';
+type CoverLinks = { title?: string; author?: string; coverId?: number; coverUrl?: string };
 
-const saveFix = (key: string, url: string) => {
-  fixes[key] = { url, t: Date.now() };
+/** The book's own cover link, in a size-independent form ('' when it has none). Recorded with a repair to tell a stale repair from a current one. */
+const ownLinkOf = (b: { coverId?: number; coverUrl?: string }): string => b.coverUrl || (b.coverId && b.coverId > 0 ? `ol:${b.coverId}` : '');
+
+/**
+ * A repaired cover URL for this book, or ''. A repair is honoured only while it still belongs to the book's current data:
+ *  - the book has no own link (the repair is all it has), or
+ *  - the own link is the one the repair replaced (`own`) and the repair is under 30 days old.
+ * A newer bundled cover therefore wins over an old repair, and repairs saved before this check (no `own`) are ignored whenever
+ * the book has its own cover. Nothing is deleted here; a stale entry is simply not used and is replaced if a new repair is needed.
+ */
+export const getCoverFix = (book: CoverLinks): string => {
+  const f = fixes[coverKey(book)];
+  if (!f?.url) return '';
+  const own = ownLinkOf(book);
+  if (!own) return f.url;
+  return f.own === own && Date.now() - f.t < FIX_TTL ? f.url : '';
+};
+
+const saveFix = (key: string, url: string, own: string) => {
+  fixes[key] = { url, t: Date.now(), own };
   const keys = Object.keys(fixes);
   if (keys.length > MAX_FIXES) keys.slice(0, keys.length - MAX_FIXES).forEach(k => delete fixes[k]);
   write(FIX_KEY, fixes);
@@ -109,7 +128,7 @@ export function dropCoverFix(book: { title?: string; author?: string }) {
 
 export function reportMissingCover(book: MissingBook) {
   const key = coverKey(book);
-  if (!book.title || fixes[key] || missing.has(key)) return;
+  if (!book.title || getCoverFix(book) || missing.has(key)) return;
   const none = read<number>(NONE_KEY)[key];
   if (none && Date.now() - none < NONE_TTL) return;
   missing.set(key, { id: book.id, title: book.title, author: book.author, coverId: book.coverId, coverUrl: book.coverUrl, identity: book.identity });
@@ -182,7 +201,7 @@ async function search(b: MissingBook): Promise<string> {
 export function resolveCover(b: MissingBook, opts: { force?: boolean } = {}): Promise<string> {
   const key = coverKey(b);
   if (!opts.force) {
-    const known = fixes[key]?.url;
+    const known = getCoverFix(b);
     if (known) return Promise.resolve(known);
     const none = read<number>(NONE_KEY)[key];
     if (none && Date.now() - none < NONE_TTL) return Promise.resolve('');
@@ -191,7 +210,7 @@ export function resolveCover(b: MissingBook, opts: { force?: boolean } = {}): Pr
     let url = '';
     try { url = await search(b); } catch {}
     if (url) {
-      saveFix(key, url);
+      saveFix(key, url, ownLinkOf(b));
       emitFixes();
     } else if (typeof navigator === 'undefined' || navigator.onLine !== false) {
       const none = read<number>(NONE_KEY);
@@ -254,4 +273,24 @@ export async function repairMissingCovers(opts: { includeNotFound?: boolean; onP
   } finally {
     repairing = false;
   }
+}
+
+/* ---------------- the "Refresh Book Covers" button (Backup & Restore) ---------------- */
+
+/**
+ * Forget every saved cover repair and every "no cover found" note, then let the covers on screen look again.
+ * Each book shows its own current cover first; one whose link really is broken is repaired again by the normal path.
+ * Touches only the two cover caches: Library, history, notes, settings, shelves and offline data are left alone.
+ * Returns how many saved repairs were forgotten.
+ */
+export function refreshBookCovers(): number {
+  const count = Object.keys(fixes).length;
+  fixes = {};
+  try { localStorage.removeItem(FIX_KEY); localStorage.removeItem(NONE_KEY); } catch {}
+  inflight.clear();
+  missing.clear();
+  lastNotFound = [];
+  emitMissing();
+  emitFixes();
+  return count;
 }

@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { copyText } from '../services/clipboard';
-import { X, Copy, Upload, Check, AlertCircle, RefreshCw, Download, Trash2 } from 'lucide-react';
+import { refreshBookCovers } from '../services/books';
+import { X, Copy, Upload, Check, AlertCircle, RefreshCw, Download, Trash2, Image as ImageIcon } from 'lucide-react';
 
 interface BackupModalProps {
   isOpen: boolean;
@@ -29,6 +30,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
   const [resetNote, setResetNote] = useState('');
+  const [coverNote, setCoverNote] = useState('');
 
   // Built once per open (not on every keystroke in the paste box).
   const currentBackup = useMemo(() => (isOpen ? onExportBackup() : ''), [isOpen, onExportBackup]);
@@ -102,6 +104,14 @@ export const BackupModal: React.FC<BackupModalProps> = ({
     if (!window.confirm(`${message}\n\nThis cannot be undone. Tip: download a backup first.`)) return;
     run();
     setResetNote(done);
+  };
+
+  // Forgets saved cover repairs so every book shows its current cover again. Your books and data are not touched.
+  const handleRefreshCovers = () => {
+    const n = refreshBookCovers();
+    setCoverNote(n > 0
+      ? `Done. ${n} saved cover repair${n === 1 ? '' : 's'} cleared; covers are reloading.`
+      : 'Done. No saved cover repairs were found; covers are reloading.');
   };
 
   const handleRestore = () => {
@@ -268,7 +278,28 @@ export const BackupModal: React.FC<BackupModalProps> = ({
             </button>
           </div>
 
-          {/* Section 3: Reset data */}
+          {/* Section 3: Book covers */}
+          <div className="pt-2 border-t border-[#e3d7c3] dark:border-[#382f25]">
+            <label className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] block mb-1">
+              Book Covers
+            </label>
+            <p className="text-xs text-[#706256] dark:text-[#a89a8a] mb-3">
+              Seeing an older or different cover than on another device? This forgets the covers this device repaired earlier, so each book shows its current cover again. Your Library, history and settings are not touched.
+            </p>
+            <button
+              type="button"
+              onClick={handleRefreshCovers}
+              className="w-full py-2.5 rounded-xl text-xs font-semibold border border-[#2e5934] dark:border-[#86b880] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center gap-2 active:scale-95 transition-all"
+            >
+              <ImageIcon className="w-4 h-4" />
+              <span>Refresh Book Covers</span>
+            </button>
+            {coverNote && (
+              <p className="mt-2 text-xs text-emerald-800 dark:text-emerald-300" role="status">{coverNote}</p>
+            )}
+          </div>
+
+          {/* Section 4: Reset data */}
           <div className="pt-2 border-t border-[#e3d7c3] dark:border-[#382f25]">
             <label className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] block mb-1">
               Reset Data
