@@ -1,6 +1,7 @@
 /**
- * The nook's vine: it climbs the wooden frame of the window, and as the reading streak goes on it keeps growing along the
- * bottom shelf's board and then the top shelf's board.
+ * The nook's vine. It grows along one continuous route as the reading streak goes on:
+ *   window's bottom-right corner -> along the bottom edge, right to left -> up the left side -> over the arch, left to right
+ *   -> down the right side -> (a gentle curve to) the bottom shelf's board -> the top shelf's board.
  *
  * Pure geometry (no DOM): the scene measures the window frame and the two shelf boards and hands the rectangles in; this turns
  * them into one polyline with a length, so the vine can be drawn to any fraction of it and leaves and flowers can sit at fixed
@@ -29,9 +30,12 @@ export interface Vine {
   length: number;
   /** Where the vine is a fraction t (0..1) of the way along it */
   at: (t: number) => VinePoint;
-  /** Fractions at which the window frame ends and the bottom shelf ends (the top shelf runs to 1) */
-  windowEnd: number;
-  bottomEnd: number;
+  /** Fractions along the vine where each leg of the route ends (the top shelf runs to 1) */
+  bottomEdgeEnd: number; // the window's bottom edge, right to left
+  leftEnd: number;       // up the left side
+  archEnd: number;       // over the arch, left to right
+  windowEnd: number;     // down the right side: the whole window frame
+  bottomEnd: number;     // along the bottom shelf
 }
 
 type Pt = [number, number];
@@ -56,7 +60,7 @@ function cubic(p0: Pt, p1: Pt, p2: Pt, p3: Pt): Pt[] {
   });
 }
 
-/** The vine's path, bottom-left corner of the window -> up the left side -> over the arch -> down the right side -> bottom shelf -> top shelf. */
+/** The vine's path (see the route at the top of this file). */
 export function buildVine(g: VineGeometry): Vine {
   const half = g.wood / 2;
   const xl = g.frame.x + half;
@@ -64,14 +68,18 @@ export function buildVine(g: VineGeometry): Vine {
   const yb = g.frame.y + g.frame.h - half;
   const yt = g.frame.y + half;
   const r = Math.max(2, Math.min(g.radius - half, (xr - xl) / 2, yb - yt));
-  const start: Pt = [xl, yb];
+  const start: Pt = [xr, yb];
 
   const pts: Pt[] = [start];
-  pts.push(...line(start, [xl, yt + r]));
-  pts.push(...arc(xl + r, yt + r, r, Math.PI, 1.5 * Math.PI));
+  pts.push(...line(start, [xl, yb])); // bottom edge, right to left
+  const bottomEdgeEndIdx = pts.length - 1;
+  pts.push(...line([xl, yb], [xl, yt + r])); // up the left side
+  const leftEndIdx = pts.length - 1;
+  pts.push(...arc(xl + r, yt + r, r, Math.PI, 1.5 * Math.PI)); // over the arch, left to right
   if (xr - r > xl + r) pts.push(...line([xl + r, yt], [xr - r, yt]));
   pts.push(...arc(xr - r, yt + r, r, 1.5 * Math.PI, 2 * Math.PI));
-  pts.push(...line([xr, yt + r], [xr, yb]));
+  const archEndIdx = pts.length - 1;
+  pts.push(...line([xr, yt + r], [xr, yb])); // down the right side
   const windowEndIdx = pts.length - 1;
 
   // Window's bottom-right corner -> the start of the bottom shelf's board (a gentle S-curve when they are not level)
@@ -92,15 +100,16 @@ export function buildVine(g: VineGeometry): Vine {
   for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
   const length = cum[cum.length - 1] || 1;
 
-  // A touch of wobble across the direction of travel, so it reads as a plant and not a ruler line (small: it stays on the wood)
-  const wobble = Math.min(1.3, half - 1);
+  // A gentle, repeatable sway across the direction of travel (two slow sine waves, no randomness), so it reads as a plant and
+  // not a ruler line. It stays small: the vine keeps to the wood of the frame and the shelf boards, and is steady at both ends.
+  const wobble = Math.min(1.2, half - 1);
   const dir = (i: number) => {
     const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
     return Math.atan2(b[1] - a[1], b[0] - a[0]);
   };
   const out: VinePoint[] = pts.map(([x, y], i) => {
     const angle = dir(i);
-    const w = wobble * Math.sin(cum[i] / 9) * Math.min(1, cum[i] / 12) * Math.min(1, (length - cum[i]) / 12);
+    const w = wobble * (0.75 * Math.sin(cum[i] / 10 + 0.5) + 0.35 * Math.sin(cum[i] / 4.3 + 1.7)) * Math.min(1, cum[i] / 12) * Math.min(1, (length - cum[i]) / 12);
     return { x: x - Math.sin(angle) * w, y: y + Math.cos(angle) * w, angle };
   });
 
@@ -113,11 +122,12 @@ export function buildVine(g: VineGeometry): Vine {
     return { x: out[lo].x + (out[hi].x - out[lo].x) * f, y: out[lo].y + (out[hi].y - out[lo].y) * f, angle: out[lo].angle };
   };
   const d = 'M' + out.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L');
-  return { d, length, at, windowEnd: cum[windowEndIdx] / length, bottomEnd: cum[bottomEndIdx] / length };
+  const frac = (idx: number) => cum[idx] / length;
+  return { d, length, at, bottomEdgeEnd: frac(bottomEdgeEndIdx), leftEnd: frac(leftEndIdx), archEnd: frac(archEndIdx), windowEnd: frac(windowEndIdx), bottomEnd: frac(bottomEndIdx) };
 }
 
-/** Leaves and flowers at fixed distances along the vine, so they do not move as the vine grows. */
-export interface VineLeaf { t: number; x: number; y: number; /** degrees, the way the leaf points */ rot: number; /** 1 = a window leaf, smaller on the shelves */ size: number; flower: boolean; side: 1 | -1 }
+/** Leaves, shoots and flowers at fixed distances along the vine, so they do not move as the vine grows. */
+export interface VineLeaf { t: number; x: number; y: number; /** degrees, the way the leaf points */ rot: number; /** 1 = a window leaf, smaller on the shelves */ size: number; flower: boolean; /** a small curling shoot grows from the other side of the vine */ shoot: boolean; side: 1 | -1 }
 
 export function vineLeaves(v: Vine): VineLeaf[] {
   const leaves: VineLeaf[] = [];
@@ -129,7 +139,7 @@ export function vineLeaves(v: Vine): VineLeaf[] {
     const side: 1 | -1 = k % 2 ? 1 : -1;
     const onShelf = t > v.windowEnd;
     // pointing forward along the vine and out to one side
-    leaves.push({ t, x: p.x, y: p.y, rot: (p.angle * 180) / Math.PI + side * (onShelf ? 62 : 48), size: onShelf ? 0.6 : 0.85, flower: k % 4 === 2, side });
+    leaves.push({ t, x: p.x, y: p.y, rot: (p.angle * 180) / Math.PI + side * (onShelf ? 62 : 48), size: onShelf ? 0.6 : 0.85, flower: k % 4 === 2, shoot: k % 3 === 1, side });
   }
   return leaves;
 }

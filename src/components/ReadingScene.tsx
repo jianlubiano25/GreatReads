@@ -8,6 +8,8 @@ import { GardenArea } from './garden/GardenView';
 import { NookClock } from './NookClock';
 import { MoonPhase, moonPhase, MOON_PHASE_NAMES, MOON_PHASE_EMOJI } from './MoonPhase';
 import { buildVine, vineLeaves, type VineGeometry } from '../services/vinePath';
+import { goalDaysFor, vineForDays } from '../services/garden';
+import { VineLayer } from './VineOverlay';
 
 interface Props {
   books: Book[];
@@ -19,26 +21,10 @@ interface Props {
   onOpenBook: (b: Book) => void;
 }
 
-/**
- * A pointed vine leaf: round at the stem end, drawn to a sharp tip, with a faint centre vein. It points along +x from (0, 0).
- */
-const LEAF_LEN = 17.1;
-const LEAF_HALF = 4.6;
-const LEAF_D = `M0 0 C${(LEAF_LEN * 0.14).toFixed(1)} ${(-LEAF_HALF * 1.45).toFixed(1)} ${(LEAF_LEN * 0.62).toFixed(1)} ${(-LEAF_HALF * 1.1).toFixed(1)} ${LEAF_LEN} 0 C${(LEAF_LEN * 0.62).toFixed(1)} ${(LEAF_HALF * 1.1).toFixed(1)} ${(LEAF_LEN * 0.14).toFixed(1)} ${(LEAF_HALF * 1.45).toFixed(1)} 0 0Z`;
-const LEAF_VEIN = `M1 0 L${LEAF_LEN * 0.82} 0`;
-
-// The vine (see services/vinePath.ts): the window frame, then the bottom shelf's board, then the top shelf's. Flowers dot the leaves.
-const FLOWER_COLORS = ['#f4a6bd', '#fff4c9', '#c9b2f0'];
+// The vine (see services/vinePath.ts and VineOverlay.tsx): the window frame, then the bottom shelf's board, then the top shelf's.
 const WINDOW_RADIUS = 60; // the window's arched top corners (px, as in its border-radius)
 const WINDOW_WOOD = 5; // its frame's border width
 const SHELF_BOARD = 7; // a shelf board's thickness
-const grow = (on: boolean, visible: boolean, extra = ''): React.CSSProperties => ({
-  opacity: on && visible ? 1 : 0,
-  transform: on && visible ? 'scale(1)' : 'scale(0.2)',
-  transition: 'opacity .7s ease, transform .7s ease',
-  ...(extra ? { transformOrigin: extra } : {}),
-});
-
 // Is the app itself in its dark (Night) appearance? Watches the class the theme code puts on <html>.
 const subscribeTheme = (cb: () => void) => {
   const mo = new MutationObserver(cb);
@@ -104,14 +90,9 @@ export function ReadingScene({
   useSyncExternalStore(subscribeCovers, getCoversVersion, getCoversVersion);
   const met = todayPages >= goal;
 
-  const [grown, setGrown] = useState(false);
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setGrown(true));
-    return () => cancelAnimationFrame(id);
-  }, []);
-
-  // The vine shows everything you have read so far (a saved high-water mark), so a streak reset never shrinks it.
-  const vineG = grown ? garden.vine : 0;
+  // The vine grows one step for every day you met your goal. A lost streak does not shrink it: it keeps what it has grown, stops,
+  // and carries on when you read again. (It is not a reward: earned plants and achievements come from the garden's saved peaks.)
+  const vineTarget = useMemo(() => vineForDays(goalDaysFor(dailyLog, goal)), [dailyLog, goal]);
 
   // Weather and Day/Night Engine
   const [weather, setWeather] = useState<WeatherData>(() => {
@@ -511,44 +492,8 @@ export function ReadingScene({
           </div>
         </div>
 
-        {/* The vine: up the window's wooden frame, then (as the streak goes on) along the bottom shelf and the top shelf */}
-        {vine && (
-          <svg
-            width={geo!.width}
-            height="100%"
-            className="absolute left-0 top-0 pointer-events-none z-10"
-            style={{ height: '100%' }}
-            fill="none"
-            aria-label="Vine along the window and shelves, grows as you read and keeps what it has grown"
-          >
-            <path
-              d={vine.d}
-              stroke="#2e5934"
-              strokeWidth={2.6}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              pathLength={100}
-              strokeDasharray={`${(vineG * 100).toFixed(2)} 100`}
-              style={{ transition: 'stroke-dasharray 1.4s ease' }}
-            />
-            {vineParts.map((l, i) => (
-              <g key={i} style={grow(true, vineG >= l.t - 0.004, `${l.x}px ${l.y}px`)}>
-                <g transform={`translate(${l.x.toFixed(1)} ${l.y.toFixed(1)}) rotate(${l.rot.toFixed(1)}) scale(${l.size})`}>
-                  <path d={LEAF_D} fill={i % 2 ? '#4e7f55' : '#71ab7a'} />
-                  <path d={LEAF_VEIN} stroke="rgba(255,255,255,0.28)" strokeWidth={0.7} strokeLinecap="round" />
-                </g>
-                {l.flower && vineG >= l.t + 0.01 && (
-                  <g transform={`translate(${l.x.toFixed(1)} ${l.y.toFixed(1)}) scale(${l.size > 0.7 ? 1 : 0.75})`}>
-                    {[0, 72, 144, 216, 288].map(a => (
-                      <ellipse key={a} cx={0} cy={-2.3} rx={1.5} ry={2.2} transform={`rotate(${a})`} fill={FLOWER_COLORS[i % FLOWER_COLORS.length]} />
-                    ))}
-                    <circle r={1.1} fill="#ffd66b" />
-                  </g>
-                )}
-              </g>
-            ))}
-          </svg>
-        )}
+        {/* The vine: along the window's frame, then the bottom shelf and the top shelf, as the streak goes on. In front of the books, and never takes a tap. */}
+        {vine && geo && <VineLayer vine={vine} parts={vineParts} width={geo.width} target={vineTarget} />}
       </div>
 
       {/* Garden shelf below the window and bookshelf: every standing plant you have earned, scrolling sideways */}

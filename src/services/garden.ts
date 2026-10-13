@@ -154,6 +154,16 @@ export function computeSnapshot(input: {
 export const vineFor = (peaks: GardenPeaks): number =>
   Math.min(1, 0.12 + (peaks.bestStreak + peaks.booksFinished * 0.7) / 12);
 
+/** Days on which the reading goal was met, anywhere in the log. Each one is a day of the streak that grows the nook's vine. */
+export const goalDaysFor = (dailyLog: Record<string, number>, goal: number): number => metDays(dailyLog, goal).length;
+
+/**
+ * How far the nook's vine has grown (0..1) after `days` goal-met days: the same progression as `vineFor`, one step per day.
+ * Every day of a streak grows it. When a streak is lost the vine keeps what it has grown and just stops; it carries on from
+ * there when you read again. It only counts logged days, so it never touches earned plants or achievements.
+ */
+export const vineForDays = (days: number): number => vineFor({ ...emptyPeaks(), bestStreak: Math.max(0, Math.floor(days) || 0) });
+
 /** Growth (0.2..1) of an earned plant for the given peaks. */
 export function growthFor(m: MilestoneDef, peaks: GardenPeaks): number {
   const { metric, from, to } = m.grow;
