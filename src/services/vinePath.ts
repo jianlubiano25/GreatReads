@@ -101,8 +101,8 @@ export function buildVine(g: VineGeometry): Vine {
   const length = cum[cum.length - 1] || 1;
 
   // A gentle, repeatable sway across the direction of travel (two slow sine waves, no randomness), so it reads as a plant and
-  // not a ruler line. It stays small: the vine keeps to the wood of the frame and the shelf boards, and is steady at both ends.
-  const wobble = Math.min(1.2, half - 1);
+  // not a ruler line. It stays small: the vine follows the wood of the frame and the shelf boards with natural curves, and is steady at both ends.
+  const wobble = 2.8;
   const dir = (i: number) => {
     const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
     return Math.atan2(b[1] - a[1], b[0] - a[0]);
@@ -131,7 +131,7 @@ export interface VineLeaf { t: number; x: number; y: number; /** degrees, the wa
 
 export function vineLeaves(v: Vine): VineLeaf[] {
   const leaves: VineLeaf[] = [];
-  const gap = 30; // px between leaves
+  const gap = 23; // px between leaves
   const n = Math.max(1, Math.floor(v.length / gap));
   for (let k = 0; k < n; k++) {
     const t = (k + 0.6) / (n + 0.2);
