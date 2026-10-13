@@ -86,3 +86,29 @@ export function cycleClockTheme() {
   } catch {}
   clockSubs.forEach(f => f());
 }
+
+/* ---- Vine look: the wraparound nook vine (current, default) or the classic window vine from main (remembered on this device) ---- */
+export type VineStyle = 'nook' | 'classic';
+const VINE_KEY = 'greatreads_vine_style'; // 'classic' = the main branch's window vine; anything else = the nook vine
+const vineSubs = new Set<() => void>();
+
+export const subscribeVineStyle = (cb: () => void) => {
+  vineSubs.add(cb);
+  return () => {
+    vineSubs.delete(cb);
+  };
+};
+export function getVineStyle(): VineStyle {
+  try {
+    return localStorage.getItem(VINE_KEY) === 'classic' ? 'classic' : 'nook';
+  } catch {
+    return 'nook';
+  }
+}
+export function setVineStyle(style: VineStyle) {
+  try {
+    if (style === 'classic') localStorage.setItem(VINE_KEY, 'classic');
+    else localStorage.removeItem(VINE_KEY);
+  } catch {}
+  vineSubs.forEach(f => f());
+}

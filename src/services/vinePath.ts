@@ -27,6 +27,7 @@ export interface VinePoint { x: number; y: number; /** direction of travel, radi
 export interface Vine {
   /** SVG path data */
   d: string;
+  /** The drawn path's real length in px (the stroke is clipped to a fraction of this) */
   length: number;
   /** Where the vine is a fraction t (0..1) of the way along it */
   at: (t: number) => VinePoint;
@@ -113,17 +114,23 @@ export function buildVine(g: VineGeometry): Vine {
     return { x: x - Math.sin(angle) * w, y: y + Math.cos(angle) * w, angle };
   });
 
+  // The vine is drawn through the swayed points, so everything below (where a fraction t is, the leg ends, the length the stroke is
+  // clipped to) is measured along THAT path. The stroke, the leaves and the leg ends then all agree about "how far".
+  const run: number[] = [0];
+  for (let i = 1; i < out.length; i++) run.push(run[i - 1] + Math.hypot(out[i].x - out[i - 1].x, out[i].y - out[i - 1].y));
+  const total = run[run.length - 1] || 1;
+
   const at = (t: number): VinePoint => {
-    const s = Math.max(0, Math.min(1, t)) * length;
-    let lo = 0, hi = cum.length - 1;
-    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= s) lo = mid; else hi = mid; }
-    const span = cum[hi] - cum[lo] || 1;
-    const f = (s - cum[lo]) / span;
+    const s = Math.max(0, Math.min(1, t)) * total;
+    let lo = 0, hi = run.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (run[mid] <= s) lo = mid; else hi = mid; }
+    const span = run[hi] - run[lo] || 1;
+    const f = (s - run[lo]) / span;
     return { x: out[lo].x + (out[hi].x - out[lo].x) * f, y: out[lo].y + (out[hi].y - out[lo].y) * f, angle: out[lo].angle };
   };
   const d = 'M' + out.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L');
-  const frac = (idx: number) => cum[idx] / length;
-  return { d, length, at, bottomEdgeEnd: frac(bottomEdgeEndIdx), leftEnd: frac(leftEndIdx), archEnd: frac(archEndIdx), windowEnd: frac(windowEndIdx), bottomEnd: frac(bottomEndIdx) };
+  const frac = (idx: number) => run[idx] / total;
+  return { d, length: total, at, bottomEdgeEnd: frac(bottomEdgeEndIdx), leftEnd: frac(leftEndIdx), archEnd: frac(archEndIdx), windowEnd: frac(windowEndIdx), bottomEnd: frac(bottomEndIdx) };
 }
 
 /** Leaves, shoots and flowers at fixed distances along the vine, so they do not move as the vine grows. */

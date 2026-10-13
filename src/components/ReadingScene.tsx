@@ -3,13 +3,13 @@ import { Book, GardenState } from '../types';
 import { subscribeCovers, getCoversVersion } from '../services/books';
 import { CoverFace } from './BookMeta';
 import { fetchLocalWeather, setWeatherOverride, getTimePeriod, describeWeather, PERIOD_LABEL, TIME_PERIODS, WEATHER_MODES, WeatherData, WeatherCondition, TimePeriod } from '../services/weather';
-import { subscribeNookPrefs, getNookPrefsVersion, getNookMatchesTheme, getWindowFollowsTime } from '../services/nookPrefs';
+import { subscribeNookPrefs, getNookPrefsVersion, getNookMatchesTheme, getWindowFollowsTime, subscribeVineStyle, getVineStyle } from '../services/nookPrefs';
 import { GardenArea } from './garden/GardenView';
 import { NookClock } from './NookClock';
 import { MoonPhase, moonPhase, MOON_PHASE_NAMES, MOON_PHASE_EMOJI } from './MoonPhase';
 import { buildVine, vineLeaves, type VineGeometry } from '../services/vinePath';
 import { goalDaysFor, vineForDays } from '../services/garden';
-import { VineLayer } from './VineOverlay';
+import { VineLayer, ClassicVineLayer } from './VineOverlay';
 
 interface Props {
   books: Book[];
@@ -93,6 +93,8 @@ export function ReadingScene({
   // The vine grows one step for every day you met your goal. A lost streak does not shrink it: it keeps what it has grown, stops,
   // and carries on when you read again. (It is not a reward: earned plants and achievements come from the garden's saved peaks.)
   const vineTarget = useMemo(() => vineForDays(goalDaysFor(dailyLog, goal)), [dailyLog, goal]);
+  // Which vine look to draw (chosen in Achievements & garden): the wraparound nook vine, or the classic window vine from main
+  const vineStyle = useSyncExternalStore(subscribeVineStyle, getVineStyle, () => 'nook' as const);
 
   // Weather and Day/Night Engine
   const [weather, setWeather] = useState<WeatherData>(() => {
@@ -422,6 +424,9 @@ export function ReadingScene({
               <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', width: 4, background: '#8a5a3b' }} />
             </div>
 
+            {/* The classic window vine (main's look): stays inside the window. Never takes a tap. */}
+            {vineStyle === 'classic' && <ClassicVineLayer target={vineTarget} />}
+
             {/* Quick weather / time indicator pill on tap */}
             {tip && (
               <div role="status" className="absolute top-2 left-1/2 -translate-x-1/2 z-20 px-2 py-0.5 rounded-full bg-black/75 text-white text-[10px] font-sans whitespace-nowrap shadow-md">
@@ -493,7 +498,7 @@ export function ReadingScene({
         </div>
 
         {/* The vine: along the window's frame, then the bottom shelf and the top shelf, as the streak goes on. In front of the books, and never takes a tap. */}
-        {vine && geo && <VineLayer vine={vine} parts={vineParts} width={geo.width} target={vineTarget} />}
+        {vineStyle === 'nook' && vine && geo && <VineLayer vine={vine} parts={vineParts} width={geo.width} target={vineTarget} />}
       </div>
 
       {/* Garden shelf below the window and bookshelf: every standing plant you have earned, scrolling sideways */}

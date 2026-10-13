@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { buildVine, vineLeaves, type VineGeometry } from './vinePath';
 import { runReveal, revealValue, revealDuration, browserFrames, type FrameScheduler } from './vineReveal';
 import { vineForDays, vineFor, emptyPeaks, emptyGarden, computeSnapshot, evaluateGarden, currentStreakFor, goalDaysFor } from './garden';
-import { VineDrawing } from '../components/VineOverlay';
+import { VineDrawing, clip } from '../components/VineOverlay';
 
 const G: VineGeometry = {
   frame: { x: 12, y: 12, w: 109, h: 145 }, wood: 5, radius: 54, width: 390,
@@ -176,8 +176,8 @@ test('no goal-met days draw only the initial growth; a full vine shows every lea
   assert.equal(visible(none), 0, 'nothing visible before it starts growing');
   assert.ok(visible(start) < visible(full), 'the start is smaller than the full vine');
   assert.ok(visible(full) >= parts.length + parts.filter(l => l.shoot).length + parts.filter(l => l.flower).length, 'every leaf, shoot and flower');
-  assert.match(start, /stroke-dasharray="12\.00 100"/);
-  assert.match(full, /stroke-dasharray="100\.00 100"/);
+  assert.ok(start.includes(`stroke-dasharray="${clip(vineForDays(0), vine.length)}"`));
+  assert.ok(full.includes(`stroke-dasharray="${clip(1, vine.length)}"`));
   assert.ok(!/transition:(?!none)/.test(full), 'no transitions when animation is off (reduced motion)');
   assert.match(renderToStaticMarkup(React.createElement(VineDrawing, { vine, parts, width: G.width, shown: 1, animate: true })), /transition:opacity \.7s/);
 });
