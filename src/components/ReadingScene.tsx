@@ -23,8 +23,8 @@ interface Props {
 
 // The vine (see services/vinePath.ts and VineOverlay.tsx): the window frame, then the bottom shelf's board, then the top shelf's.
 const WINDOW_RADIUS = 60; // the window's arched top corners (px, as in its border-radius)
-const WINDOW_WOOD = 5; // its frame's border width
-const SHELF_BOARD = 7; // a shelf board's thickness
+const WINDOW_WOOD = 6; // its frame's border width
+const SHELF_BOARD = 8; // a shelf board's thickness
 // Is the app itself in its dark (Night) appearance? Watches the class the theme code puts on <html>.
 const subscribeTheme = (cb: () => void) => {
   const mo = new MutationObserver(cb);
@@ -336,7 +336,7 @@ export function ReadingScene({
                     width: '35%',
                     aspectRatio: '1',
                     borderRadius: '50%',
-                    background: period === 'day' ? '#ffd152' : period === 'morning' ? '#ffcf8a' : '#ff9a4d',
+                    background: period === 'day' ? '#ffd152' : period === 'morning' ? '#ffcf8a' : '#FFD166',
                     boxShadow:
                       period === 'day'
                         ? '0 0 22px #ffc107, 0 0 38px rgba(255, 214, 107, 0.65)'

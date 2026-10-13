@@ -152,7 +152,7 @@ export function computeSnapshot(input: {
 // ---------------------------------------------------------------------------------------------
 
 export const vineFor = (peaks: GardenPeaks): number =>
-  Math.min(1, 0.12 + (peaks.bestStreak + peaks.booksFinished * 0.7) / 12);
+  Math.min(1, 0.02 + (peaks.bestStreak + peaks.booksFinished * 0.7) / 100);
 
 /** Days on which the reading goal was met, anywhere in the log. Each one is a day of the streak that grows the nook's vine. */
 export const goalDaysFor = (dailyLog: Record<string, number>, goal: number): number => metDays(dailyLog, goal).length;
