@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { Book } from '../types';
 import { DIFFICULTY_LABELS, SHELF_LABELS } from '../data/defaultBooks';
 import { useBookInfo } from '../hooks/useBookInfo';
 import { mainRating, otherRatings, RATING_SOURCE_LABEL, type SourceRating } from '../services/books';
 import { CoverFace, StarRating, compactCount, honorsListFor } from './BookMeta';
-import { X, BookOpen, Smartphone, Star, Award, ChevronDown, Check, Bookmark } from 'lucide-react';
+import { X, BookOpen, Smartphone, Star, Award, ChevronDown, Check, Bookmark, Image as ImageIcon } from 'lucide-react';
+
+// The cover viewer is only fetched the first time someone opens it
+const CoverPickerModal = lazy(() => import('./CoverPickerModal').then(m => ({ default: m.CoverPickerModal })));
 
 interface AppleBookDetailModalProps {
   book: Book;
@@ -42,6 +45,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   const { book, siteRatings, loading } = useBookInfo(initialBook);
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeTabAction, setActiveTabAction] = useState<'idle' | 'lib' | 'dev'>('idle');
+  const [showCovers, setShowCovers] = useState(false);
 
   const main = mainRating(book, siteRatings); // Library -> Apple -> Open Library -> Google; the other sites are listed beside it
   const mainSource = main?.source;
@@ -102,6 +106,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   };
 
   return (
+    <>
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 overflow-y-auto animate-in fade-in duration-200"
       onClick={onClose}
@@ -394,6 +399,14 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
               <Bookmark className="w-3.5 h-3.5 text-[#925838] dark:text-[#d89e70]" />
               <span>Quotes &amp; Highlights {highlightsCount > 0 ? `(${highlightsCount})` : ''}</span>
             </button>
+            <button
+              onClick={() => setShowCovers(true)}
+              className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-[#e3d7c3] dark:border-[#382f25] hover:bg-[#fbf7ee] dark:hover:bg-[#231d17] transition-colors"
+              aria-label="Choose book cover"
+              title="Choose book cover"
+            >
+              <ImageIcon className="w-3.5 h-3.5 text-[#2e5934] dark:text-[#86b880]" />
+            </button>
           </div>
 
           <button
@@ -405,5 +418,11 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
         </div>
       </div>
     </div>
+    {showCovers && (
+      <Suspense fallback={null}>
+        <CoverPickerModal book={book} onClose={() => setShowCovers(false)} />
+      </Suspense>
+    )}
+    </>
   );
 };

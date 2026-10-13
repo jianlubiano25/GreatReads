@@ -108,6 +108,23 @@ export async function openLibraryEditionPages(workId: string, opts: CallOpts = {
   return pages.length ? pages[Math.floor(pages.length / 2)] : undefined;
 }
 
+/**
+ * Cover ids of a work's editions: the first cover of each English (or language-less) edition, de-duplicated, in the order Open Library lists them.
+ * One request; the ids need no image check because Open Library only lists covers it has.
+ */
+export async function openLibraryEditionCovers(workId: string, max = 8, opts: CallOpts = {}): Promise<number[]> {
+  const data = await getJson(`${OL}/works/${workId}/editions.json?limit=40`, { signal: opts.signal });
+  const ids: number[] = [];
+  for (const e of (data?.entries || []) as any[]) {
+    const langs: string[] = Array.isArray(e?.languages) ? e.languages.map((l: any) => String(l?.key || '')) : [];
+    if (langs.length && !langs.includes('/languages/eng')) continue; // a translation's jacket is a different book to look at
+    const id = (Array.isArray(e?.covers) ? e.covers : []).find((c: unknown) => Number.isInteger(c) && (c as number) > 0);
+    if (id && !ids.includes(id)) ids.push(id);
+    if (ids.length >= max) break;
+  }
+  return ids;
+}
+
 /** Re-read one work's search record (ratings, pages, genre, year). */
 export async function openLibraryWorkRecord(workId: string, opts: CallOpts = {}): Promise<Hit | null> {
   const hits = await searchOpenLibrary({ q: `key:/works/${workId}` }, 1, opts);

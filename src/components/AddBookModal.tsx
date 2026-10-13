@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { Book, ShelfKey } from '../types';
-import { searchBooks, getCoverUrl, fillMissingCovers } from '../services/books';
+import { searchBooks, getCoverUrl, getCoverPick, fillMissingCovers } from '../services/books';
 import { SHELF_LABELS } from '../data/defaultBooks';
 import { Search, Plus, Smartphone, BookOpen, Check, X, Loader2 } from 'lucide-react';
 
@@ -264,7 +264,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
                 </span>
                 {searchResults.map((b, idx) => {
                   const isAdded = addedIds[String(b.id)];
-                  const cover = getCoverUrl(b.coverId, 'S', b.coverUrl);
+                  const cover = getCoverPick(b, 'S') || getCoverUrl(b.coverId, 'S', b.coverUrl);
                   return (
                     <div
                       key={`${b.id}-${idx}`}

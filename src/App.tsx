@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
 import { Book, TabType, WordItem } from './types';
 import { useReadingLife } from './hooks/useReadingLife';
-import { getCoverUrl, sameWork, withKnownRating } from './services/books';
+import { getCoverPick, getCoverUrl, sameWork, withKnownRating } from './services/books';
 import { milestone } from './services/books/perf';
 import { enrichInBackground } from './services/books/infoQueue';
 import { DEFAULT_BOOKS } from './data/defaultBooks';
@@ -218,7 +218,7 @@ export default function App() {
   useEffect(() => {
     try {
       const urls = [...nowReadingBooks, ...upNextBooks, ...sceneBooks]
-        .map(b => getCoverUrl(b.coverId, 'M', b.coverUrl))
+        .map(b => getCoverPick(b, 'M') || getCoverUrl(b.coverId, 'M', b.coverUrl))
         .filter((u, i, a) => !!u && a.indexOf(u) === i)
         .slice(0, 60);
       localStorage.setItem('readlife.preload', JSON.stringify(urls));

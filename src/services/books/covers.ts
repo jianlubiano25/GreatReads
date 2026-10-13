@@ -74,6 +74,8 @@ const fixListeners = new Set<() => void>();
 export const subscribeCovers = (l: () => void) => { fixListeners.add(l); return () => { fixListeners.delete(l); }; };
 export const getCoversVersion = () => fixVersion;
 const emitFixes = () => { fixVersion++; fixListeners.forEach(l => l()); };
+/** Tell every drawn cover to look again (a repaired cover or a picked cover changed). Used by coverPicks.ts. */
+export const notifyCoversChanged = emitFixes;
 
 const missing = new Map<string, MissingBook>();
 let lastNotFound: MissingBook[] = [];

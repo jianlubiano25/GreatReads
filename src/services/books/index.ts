@@ -8,5 +8,7 @@ export { resolveBook, type ResolveQuery, type Resolved } from './resolve';
 export { enrichBookDetails, fetchBookMeta, fetchRatingSources } from './details';
 export { chooseRating, externalRating, mainRating, knownRating, withKnownRating, ratingOf, setRating, inferRatingSource, otherRatings, starFills, RATING_SOURCE_LABEL, SUFFICIENT_RATINGS, type RatingPair, type SourceRating, type RatingSourceId } from './ratings';
 export * from './covers';
+export * from './coverPicks';
+export * from './coverCandidates';
 export * from './quality';
 dropLegacyBookCaches();
