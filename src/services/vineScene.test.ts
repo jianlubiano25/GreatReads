@@ -216,9 +216,7 @@ test('the newest leaf grows straight on from the stem, so the stem ends in it, a
     const i = tipIndex(parts, shown, 0.004);
     assert.ok(i >= 0);
     const html = renderToStaticMarkup(React.createElement(VineDrawing, { vine, parts, width: G.width, shown, animate: false }));
-    const rots = [...html.matchAll(/translate\(([
-.-]+) ([\d.-]+)\) rotate\(([
-.-]+)\) scale/g)].map(m => ({ x: +m[1], y: +m[2], r: +m[3] }));
+    const rots = [...html.matchAll(/translate\(([0-9.-]+) ([0-9.-]+)\) rotate\(([0-9.-]+)\) scale/g)].map(m => ({ x: +m[1], y: +m[2], r: +m[3] }));
     const tip = rots.find(r => Math.abs(r.x - parts[i].x) < 0.06 && Math.abs(r.y - parts[i].y) < 0.06)!;
     assert.ok(Math.abs(tip.r - parts[i].ang) < 0.06, 'the tip leaf points along the vine');
   }
@@ -238,8 +236,7 @@ test('the vine settles exactly on a leaf and its stem grows with the tip while a
   }
   const rest = restAt(parts, vineForDays(14), 0.004), mid = rest - 0.011;
   const draw = (shown: number, growing: boolean) => renderToStaticMarkup(React.createElement(VineDrawing, { vine, parts, width: G.width, shown, animate: false, growing }));
-  const len = (h: string) => +h.match(/stroke-dasharray="([
-.]+)/)![1];
+  const len = (h: string) => +h.match(/stroke-dasharray="([0-9.]+)/)![1];
   assert.ok(len(draw(mid, true)) > len(draw(mid, false)), 'mid-growth the stem follows the tip instead of jumping from leaf to leaf');
   assert.ok(Math.abs(len(draw(rest, true)) - len(draw(rest, false))) < 1, 'and arrives exactly on the last leaf');
 });
