@@ -45,8 +45,23 @@ const EDUCATION = /\b(sexual health|reproductive|contracepti\w*|birth control|pu
 /** Publisher / imprint names of adult-fiction houses. A short list, supporting only. */
 const ADULT_PUBLISHER = /\b(erotic\w*|erotica|penthouse|playboy|hustler|xcite|bellesa|ellora'?s cave|black lace|total-e-bound|blushing books|ravenous romance)\b/i;
 
+/**
+ * Satanic / demonic / occult vocabulary. In a title or a library category it is decisive; in a description it is only ever supporting
+ * (see OCCULT_DESCRIPTION_CAP), so classics that merely HAVE a devil in them (Paradise Lost, The Screwtape Letters, Dante) stay eligible.
+ */
+const OCCULT_STRONG = /\b(satan\w*|devil[- ]worship\w*|luciferian\w*|demonolog\w*|demonolat\w*|demonic|diabolical|black mass|occultism|occultist\w*)\b/i;
+/** Weaker words: in a title they only penalise ("Demon Copperhead" must stay findable); in a description they add a little. */
+const OCCULT_WEAK = /\b(demons?|occult|exorcis[mt]s?|summon(?:ing|s)? (?:the )?(?:demons?|devil))\b/gi;
+/** A library category that names the subject outright ("Occultism", "Demonology", "Satanism"). */
+const OCCULT_SUBJECT = /\b(occult\w*|demonolog\w*|satan\w*|devil worship|diabolism|luciferian\w*)\b/i;
+
 const WEIGHTS = {
   strongHead: 45, // explicit vocabulary in the title or a category
+  occultHead: 45, // satanic / demonic vocabulary in the title or a category
+  occultDescription: 30, // one strong term in the description
+  occultWeakTitle: 24, // a weak term in the title: above EXPLICIT_PENALTY_AT, below EXPLICIT_FILTER_AT
+  occultWeakDescription: 12, // each distinct weak term in the description
+  occultDescriptionCap: 39, // one strong term plus any number of weak ones can never reach EXPLICIT_FILTER_AT in a description; two different strong terms can
   strongDescription: 30,
   pornSubject: 45,
   sexInstruction: 17, // below EXPLICIT_PENALTY_AT: the category alone never penalises sexual-health education
@@ -70,6 +85,10 @@ const appleFlagsAdult = (advisory = ''): boolean => /explicit|adult|18\+|mature/
 export interface ContentAssessment {
   /** 0 = nothing suspicious */
   score: number;
+  /** The part of `score` that comes from signals that stand alone (explicit, satanic / demonic, maturity ratings). */
+  hard: number;
+  /** The part that comes from the sex-manual family (category + title shape + how-to wording, after health / education framing). */
+  soft: number;
   /** Which signals contributed, for tests and diagnostics (never shown to readers) */
   reasons: string[];
 }
@@ -92,6 +111,19 @@ export function assessContent(title: string, f: ContentFlags = {}): ContentAsses
   const medium = distinct(MEDIUM, `${head} ${desc}`);
   if (medium.size) { hard += Math.min(WEIGHTS.mediumCap, medium.size * WEIGHTS.mediumTerm); reasons.push('explicit-romance wording'); }
 
+  // Satanic / demonic: the title and the categories decide; the description only supports
+  if (OCCULT_STRONG.test(title) || subjects.some(s => OCCULT_SUBJECT.test(s))) { hard += WEIGHTS.occultHead; reasons.push('satanic / demonic title or category'); }
+  else {
+    let occult = 0;
+    if (distinct(OCCULT_WEAK, title).size) occult += WEIGHTS.occultWeakTitle;
+    const strongInDesc = distinct(new RegExp(OCCULT_STRONG.source, 'gi'), desc);
+    const weakInDesc = distinct(OCCULT_WEAK, desc);
+    if (strongInDesc.size) occult += WEIGHTS.occultDescription + (Math.min(strongInDesc.size, 3) - 1) * WEIGHTS.occultWeakDescription; // each further DIFFERENT strong term adds a little
+    occult += Math.min(2, weakInDesc.size) * WEIGHTS.occultWeakDescription;
+    if (strongInDesc.size < 2) occult = Math.min(occult, WEIGHTS.occultDescriptionCap);
+    if (occult) { hard += occult; reasons.push('satanic / demonic wording'); }
+  }
+
   // The sex-manual family: independent signals that corroborate each other; health / education wording takes some of it back.
   if (SEX_INSTRUCTION_SUBJECT.test(subjectText)) { soft += WEIGHTS.sexInstruction; reasons.push('sex-instruction category'); }
   if (SEX_MANUAL_TITLE.test(title)) { soft += WEIGHTS.manualTitle; reasons.push('sex-manual title'); }
@@ -101,10 +133,21 @@ export function assessContent(title: string, f: ContentFlags = {}): ContentAsses
     const education = distinct(EDUCATION, `${head} ${desc}`);
     if (education.size) { soft = Math.max(0, soft - Math.min(WEIGHTS.educationCap, education.size * WEIGHTS.educationTerm)); reasons.push('health / education framing'); }
   }
-  return { score: hard + soft, reasons };
+  return { score: hard + soft, hard, soft, reasons };
 }
 
 /** 0 = nothing suspicious. */
 export const explicitScore = (title: string, f: ContentFlags = {}): number => assessContent(title, f).score;
 
 export const isExplicit = (title: string, f?: ContentFlags) => explicitScore(title, f) >= EXPLICIT_FILTER_AT;
+
+/**
+ * Should this book be kept out of the app's own surfaces (search results, every Store shelf)? True for explicit / sexual books, sex manuals
+ * and satanic / demonic books. A sex-manual-shaped title is enough here (it only penalises on a shelf): search has no "held back until looked
+ * at closely" step, so it is judged outright. Sexual-health education (category alone, or health / education wording) stays under the line.
+ * The reader's OWN saved books are never run through this: a book already in the Library is never hidden or removed.
+ */
+export function isBlocked(title: string, f?: ContentFlags): boolean {
+  const a = assessContent(title, f);
+  return a.score >= EXPLICIT_FILTER_AT || a.soft >= EXPLICIT_PENALTY_AT;
+}

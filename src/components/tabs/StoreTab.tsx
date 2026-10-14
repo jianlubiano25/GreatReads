@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Search, Award } from 'lucide-react';
 import type { Book } from '../../types';
 import { BOOK_AWARDS } from '../../data/defaultBooks';
-import { searchBooks, fillMissingCovers } from '../../services/books';
+import { useBookSearch } from '../../hooks/useBookSearch';
 import { DEFAULT_SHELF_ORDER, SHELF_BY_ID, hiddenShelfIds } from '../../services/store/registry';
 import { loadStorePrefs, NO_PREFS, orderShelves, saveStorePrefs, toggleShelf, type StorePrefs } from '../../services/store/prefs';
 import { milestone } from '../../services/books/perf';
@@ -40,39 +40,9 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
 
   useEffect(() => { milestone('store-mounted'); }, []); // measurement only
 
-  // Store search & shelf data
+  // Store search: books already on the device show with each keystroke, then the list improves as each source answers (hooks/useBookSearch.ts)
   const [storeSearchQuery, setStoreSearchQuery] = useState('');
-  const [storeSearchResults, setStoreSearchResults] = useState<Book[]>([]);
-  const [isStoreSearching, setIsStoreSearching] = useState(false);
-
-  // Handle store search with debounce; superseded requests are cancelled so a slow old answer
-  // can never overwrite the results of what you typed last.
-  useEffect(() => {
-    if (!storeSearchQuery.trim()) {
-      setStoreSearchResults([]);
-      setIsStoreSearching(false);
-      return;
-    }
-    const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      setIsStoreSearching(true);
-      try {
-        const results = await searchBooks(storeSearchQuery, '', 10, controller.signal);
-        if (!controller.signal.aborted) {
-          setStoreSearchResults(results);
-          fillMissingCovers(results, r => { if (!controller.signal.aborted) setStoreSearchResults(r); }, controller.signal);
-        }
-      } catch {
-        if (!controller.signal.aborted) setStoreSearchResults([]);
-      } finally {
-        if (!controller.signal.aborted) setIsStoreSearching(false);
-      }
-    }, 450);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [storeSearchQuery]);
+  const { results: storeSearchResults, loading: isStoreSearching, stale: storeSearchStale, empty: storeSearchEmpty, searchNow: searchStoreNow } = useBookSearch(storeSearchQuery);
 
   // The shelves compare their books with yours only to share ratings. A new array for every reading-progress change would redraw every
   // shelf (and rebuild the rating index), so `known` changes only when something a rating match depends on does.
@@ -127,6 +97,7 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
               type="search"
               value={storeSearchQuery}
               onChange={e => setStoreSearchQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') searchStoreNow(); }}
               placeholder="Search by title, author, or keyword in online catalog"
               className="w-full pl-10 pr-4 py-3 rounded-xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-sm focus:outline-none focus:ring-2 focus:ring-[#2e5934]"
             />
@@ -136,15 +107,15 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
           {storeSearchQuery.trim() && (
             <div className="flex flex-col gap-3">
               <span className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a]">
-                {isStoreSearching ? 'Searching Online…' : `Search Results (${storeSearchResults.length})`}
+                {storeSearchResults.length ? `Search Results (${storeSearchResults.length})${isStoreSearching ? ' · searching…' : ''}` : isStoreSearching ? 'Searching…' : 'Search Results (0)'}
               </span>
 
-              {storeSearchResults.length === 0 && !isStoreSearching ? (
+              {storeSearchResults.length === 0 && storeSearchEmpty ? (
                 <div className="p-8 text-center text-sm text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-xl border border-[#e3d7c3] dark:border-[#382f25]">
                   No books found. Check the title spelling or use the Add Book button to add manually.
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 transition-opacity ${storeSearchStale ? 'opacity-50' : ''}`}>
                   {storeSearchResults.map(b => (
                     <div key={b.id} className="flex flex-col gap-2">
                       <button

@@ -11,14 +11,15 @@ import { authorKey, bookKey, titleKey } from './identity';
  * therefore never come back through another shelf's saved list, or through a list saved before the judgement was made.
  *
  * This is a cache of the app's own verdicts, never user data: it holds only book keys, can be wiped at any time (it is on the
- * re-downloadable list), and only ever REMOVES books from discovery shelves. Search, the Library and Book Info never read it.
+ * re-downloadable list), and only ever REMOVES books from discovery shelves and search results. The Library and Book Info never read it:
+ * a book the reader already saved is never hidden or removed.
  */
 
 /**
  * Bump when the rules in quality.ts change in a way that should re-judge books already saved: lists saved under an older
  * version are not trusted (see bestsellers.ts), so no card built under the old rules can stay on screen.
  */
-export const CONTENT_FILTER_VERSION = 1;
+export const CONTENT_FILTER_VERSION = 2; // 2: satanic / demonic books are excluded too
 
 const excluded = persistentCache<true>('readlife.excluded1', { ttl: 60 * 24 * 60 * 60 * 1000, max: 400 });
 
