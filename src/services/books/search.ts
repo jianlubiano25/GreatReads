@@ -7,7 +7,7 @@ import type { Hit } from './sources/types';
 import { isUnknownAuthor, sameWork, titleKey } from './identity';
 import { isBlocked } from './quality';
 import { rememberExcluded } from './eligibility';
-import { localMatches, rememberSeen } from './localIndex';
+import { localMatches, matchKnownBooks, rememberSeen } from './localIndex';
 import { contentTokens, normQ, parseQuery, tokenHits, type ParsedQuery } from './query';
 
 /** Editions that are about a book, not the book ("Study Guide", "Summary of ...", boxed sets): ranked far down unless that is what was asked for. */
@@ -163,6 +163,8 @@ export interface LiveSearchOptions {
   final?: boolean;
   /** Books already on this device are shown first, and remembered (default true) */
   local?: boolean;
+  /** The reader's own books (library / device): matched instantly on the first keystroke, before any network answer */
+  known?: readonly Book[];
   /** Read "title by author" as a title and an author (default true; bulk import has a column for each, so it turns this off) */
   by?: boolean;
   /** The result list improved: called with the best books so far, as soon as there are any, and again as each source answers */
@@ -174,10 +176,12 @@ const recent = new Map<string, { at: number; books: Book[] }>();
 const RECENT_MS = 10 * 60 * 1000;
 const RECENT_MAX = 40;
 
-/** Books already on this device that match what is typed: synchronous, so a screen can show them in the same frame as the keystroke. */
-export function searchLocal(title: string, author = '', limit = 10): Book[] {
+/** Books already on this device (past searches + optional library) that match what is typed: synchronous, so a screen can show them in the same frame as the keystroke. */
+export function searchLocal(title: string, author = '', limit = 10, known: readonly Book[] = []): Book[] {
   const q = parseQuery(title, author);
-  return rank(localMatches(q, limit), q, limit);
+  const fromKnown = known.length ? matchKnownBooks(known, q, limit) : [];
+  const fromSeen = localMatches(q, limit);
+  return rank([...fromKnown, ...fromSeen], q, limit);
 }
 
 /**
@@ -192,7 +196,10 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   const useLocal = o.local !== false;
   const emit = (books: Book[], from: string, done: boolean) => { if (!o.signal?.aborted) o.onUpdate?.(books, { done, from }); };
 
-  const local = useLocal ? localMatches(q, limit) : [];
+  const known = o.known ?? [];
+  const local = useLocal
+    ? [...(known.length ? matchKnownBooks(known, q, limit) : []), ...localMatches(q, limit)]
+    : [];
   if (local.length) emit(rank(local, q, limit), 'local', false);
 
   const memo = useLocal && !o.final ? recent.get(q.key) : undefined;
