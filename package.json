@@ -15,7 +15,8 @@
     "test": "tsx --test src/services/*.test.ts src/services/*/*.test.ts",
     "check:nyt": "tsx scripts/check-nyt-lists.ts",
     "check:service95": "tsx scripts/check-service95.ts",
-    "check:oprah": "tsx scripts/check-oprah.ts"
+    "check:oprah": "tsx scripts/check-oprah.ts",
+    "check:google": "tsx scripts/check-google-books.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

@@ -196,6 +196,8 @@ export function sanitizeIdentity(raw: unknown, legacyCanon?: unknown): BookIdent
   return Object.keys(out).length ? out : undefined;
 }
 
+const VALID_RATING_SOURCES = ['openlibrary', 'google', 'apple', 'library'] as const;
+
 export function sanitizeCustomBooks(raw: unknown): Book[] {
   if (!Array.isArray(raw)) return [];
   const out: Book[] = [];
@@ -234,6 +236,8 @@ export function sanitizeCustomBooks(raw: unknown): Book[] {
       coverUrl: httpsUrl(b.coverUrl),
       ratingAverage: rating !== undefined && rating >= 0 && rating <= 5 ? rating : undefined,
       ratingCount: num(b.ratingCount),
+      // which site the pair came from: kept so a reload does not turn a saved Apple / Google pair into one of unknown origin
+      ratingSource: rating !== undefined && (VALID_RATING_SOURCES as readonly string[]).includes(b.ratingSource) ? b.ratingSource : undefined,
       spineColor: hexColor(b.spineColor),
       source: (VALID_SOURCES as readonly string[]).includes(b.source) ? b.source : undefined,
       addedAt: num(b.addedAt),

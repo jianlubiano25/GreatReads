@@ -24,6 +24,9 @@ const LIST_TTL = 6 * 60 * 60 * 1000; // the NYT updates weekly: re-asking more o
 /** The NYT publishes weekly, so a list up to this old is still "the latest official list" when a refresh fails. */
 export const NYT_STALE_OK_MS = 10 * 24 * 60 * 60 * 1000;
 const cache = persistentCache<NytEntry[]>('readlife.nyt1', { ttl: LIST_TTL, max: 10, keepStale: NYT_STALE_OK_MS });
+/** Lists the NYT said it does not publish: not asked again for a day (every ask spends the site's few requests a minute). Only that list is affected. */
+const GONE_TTL = 24 * 60 * 60 * 1000;
+const gone = persistentCache<true>('readlife.nytgone1', { ttl: GONE_TTL, max: 20 });
 
 /**
  * With VITE_NYT_API_KEY set (local dev only) the key is used directly. In production the request goes to this site's own
@@ -72,7 +75,7 @@ export function parseNytList(data: any): NytEntry[] {
 export const forgetNytList = (list: string) => cache.delete(list);
 
 /** Why the NYT list could not be loaded (the Cloudflare function reports these; see functions/api/nyt.js). */
-export type NytFailure = 'not_configured' | 'unauthorized' | 'rate_limited' | 'no_function' | 'upstream_error' | 'offline' | 'empty';
+export type NytFailure = 'not_configured' | 'unauthorized' | 'rate_limited' | 'no_function' | 'list_unavailable' | 'upstream_error' | 'offline' | 'empty';
 
 export interface NytResult {
   entries: NytEntry[] | null;
@@ -81,11 +84,15 @@ export interface NytResult {
   failure?: NytFailure;
 }
 
-export function classifyNytFailure(r: { status: number; failure?: string; data?: any }): NytFailure {
-  const err = r.data?.error;
+export function classifyNytFailure(r: { status: number; failure?: string; data?: any; body?: any }): NytFailure {
+  const err = r.data?.error ?? r.body?.error;
   if (err === 'not_configured' || r.status === 503) return 'not_configured';
   if (err === 'unauthorized' || r.status === 401 || r.status === 403) return 'unauthorized';
   if (err === 'rate_limited' || r.status === 429) return 'rate_limited';
+  // The NYT answered 404 for this list name. The function (functions/api/nyt.js) checks names.json to tell a list the NYT does not publish
+  // ('list_not_found', published: false) from a 404 for a list it does publish (a routing / upstream fault: published: true). Older deployments
+  // report only { error: 'upstream_error', upstream: 404 }, which is read the same way as 'not published' (the usual cause).
+  if (err === 'list_not_found' || (err === 'upstream_error' && r.body?.upstream === 404 && r.body?.published !== true)) return 'list_unavailable';
   if (r.failure === 'not-json' || r.status === 404) return 'no_function'; // the site answered with a web page: the function isn't deployed
   if (r.failure === 'network' || r.failure === 'timeout') return 'offline';
   return 'upstream_error';
@@ -96,7 +103,8 @@ export const NYT_FAILURE_TEXT: Record<NytFailure, string> = {
   unauthorized: 'the NYT rejected the key (enable the Books API for it in the NYT developer portal)',
   rate_limited: 'the NYT rate limit was hit; it will retry later',
   no_function: '/api/nyt returned a web page: the Pages Function is not deployed (needs a Git-connected Pages project, not a plain upload)',
-  upstream_error: 'the NYT API had an error, or does not have this list name (run npm run check:nyt)',
+  list_unavailable: 'the NYT Books API does not publish this list name (any more); this shelf stays hidden (run npm run check:nyt to see the names it does publish)',
+  upstream_error: 'the NYT API had an error (run npm run check:nyt to verify the list names)',
   offline: 'no network',
   empty: 'the NYT list came back empty',
 };
@@ -129,6 +137,7 @@ const inflight = new Map<string, Promise<NytResult>>();
 export async function loadNytList(list: string, opts: CallOpts & { force?: boolean } = {}): Promise<NytResult> {
   const hit = opts.force ? undefined : cache.get(list); // force = a manual refresh: ask again, but the saved list stays as the fallback
   if (hit) return { entries: hit, stale: false };
+  if (!opts.force && !cache.peek(list) && gone.get(list)) { lastFailure.set(list, 'list_unavailable'); return { entries: null, stale: false, failure: 'list_unavailable' }; }
   return dedupeInflight(inflight, list, async () => {
     const ask = () => turn(() => getJsonDetailed(listUrl(list), { timeout: 10000, retries: 1, signal: opts.signal }));
     let r = await ask();
@@ -142,11 +151,13 @@ export async function loadNytList(list: string, opts: CallOpts & { force?: boole
     const entries = r.data ? parseNytList(r.data) : [];
     if (entries.length) {
       cache.set(list, entries);
+      gone.delete(list);
       lastFailure.delete(list);
       return { entries, stale: false };
     }
     if (opts.signal?.aborted) return { entries: null, stale: false, failure: 'offline' as const };
     const failure: NytFailure = r.data ? 'empty' : classifyNytFailure(r);
+    if (failure === 'list_unavailable') gone.set(list, true);
     lastFailure.set(list, failure);
     warnOnce(list, failure);
     const old = cache.peek(list);

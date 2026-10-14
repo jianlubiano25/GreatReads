@@ -31,21 +31,27 @@ const hosts = (calls: string[], pred: (u: URL) => boolean) => calls.filter(c => 
 const pairOf = (b: any) => [b?.ratingAverage, b?.ratingCount, b?.ratingSource];
 const mainPair = (r: any) => [r?.average, r?.count, r?.source];
 
-test('the book info shows the rating its card showed, even when live sites would rank differently', () => {
-  // the card's pair came from Open Library; a live Apple rating exists now, but the sheet must not contradict the card
+test('the book info follows the ladder over the live sites; a card\'s pair only stands in for its own site', () => {
+  // the card's pair came from Open Library (e.g. resolved before Apple answered); a live Apple rating exists now and ranks first
   const card = { id: 'ol_x', source: 'openlibrary', ratingAverage: 4.1, ratingCount: 300, ratingSource: 'openlibrary' } as any;
   const live = [{ source: 'openlibrary', average: 4.1, count: 300 }, { source: 'apple', average: 3.2, count: 90 }, { source: 'google', average: 3.9, count: 40 }] as any;
   const main = mainRating(card, live);
-  assert.deepEqual(mainPair(main), [4.1, 300, 'openlibrary']);
-  assert.deepEqual(otherRatings(live, main?.source).map(f => f.source), ['google', 'apple']); // the others sit beside it, once each
+  assert.deepEqual(mainPair(main), [3.2, 90, 'apple']);
+  assert.deepEqual(otherRatings(live, main?.source).map(f => f.source), ['openlibrary', 'google']); // the others sit beside it, once each
+
+  // nothing live outranks the card's own site: its pair is still the main rating (a card and its sheet agree when the ladder agrees)
+  const liveNoApple = live.filter((f: any) => f.source !== 'apple');
+  assert.deepEqual(mainPair(mainRating(card, liveNoApple)), [4.1, 300, 'openlibrary']);
+  assert.deepEqual(mainPair(mainRating(card, [])), [4.1, 300, 'openlibrary']); // nothing live yet: the saved pair is shown at once
 
   // a book with no rating of its own takes the ladder over the live sites: Apple first
   const bare = { id: 'ol_y', source: 'openlibrary' } as any;
   assert.deepEqual(mainPair(mainRating(bare, live)), [3.2, 90, 'apple']);
 
-  // a saved pair whose source was never recorded: it is kept only while it is exactly one site's own pair; otherwise the ladder decides
+  // a saved pair whose source was never recorded is attributed to the one site whose own pair it is exactly; the ladder still decides
   const sourceless = { id: 'ol_z', source: 'openlibrary', ratingAverage: 4.1, ratingCount: 300 } as any;
-  assert.deepEqual(mainPair(mainRating(sourceless, live)), [4.1, 300, 'openlibrary']);
+  assert.deepEqual(mainPair(mainRating(sourceless, live)), [3.2, 90, 'apple']);
+  assert.deepEqual(mainPair(mainRating(sourceless, liveNoApple)), [4.1, 300, 'openlibrary']);
   const unknown = { id: 'ol_w', source: 'openlibrary', ratingAverage: 2.5, ratingCount: 7 } as any;
   assert.deepEqual(mainPair(mainRating(unknown, live)), [3.2, 90, 'apple']);
   // the library's own rating is still first

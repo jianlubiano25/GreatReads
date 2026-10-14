@@ -1,12 +1,12 @@
 import { getJsonDetailed, type GetOpts, type JsonResult } from '../http';
 import { bump } from '../perf';
 import { authorVariants, cleanIsbn, isbnPair, titleVariants, titlesMatch, authorListMatches } from '../identity';
-import { makeBook } from '../model';
+import { difficultyFor, hasRealSummary, isKnownGenre, makeBook } from '../model';
 import { externalRating } from '../ratings';
 import type { CallOpts, Hit } from './types';
 
 const GB = 'https://www.googleapis.com/books/v1';
-const FIELDS = 'id,volumeInfo(title,authors,description,categories,pageCount,publishedDate,averageRating,ratingsCount,maturityRating,imageLinks,industryIdentifiers)';
+const FIELDS = 'id,volumeInfo(title,authors,publisher,description,categories,pageCount,publishedDate,averageRating,ratingsCount,maturityRating,imageLinks,industryIdentifiers)';
 
 /**
  * Optional API key (higher quota). It ships inside the app, so restrict it to this site's address in the Google Cloud console.
@@ -66,7 +66,7 @@ export function gbItemToHit(item: any, fallbackTitle = ''): Hit {
     source: 'google',
     identity: { gbVolume: item?.id, ...isbn },
   });
-  return { book, flags: { subjects: v.categories, description: v.description ? String(v.description) : undefined, googleMaturity: v.maturityRating } };
+  return { book, flags: { subjects: v.categories, description: v.description ? String(v.description) : undefined, googleMaturity: v.maturityRating, publisher: v.publisher ? String(v.publisher) : undefined } };
 }
 
 const searchUrl = (q: string, max: number) => `${GB}/volumes?q=${encodeURIComponent(q)}&maxResults=${Math.min(40, max)}&printType=books&fields=${encodeURIComponent(`items(${FIELDS})`)}`;
@@ -88,25 +88,83 @@ export async function googleVolume(id: string, opts: CallOpts = {}): Promise<Hit
   return item ? gbItemToHit(item) : null;
 }
 
-/** Best title/author match for a book we only know by name (an ISBN lookup is preferred when there is one). */
-export async function findGoogle(q: { title: string; author?: string; isbn?: string }, opts: CallOpts = {}): Promise<Hit | null> {
-  if (cleanIsbn(q.isbn)) {
-    const exact = await googleByIsbn(q.isbn!, opts);
-    if (exact) return exact;
+/** Is this Google volume the book that was asked for? Title and author must agree; an unknown wanted author or an empty title contradicts nothing. */
+const isWanted = (h: Hit, q: { title: string; author?: string }): boolean => (!q.title.trim() || titlesMatch(h.book.title, q.title)) && authorListMatches(h.book.author, q.author || '');
+
+/** What a caller wants from a Google volume. Only a missing NEEDED field is worth another search (a cover lookup does not care about the description). */
+export type GoogleNeed = 'cover' | 'pages' | 'year' | 'text';
+const ALL_NEEDS: readonly GoogleNeed[] = ['cover', 'pages', 'year', 'text'];
+
+/** Does this volume lack a needed field (cover, pages, year, a real description)? Ratings are not counted: see findGoogleRating. */
+export const isSparseGoogle = (h: Hit, need: readonly GoogleNeed[] = ALL_NEEDS): boolean =>
+  (need.includes('cover') && !h.book.coverUrl) || (need.includes('pages') && !h.book.pageCount) || (need.includes('year') && !h.book.year) || (need.includes('text') && !hasRealSummary(h.book.summary));
+
+/**
+ * Fill a volume's GAPS, field by field, from other editions of the SAME book (the caller passes only volumes that matched the wanted
+ * title and author). A value the volume already has is never replaced; identity (the volume id and ISBNs) stays the volume's own, so the
+ * result still names one exact edition. A rating is taken whole (average + count together) from one edition, never mixed.
+ */
+export function fillGoogleGaps(base: Hit, others: readonly Hit[]): Hit {
+  const book = { ...base.book };
+  const flags = { ...base.flags };
+  for (const o of others) {
+    if (o === base || (o.book.identity?.gbVolume && o.book.identity.gbVolume === base.book.identity?.gbVolume)) continue;
+    if (!book.coverUrl && !book.coverId && o.book.coverUrl) book.coverUrl = o.book.coverUrl;
+    if (!book.pageCount && o.book.pageCount) { book.pageCount = o.book.pageCount; book.difficulty = difficultyFor(o.book.pageCount); }
+    if (!book.year && o.book.year) book.year = o.book.year;
+    if (!hasRealSummary(book.summary) && hasRealSummary(o.book.summary)) { book.summary = o.book.summary; flags.description = o.flags.description; }
+    if (!isKnownGenre(book.genre) && isKnownGenre(o.book.genre)) { book.genre = o.book.genre; flags.subjects = o.flags.subjects; }
+    if (!externalRating(book) && externalRating(o.book)) { book.ratingAverage = o.book.ratingAverage; book.ratingCount = o.book.ratingCount; }
   }
+  return { book, flags };
+}
+
+/** Most searches spent looking for another edition to fill an exact-ISBN volume's gaps (the ISBN lookup itself is not counted): one, as the book is named. */
+const SPARSE_SEARCHES = 1;
+
+/** The plain search "Title Author" (no intitle:/inauthor: operators): the one fallback tried after the strict searches found nothing. */
+const looseQuery = (title: string, author?: string): string => `${title} ${author || ''}`.trim();
+
+/** The matching editions of the first title / author variant whose search finds any (at most `maxSearches` searches). */
+async function matchingEditions(q: { title: string; author?: string }, opts: CallOpts, maxSearches = Infinity): Promise<Hit[]> {
   const generic = !q.author || /^(Unknown|Featured) Author$/.test(q.author);
   // The title as given, without its subtitle, then each half of a dual title; the author as given, then with a hyphen closed up (see openLibrary.ts). The first
   // search that finds the book wins.
-  const ok = (h: Hit) => titlesMatch(h.book.title, q.title) && authorListMatches(h.book.author, q.author || '');
+  let searches = 0;
   for (const title of titleVariants(q.title)) {
     for (const author of generic ? [undefined] : authorVariants(q.author)) {
-      const matches = (await searchGoogle(`intitle:"${title}"${author ? ` inauthor:"${author}"` : ''}`, 6, opts)).filter(ok);
-      // Editions of one book differ in whether Google has ratings for them: take the best-rated match, else the first
-      const found = matches.reduce<Hit | undefined>((best, h) => (!best || (h.book.ratingCount || 0) > (best.book.ratingCount || 0) ? h : best), undefined);
-      if (found || opts.signal?.aborted) return found ?? null;
+      if (searches >= maxSearches) return [];
+      searches++;
+      const matches = (await searchGoogle(`intitle:"${title}"${author ? ` inauthor:"${author}"` : ''}`, 6, opts)).filter(h => isWanted(h, q));
+      if (matches.length || opts.signal?.aborted) return matches;
     }
   }
-  return null;
+  // Strict intitle:/inauthor: often finds nothing although a plain "Title Author" search finds the book: ONE loose search, same filter.
+  // Not when the caller capped the searches (an exact-ISBN volume only looks for gaps to fill): that must not cost more requests.
+  if (maxSearches === Infinity) return (await searchGoogle(looseQuery(q.title, generic ? undefined : q.author), 10, opts)).filter(h => isWanted(h, q));
+  return [];
+}
+
+/**
+ * Best match for a book we only know by name (an ISBN lookup is preferred when there is one).
+ *  - An exact-ISBN volume is used only when it IS the wanted book (title and author agree): an ISBN that belongs to another book, or to a
+ *    bundle, must not lend that book's cover, pages or description.
+ *  - A volume that is sparse (no cover, pages, year or real description) is completed from the other matching editions found by title and
+ *    author, field by field (fillGoogleGaps). Those come free with a title search that was made anyway; for an exact-ISBN volume at most
+ *    SPARSE_SEARCHES extra search is made, and only when a field the caller NEEDS is missing (`need`, default all of them).
+ */
+export async function findGoogle(q: { title: string; author?: string; isbn?: string }, opts: CallOpts = {}, need: readonly GoogleNeed[] = ALL_NEEDS): Promise<Hit | null> {
+  let exact: Hit | null = null;
+  if (cleanIsbn(q.isbn)) {
+    const byIsbn = await googleByIsbn(q.isbn!, opts);
+    if (byIsbn && isWanted(byIsbn, q)) exact = byIsbn;
+    if (exact && !isSparseGoogle(exact, need)) return exact;
+  }
+  const matches = await matchingEditions(q, opts, exact ? SPARSE_SEARCHES : Infinity);
+  if (exact) return fillGoogleGaps(exact, matches);
+  // Editions of one book differ in whether Google has ratings for them: take the best-rated match, else the first
+  const found = matches.reduce<Hit | undefined>((best, h) => (!best || (h.book.ratingCount || 0) > (best.book.ratingCount || 0) ? h : best), undefined);
+  return found ? fillGoogleGaps(found, matches) : null;
 }
 
 /** Most searches spent looking for one book's Google rating (the ISBN edition, then title / author variants). */
@@ -134,7 +192,7 @@ export async function findGoogleRating(q: { title: string; author?: string; isbn
   };
   const isbn = cleanIsbn(q.isbn);
   if (isbn) {
-    const exact = bestRated(await search(`isbn:${isbn}`));
+    const exact = bestRated((await search(`isbn:${isbn}`)).filter(h => isWanted(h, q))); // an ISBN that belongs to another book lends it no rating
     if (exact) return { hit: exact, failed: false };
   }
   const generic = !q.author || /^(Unknown|Featured) Author$/.test(q.author);
@@ -142,10 +200,15 @@ export async function findGoogleRating(q: { title: string; author?: string; isbn
   for (const title of titleVariants(q.title)) {
     for (const author of generic ? [undefined] : authorVariants(q.author)) {
       // After an API error (rate limit, outage) the next searches would fail the same way: stop instead of spending up to 4 x 2 requests per book
-      if (searches >= RATING_SEARCHES || unavailable || opts.signal?.aborted) return { hit: null, failed };
+      if (unavailable || opts.signal?.aborted) return { hit: null, failed };
+      if (searches >= RATING_SEARCHES) break; // the strict budget is spent: only the single loose fallback below may follow
       const found = bestRated((await search(`intitle:"${title}"${author ? ` inauthor:"${author}"` : ''}`)).filter(ok));
       if (found) return { hit: found, failed: false };
     }
   }
+  // Strict intitle:/inauthor: often finds nothing although a plain "Title Author" search finds the book. ONE extra search (outside RATING_SEARCHES), same `ok` filter.
+  if (unavailable || opts.signal?.aborted) return { hit: null, failed };
+  const loose = bestRated((await search(looseQuery(q.title, generic ? undefined : q.author))).filter(ok));
+  if (loose) return { hit: loose, failed: false };
   return { hit: null, failed };
 }

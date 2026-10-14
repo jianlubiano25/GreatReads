@@ -1,10 +1,10 @@
 import type { Book } from '../../types';
-import { dedupeInflight } from './http';
+import { dedupeInflight, transientFailureCount } from './http';
 import { bump } from './perf';
 import { persistentCache } from './cache';
 import { authorKey, cleanIsbn, isbnPair, mergeIdentity, titleKey } from './identity';
 import { mergeBooks } from './merge';
-import { chooseRating, externalRating, setRating, SUFFICIENT_RATINGS, type SourceRating } from './ratings';
+import { chooseRating, externalRating, setRating, settleSiteRating, SUFFICIENT_RATINGS, type SourceRating } from './ratings';
 import type { ContentFlags } from './quality';
 import { lookupApple } from './sources/appleBooks';
 import { findGoogle, findGoogleRating } from './sources/googleBooks';
@@ -52,7 +52,7 @@ export interface Resolved {
   retry?: { at: number; tries: number };
 }
 
-const cache = persistentCache<Resolved | null>('readlife.resolved3', { ttl: 14 * 24 * 60 * 60 * 1000, max: 250, validate: v => v === null || (!!v && typeof v === 'object' && !!v.book && typeof v.book.title === 'string') });
+const cache = persistentCache<Resolved | null>('readlife.resolved3', { ttl: 14 * 24 * 60 * 60 * 1000, keepStale: 90 * 24 * 60 * 60 * 1000, max: 250, validate: v => v === null || (!!v && typeof v === 'object' && !!v.book && typeof v.book.title === 'string') });
 /**
  * Books no source could place. Remembered only briefly: "not found" is often a dropped connection or a rate limit, and a miss
  * that lasted two weeks (as saved results do) left covers blank long after the network was fine again.
@@ -89,8 +89,11 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
   if (misses.get(key)) { bump('resolve.missHit'); return Promise.resolve(null); }
   if (inflight.has(key)) bump('resolve.inflightShared');
   const failedBefore = hit?.retry?.tries || 0;
+  // What this book's sites gave last time (also a result past its two weeks, kept for this): a lookup that fails or finds nothing must not erase it
+  const had = (hit ?? cache.peek(key)?.value)?.ratings;
   return dedupeInflight(inflight, key, async () => {
     bump('resolve.network');
+    const troubleBefore = transientFailureCount();
     const [ol, gb, apLookup] = await Promise.all([
       findOpenLibrary(q, opts),
       findGoogle(q, opts),
@@ -100,7 +103,8 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
     const appleFailed = apLookup.failed && !ap;
     const hits = [ol, gb, ap].filter((h): h is NonNullable<typeof h> => !!h);
     if (!hits.length) {
-      if (!opts.signal?.aborted && !appleFailed) misses.set(key, true); // an unreachable Apple is not "no such book"
+      // An unreachable Apple, or ANY site failing meanwhile (offline, timeout, rate limit, malformed answer), is not "no such book"
+      if (!opts.signal?.aborted && !appleFailed && transientFailureCount() === troubleBefore) misses.set(key, true);
       return null;
     }
     let book: Book = hits.map(h => h.book).reduce((a, b) => mergeBooks(a, b));
@@ -130,26 +134,35 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
       googleFailed = found.failed && !found.hit;
       googleChecked = !!google || !googleFailed; // an error is not "Google has no rating"
     }
-    book = setRating(book, chooseRating({ apple, ol: olRating, google }));
+    // A site that answered nothing usable this time (an error, a timeout, or no rating) keeps the valid pair it gave before; a valid fresh pair replaces it
+    const prior = (site: SourceRating['source']) => had?.find(r => r.source === site);
+    olRating = settleSiteRating(olRating, prior('openlibrary'));
+    google = settleSiteRating(google, prior('google'));
+    const appleRating = settleSiteRating(apple, prior('apple'));
+    if (google) googleChecked = true;
+    book = setRating(book, chooseRating({ apple: appleRating, ol: olRating, google }));
     if (q.genreHint && !book.genre) book.genre = q.genreHint;
     const flags: ContentFlags = {
       subjects: hits.flatMap(h => h.flags.subjects || []),
       description: hits.map(h => h.flags.description).find(Boolean),
       googleMaturity: hits.map(h => h.flags.googleMaturity).find(Boolean),
       appleAdvisory: hits.map(h => h.flags.appleAdvisory).find(Boolean),
+      publisher: hits.map(h => h.flags.publisher).find(Boolean),
     };
     const out: Resolved = {
       book,
       flags,
       readers: { ol: ol?.book.ratingCount, google: gb?.book.ratingCount, apple: ap?.book.ratingCount },
       words: hits.flatMap(h => [...(h.flags.subjects || []), h.book.genre]),
-      ratings: [olRating, google, apple].filter((r): r is SourceRating => !!r),
+      ratings: [olRating, google, appleRating].filter((r): r is SourceRating => !!r),
       checked: [...(olRating ? ['openlibrary' as const] : []), ...(googleChecked ? ['google' as const] : []), ...(q.apple && !appleFailed ? ['apple' as const] : [])],
     };
     if (!opts.signal?.aborted) {
       // Apple (asked for) could not be reached and the stars came from a lower step (or there are none): Apple would have been first, so this is asked again soon
       const appleMissed = appleFailed && book.ratingSource !== 'apple';
-      if ((googleFailed && !book.ratingAverage) || appleMissed) out.retry = { at: retryAfter(failedBefore + 1), tries: failedBefore + 1 };
+      // Google that could not be reached is worth asking again when the book has no rating, and ALWAYS when every site was asked for the offline prefetch:
+      // that run saves what Google says as final, and a failure saved as final is never asked again (see isCurrentRecord)
+      if ((googleFailed && (q.allSources || !book.ratingAverage)) || appleMissed) out.retry = { at: retryAfter(failedBefore + 1), tries: failedBefore + 1 };
       cache.set(key, out);
     }
     return { ...out, book: { ...out.book, id: pickId(out.book, q) } };

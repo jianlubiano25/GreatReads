@@ -98,6 +98,7 @@ export const LEGACY_BOOK_CACHE_KEYS = [
   'readlife.covers1', 'readlife.coverMiss1', 'readlife.coverNone1', 'readlife.coverNone2', 'readlife.ratingsrc1',
   'readlife.resolved1', 'readlife.meta4', // kept ratings from before Google editions and the validity rules were fixed
   'readlife.curated2', 'readlife.resolved2', 'readlife.meta5', 'readlife.ratingsrc2', // keyed per spelling of the author / per record id, and could hold a source found without Apple for weeks
+  'readlife.shelves1', // Trending lists saved before explicit books were judged on their categories and descriptions
 ];
 export const dropLegacyBookCaches = () => {
   try { LEGACY_BOOK_CACHE_KEYS.forEach(k => localStorage.removeItem(k)); } catch {}

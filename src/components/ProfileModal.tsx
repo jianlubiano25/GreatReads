@@ -23,6 +23,8 @@ interface ProfileModalProps {
   onExportBackup: () => string;
   onImportBackup: (jsonStr: string) => boolean;
   onOpenBackupModal?: () => void;
+  /** Only given while the owner's cover tools are switched on */
+  onOpenCoverPublish?: () => void;
 }
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({
@@ -39,6 +41,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   onExportBackup,
   onImportBackup,
   onOpenBackupModal,
+  onOpenCoverPublish,
 }) => {
   // Dismissing the sheet (outside tap, X, Escape) keeps your edits, just like Save & Close
   useModalA11y(() => handleSave());
@@ -360,6 +363,19 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>Restore {hiddenCount} hidden book{hiddenCount > 1 ? 's' : ''}</span>
+              </button>
+            </div>
+          )}
+
+          {onOpenCoverPublish && (
+            <div className="pt-3 border-t border-[#e3d7c3] dark:border-[#382f25]">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] block mb-2">Book covers</span>
+              <button
+                type="button"
+                onClick={() => { onClose(); onOpenCoverPublish(); }}
+                className="w-full py-2.5 px-3 rounded-xl text-xs font-semibold border border-[#2e5934] dark:border-[#86b880] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center gap-2 active:scale-95 transition-all hover:bg-[#2e5934]/10"
+              >
+                <span>Publish book covers</span>
               </button>
             </div>
           )}

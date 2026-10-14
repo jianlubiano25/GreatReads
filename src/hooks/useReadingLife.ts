@@ -7,6 +7,7 @@ import { computeSnapshot, currentStreakFor, evaluateGarden, markCelebrated, move
 import { dateKey } from '../services/dates';
 import { applyAddBook, type AddDestination } from '../services/library';
 import { clearableCacheKeys } from '../services/books/cache';
+import { exportCoverPicks, restoreCoverPicksFromBackup } from '../services/books/coverPicks';
 
 // Small helper lists that are not persistentCache instances but can be rebuilt (never user data)
 export const EXTRA_CLEARABLE = ['readlife.preload', 'readlife.loaded', 'readlife.phoneticTried'];
@@ -495,12 +496,15 @@ export function useReadingLife() {
   }, []);
 
   const exportBackup = useCallback(() => {
-    return JSON.stringify(state, null, 2);
+    // Covers you picked (the star in the cover viewer) travel with the backup; a backup without picks looks exactly as before
+    const coverPicks = exportCoverPicks();
+    return JSON.stringify(Object.keys(coverPicks).length ? { ...state, coverPicks } : state, null, 2);
   }, [state]);
 
   const importBackup = useCallback((jsonStr: string) => {
     const restored = parseBackup(jsonStr, buildDefaultState());
     if (!restored) return false;
+    restoreCoverPicksFromBackup(jsonStr); // a backup made before picks existed leaves the current picks alone
     // A restore never shows "new plant" prompts: bring the garden up to date silently and mark everything as seen.
     const snap = computeSnapshot({
       dailyLog: restored.dailyLog, goal: restored.goal, status: restored.status, todayKey: getTodayKey(),

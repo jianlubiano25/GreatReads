@@ -3,7 +3,7 @@
  *
  *   npm run prefetch:store                         (needs internet)
  *   npm run prefetch:store -- --max-minutes=10     stops politely at the time limit; run it again to finish the rest
- *   npm run prefetch:store -- --redo-ratings       asks for every book again
+ *   npm run prefetch:store -- --redo-ratings       asks for every book again (the answers are merged into the saved records: nothing valid is lost)
  *
  * There are NO matching or rating rules in this file. Every book goes through the same resolver the app uses (resolveBook with Apple
  * Books, in src/services/books/resolve.ts): strict title + author matching on every site, Google editions, and the rating ladder
@@ -14,7 +14,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveBook } from '../src/services/books/resolve';
-import { isCurrentRecord, toPrefetchedRecord, type PrefetchedRecord } from '../src/services/books/prefetchRecord';
+import { isCurrentRecord, mergePrefetchedRecord, toPrefetchedRecord, type PrefetchedRecord } from '../src/services/books/prefetchRecord';
 import { perfSnapshot } from '../src/services/books/perf';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -38,7 +38,7 @@ for (const shelf of shelves) {
   const tasks = shelf.seeds.map(([title, author], i) => async () => {
     if (!redoRatings && isCurrentRecord(out[shelf.id][i], title)) return; // saved by the current rules: kept
     const r = await resolveBook({ title, author, apple: true, allSources: true }); // allSources: Google's rating is looked for on every book, so the book info needs no Google request
-    const rec = toPrefetchedRecord(title, r);
+    const rec = mergePrefetchedRecord(out[shelf.id][i], toPrefetchedRecord(title, r), title); // merged into what is saved: a failed or partial answer never wipes a valid record
     if (!rec.rv) waiting++;
     out[shelf.id][i] = rec;
   });

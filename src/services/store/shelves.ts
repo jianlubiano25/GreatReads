@@ -32,5 +32,9 @@ export interface ShelfSource {
 }
 
 export const SHELF_TTL = 6 * 60 * 60 * 1000;
-/** Finished dynamic shelves (NYT, Trending). Curated shelves have their own, longer-lived cache (see curated.ts). */
-export const dynamicShelves = persistentCache<Book[]>('readlife.shelves1', { ttl: SHELF_TTL, max: 8, keepStale: 7 * 24 * 60 * 60 * 1000 });
+/**
+ * Finished dynamic shelves (Trending). Curated shelves have their own, longer-lived cache (see curated.ts).
+ * `shelves2`: lists saved by `shelves1` were built before explicit books were judged on their categories, so they are not trusted
+ * (and are removed at startup, see LEGACY_BOOK_CACHE_KEYS in books/cache.ts); the next open builds the shelf again.
+ */
+export const dynamicShelves = persistentCache<Book[]>('readlife.shelves2', { ttl: SHELF_TTL, max: 8, keepStale: 7 * 24 * 60 * 60 * 1000 });

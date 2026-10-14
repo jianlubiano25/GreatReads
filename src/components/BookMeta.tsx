@@ -3,7 +3,7 @@ import { Book } from '../types';
 import { BOOK_AWARDS } from '../data/defaultBooks';
 import { honorKind, mergeHonors } from '../services/store/honors';
 import { externalRating, ratingOf, starFills } from '../services/books';
-import { coverKey, getCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, reportMissingCover, clearMissingCover } from '../services/books';
+import { coverKey, getCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, reportMissingCover, clearMissingCover, getCoverPickInfo, pickSizedUrl, markCoverPickFailed } from '../services/books';
 
 export type AwardKind = 'w' | 's' | 'c'; // winner, shortlist, other pick (book club, series...)
 
@@ -118,9 +118,10 @@ export const CoverFace = React.memo(function CoverFace(props: CoverFaceProps) {
 });
 
 function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = false }: CoverFaceProps) {
-  // Re-render when "Reload missing covers" repairs one; a repaired cover wins over the original link
+  // Re-render when "Reload missing covers" repairs one or a cover is picked in the cover viewer. A picked cover wins over a repaired one, which wins over the original link
   useSyncExternalStore(subscribeCovers, getCoversVersion, getCoversVersion);
-  const baseUrl = getCoverFix(book) || getCoverUrl(book.coverId, imgSize, book.coverUrl);
+  const pick = getCoverPickInfo(book);
+  const baseUrl = pick ? pickSizedUrl(pick.url, imgSize) : getCoverFix(book) || getCoverUrl(book.coverId, imgSize, book.coverUrl);
   type St = { base: string; tries: number; alt: string; dead: boolean };
   const [st, setSt] = useState<St>({ base: baseUrl, tries: 0, alt: '', dead: false });
   const cur: St = st.base === baseUrl ? st : { base: baseUrl, tries: 0, alt: '', dead: false };
@@ -166,6 +167,7 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
       setTimeout(() => setSt(p => (p.base === baseUrl ? { ...p, tries: cur.tries + 1 } : p)), 700 * (cur.tries + 1));
       return;
     }
+    if (pick) return markCoverPickFailed(book); // a picked cover that will not load: the normal cover shows (the pick is kept)
     giveUp();
   };
 

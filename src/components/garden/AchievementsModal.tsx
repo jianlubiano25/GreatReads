@@ -1,10 +1,16 @@
 import { useModalA11y } from '../../hooks/useModalA11y';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useSyncExternalStore } from 'react';
 import { X, Lock, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { GardenState } from '../../types';
 import { GARDEN_AREAS, MILESTONES, MILESTONE_BY_ID, canPlaceIn, getPlantDef } from '../../data/gardenCatalog';
 import { milestoneProgress, plantsByArea } from '../../services/garden';
 import { PlantArt } from './PlantArt';
+import { getVineStyle, setVineStyle, subscribeVineStyle, type VineStyle } from '../../services/nookPrefs';
+
+const VINE_CHOICES: { id: VineStyle; label: string; hint: string }[] = [
+  { id: 'nook', label: '🌿 Nook vine', hint: 'Winds round the window and both shelves (current)' },
+  { id: 'classic', label: '🍃 Classic vine', hint: 'The short climbing vine inside the window (main)' },
+];
 
 interface Props {
   garden: GardenState;
@@ -23,6 +29,7 @@ export function AchievementsModal({ garden, onMovePlant, onClose }: Props) {
   const earnedCount = MILESTONES.filter(m => garden.achievements[m.id]).length;
   const byArea = useMemo(() => plantsByArea(garden), [garden.plants, garden.placements]);
   const [selected, setSelected] = useState<string | null>(null);
+  const vineStyle = useSyncExternalStore(subscribeVineStyle, getVineStyle, () => 'nook' as const);
 
   const sel = selected && garden.plants[selected] ? selected : null;
   const selDef = sel ? getPlantDef(sel) : null;
@@ -52,6 +59,29 @@ export function AchievementsModal({ garden, onMovePlant, onClose }: Props) {
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* ---------- Vine look (saved on this device; the vine grows the same either way) ---------- */}
+        <section className="px-4 sm:px-5 pt-4" aria-label="Vine look">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a]">Vine look</h4>
+          <div role="radiogroup" aria-label="Vine look" className="grid grid-cols-2 gap-2 mt-2">
+            {VINE_CHOICES.map(c => {
+              const on = vineStyle === c.id;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => setVineStyle(c.id)}
+                  className={`min-h-[56px] px-3 py-2 rounded-xl text-left border active:scale-95 transition-all ${on ? 'border-[#2e5934] bg-[#e7f0e3] dark:bg-[#1f2d20] ring-1 ring-[#2e5934]' : 'border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17]'}`}
+                >
+                  <span className="block text-xs font-semibold">{c.label}</span>
+                  <span className="block text-[10px] leading-snug text-[#706256] dark:text-[#a89a8a]">{c.hint}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
 
         {/* ---------- Arrange ---------- */}
         <section className="px-4 sm:px-5 pt-4" aria-label="Arrange your garden">

@@ -17,7 +17,7 @@ export function checkNytLists(names: NytListName[], wanted: { id: string; list: 
     const n = byName.get(w.list);
     if (n) { out.found.push({ id: w.id, list: w.list, display: n.display_name || n.list_name || w.list, updated: n.updated || 'unknown' }); continue; }
     const words = w.list.split('-').filter(x => x.length > 3);
-    const suggestions = [...byName.keys()].filter(k => words.some(x => k.includes(x))).slice(0, 5);
+    const suggestions = [...byName.entries()].filter(([k, n]) => words.some(x => k.includes(x) || `${n.display_name || ''} ${n.list_name || ''}`.toLowerCase().includes(x))).map(([k]) => k).slice(0, 8);
     out.missing.push({ id: w.id, list: w.list, suggestions });
   }
   return out;
