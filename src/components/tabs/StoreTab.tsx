@@ -40,15 +40,16 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
 
   useEffect(() => { milestone('store-mounted'); }, []); // measurement only
 
-  // Store search: books already on the device show with each keystroke, then the list improves as each source answers (hooks/useBookSearch.ts)
-  const [storeSearchQuery, setStoreSearchQuery] = useState('');
-  const { results: storeSearchResults, loading: isStoreSearching, stale: storeSearchStale, empty: storeSearchEmpty, searchNow: searchStoreNow } = useBookSearch(storeSearchQuery);
-
   // The shelves compare their books with yours only to share ratings. A new array for every reading-progress change would redraw every
   // shelf (and rebuild the rating index), so `known` changes only when something a rating match depends on does.
+  // The same stable list seeds instant search matches from books you already own.
   const knownSig = allBooks.map(b => `${b.id}|${b.title}|${b.ratingAverage ?? ''}|${b.ratingCount ?? ''}|${b.ratingSource ?? ''}|${b.identity?.olWork ?? ''}|${b.identity?.isbn13 ?? ''}`).join('\n');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const known = useMemo(() => allBooks, [knownSig]);
+
+  // Store search: books you already own show with each keystroke, then the list improves as each source answers (hooks/useBookSearch.ts)
+  const [storeSearchQuery, setStoreSearchQuery] = useState('');
+  const { results: storeSearchResults, loading: isStoreSearching, stale: storeSearchStale, empty: storeSearchEmpty, searchNow: searchStoreNow } = useBookSearch(storeSearchQuery, { known });
 
   // Store shelves built from your own catalog
   const prizeBooks = useMemo(
