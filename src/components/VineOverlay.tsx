@@ -1,5 +1,6 @@
 import React from 'react';
-import type { Vine, VineLeaf } from '../services/vinePath';
+import { stemEnd, vineLights, type Vine, type VineLeaf } from '../services/vinePath';
+import type { VineStyle } from '../services/nookPrefs';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { useVineReveal } from '../hooks/useVineReveal';
 
@@ -28,14 +29,56 @@ const grow = (visible: boolean, animate: boolean, origin: string): React.CSSProp
  */
 export const clip = (shown: number, length: number): string => `${(shown >= 0.999 ? length + 4 : shown * length).toFixed(1)} ${(length + 10).toFixed(1)}`;
 
-interface DrawProps { vine: Vine; parts: VineLeaf[]; width: number; /** how much of the route is grown, 0..1 */ shown: number; animate: boolean }
+/** How the nook vine is dressed. Every look shares one path, one growth and one set of leaf positions: only colours and the little extras differ. */
+export type NookVineLook = Exclude<VineStyle, 'classic'>;
+interface LookDef { stem: string; leafA: string; leafB: string; shoot: string; shootLeaf: string; bloom: 'blossom' | 'pumpkin' | 'berry'; lights: boolean }
+export const VINE_LOOKS: Record<NookVineLook, LookDef> = {
+  nook: { stem: '#2e5934', leafA: '#71ab7a', leafB: '#4e7f55', shoot: '#3f6b46', shootLeaf: '#8cc48f', bloom: 'blossom', lights: false },
+  lights: { stem: '#2e5934', leafA: '#71ab7a', leafB: '#4e7f55', shoot: '#3f6b46', shootLeaf: '#8cc48f', bloom: 'blossom', lights: true },
+  halloween: { stem: '#4a3a24', leafA: '#b0702a', leafB: '#6f5a2c', shoot: '#5a4528', shootLeaf: '#c9923f', bloom: 'pumpkin', lights: false },
+  christmas: { stem: '#245030', leafA: '#2f7a46', leafB: '#1f5634', shoot: '#2c5d3a', shootLeaf: '#4f9a5c', bloom: 'berry', lights: false },
+};
+const FLAKE = 'M0 -1.6 V1.6 M-1.4 -0.8 L1.4 0.8 M-1.4 0.8 L1.4 -0.8';
+
+function Bloom({ kind, color }: { kind: LookDef['bloom']; color: string }) {
+  if (kind === 'pumpkin') {
+    return (
+      <>
+        <ellipse cx={0} cy={0} rx={2.7} ry={2.2} fill="#e8832a" />
+        <path d="M0 -2.1 V2.1 M-1.4 -1.8 Q-2.4 0 -1.4 1.8 M1.4 -1.8 Q2.4 0 1.4 1.8" stroke="#b85a14" strokeWidth={0.45} fill="none" />
+        <path d="M0 -2.1 q0.2 -1.2 1.1 -1.5" stroke="#5a7a34" strokeWidth={0.8} strokeLinecap="round" fill="none" />
+      </>
+    );
+  }
+  if (kind === 'berry') {
+    return (
+      <>
+        {[[-1.3, 0.7], [1.3, 0.7], [0, -1.0]].map(([x, y], i) => <circle key={i} cx={x} cy={y} r={1.25} fill="#c0283d" />)}
+        <circle cx={-0.6} cy={-1.5} r={0.35} fill="#fff" opacity={0.55} />
+        <path d={FLAKE} stroke="#f2c14e" strokeWidth={0.4} transform="translate(2.6 -2.6)" strokeLinecap="round" />
+      </>
+    );
+  }
+  return (
+    <>
+      {[0, 72, 144, 216, 288].map(a => <ellipse key={a} cx={0} cy={-2.3} rx={1.5} ry={2.2} transform={`rotate(${a})`} fill={color} />)}
+      <circle r={1.1} fill="#ffd66b" />
+    </>
+  );
+}
+
+interface DrawProps { vine: Vine; parts: VineLeaf[]; width: number; /** how much of the route is grown, 0..1 */ shown: number; animate: boolean; look?: NookVineLook; /** let the fairy lights twinkle (only while the scene is on screen and motion is allowed) */ twinkle?: boolean }
 
 /**
- * The drawing only: the vine's stroke up to `shown`, and each leaf, shoot and flower once the growing tip has reached it.
+ * The drawing only: the vine's stroke, and each leaf, shoot and flower once the growing tip has reached it.
+ * The stem ends exactly at the last leaf that has appeared (see stemEnd), so it never runs on bare, and nothing is drawn before the first leaf.
  * Purely decorative: it never takes a tap (pointer-events: none on the svg and so on everything inside it), and it sits in front
  * of the books (z-10) so the vine can wind over them.
  */
-export function VineDrawing({ vine, parts, width, shown, animate }: DrawProps) {
+export function VineDrawing({ vine, parts, width, shown, animate, look = 'nook', twinkle = false }: DrawProps) {
+  const L = VINE_LOOKS[look] ?? VINE_LOOKS.nook;
+  const stemT = stemEnd(parts, shown, 0.004);
+  const lights = L.lights ? vineLights(vine) : [];
   return (
     <svg
       width={width}
@@ -46,25 +89,32 @@ export function VineDrawing({ vine, parts, width, shown, animate }: DrawProps) {
       role="img"
       aria-label="Vine along the window and shelves, grows with every day you meet your reading goal"
     >
-      {shown > 0.0005 && (
-        <path d={vine.d} stroke="#2e5934" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={clip(shown, vine.length)} />
+      {stemT > 0 && (
+        <path d={vine.d} stroke={L.stem} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={clip(stemT, vine.length)} />
       )}
+      {lights.map((b, i) => stemT >= b.t && (
+        // two tiny dots per bulb (no blur filters): cheap to draw, and only opacity ever animates, in three shared phases
+        <g key={`l${i}`} className={twinkle ? `rl-twinkle rl-twinkle-${i % 3}` : undefined} opacity={twinkle ? undefined : 0.85}>
+          <circle cx={b.x} cy={b.y} r={3.6} fill="#ffe6a8" opacity={0.2} />
+          <circle cx={b.x} cy={b.y} r={1.6} fill={['#ffe3a1', '#fff1c8', '#ffd3a1'][i % 3]} />
+        </g>
+      ))}
       {parts.map((l, i) => {
         const origin = `${l.x}px ${l.y}px`;
         return (
           <g key={i}>
             <g style={grow(shown >= l.t - 0.004, animate, origin)}>
               <g transform={`translate(${l.x.toFixed(1)} ${l.y.toFixed(1)}) rotate(${l.rot.toFixed(1)}) scale(${l.size})`}>
-                <path d={LEAF_D} fill={i % 2 ? '#4e7f55' : '#71ab7a'} />
+                <path d={LEAF_D} fill={i % 2 ? L.leafB : L.leafA} />
                 <path d={LEAF_VEIN} stroke="rgba(255,255,255,0.28)" strokeWidth={0.7} strokeLinecap="round" />
               </g>
             </g>
             {l.shoot && (
               <g style={grow(shown >= l.t + 0.012, animate, origin)}>
                 <g transform={`translate(${l.x.toFixed(1)} ${l.y.toFixed(1)}) rotate(${(l.rot - l.side * 105).toFixed(1)}) scale(${l.size > 0.7 ? 1 : 0.8})`}>
-                  <path d={SHOOT_D} stroke="#3f6b46" strokeWidth={1} strokeLinecap="round" />
+                  <path d={SHOOT_D} stroke={L.shoot} strokeWidth={1} strokeLinecap="round" />
                   <g transform="translate(9 -4.5) rotate(-40) scale(0.38)">
-                    <path d={LEAF_D} fill="#8cc48f" />
+                    <path d={LEAF_D} fill={L.shootLeaf} />
                   </g>
                 </g>
               </g>
@@ -72,10 +122,7 @@ export function VineDrawing({ vine, parts, width, shown, animate }: DrawProps) {
             {l.flower && (
               <g style={grow(shown >= l.t + 0.02, animate, origin)}>
                 <g transform={`translate(${l.x.toFixed(1)} ${l.y.toFixed(1)}) scale(${l.size > 0.7 ? 1 : 0.75})`}>
-                  {[0, 72, 144, 216, 288].map(a => (
-                    <ellipse key={a} cx={0} cy={-2.3} rx={1.5} ry={2.2} transform={`rotate(${a})`} fill={FLOWER_COLORS[i % FLOWER_COLORS.length]} />
-                  ))}
-                  <circle r={1.1} fill="#ffd66b" />
+                  <Bloom kind={L.bloom} color={FLOWER_COLORS[i % FLOWER_COLORS.length]} />
                 </g>
               </g>
             )}
@@ -90,26 +137,60 @@ export function VineDrawing({ vine, parts, width, shown, animate }: DrawProps) {
  * The vine: it grows to `target` (from your goal-met days) when the Garden Nook opens, then keeps growing as days are added.
  * The animation state lives here, so frames re-render only this small layer and never the rest of the scene.
  */
-export function VineLayer({ vine, parts, width, target }: { vine: Vine; parts: VineLeaf[]; width: number; target: number }) {
+export function VineLayer({ vine, parts, width, target, look = 'nook', live = true }: { vine: Vine; parts: VineLeaf[]; width: number; target: number; look?: NookVineLook; live?: boolean }) {
   const reduced = useReducedMotion();
-  const shown = useVineReveal(target, reduced);
-  return <VineDrawing vine={vine} parts={parts} width={width} shown={shown} animate={!reduced} />;
+  const shown = useVineReveal(target, reduced, live);
+  return <VineDrawing vine={vine} parts={parts} width={width} shown={shown} animate={!reduced} look={look} twinkle={live && !reduced} />;
 }
 
 /**
- * The classic window vine from main: a short climbing vine that stays inside the window (viewBox 0 0 100 133, bottom-left up to the top).
+ * The classic window vine (viewBox 0 0 100 133 = the whole window, wood included). It starts as close to the window's bottom-left corner as
+ * the frame allows, climbs the left side with a gentle sway, arches over the top of the glass and comes down a little on the right.
+ * The stroke and every leaf stay inside the glass (leaves always point into the window, never out over the wood), so nothing is cut off.
  * It uses the same growth and the same opening animation as the nook vine, so switching looks never changes how much has grown.
  */
-const classicPt = (t: number) => ({ x: 14 + 9 * Math.sin(t * 6.5) + t * 16, y: 128 - t * 114 });
-const CLASSIC_PTS = Array.from({ length: 41 }, (_, i) => classicPt(i / 40));
+type Pt = { x: number; y: number; a: number };
+export const CLASSIC_PTS: Pt[] = (() => {
+  const raw: [number, number][] = [];
+  const ARCH = { cx: 46, cy: 47, r: 36 }; // the arch's circle: left (10, 47), top (46, 11), right (82, 47)
+  for (let i = 0; i <= 26; i++) { // up the left side, swaying inwards only so it never touches the frame
+    const u = i / 26, y = 126 - u * 79;
+    raw.push([10 + 2.2 * (0.5 + 0.5 * Math.sin(u * 9.4 - Math.PI / 2)) * Math.sin(Math.PI * Math.min(1, u * 1.15)) ** 0.5, y]);
+  }
+  const end = Math.PI + 3.5; // over the top (Math.PI) to a little way down the right side
+  for (let i = 1; i <= 40; i++) {
+    const u = i / 40, a = Math.PI + (end - Math.PI) * u, r = ARCH.r + 1.1 * Math.sin(u * 11);
+    raw.push([ARCH.cx + r * Math.cos(a), ARCH.cy + r * Math.sin(a)]);
+  }
+  return raw.map(([x, y], i) => {
+    const p = raw[Math.max(0, i - 1)], q = raw[Math.min(raw.length - 1, i + 1)];
+    return { x, y, a: Math.atan2(q[1] - p[1], q[0] - p[0]) };
+  });
+})();
 const CLASSIC_D = 'M' + CLASSIC_PTS.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L');
-const CLASSIC_LEN = CLASSIC_PTS.reduce((n, p, i) => (i ? n + Math.hypot(p.x - CLASSIC_PTS[i - 1].x, p.y - CLASSIC_PTS[i - 1].y) : 0), 0);
-const CLASSIC_LEAVES = Array.from({ length: 10 }, (_, k) => { const t = (k + 1) / 11; return { t, ...classicPt(t), side: k % 2 ? 1 : -1 }; });
-const CLASSIC_FLOWERS = [
-  { k: 1, c: '#f4a6bd' }, { k: 3, c: '#fff4c9' }, { k: 5, c: '#c9b2f0' }, { k: 7, c: '#f4a6bd' }, { k: 9, c: '#fff4c9' },
-].map(({ k, c }) => { const t = (k + 1) / 11; const p = classicPt(t); const side = k % 2 ? 1 : -1; return { t, c, x: p.x + side * 3.2, y: p.y - 5 }; });
+const CLASSIC_RUN = CLASSIC_PTS.reduce<number[]>((r, p, i) => [...r, i ? r[i - 1] + Math.hypot(p.x - CLASSIC_PTS[i - 1].x, p.y - CLASSIC_PTS[i - 1].y) : 0], []);
+const CLASSIC_LEN = CLASSIC_RUN[CLASSIC_RUN.length - 1];
+const classicAt = (t: number): Pt => {
+  const s = Math.min(1, Math.max(0, t)) * CLASSIC_LEN;
+  let i = 1;
+  while (i < CLASSIC_RUN.length - 1 && CLASSIC_RUN[i] < s) i++;
+  const f = (s - CLASSIC_RUN[i - 1]) / (CLASSIC_RUN[i] - CLASSIC_RUN[i - 1] || 1), p = CLASSIC_PTS[i - 1], q = CLASSIC_PTS[i];
+  return { x: p.x + (q.x - p.x) * f, y: p.y + (q.y - p.y) * f, a: p.a };
+};
+const CLASSIC_COUNT = 14;
+export const CLASSIC_LEAF_REACH = LEAF_LEN * 0.8; // a classic leaf is drawn at 0.8 scale
+// The route is clockwise, so the window's inside is on the right of travel: leaves turn that way (alternately a little and a lot).
+export const CLASSIC_LEAVES = Array.from({ length: CLASSIC_COUNT }, (_, k) => {
+  const t = (k + 0.6) / (CLASSIC_COUNT + 0.2), p = classicAt(t), last = k === CLASSIC_COUNT - 1;
+  return { t, x: p.x, y: p.y, rot: (p.a * 180) / Math.PI + (last ? 0 : k % 2 ? 62 : 30) };
+});
+const CLASSIC_FLOWERS = CLASSIC_LEAVES.filter((_, k) => k % 3 === 1 && k < CLASSIC_COUNT - 1).map((l, i) => {
+  const p = classicAt(l.t); // a flower a little way in from the stem, on the window's inside (right of travel)
+  return { t: l.t, c: FLOWER_COLORS[i % 3], x: p.x - Math.sin(p.a) * 5, y: p.y + Math.cos(p.a) * 5 };
+});
 
 export function ClassicVineDrawing({ shown, animate }: { shown: number; animate: boolean }) {
+  const stemT = stemEnd(CLASSIC_LEAVES, shown, 0.02);
   return (
     <svg
       viewBox="0 0 100 133"
@@ -120,12 +201,12 @@ export function ClassicVineDrawing({ shown, animate }: { shown: number; animate:
       role="img"
       aria-label="Window vine, grows as you read and keeps what it has grown"
     >
-      {shown > 0.0005 && (
-        <path d={CLASSIC_D} stroke="#2e5934" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={clip(shown, CLASSIC_LEN)} />
+      {stemT > 0 && (
+        <path d={CLASSIC_D} stroke="#2e5934" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={clip(stemT, CLASSIC_LEN)} />
       )}
       {CLASSIC_LEAVES.map((l, i) => (
         <g key={i} style={grow(shown >= l.t - 0.02, animate, `${l.x}px ${l.y}px`)}>
-          <g transform={`translate(${l.x.toFixed(1)} ${l.y.toFixed(1)}) scale(${l.side} 1) rotate(-35)`}>
+          <g transform={`translate(${l.x.toFixed(1)} ${l.y.toFixed(1)}) rotate(${l.rot.toFixed(1)}) scale(0.8)`}>
             <path d={LEAF_D} fill={i % 2 ? '#4e7f55' : '#71ab7a'} />
             <path d={LEAF_VEIN} stroke="rgba(255,255,255,0.28)" strokeWidth={0.7} strokeLinecap="round" />
           </g>
@@ -134,10 +215,7 @@ export function ClassicVineDrawing({ shown, animate }: { shown: number; animate:
       {CLASSIC_FLOWERS.map((f, i) => (
         <g key={`f${i}`} style={grow(shown >= f.t + 0.04, animate, `${f.x}px ${f.y}px`)}>
           <g transform={`translate(${f.x.toFixed(1)} ${f.y.toFixed(1)})`}>
-            {[0, 72, 144, 216, 288].map(a => (
-              <ellipse key={a} cx={0} cy={-2.3} rx={1.5} ry={2.2} transform={`rotate(${a})`} fill={f.c} />
-            ))}
-            <circle r={1.1} fill="#ffd66b" />
+            <Bloom kind="blossom" color={f.c} />
           </g>
         </g>
       ))}
@@ -145,8 +223,8 @@ export function ClassicVineDrawing({ shown, animate }: { shown: number; animate:
   );
 }
 
-export function ClassicVineLayer({ target }: { target: number }) {
+export function ClassicVineLayer({ target, live = true }: { target: number; live?: boolean }) {
   const reduced = useReducedMotion();
-  const shown = useVineReveal(target, reduced);
+  const shown = useVineReveal(target, reduced, live);
   return <ClassicVineDrawing shown={shown} animate={!reduced} />;
 }

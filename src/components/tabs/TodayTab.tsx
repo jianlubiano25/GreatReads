@@ -66,6 +66,7 @@ export function TodayTab({
         garden={state.garden}
         dailyLog={state.dailyLog}
         onOpenBook={handleOpenCover}
+        active={active}
       />
       </TabPane>
 

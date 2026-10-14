@@ -145,8 +145,30 @@ export function vineLeaves(v: Vine): VineLeaf[] {
     const p = v.at(t);
     const side: 1 | -1 = k % 2 ? 1 : -1;
     const onShelf = t > v.windowEnd;
-    // pointing forward along the vine and out to one side
-    leaves.push({ t, x: p.x, y: p.y, rot: (p.angle * 180) / Math.PI + side * (onShelf ? 62 : 48), size: onShelf ? 0.6 : 0.85, flower: k % 4 === 2, shoot: k % 3 === 1, side });
+    // pointing forward along the vine and out to one side; the very last leaf grows straight on, so the vine ends in a leaf
+    const last = k === n - 1;
+    leaves.push({ t, x: p.x, y: p.y, rot: (p.angle * 180) / Math.PI + (last ? 0 : side * (onShelf ? 62 : 48)), size: onShelf ? 0.6 : 0.85, flower: !last && k % 4 === 2, shoot: !last && k % 3 === 1, side });
   }
   return leaves;
+}
+
+/**
+ * Where the drawn stem ends: at the last leaf the growing tip has reached (`lead` is how early a leaf shows, as in the drawing), or 0
+ * before any leaf. The stem never runs on past its final leaf, so there is no bare trailing stem, and nothing is drawn before the
+ * first earned leaf. Leaves sit at fixed fractions, so the stem reaches each one as the tip passes it.
+ */
+export function stemEnd(leaves: readonly { t: number }[], shown: number, lead: number): number {
+  let end = 0;
+  for (const l of leaves) if (shown >= l.t - lead && l.t > end) end = l.t;
+  return end;
+}
+
+/** Fairy-light bulbs strung along the vine, a little off the stem on alternate sides. Fixed positions, like the leaves. */
+export interface VineLight { t: number; x: number; y: number }
+export function vineLights(v: Vine, gap = 34): VineLight[] {
+  const n = Math.max(1, Math.floor(v.length / gap));
+  return Array.from({ length: n }, (_, k) => {
+    const t = (k + 0.5) / (n + 0.1), p = v.at(t), off = k % 2 ? 4 : -4;
+    return { t, x: p.x - Math.sin(p.angle) * off, y: p.y + Math.cos(p.angle) * off };
+  });
 }

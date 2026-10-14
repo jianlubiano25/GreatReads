@@ -3,9 +3,10 @@ import { Book, GardenState } from '../types';
 import { subscribeCovers, getCoversVersion } from '../services/books';
 import { CoverFace } from './BookMeta';
 import { fetchLocalWeather, setWeatherOverride, getTimePeriod, describeWeather, PERIOD_LABEL, TIME_PERIODS, WEATHER_MODES, WeatherData, WeatherCondition, TimePeriod } from '../services/weather';
-import { subscribeNookPrefs, getNookPrefsVersion, getNookMatchesTheme, getWindowFollowsTime, subscribeVineStyle, getVineStyle } from '../services/nookPrefs';
+import { subscribeNookPrefs, getNookPrefsVersion, getNookMatchesTheme, getWindowFollowsTime, subscribeVineStyle, getVineStyle, visibleDecor } from '../services/nookPrefs';
 import { GardenArea } from './garden/GardenView';
-import { NookClock } from './NookClock';
+import { DecorItem, useNookDecor } from './NookDecor';
+import { useSceneLive } from '../hooks/useSceneLive';
 import { MoonPhase, moonPhase, MOON_PHASE_NAMES, MOON_PHASE_EMOJI } from './MoonPhase';
 import { buildVine, vineLeaves, type VineGeometry } from '../services/vinePath';
 import { goalDaysFor, vineForDays } from '../services/garden';
@@ -19,6 +20,8 @@ interface Props {
   garden: GardenState;
   dailyLog?: Record<string, number>;
   onOpenBook: (b: Book) => void;
+  /** Is the Today tab the open one? (Tabs stay mounted, so the scene must know to stop its timers and animation when it is not.) */
+  active?: boolean;
 }
 
 // The vine (see services/vinePath.ts and VineOverlay.tsx): the window frame, then the bottom shelf's board, then the top shelf's.
@@ -86,7 +89,12 @@ export function ReadingScene({
   garden,
   dailyLog = {},
   onOpenBook,
+  active = true,
 }: Props) {
+  const sceneRef = useRef<HTMLDivElement>(null);
+  // One flag for everything that runs on its own: the weather and clock timers, the vine's growth, every looping animation.
+  const live = useSceneLive(active, sceneRef);
+  const decor = useNookDecor();
   useSyncExternalStore(subscribeCovers, getCoversVersion, getCoversVersion);
   const met = todayPages >= goal;
 
@@ -126,23 +134,28 @@ export function ReadingScene({
     }
   }, [followTime]);
 
+  // Weather and time of day refresh once a minute, but only while the scene is live (Today tab open, app in the foreground, scene on
+  // screen). Coming back refreshes at once (not again if it was loaded in the last 20 s), and each run clears its own timer.
+  const loadedAt = useRef({ at: 0, prefs: -1 });
   useEffect(() => {
+    if (!live) return;
     let mounted = true;
     const load = () => {
+      loadedAt.current = { at: Date.now(), prefs: prefsVersion };
       const id = ++reqId.current;
       fetchLocalWeather().then(w => {
         if (mounted && w && id === reqId.current) setWeather(w);
       });
     };
-    load();
+    if (loadedAt.current.prefs !== prefsVersion || Date.now() - loadedAt.current.at > 20_000) load();
     const interval = setInterval(load, 60_000); // 1 min refresh for time and light transitions
     return () => {
       mounted = false;
       clearInterval(interval);
-      clearTimeout(tipTimer.current);
     };
     // prefsVersion: re-read the weather when "Match weather to my location" is switched
-  }, [prefsVersion]);
+  }, [prefsVersion, live]);
+  useEffect(() => () => clearTimeout(tipTimer.current), []);
 
   // Screen width & shelves. Phones keep the compact 7-books-wide, 2-shelf nook. On wider screens (iPad, desktop) the
   // shelves are measured, so every row is filled with as many books as really fit.
@@ -185,14 +198,17 @@ export function ReadingScene({
     };
     setGeo(prev => (prev && JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
   };
+  // Measured when the layout can change (width, shelf size) and whenever the row itself changes size: not on every render
   useLayoutEffect(() => {
     measureVine();
+  }, [viewW, shelfW]);
+  useLayoutEffect(() => {
     const row = rowRef.current;
     if (!row || typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(measureVine);
     ro.observe(row);
     return () => ro.disconnect();
-  });
+  }, []);
   const vine = useMemo(() => (geo ? buildVine(geo) : null), [geo]);
   const vineParts = useMemo(() => (vine ? vineLeaves(vine) : []), [vine]);
 
@@ -264,10 +280,12 @@ export function ReadingScene({
   const isCloudy = weather.condition === 'clouds';
   const showClouds = isCloudy || isRain || isSnow;
   const skyBackground = skyFor(period, weather.condition);
+  const wallItems = visibleDecor(decor, 'wall');
 
   return (
     <div
-      className="rl-scene relative rounded-2xl overflow-hidden border border-[#e3d7c3] dark:border-[#382f25] shadow-sm select-none"
+      ref={sceneRef}
+      className={`rl-scene relative rounded-2xl overflow-hidden border border-[#e3d7c3] dark:border-[#382f25] shadow-sm select-none${live ? '' : ' rl-paused'}`}
       style={{
         background: nookDark ? 'linear-gradient(#2b2233,#3a2c2c)' : 'linear-gradient(#f7ecd6,#efdcbc)',
       }}
@@ -425,7 +443,7 @@ export function ReadingScene({
             </div>
 
             {/* The classic window vine (main's look): stays inside the window. Never takes a tap. */}
-            {vineStyle === 'classic' && <ClassicVineLayer target={vineTarget} />}
+            {vineStyle === 'classic' && <ClassicVineLayer target={vineTarget} live={live} />}
 
             {/* Quick weather / time indicator pill on tap */}
             {tip && (
@@ -467,7 +485,11 @@ export function ReadingScene({
 
         {/* Bookshelves */}
         <div className="flex-1 min-w-0 flex flex-col">
-          <NookClock weather={weather} dark={nookDark} large={big} />
+          {wallItems.length > 0 && (
+            <div className="no-scrollbar flex items-center justify-center gap-1.5 overflow-x-auto px-0.5" role="group" aria-label="Wall decorations">
+              {wallItems.map(id => <DecorItem key={id} id={id} decor={decor} weather={weather} dark={nookDark} large={big} live={live} />)}
+            </div>
+          )}
           <div ref={shelfRef} className="flex flex-col">
           {shelves.map((row, i) => (
             <div key={i} ref={el => { boardRefs.current[i] = el; }} className="flex items-end gap-[3px] justify-start px-1" style={{ borderBottom: `${SHELF_BOARD}px solid #8a5a3b`, minHeight: SPINE_H, marginTop: i > 0 ? SHELF_GAP : 0 }}>
@@ -498,11 +520,11 @@ export function ReadingScene({
         </div>
 
         {/* The vine: along the window's frame, then the bottom shelf and the top shelf, as the streak goes on. In front of the books, and never takes a tap. */}
-        {vineStyle === 'nook' && vine && geo && <VineLayer vine={vine} parts={vineParts} width={geo.width} target={vineTarget} />}
+        {vineStyle !== 'classic' && vine && geo && <VineLayer vine={vine} parts={vineParts} width={geo.width} target={vineTarget} look={vineStyle} live={live} />}
       </div>
 
       {/* Garden shelf below the window and bookshelf: every standing plant you have earned, scrolling sideways */}
-      <GardenArea garden={garden} night={nookDark} areaId="shelf" />
+      <GardenArea garden={garden} night={nookDark} areaId="shelf" weather={weather} live={live} />
 
       {/* Garden Status & Encouragement Bar */}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 pb-3 pt-2" style={{ background: 'rgba(146,88,56,.12)' }}>
