@@ -1,5 +1,5 @@
 import React from 'react';
-import { stemEnd, vineLights, type Vine, type VineLeaf } from '../services/vinePath';
+import { stemEnd, tipIndex, restAt, vineLights, type Vine, type VineLeaf } from '../services/vinePath';
 import type { VineStyle } from '../services/nookPrefs';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { useVineReveal } from '../hooks/useVineReveal';
@@ -67,7 +67,7 @@ function Bloom({ kind, color }: { kind: LookDef['bloom']; color: string }) {
   );
 }
 
-interface DrawProps { vine: Vine; parts: VineLeaf[]; width: number; /** how much of the route is grown, 0..1 */ shown: number; animate: boolean; look?: NookVineLook; /** let the fairy lights twinkle (only while the scene is on screen and motion is allowed) */ twinkle?: boolean }
+interface DrawProps { vine: Vine; parts: VineLeaf[]; width: number; /** how much of the route is grown, 0..1 */ shown: number; animate: boolean; /** still growing: the stem follows the tip. At rest it ends exactly at its last leaf. */ growing?: boolean; look?: NookVineLook; /** let the fairy lights twinkle (only while the scene is on screen and motion is allowed) */ twinkle?: boolean }
 
 /**
  * The drawing only: the vine's stroke, and each leaf, shoot and flower once the growing tip has reached it.
@@ -75,9 +75,10 @@ interface DrawProps { vine: Vine; parts: VineLeaf[]; width: number; /** how much
  * Purely decorative: it never takes a tap (pointer-events: none on the svg and so on everything inside it), and it sits in front
  * of the books (z-10) so the vine can wind over them.
  */
-export function VineDrawing({ vine, parts, width, shown, animate, look = 'nook', twinkle = false }: DrawProps) {
+export function VineDrawing({ vine, parts, width, shown, animate, growing = false, look = 'nook', twinkle = false }: DrawProps) {
   const L = VINE_LOOKS[look] ?? VINE_LOOKS.nook;
-  const stemT = stemEnd(parts, shown, 0.004);
+  const stemT = growing ? Math.max(stemEnd(parts, shown, 0.004), shown) : stemEnd(parts, shown, 0.004);
+  const tip = tipIndex(parts, shown, 0.004);
   const lights = L.lights ? vineLights(vine) : [];
   return (
     <svg
@@ -101,25 +102,26 @@ export function VineDrawing({ vine, parts, width, shown, animate, look = 'nook',
       ))}
       {parts.map((l, i) => {
         const origin = `${l.x}px ${l.y}px`;
+        const isTip = i === tip; // the newest leaf continues the stem, so the stem ends in a leaf
         return (
           <g key={i}>
             <g style={grow(shown >= l.t - 0.004, animate, origin)}>
-              <g transform={`translate(${l.x.toFixed(1)} ${l.y.toFixed(1)}) rotate(${l.rot.toFixed(1)}) scale(${l.size})`}>
+              <g transform={`translate(${l.x.toFixed(1)} ${l.y.toFixed(1)}) rotate(${(isTip ? l.ang : l.rot).toFixed(1)}) scale(${l.size})`}>
                 <path d={LEAF_D} fill={i % 2 ? L.leafB : L.leafA} />
                 <path d={LEAF_VEIN} stroke="rgba(255,255,255,0.28)" strokeWidth={0.7} strokeLinecap="round" />
               </g>
             </g>
-            {l.shoot && (
+            {l.shoot && !isTip && (
               <g style={grow(shown >= l.t + 0.012, animate, origin)}>
-                <g transform={`translate(${l.x.toFixed(1)} ${l.y.toFixed(1)}) rotate(${(l.rot - l.side * 105).toFixed(1)}) scale(${l.size > 0.7 ? 1 : 0.8})`}>
+                <g transform={`translate(${l.x.toFixed(1)} ${l.y.toFixed(1)}) rotate(${(l.ang + 62).toFixed(1)}) scale(${l.size > 0.7 ? 1 : 0.8})`}>
                   <path d={SHOOT_D} stroke={L.shoot} strokeWidth={1} strokeLinecap="round" />
-                  <g transform="translate(9 -4.5) rotate(-40) scale(0.38)">
+                  <g transform="translate(9 -4.5) rotate(-40) scale(0.55)">
                     <path d={LEAF_D} fill={L.shootLeaf} />
                   </g>
                 </g>
               </g>
             )}
-            {l.flower && (
+            {l.flower && !isTip && (
               <g style={grow(shown >= l.t + 0.02, animate, origin)}>
                 <g transform={`translate(${l.x.toFixed(1)} ${l.y.toFixed(1)}) scale(${l.size > 0.7 ? 1 : 0.75})`}>
                   <Bloom kind={L.bloom} color={FLOWER_COLORS[i % FLOWER_COLORS.length]} />
@@ -139,74 +141,44 @@ export function VineDrawing({ vine, parts, width, shown, animate, look = 'nook',
  */
 export function VineLayer({ vine, parts, width, target, look = 'nook', live = true }: { vine: Vine; parts: VineLeaf[]; width: number; target: number; look?: NookVineLook; live?: boolean }) {
   const reduced = useReducedMotion();
-  const shown = useVineReveal(target, reduced, live);
-  return <VineDrawing vine={vine} parts={parts} width={width} shown={shown} animate={!reduced} look={look} twinkle={live && !reduced} />;
+  const rest = restAt(parts, target, 0.004); // the growth settles exactly on a leaf, so the stem ends where its last leaf is
+  const shown = useVineReveal(rest, reduced, live);
+  return <VineDrawing vine={vine} parts={parts} width={width} shown={shown} animate={!reduced} growing={shown < rest - 1e-6} look={look} twinkle={live && !reduced} />;
 }
 
 /**
- * The classic window vine (viewBox 0 0 100 133 = the whole window, wood included). It starts as close to the window's bottom-left corner as
- * the frame allows, climbs the left side with a gentle sway, arches over the top of the glass and comes down a little on the right.
- * The stroke and every leaf stay inside the glass (leaves always point into the window, never out over the wood), so nothing is cut off.
+ * The classic window vine from main: a short climbing vine that stays inside the window (viewBox 0 0 100 133, bottom-left up to the top).
  * It uses the same growth and the same opening animation as the nook vine, so switching looks never changes how much has grown.
  */
-type Pt = { x: number; y: number; a: number };
-export const CLASSIC_PTS: Pt[] = (() => {
-  const raw: [number, number][] = [];
-  const ARCH = { cx: 46, cy: 47, r: 36 }; // the arch's circle: left (10, 47), top (46, 11), right (82, 47)
-  for (let i = 0; i <= 26; i++) { // up the left side, swaying inwards only so it never touches the frame
-    const u = i / 26, y = 126 - u * 79;
-    raw.push([10 + 2.2 * (0.5 + 0.5 * Math.sin(u * 9.4 - Math.PI / 2)) * Math.sin(Math.PI * Math.min(1, u * 1.15)) ** 0.5, y]);
-  }
-  const end = Math.PI + 3.5; // over the top (Math.PI) to a little way down the right side
-  for (let i = 1; i <= 40; i++) {
-    const u = i / 40, a = Math.PI + (end - Math.PI) * u, r = ARCH.r + 1.1 * Math.sin(u * 11);
-    raw.push([ARCH.cx + r * Math.cos(a), ARCH.cy + r * Math.sin(a)]);
-  }
-  return raw.map(([x, y], i) => {
-    const p = raw[Math.max(0, i - 1)], q = raw[Math.min(raw.length - 1, i + 1)];
-    return { x, y, a: Math.atan2(q[1] - p[1], q[0] - p[0]) };
-  });
-})();
+// The original classic path, moved 3 units left (the leaves that lean left reach past the svg's edge, so it does not clip them: overflow is visible).
+const classicPt = (t: number) => ({ x: 11 + 9 * Math.sin(t * 6.5) + t * 16, y: 128 - t * 114 });
+export const CLASSIC_PTS = Array.from({ length: 41 }, (_, i) => classicPt(i / 40));
 const CLASSIC_D = 'M' + CLASSIC_PTS.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L');
-const CLASSIC_RUN = CLASSIC_PTS.reduce<number[]>((r, p, i) => [...r, i ? r[i - 1] + Math.hypot(p.x - CLASSIC_PTS[i - 1].x, p.y - CLASSIC_PTS[i - 1].y) : 0], []);
-const CLASSIC_LEN = CLASSIC_RUN[CLASSIC_RUN.length - 1];
-const classicAt = (t: number): Pt => {
-  const s = Math.min(1, Math.max(0, t)) * CLASSIC_LEN;
-  let i = 1;
-  while (i < CLASSIC_RUN.length - 1 && CLASSIC_RUN[i] < s) i++;
-  const f = (s - CLASSIC_RUN[i - 1]) / (CLASSIC_RUN[i] - CLASSIC_RUN[i - 1] || 1), p = CLASSIC_PTS[i - 1], q = CLASSIC_PTS[i];
-  return { x: p.x + (q.x - p.x) * f, y: p.y + (q.y - p.y) * f, a: p.a };
-};
-const CLASSIC_COUNT = 14;
-export const CLASSIC_LEAF_REACH = LEAF_LEN * 0.8; // a classic leaf is drawn at 0.8 scale
-// The route is clockwise, so the window's inside is on the right of travel: leaves turn that way (alternately a little and a lot).
-export const CLASSIC_LEAVES = Array.from({ length: CLASSIC_COUNT }, (_, k) => {
-  const t = (k + 0.6) / (CLASSIC_COUNT + 0.2), p = classicAt(t), last = k === CLASSIC_COUNT - 1;
-  return { t, x: p.x, y: p.y, rot: (p.a * 180) / Math.PI + (last ? 0 : k % 2 ? 62 : 30) };
-});
-const CLASSIC_FLOWERS = CLASSIC_LEAVES.filter((_, k) => k % 3 === 1 && k < CLASSIC_COUNT - 1).map((l, i) => {
-  const p = classicAt(l.t); // a flower a little way in from the stem, on the window's inside (right of travel)
-  return { t: l.t, c: FLOWER_COLORS[i % 3], x: p.x - Math.sin(p.a) * 5, y: p.y + Math.cos(p.a) * 5 };
-});
+const CLASSIC_LEN = CLASSIC_PTS.reduce((n, p, i) => (i ? n + Math.hypot(p.x - CLASSIC_PTS[i - 1].x, p.y - CLASSIC_PTS[i - 1].y) : 0), 0);
+export const CLASSIC_LEAVES = Array.from({ length: 10 }, (_, k) => { const t = (k + 1) / 11; return { t, ...classicPt(t), side: k % 2 ? 1 : -1 }; });
+const CLASSIC_FLOWERS = [
+  { k: 1, c: '#f4a6bd' }, { k: 3, c: '#fff4c9' }, { k: 5, c: '#c9b2f0' }, { k: 7, c: '#f4a6bd' }, { k: 9, c: '#fff4c9' },
+].map(({ k, c }) => { const t = (k + 1) / 11; const p = classicPt(t); const side = k % 2 ? 1 : -1; return { t, c, x: p.x + side * 3.2, y: p.y - 5 }; });
 
-export function ClassicVineDrawing({ shown, animate }: { shown: number; animate: boolean }) {
-  const stemT = stemEnd(CLASSIC_LEAVES, shown, 0.02);
+export function ClassicVineDrawing({ shown, animate, growing = false }: { shown: number; animate: boolean; growing?: boolean }) {
+  // At rest the stem ends exactly at its last leaf; while it is growing it follows the tip, like the original.
+  const stemT = growing ? Math.max(stemEnd(CLASSIC_LEAVES, shown, 0.02), shown) : stemEnd(CLASSIC_LEAVES, shown, 0.02);
   return (
     <svg
       viewBox="0 0 100 133"
       preserveAspectRatio="xMinYMax meet"
       className="absolute inset-0 w-full h-full pointer-events-none"
-      style={{ pointerEvents: 'none' }}
+      style={{ pointerEvents: 'none', overflow: 'visible' }}
       fill="none"
       role="img"
       aria-label="Window vine, grows as you read and keeps what it has grown"
     >
-      {stemT > 0 && (
-        <path d={CLASSIC_D} stroke="#2e5934" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={clip(stemT, CLASSIC_LEN)} />
+      {stemT > 0.0005 && (
+        <path d={CLASSIC_D} stroke="#2e5934" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={clip(stemT, CLASSIC_LEN)} />
       )}
       {CLASSIC_LEAVES.map((l, i) => (
         <g key={i} style={grow(shown >= l.t - 0.02, animate, `${l.x}px ${l.y}px`)}>
-          <g transform={`translate(${l.x.toFixed(1)} ${l.y.toFixed(1)}) rotate(${l.rot.toFixed(1)}) scale(0.8)`}>
+          <g transform={`translate(${l.x.toFixed(1)} ${l.y.toFixed(1)}) scale(${l.side} 1) rotate(-35)`}>
             <path d={LEAF_D} fill={i % 2 ? '#4e7f55' : '#71ab7a'} />
             <path d={LEAF_VEIN} stroke="rgba(255,255,255,0.28)" strokeWidth={0.7} strokeLinecap="round" />
           </g>
@@ -215,7 +187,10 @@ export function ClassicVineDrawing({ shown, animate }: { shown: number; animate:
       {CLASSIC_FLOWERS.map((f, i) => (
         <g key={`f${i}`} style={grow(shown >= f.t + 0.04, animate, `${f.x}px ${f.y}px`)}>
           <g transform={`translate(${f.x.toFixed(1)} ${f.y.toFixed(1)})`}>
-            <Bloom kind="blossom" color={f.c} />
+            {[0, 72, 144, 216, 288].map(a => (
+              <ellipse key={a} cx={0} cy={-2.3} rx={1.5} ry={2.2} transform={`rotate(${a})`} fill={f.c} />
+            ))}
+            <circle r={1.1} fill="#ffd66b" />
           </g>
         </g>
       ))}
@@ -225,6 +200,7 @@ export function ClassicVineDrawing({ shown, animate }: { shown: number; animate:
 
 export function ClassicVineLayer({ target, live = true }: { target: number; live?: boolean }) {
   const reduced = useReducedMotion();
-  const shown = useVineReveal(target, reduced, live);
-  return <ClassicVineDrawing shown={shown} animate={!reduced} />;
+  const rest = restAt(CLASSIC_LEAVES, target, 0.02);
+  const shown = useVineReveal(rest, reduced, live);
+  return <ClassicVineDrawing shown={shown} animate={!reduced} growing={shown < rest - 1e-6} />;
 }
