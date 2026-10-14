@@ -91,7 +91,7 @@ export function VineDrawing({ vine, parts, width, shown, animate, growing = fals
       aria-label="Vine along the window and shelves, grows with every day you meet your reading goal"
     >
       {stemT > 0 && (
-        <path d={vine.d} stroke={L.stem} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={clip(stemT, vine.length)} />
+        <path d={vine.dTo(stemT)} stroke={L.stem} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
       )}
       {lights.map((b, i) => stemT >= b.t && (
         // two tiny dots per bulb (no blur filters): cheap to draw, and only opacity ever animates, in three shared phases
