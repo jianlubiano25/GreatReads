@@ -27,6 +27,8 @@ export interface VinePoint { x: number; y: number; /** direction of travel, radi
 export interface Vine {
   /** SVG path data */
   d: string;
+  /** The path as far as t (0..1) along the vine, as real geometry (no dash tricks, which Safari does not honour on long paths). */
+  dTo: (t: number) => string;
   /** The drawn path's real length in px (the stroke is clipped to a fraction of this) */
   length: number;
   /** Where the vine is a fraction t (0..1) of the way along it */
@@ -128,9 +130,19 @@ export function buildVine(g: VineGeometry): Vine {
     const f = (s - run[lo]) / span;
     return { x: out[lo].x + (out[hi].x - out[lo].x) * f, y: out[lo].y + (out[hi].y - out[lo].y) * f, angle: out[lo].angle };
   };
-  const d = 'M' + out.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L');
+  const strs = out.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`);
+  const d = 'M' + strs.join(' L');
+  const dTo = (t: number): string => {
+    if (!(t > 0)) return '';
+    if (t >= 0.999) return d;
+    const s = t * total;
+    let lo = 0, hi = run.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (run[mid] <= s) lo = mid; else hi = mid; }
+    const e = at(t);
+    return 'M' + strs.slice(0, lo + 1).join(' L') + ` L${e.x.toFixed(1)} ${e.y.toFixed(1)}`;
+  };
   const frac = (idx: number) => run[idx] / total;
-  return { d, length: total, at, bottomEdgeEnd: frac(bottomEdgeEndIdx), leftEnd: frac(leftEndIdx), archEnd: frac(archEndIdx), windowEnd: frac(windowEndIdx), bottomEnd: frac(bottomEndIdx) };
+  return { d, dTo, length: total, at, bottomEdgeEnd: frac(bottomEdgeEndIdx), leftEnd: frac(leftEndIdx), archEnd: frac(archEndIdx), windowEnd: frac(windowEndIdx), bottomEnd: frac(bottomEndIdx) };
 }
 
 /** Leaves, shoots and flowers at fixed distances along the vine, so they do not move as the vine grows. */
