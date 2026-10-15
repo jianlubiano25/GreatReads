@@ -21,7 +21,12 @@ export const normQ = (s: string) =>
 
 const STOP = new Set(['a', 'an', 'the', 'of', 'and', 'or', 'in', 'on', 'to', 'for', 'by', 'with', 'at', 'is', 'it']);
 
+/** What the box is searching: everything (title, author, keywords), titles only, or authors only (the Goodreads-style selector next to the box). */
+export type SearchScope = 'all' | 'title' | 'author';
+
 export interface ParsedQuery {
+  /** The scope the reader picked; 'title' and 'author' keep only results whose title / author match what was typed */
+  scope: SearchScope;
   /** What to match against titles (and, when no author was given, against authors and keywords): normalised */
   text: string;
   /** The author part, normalised ('' when none was given) */
@@ -41,14 +46,16 @@ export interface ParsedQuery {
 }
 
 /** `by`: read "title by author" as a title and an author (the search box does; bulk import, which has a column for each, does not). */
-export function parseQuery(rawTitle: string, rawAuthor = '', by = true): ParsedQuery {
+export function parseQuery(rawTitle: string, rawAuthor = '', by = true, scope: SearchScope = 'all'): ParsedQuery {
   let title = (rawTitle || '').replace(/\s+/g, ' ');
   let author = (rawAuthor || '').trim();
+  if (scope === 'author') { author = title.trim() || author; title = ''; } // everything typed is an author's name
+  else if (scope === 'title') by = false; // "Death by Water" is one title
   const trailingSpace = /\s$/.test(rawTitle || '');
   let keywords = false;
 
   const isbn = cleanIsbn(title.trim());
-  if (isbn) return { text: isbn, author: '', isbn, tokens: [isbn], partial: false, keywords: false, full: '', key: `isbn:${isbn}` };
+  if (isbn) return { scope: 'all', text: isbn, author: '', isbn, tokens: [isbn], partial: false, keywords: false, full: '', key: `isbn:${isbn}` };
   let full = '';
 
   // Search operators, as Google Books writes them
@@ -70,7 +77,7 @@ export function parseQuery(rawTitle: string, rawAuthor = '', by = true): ParsedQ
   const last = tokens[tokens.length - 1] || '';
   // A finished-looking last word (followed by a space, or a stop word) is matched whole; a short unfinished one is a beginning
   const partial = !!last && !trailingSpace && !STOP.has(last) && !!title.trim();
-  return { text, author: authorN, isbn: '', tokens, partial, keywords, full, key: `${text}${partial ? '*' : ''}|${authorN}|${full}` };
+  return { scope, text, author: authorN, isbn: '', tokens, partial, keywords, full, key: `${text}${partial ? '*' : ''}|${authorN}|${full}${scope === 'all' ? '' : `|${scope}`}` };
 }
 
 /** Does `token` (a query word) match one of `words`? Whole word, or, for the word being typed, the beginning of one. */

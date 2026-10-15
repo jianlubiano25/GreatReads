@@ -8,7 +8,7 @@ import { isUnknownAuthor, sameWork, titleKey } from './identity';
 import { isBlocked } from './quality';
 import { rememberExcluded } from './eligibility';
 import { localMatches, rememberSeen } from './localIndex';
-import { contentTokens, normQ, parseQuery, tokenHits, type ParsedQuery } from './query';
+import { contentTokens, normQ, parseQuery, tokenHits, type ParsedQuery, type SearchScope } from './query';
 
 /** Editions that are about a book, not the book ("Study Guide", "Summary of ...", boxed sets): ranked far down unless that is what was asked for. */
 const NOT_THE_BOOK = /\b(study guide|summary of|summary and analysis|sparknotes|cliffsnotes|workbook|analysis of|box(?:ed)? set|trivia|conversation starters|lesson plans?|teacher'?s? guide|readers? guide)\b/i;
@@ -21,7 +21,7 @@ const NOT_THE_BOOK = /\b(study guide|summary of|summary and analysis|sparknotes|
  *
  * `partial` says the last word typed may be only a beginning ("harry pot"): it then matches the start of a word, a little below a whole word.
  */
-export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial = false): number {
+export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial = false, titleOnly = false): number {
   const q = normQ(qTitle);
   const t = normQ(b.title || '');
   const a = normQ(b.author || '');
@@ -55,7 +55,7 @@ export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial =
     // of them a whole word of the author) is worth more than a title that merely starts with those words, so "jane austen" lists Jane Austen's
     // books before "Jane Austen: A Life" by somebody else (that title alone scores as an exact match, so the author tier is set above it).
     const authorHits = need.map(w => tokenHits(w, aWords, partial && w === lastNeed));
-    if (need.length && authorHits.every(h => h > 0)) score += need.length >= 2 && authorHits.every(h => h === 1) ? 130 : 60;
+    if (!titleOnly && need.length && authorHits.every(h => h > 0)) score += need.length >= 2 && authorHits.every(h => h === 1) ? 130 : 60;
   }
   if (qAuthor) {
     const qa = normQ(qAuthor).split(' ').filter(Boolean);
@@ -112,13 +112,30 @@ function withoutBlocked(hits: Hit[], q?: ParsedQuery): Book[] {
 /** A book the reader already has on a shelf, library or device comes ahead of an equally good match they do not have. */
 const OWN_BONUS = 25;
 
-function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly Book[] = []): Book[] {
+/** In the Title / Author scopes only books whose title / author match what was typed are kept (the last word may be a beginning). */
+function inScope(b: Book, q: ParsedQuery): boolean {
+  if (q.scope === 'title') {
+    const need = contentTokens(q.tokens);
+    const words = normQ(b.title).split(' ').filter(Boolean);
+    return need.every((w, i) => tokenHits(w, words, q.partial && i === need.length - 1) > 0);
+  }
+  if (q.scope === 'author') {
+    const qa = q.author.split(' ').filter(Boolean);
+    const words = normQ(b.author).split(' ').filter(Boolean);
+    return qa.every((w, i) => tokenHits(w, words, i === qa.length - 1) > 0);
+  }
+  return true;
+}
+
+/** `skip`: books an earlier page already showed (a later page never repeats them). */
+function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly Book[] = [], skip: readonly Book[] = []): Book[] {
   return dedupeBooks(books)
+    .filter(b => inScope(b, q) && !(skip.length && skip.some(x => x === b || sameWork(x, b))))
     .map((book, order) => ({
       book,
       order,
       // "Death by Water" was split into a title and an author: the better of the two readings counts
-      score: Math.max(searchRelevance(book, q.text, q.author, q.partial), q.full ? searchRelevance(book, q.full, '', q.partial) : -Infinity)
+      score: Math.max(searchRelevance(book, q.text, q.author, q.partial, q.scope === 'title'), q.full ? searchRelevance(book, q.full, '', q.partial, q.scope === 'title') : -Infinity)
         + (own.length && own.some(o => o === book || sameWork(o, book)) ? OWN_BONUS : 0),
     }))
     .sort((x, y) => y.score - x.score || x.order - y.order)
@@ -135,37 +152,52 @@ type Task = { name: string; run: (candidates: number, signal?: AbortSignal) => P
  * until the last word was complete. The plain query is used instead (title, author and keywords all count), and Open Library also gets the last
  * word as a wildcard ("harry pot*"). Two requests while typing; a submitted search adds one more (a titles-only Open Library search).
  */
-function tasksFor(q: ParsedQuery, final: boolean): Task[] {
+function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
+  // `report`: whether this request's own count is the number shown as "of N" (the main requests only, never the narrower extra ones)
+  const ol = (params: Record<string, string>, n: number, signal?: AbortSignal, report = true) =>
+    searchOpenLibrary(io.page > 1 ? { ...params, page: String(io.page) } : params, n, { signal, onTotal: report ? t => io.onTotal('ol', t) : undefined });
+  const google = (query: string, n: number, signal?: AbortSignal, report = true) =>
+    searchGoogle(query, n, { signal, start: io.page > 1 ? (io.page - 1) * Math.min(40, n) : 0, onTotal: report ? t => io.onTotal('google', t) : undefined });
   if (q.isbn) {
     return [
-      { name: 'ol', run: (n, signal) => searchOpenLibrary({ isbn: q.isbn }, n, { signal }) },
-      { name: 'google', run: (n, signal) => searchGoogle(`isbn:${q.isbn}`, n, { signal }) },
+      { name: 'ol', run: (n, signal) => ol({ isbn: q.isbn }, n, signal) },
+      { name: 'google', run: (n, signal) => google(`isbn:${q.isbn}`, n, signal) },
     ];
   }
   const text = q.tokens.join(' ');
   const wild = q.partial && q.tokens.length ? `${q.tokens.slice(0, -1).join(' ')} ${q.tokens[q.tokens.length - 1]}*`.trim() : text;
+  if (q.scope === 'title') {
+    // Titles only: Open Library's title field; Google's plain query (its intitle: is a phrase match), narrowed to real title matches by rank()
+    return [
+      { name: 'ol', run: (n, signal) => ol({ title: wild }, n, signal) },
+      { name: 'google', run: (n, signal) => google(text, n, signal) },
+    ];
+  }
   if (q.author && !text) {
     return [
-      { name: 'ol', run: (n, signal) => searchOpenLibrary({ author: q.author }, n, { signal }) },
-      { name: 'google', run: (n, signal) => searchGoogle(`inauthor:${q.author}`, n, { signal }) },
+      { name: 'ol', run: (n, signal) => ol({ author: q.author }, n, signal) },
+      { name: 'google', run: (n, signal) => google(`inauthor:${q.author}`, n, signal) },
     ];
   }
   if (q.author) {
     const both: Task[] = [
-      { name: 'ol', run: (n, signal) => searchOpenLibrary({ title: wild, author: q.author }, n, { signal }) },
-      { name: 'google', run: (n, signal) => searchGoogle(`${text} inauthor:${q.author}`, n, { signal }) },
+      { name: 'ol', run: (n, signal) => ol({ title: wild, author: q.author }, n, signal) },
+      { name: 'google', run: (n, signal) => google(`${text} inauthor:${q.author}`, n, signal) },
     ];
-    if (q.full) both.push({ name: 'google-full', run: (n, signal) => searchGoogle(q.full, n, { signal }) }); // "x by y" read as one title too
+    if (q.full) both.push({ name: 'google-full', run: (n, signal) => google(q.full, n, signal, false) }); // "x by y" read as one title too
     return both;
   }
   const tasks: Task[] = [
-    { name: 'ol', run: (n, signal) => searchOpenLibrary({ q: wild }, n, { signal }) }, // title, author or keyword
-    { name: 'google', run: (n, signal) => searchGoogle(text, n, { signal }) },
+    { name: 'ol', run: (n, signal) => ol({ q: wild }, n, signal) }, // title, author or keyword
+    { name: 'google', run: (n, signal) => google(text, n, signal) },
   ];
-  if (q.full) tasks.push({ name: 'google-full', run: (n, signal) => searchGoogle(q.full, n, { signal }) }); // "x by y" read as one title too
-  if (final && q.tokens.length > 1) tasks.push({ name: 'ol-title', run: (n, signal) => searchOpenLibrary({ title: wild }, n, { signal }) }); // titles only: far fewer unrelated hits
+  if (q.full) tasks.push({ name: 'google-full', run: (n, signal) => google(q.full, n, signal, false) }); // "x by y" read as one title too
+  if (final && q.tokens.length > 1) tasks.push({ name: 'ol-title', run: (n, signal) => ol({ title: wild }, n, signal, false) }); // titles only: far fewer unrelated hits
   return tasks;
 }
+
+/** Paging and the "N books match" count, shared by the requests of one search. */
+interface TaskIo { page: number; onTotal: (source: 'ol' | 'google', n: number) => void }
 
 /**
  * The author a query names, read from what the first sources returned: two to four words, every one of them a whole word of one result's author
@@ -189,6 +221,8 @@ export interface SearchProgress {
   done: boolean;
   /** Where this update came from: 'local' (books already on this device), 'cache' (the same search a moment ago), or a source */
   from: string;
+  /** How many books the catalog says match in all (Open Library's count, else Google's); 0 until a source has said */
+  total: number;
 }
 
 export interface LiveSearchOptions {
@@ -204,18 +238,24 @@ export interface LiveSearchOptions {
   known?: readonly Book[];
   /** Read "title by author" as a title and an author (default true; bulk import has a column for each, so it turns this off) */
   by?: boolean;
+  /** Title / Author selector (default: everything) */
+  scope?: SearchScope;
+  /** 1-based page of results beyond the first (a later page asks each source for its next batch); the on-device matches and the memory of recent searches are for page 1 only */
+  page?: number;
+  /** Books an earlier page already showed: never repeated */
+  exclude?: readonly Book[];
   /** The result list improved: called with the best books so far, as soon as there are any, and again as each source answers */
   onUpdate?: (books: Book[], progress: SearchProgress) => void;
 }
 
 /** The same search a moment ago: typing a letter and deleting it costs no network. */
-const recent = new Map<string, { at: number; books: Book[] }>();
+const recent = new Map<string, { at: number; books: Book[]; total: number }>();
 const RECENT_MS = 10 * 60 * 1000;
 const RECENT_MAX = 40;
 
 /** Books already on this device that match what is typed: synchronous, so a screen can show them in the same frame as the keystroke. */
-export function searchLocal(title: string, author = '', limit = 10, known?: readonly Book[]): Book[] {
-  const q = parseQuery(title, author);
+export function searchLocal(title: string, author = '', limit = 10, known?: readonly Book[], scope: SearchScope = 'all'): Book[] {
+  const q = parseQuery(title, author, true, scope);
   const mine = known?.length ? localMatches(q, limit, known) : [];
   return rank([...mine, ...localMatches(q, limit)], q, limit, mine);
 }
@@ -227,24 +267,32 @@ export function searchLocal(title: string, author = '', limit = 10, known?: read
  */
 export async function searchBooksLive(title: string, o: LiveSearchOptions = {}): Promise<Book[]> {
   const limit = o.limit ?? 10;
-  const q = parseQuery(title, o.author ?? '', o.by !== false);
+  const scope = o.scope ?? 'all';
+  const q = parseQuery(title, o.author ?? '', o.by !== false, scope);
   if (!q.text && !q.author && !q.isbn) return [];
-  const useLocal = o.local !== false;
-  const emit = (books: Book[], from: string, done: boolean) => { if (!o.signal?.aborted) o.onUpdate?.(books, { done, from }); };
+  const page = Math.max(1, Math.floor(o.page ?? 1));
+  const skip = o.exclude ?? [];
+  const useLocal = o.local !== false && page === 1;
+  let olTotal = 0;
+  let googleTotal = 0;
+  const totalNow = () => olTotal || googleTotal;
+  const emit = (books: Book[], from: string, done: boolean, total = totalNow()) => { if (!o.signal?.aborted) o.onUpdate?.(books, { done, from, total }); };
+  const io: TaskIo = { page, onTotal: (source, n) => { if (source === 'ol') olTotal = n; else googleTotal = n; } };
 
   const mine = useLocal && o.known?.length ? localMatches(q, limit, o.known) : [];
   const seenHere = useLocal ? localMatches(q, limit) : [];
   const local = [...mine, ...seenHere];
-  if (local.length) emit(rank(local, q, limit, mine), 'local', false);
+  if (local.length) emit(rank(local, q, limit, mine), 'local', false, 0);
 
-  const memo = useLocal && !o.final ? recent.get(q.key) : undefined;
+  const memoKey = q.key;
+  const memo = useLocal && !o.final ? recent.get(memoKey) : undefined;
   if (memo && Date.now() - memo.at < RECENT_MS) {
-    emit(memo.books.slice(0, limit), 'cache', true);
+    emit(memo.books.slice(0, limit), 'cache', true, memo.total);
     return memo.books.slice(0, limit);
   }
 
   // A slightly larger candidate set than we show lets ranking pick the best (bulk import asks for 1 and stays small)
-  const candidates = limit <= 1 ? 10 : Math.min(40, Math.max(16, limit * 2));
+  const candidates = limit <= 1 ? 10 : Math.min(100, Math.max(16, limit * 2));
   const gathered: Hit[] = [];
   let latest: Book[] = local.length ? rank(local, q, limit, mine) : [];
   const runTask = async (t: Task) => {
@@ -253,28 +301,28 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
     if (o.signal?.aborted) return;
     gathered.push(...hits);
     if (!hits.length) return;
-    latest = rank([...withoutBlocked(gathered, q), ...local], q, limit, mine);
+    latest = rank([...withoutBlocked(gathered, q), ...local], q, limit, mine, skip);
     emit(latest, t.name, false);
   };
-  await Promise.all(tasksFor(q, !!o.final).map(runTask));
+  await Promise.all(tasksFor(q, !!o.final, io).map(runTask));
 
   // "jane austen": once a source has shown that the words are an author's name, ask for that author's own books too. Their works are what was
   // wanted, and a plain keyword search is crowded with books ABOUT the author. Only then, so an ordinary title costs no extra request.
-  const name = !o.signal?.aborted ? authorNamed(q, gathered) : '';
+  const name = !o.signal?.aborted && page === 1 && scope === 'all' ? authorNamed(q, gathered) : '';
   if (name) {
     await Promise.all([
       runTask({ name: 'ol-author', run: (n, signal) => searchOpenLibrary({ author: name }, n, { signal }) }),
-      runTask({ name: 'google-author', run: (n, signal) => searchGoogle(`inauthor:\"${name}\"`, n, { signal }) }),
+      runTask({ name: 'google-author', run: (n, signal) => searchGoogle(`inauthor:"${name}"`, n, { signal }) }),
     ]);
   }
   if (o.signal?.aborted) return [];
 
-  const finalList = rank([...withoutBlocked(gathered, q), ...local], q, limit, mine);
+  const finalList = rank([...withoutBlocked(gathered, q), ...local], q, limit, mine, skip);
   if (useLocal && finalList.length) {
-    rememberSeen(rank([...withoutBlocked(gathered, q), ...seenHere], q, limit)); // what the sources and earlier searches gave; never the reader's own books
+    rememberSeen(rank([...withoutBlocked(gathered, q), ...seenHere], q, 20)); // the best few of what the sources and earlier searches gave; never the reader's own books
     if (gathered.length) { // a search that every source failed (offline) is never remembered as "the answer"
-      recent.delete(q.key);
-      recent.set(q.key, { at: Date.now(), books: finalList });
+      recent.delete(memoKey);
+      recent.set(memoKey, { at: Date.now(), books: finalList, total: totalNow() });
       if (recent.size > RECENT_MAX) recent.delete(recent.keys().next().value as string);
     }
   }

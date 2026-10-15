@@ -102,3 +102,64 @@ test('sort and filter the results: newest, top rated, most rated, genre, cover, 
   assert.deepEqual(applySearchView(all, { ...DEFAULT_SEARCH_VIEW, ratedOnly: true }).map(x => x.id), ['a', 'b']);
   assert.deepEqual(genreOptions(all), ['Fantasy', 'Romance']);
 });
+
+/* ---------- Title / Author selector, totals, paging, published filter ---------- */
+
+test('Title scope searches titles only (Open Library title field) and keeps only books whose title matches', async () => {
+  reset();
+  const seen = mockFetch(url => (url.hostname === 'openlibrary.org'
+    ? { numFound: 584, docs: [ol('OL1W', 'The Threshing', 'A. Writer'), ol('OL2W', 'Farm Life', 'Threshing Smith')] } // the second matches only through its author
+    : { items: [gb('g1', { title: 'Threshing Floor Stories', authors: ['B. Writer'] }), gb('g2', { title: 'Unrelated', authors: ['C. Writer'], description: 'threshing threshing threshing' })] }));
+  const found = await searchBooksLive('threshing', { scope: 'title', limit: 20, local: false });
+  const titles = found.map(b => b.title);
+  assert.deepEqual(titles.sort(), ['The Threshing', 'Threshing Floor Stories'].sort(), `only title matches: ${titles.join(' | ')}`);
+  assert.ok(seen.some(u => u.hostname === 'openlibrary.org' && u.searchParams.get('title') === 'threshing*' && !u.searchParams.get('q')));
+});
+
+test('Author scope treats everything typed as an author and keeps only that author\'s books', async () => {
+  reset();
+  const seen = mockFetch(url => (url.hostname === 'openlibrary.org'
+    ? { numFound: 90, docs: [ol('OL1W', 'Emma', 'Jane Austen'), ol('OL2W', 'Jane Austen: A Life', 'Carol Shields')] }
+    : { items: [gb('g1', { title: 'Persuasion', authors: ['Jane Austen'] })] }));
+  const found = await searchBooksLive('jane aust', { scope: 'author', limit: 20, local: false });
+  assert.deepEqual(found.map(b => b.title).sort(), ['Emma', 'Persuasion']);
+  assert.ok(seen.some(u => u.searchParams.get('author') === 'jane aust'));
+  // the same words in the All scope are not split off as a title
+  assert.equal(searchLocal('jane', '', 10, [book({ id: 'x', title: 'Jane Eyre', author: 'Charlotte Bronte' })], 'author').length, 0, 'a title word is not an author match');
+  assert.equal(searchLocal('bronte', '', 10, [book({ id: 'x', title: 'Jane Eyre', author: 'Charlotte Bronte' })], 'author').length, 1);
+  assert.equal(searchLocal('bronte', '', 10, [book({ id: 'x', title: 'Jane Eyre', author: 'Charlotte Bronte' })], 'title').length, 0, 'an author word is not a title match');
+});
+
+test('the progress reports how many books the catalog says match (Open Library\'s count, else Google\'s)', async () => {
+  reset();
+  mockFetch(url => (url.hostname === 'openlibrary.org' ? { numFound: 584, docs: [ol('OL1W', 'The Threshing', 'A. Writer')] } : { totalItems: 900, items: [gb('g1', { title: 'Threshing', authors: ['B'] })] }));
+  const totals: number[] = [];
+  await searchBooksLive('threshing', { local: false, onUpdate: (_b, p) => totals.push(p.total) });
+  assert.equal(totals[totals.length - 1], 584);
+  reset();
+  mockFetch(url => (url.hostname === 'openlibrary.org' ? { docs: [] } : { totalItems: 900, items: [gb('g1', { title: 'Threshing', authors: ['B'] })] }));
+  const t2: number[] = [];
+  await searchBooksLive('threshing', { local: false, onUpdate: (_b, p) => t2.push(p.total) });
+  assert.equal(t2[t2.length - 1], 900);
+});
+
+test('a later page asks each source for its next batch and never repeats books already shown', async () => {
+  reset();
+  const seen = mockFetch(url => (url.hostname === 'openlibrary.org'
+    ? { numFound: 584, docs: url.searchParams.get('page') === '2' ? [ol('OL1W', 'The Threshing', 'A. Writer'), ol('OL7W', 'Threshing Days', 'D. Writer')] : [ol('OL1W', 'The Threshing', 'A. Writer')] }
+    : { items: [] }));
+  const first = await searchBooksLive('threshing', { local: false, limit: 20 });
+  const second = await searchBooksLive('threshing', { local: false, limit: 20, page: 2, exclude: first });
+  assert.deepEqual(second.map(b => b.title), ['Threshing Days']);
+  assert.ok(seen.some(u => u.hostname === 'openlibrary.org' && u.searchParams.get('page') === '2'));
+  assert.ok(seen.every(u => u.hostname === 'openlibrary.org' || u.searchParams.get('startIndex') === null || Number(u.searchParams.get('startIndex')) > 0));
+});
+
+test('"published within" keeps recent books and leaves out books with no year', () => {
+  const now = new Date().getFullYear();
+  const recent = book({ id: 'r', title: 'R', year: String(now - 1) });
+  const old = book({ id: 'o', title: 'O', year: '1999' });
+  const none = book({ id: 'n', title: 'N', year: '' });
+  assert.deepEqual(applySearchView([recent, old, none], { ...DEFAULT_SEARCH_VIEW, years: 5 }).map(b => b.id), ['r']);
+  assert.deepEqual(applySearchView([recent, old, none], DEFAULT_SEARCH_VIEW).length, 3);
+});

@@ -69,10 +69,11 @@ export function gbItemToHit(item: any, fallbackTitle = ''): Hit {
   return { book, flags: { subjects: v.categories, description: v.description ? String(v.description) : undefined, googleMaturity: v.maturityRating, publisher: v.publisher ? String(v.publisher) : undefined } };
 }
 
-const searchUrl = (q: string, max: number) => `${GB}/volumes?q=${encodeURIComponent(q)}&maxResults=${Math.min(40, max)}&printType=books&fields=${encodeURIComponent(`items(${FIELDS})`)}`;
+const searchUrl = (q: string, max: number, start = 0) => `${GB}/volumes?q=${encodeURIComponent(q)}&maxResults=${Math.min(40, max)}${start > 0 ? `&startIndex=${start}` : ''}&printType=books&fields=${encodeURIComponent(`totalItems,items(${FIELDS})`)}`;
 
 export async function searchGoogle(q: string, max: number, opts: CallOpts = {}): Promise<Hit[]> {
-  const data = (await googleJson(searchUrl(q, max), { signal: opts.signal })).data;
+  const data = (await googleJson(searchUrl(q, max, opts.start), { signal: opts.signal })).data;
+  if (typeof data?.totalItems === 'number') opts.onTotal?.(data.totalItems);
   return (data?.items || []).map((i: any) => gbItemToHit(i));
 }
 

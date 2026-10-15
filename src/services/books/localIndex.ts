@@ -69,7 +69,7 @@ export function localMatches(q: ParsedQuery, limit = 8, known?: readonly Book[])
   for (const b of known ?? load()) {
     const w = wordsOf(b);
     const lastNeed = need[need.length - 1];
-    const textOk = need.every(t => tokenHits(t, q.author ? w.title : w.all, q.partial && t === lastNeed) > 0);
+    const textOk = need.every(t => tokenHits(t, q.author || q.scope === 'title' ? w.title : w.all, q.partial && t === lastNeed) > 0);
     const authorOk = authorWords.every((t, i) => tokenHits(t, w.author, i === authorWords.length - 1) > 0);
     if (textOk && authorOk && (known || !isBlocked(b.title))) out.push(b);
   }

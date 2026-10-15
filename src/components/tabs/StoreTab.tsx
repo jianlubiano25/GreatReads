@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Search, Award } from 'lucide-react';
+import { Plus, Search, Award, ArrowLeft, SlidersHorizontal, Loader2 } from 'lucide-react';
 import type { Book } from '../../types';
 import { BOOK_AWARDS } from '../../data/defaultBooks';
 import { useBookSearch } from '../../hooks/useBookSearch';
 import { DEFAULT_SHELF_ORDER, SHELF_BY_ID, hiddenShelfIds } from '../../services/store/registry';
 import { loadStorePrefs, NO_PREFS, orderShelves, saveStorePrefs, toggleShelf, type StorePrefs } from '../../services/store/prefs';
 import { milestone } from '../../services/books/perf';
-import { applySearchView, DEFAULT_SEARCH_VIEW, genreOptions, isDefaultView, SEARCH_SORT_LABEL, type SearchSort, type SearchView } from '../../services/books/searchView';
+import { activeFilterCount, applySearchView, DEFAULT_SEARCH_VIEW, genreOptions, getCoverUrl, isDefaultView, SEARCH_PUBLISHED_LABEL, SEARCH_SORT_LABEL, type SearchScope, type SearchSort, type SearchView } from '../../services/books';
 import { ClearButton } from '../ClearButton';
 import { ViewMoreBar } from '../ViewMoreBar';
 import { CoverFace } from '../BookMeta';
@@ -25,10 +25,16 @@ interface Props {
   onAddBook: () => void;
 }
 
-/** Search shows three rows of three at first; "View more" adds three more rows, "View all" shows the lot. */
-const SEARCH_STEP = 9;
+/** Search shows 20 results (rows of three) at first; "View more" adds 20 more, "View all" shows everything loaded, "Load more results" asks the catalog for its next batch. */
+const SEARCH_STEP = 20;
 /** How many results one search asks for (the list is ranked, then cut to this) */
-const SEARCH_LIMIT = 36;
+const SEARCH_LIMIT = 100;
+
+const SCOPES: { id: SearchScope; label: string; placeholder: string }[] = [
+  { id: 'all', label: 'All', placeholder: 'Search by title, author, or keyword' },
+  { id: 'title', label: 'Title', placeholder: 'Search by book title' },
+  { id: 'author', label: 'Author', placeholder: 'Search by author name' },
+];
 
 const PRIZE_TITLE = (
   <>
@@ -53,17 +59,38 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
   const searchInput = useRef<HTMLInputElement>(null);
   const [visibleCount, setVisibleCount] = useState(SEARCH_STEP);
   const [view, setView] = useState<SearchView>(DEFAULT_SEARCH_VIEW);
-  // A new query starts from the first rows, and a genre picked for the old results may not exist in the new ones
-  useEffect(() => { setVisibleCount(SEARCH_STEP); setView(v => (v.genre ? { ...v, genre: '' } : v)); }, [storeSearchQuery]);
+  const [scope, setScope] = useState<SearchScope>('all');
+  const [filterOpen, setFilterOpen] = useState(false);
+  const searching = !!storeSearchQuery.trim();
+  // A new query (or scope) starts from the first rows, and a genre picked for the old results may not exist in the new ones
+  useEffect(() => { setVisibleCount(SEARCH_STEP); setView(v => (v.genre ? { ...v, genre: '' } : v)); }, [storeSearchQuery, scope]);
+  const clearSearch = useCallback(() => { setStoreSearchQuery(''); setFilterOpen(false); }, []);
+  // Results take over the whole screen: the page behind must not scroll with them
+  useEffect(() => {
+    if (!searching || !active) return; // another tab hides this one: the page must scroll again there
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [searching, active]);
 
   // The shelves compare their books with yours only to share ratings. A new array for every reading-progress change would redraw every
   // shelf (and rebuild the rating index), so `known` changes only when something a rating match depends on does.
   const knownSig = allBooks.map(b => `${b.id}|${b.title}|${b.ratingAverage ?? ''}|${b.ratingCount ?? ''}|${b.ratingSource ?? ''}|${b.identity?.olWork ?? ''}|${b.identity?.isbn13 ?? ''}`).join('\n');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const known = useMemo(() => allBooks, [knownSig]);
-  const { results: storeSearchResults, loading: isStoreSearching, stale: storeSearchStale, empty: storeSearchEmpty, searchNow: searchStoreNow } = useBookSearch(storeSearchQuery, { known, limit: SEARCH_LIMIT });
+  const { results: storeSearchResults, loading: isStoreSearching, stale: storeSearchStale, empty: storeSearchEmpty, searchNow: searchStoreNow, total: storeSearchTotal, hasMore: storeSearchHasMore, loadingMore: storeSearchLoadingMore, loadMore: loadMoreStoreSearch } = useBookSearch(storeSearchQuery, { known, limit: SEARCH_LIMIT, scope });
   const genres = useMemo(() => genreOptions(storeSearchResults), [storeSearchResults]);
   const shownResults = useMemo(() => applySearchView(storeSearchResults, view), [storeSearchResults, view]);
+  const filtersOn = !isDefaultView(view);
+  // Covers are drawn at once (not lazily) and the next batch is fetched into the browser's cache before "View more" is tapped
+  const coverSize = typeof window !== 'undefined' && window.innerWidth >= 768 ? 'L' : 'M';
+  useEffect(() => {
+    if (!searching) return;
+    for (const b of shownResults.slice(visibleCount, visibleCount + SEARCH_STEP)) {
+      const url = getCoverUrl(b.coverId, coverSize, b.coverUrl);
+      if (url) new Image().src = url;
+    }
+  }, [searching, shownResults, visibleCount, coverSize]);
 
   // Store shelves built from your own catalog
   const prizeBooks = useMemo(
@@ -105,120 +132,185 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
           />
         ) : (
           <>
-          {/* Search Input */}
-          <div className="relative">
-            <Search className="w-4 h-4 text-[#706256] dark:text-[#a89a8a] absolute left-3.5 top-3.5 pointer-events-none" />
-            <input
-              ref={searchInput}
-              type="search"
-              value={storeSearchQuery}
-              onChange={e => setStoreSearchQuery(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') searchStoreNow(); }}
-              placeholder="Search by title, author, or keyword in online catalog"
-              className="rl-search w-full pl-10 pr-10 py-3 rounded-xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-sm focus:outline-none focus:ring-2 focus:ring-[#2e5934]"
-            />
-            <ClearButton show={!!storeSearchQuery} onClear={() => { setStoreSearchQuery(''); searchInput.current?.focus(); }} />
-          </div>
+          {/* Search: the box, the Title / Author selector and the filter icon. While a query is typed this whole block fills the screen (same elements, so the keyboard stays up). */}
+          <div className={searching ? 'fixed inset-0 z-[60] overflow-y-auto overscroll-contain bg-[#f5f0e6] dark:bg-[#181410]' : 'flex flex-col gap-2'}>
+            <div className={searching ? 'sticky top-0 z-10 bg-[#f5f0e6] dark:bg-[#181410] px-3 pt-[max(env(safe-area-inset-top),0.75rem)] pb-2 flex flex-col gap-2 border-b border-[#e3d7c3] dark:border-[#382f25]' : 'flex flex-col gap-2'}>
+              <div className="flex items-center gap-2">
+                {searching && (
+                  <button type="button" aria-label="Back to the Store" onClick={clearSearch} className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-[#2e5934] dark:text-[#9ed0a6] hover:bg-[#e3d7c3]/60 dark:hover:bg-[#382f25]">
+                    <ArrowLeft className="w-5 h-5" />
+                  </button>
+                )}
+                <div className="relative flex-1 min-w-0">
+                  <Search className="w-4 h-4 text-[#706256] dark:text-[#a89a8a] absolute left-3.5 top-3.5 pointer-events-none" />
+                  <input
+                    ref={searchInput}
+                    type="search"
+                    value={storeSearchQuery}
+                    onChange={e => setStoreSearchQuery(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') searchStoreNow(); else if (e.key === 'Escape') clearSearch(); }}
+                    placeholder={SCOPES.find(x => x.id === scope)!.placeholder}
+                    className="rl-search w-full pl-10 pr-10 py-3 rounded-xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-sm focus:outline-none focus:ring-2 focus:ring-[#2e5934]"
+                  />
+                  <ClearButton show={!!storeSearchQuery} onClear={() => { setStoreSearchQuery(''); searchInput.current?.focus(); }} />
+                </div>
+              </div>
 
-          {/* Search Results if query present */}
-          {storeSearchQuery.trim() && (
-            <div className="flex flex-col gap-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a]">
-                {storeSearchResults.length
-                  ? `Search Results (${shownResults.length}${shownResults.length !== storeSearchResults.length ? ` of ${storeSearchResults.length}` : ''})${isStoreSearching ? ' · searching…' : ''}`
-                  : isStoreSearching ? 'Searching…' : 'Search Results (0)'}
-              </span>
-
-              {storeSearchResults.length > 1 && (
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <select
-                    aria-label="Sort results"
-                    value={view.sort}
-                    onChange={e => { setView({ ...view, sort: e.target.value as SearchSort }); setVisibleCount(SEARCH_STEP); }}
-                    className="px-2.5 py-1.5 rounded-lg bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-[#201a15] dark:text-[#f0e6d6]"
-                  >
-                    {(Object.keys(SEARCH_SORT_LABEL) as SearchSort[]).map(k => <option key={k} value={k}>{SEARCH_SORT_LABEL[k]}</option>)}
-                  </select>
-                  {genres.length > 1 && (
-                    <select
-                      aria-label="Filter by genre"
-                      value={view.genre}
-                      onChange={e => { setView({ ...view, genre: e.target.value }); setVisibleCount(SEARCH_STEP); }}
-                      className="px-2.5 py-1.5 rounded-lg bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-[#201a15] dark:text-[#f0e6d6] max-w-[9rem]"
-                    >
-                      <option value="">All genres</option>
-                      {genres.map(g => <option key={g} value={g}>{g}</option>)}
-                    </select>
-                  )}
-                  {([['coverOnly', 'With cover'], ['ratedOnly', 'Rated']] as const).map(([key, label]) => (
+              <div className="flex items-center gap-2">
+                <div role="tablist" aria-label="Search in" className="flex rounded-xl overflow-hidden border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17]">
+                  {SCOPES.map(sc => (
                     <button
-                      key={key}
+                      key={sc.id}
                       type="button"
-                      aria-pressed={view[key]}
-                      onClick={() => { setView({ ...view, [key]: !view[key] }); setVisibleCount(SEARCH_STEP); }}
-                      className={`px-2.5 py-1.5 rounded-lg border font-semibold ${view[key] ? 'bg-[#2e5934] text-white border-[#2e5934]' : 'bg-[#fbf7ee] dark:bg-[#231d17] border-[#e3d7c3] dark:border-[#382f25] text-[#706256] dark:text-[#a89a8a]'}`}
+                      role="tab"
+                      aria-selected={scope === sc.id}
+                      onClick={() => setScope(sc.id)}
+                      className={`px-4 py-2 text-xs font-semibold transition-colors ${scope === sc.id ? 'bg-[#2e5934] text-white' : 'text-[#706256] dark:text-[#a89a8a] hover:bg-[#e3d7c3]/50 dark:hover:bg-[#382f25]'}`}
                     >
-                      {label}
+                      {sc.label}
                     </button>
                   ))}
-                  {!isDefaultView(view) && (
-                    <button type="button" onClick={() => setView(DEFAULT_SEARCH_VIEW)} className="px-2 py-1.5 font-semibold text-[#2e5934] dark:text-[#9ed0a6] underline">
-                      Reset
-                    </button>
-                  )}
                 </div>
-              )}
+                <button
+                  type="button"
+                  aria-label="Filters and sorting"
+                  aria-expanded={filterOpen}
+                  onClick={() => setFilterOpen(o => !o)}
+                  className={`relative w-10 h-9 rounded-xl border flex items-center justify-center transition-colors ${filterOpen || filtersOn ? 'bg-[#2e5934] text-white border-[#2e5934]' : 'bg-[#fbf7ee] dark:bg-[#231d17] border-[#e3d7c3] dark:border-[#382f25] text-[#2e5934] dark:text-[#9ed0a6]'}`}
+                >
+                  <SlidersHorizontal className="w-4 h-4" />
+                  {filtersOn && <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">{activeFilterCount(view)}</span>}
+                </button>
+              </div>
 
-              {storeSearchResults.length === 0 && storeSearchEmpty ? (
-                <div className="p-8 text-center text-sm text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-xl border border-[#e3d7c3] dark:border-[#382f25]">
-                  No books found. Check the title spelling or use the Add Book button to add manually.
-                </div>
-              ) : storeSearchResults.length > 0 && shownResults.length === 0 ? (
-                <div className="p-6 text-center text-sm text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-xl border border-[#e3d7c3] dark:border-[#382f25]">
-                  No results match these filters.{' '}
-                  <button type="button" onClick={() => setView(DEFAULT_SEARCH_VIEW)} className="font-semibold text-[#2e5934] dark:text-[#9ed0a6] underline">Reset filters</button>
-                </div>
-              ) : (
-                <>
-                  <div className={`grid grid-cols-3 gap-3 transition-opacity ${storeSearchStale ? 'opacity-50' : ''}`}>
-                    {shownResults.slice(0, visibleCount).map(b => (
-                      <div key={b.id} className="flex flex-col gap-1.5 min-w-0">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenCover(b)}
-                          className="book-cover-3d w-full aspect-[2/3] rounded-md text-left p-2 flex flex-col justify-between text-white overflow-hidden"
-                          style={{ backgroundColor: b.spineColor || '#2e5934' }}
+              {filterOpen && (
+                <div className="rounded-xl border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] p-3 flex flex-col gap-3 text-xs">
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="flex flex-col gap-1 font-semibold text-[#706256] dark:text-[#a89a8a]">
+                      Sort by
+                      <select
+                        value={view.sort}
+                        onChange={e => { setView({ ...view, sort: e.target.value as SearchSort }); setVisibleCount(SEARCH_STEP); }}
+                        className="px-2.5 py-2 rounded-lg bg-[#f5f0e6] dark:bg-[#181410] border border-[#e3d7c3] dark:border-[#382f25] text-[#201a15] dark:text-[#f0e6d6] font-normal"
+                      >
+                        {(Object.keys(SEARCH_SORT_LABEL) as SearchSort[]).map(k => <option key={k} value={k}>{SEARCH_SORT_LABEL[k]}</option>)}
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1 font-semibold text-[#706256] dark:text-[#a89a8a]">
+                      Published
+                      <select
+                        value={view.years}
+                        onChange={e => { setView({ ...view, years: Number(e.target.value) }); setVisibleCount(SEARCH_STEP); }}
+                        className="px-2.5 py-2 rounded-lg bg-[#f5f0e6] dark:bg-[#181410] border border-[#e3d7c3] dark:border-[#382f25] text-[#201a15] dark:text-[#f0e6d6] font-normal"
+                      >
+                        {Object.entries(SEARCH_PUBLISHED_LABEL).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+                      </select>
+                    </label>
+                    {genres.length > 1 && (
+                      <label className="flex flex-col gap-1 font-semibold text-[#706256] dark:text-[#a89a8a] col-span-2">
+                        Genre
+                        <select
+                          value={view.genre}
+                          onChange={e => { setView({ ...view, genre: e.target.value }); setVisibleCount(SEARCH_STEP); }}
+                          className="px-2.5 py-2 rounded-lg bg-[#f5f0e6] dark:bg-[#181410] border border-[#e3d7c3] dark:border-[#382f25] text-[#201a15] dark:text-[#f0e6d6] font-normal"
                         >
-                          <CoverFace book={b} size="md" />
-                        </button>
-                        <h4
-                          onClick={() => handleOpenCover(b)}
-                          className="font-serif-display text-xs sm:text-sm leading-tight text-[#201a15] dark:text-[#f0e6d6] line-clamp-2 hover:underline cursor-pointer"
-                        >
-                          {b.title}
-                        </h4>
-                        <div className="text-[11px] sm:text-xs text-[#706256] dark:text-[#a89a8a] truncate">{b.author}</div>
-                        <button
-                          onClick={() => handleOpenCover(b)}
-                          className="mt-0.5 py-1.5 px-2 rounded-lg text-[11px] sm:text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] text-center"
-                        >
-                          View Details
-                        </button>
-                      </div>
-                    ))}
+                          <option value="">All genres</option>
+                          {genres.map(g => <option key={g} value={g}>{g}</option>)}
+                        </select>
+                      </label>
+                    )}
                   </div>
-                  <ViewMoreBar
-                    shown={visibleCount}
-                    total={shownResults.length}
-                    step={SEARCH_STEP}
-                    onMore={() => setVisibleCount(n => n + SEARCH_STEP)}
-                    onAll={() => setVisibleCount(shownResults.length)}
-                    onLess={() => setVisibleCount(SEARCH_STEP)}
-                  />
-                </>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {([['coverOnly', 'With cover'], ['ratedOnly', 'Rated']] as const).map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        aria-pressed={view[key]}
+                        onClick={() => { setView({ ...view, [key]: !view[key] }); setVisibleCount(SEARCH_STEP); }}
+                        className={`px-3 py-1.5 rounded-lg border font-semibold ${view[key] ? 'bg-[#2e5934] text-white border-[#2e5934]' : 'bg-[#f5f0e6] dark:bg-[#181410] border-[#e3d7c3] dark:border-[#382f25] text-[#706256] dark:text-[#a89a8a]'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    <span className="flex-1" />
+                    {filtersOn && <button type="button" onClick={() => setView(DEFAULT_SEARCH_VIEW)} className="px-2 py-1.5 font-semibold text-[#2e5934] dark:text-[#9ed0a6] underline">Reset</button>}
+                    <button type="button" onClick={() => setFilterOpen(false)} className="px-3 py-1.5 rounded-lg bg-[#2e5934] text-white font-semibold">Done</button>
+                  </div>
+                </div>
               )}
             </div>
-          )}
+
+            {/* Search Results if query present */}
+            {searching && (
+              <div className="px-3 pt-3 pb-28 flex flex-col gap-3">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a]">
+                  {storeSearchResults.length
+                    ? `${filtersOn ? `${shownResults.length} of ${storeSearchResults.length} loaded match your filters` : `Results 1–${Math.min(visibleCount, shownResults.length)} of ${Math.max(storeSearchTotal, storeSearchResults.length)}`}${isStoreSearching ? ' · searching…' : ''}`
+                    : isStoreSearching ? 'Searching…' : 'Results 0'}
+                </span>
+
+                {storeSearchResults.length === 0 && storeSearchEmpty ? (
+                  <div className="p-8 text-center text-sm text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-xl border border-[#e3d7c3] dark:border-[#382f25]">
+                    No books found{scope === 'all' ? '' : ` by ${scope}`}. Check the spelling, try All, or use the Add Book button to add manually.
+                  </div>
+                ) : storeSearchResults.length > 0 && shownResults.length === 0 ? (
+                  <div className="p-6 text-center text-sm text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-xl border border-[#e3d7c3] dark:border-[#382f25]">
+                    No results match these filters.{' '}
+                    <button type="button" onClick={() => setView(DEFAULT_SEARCH_VIEW)} className="font-semibold text-[#2e5934] dark:text-[#9ed0a6] underline">Reset filters</button>
+                  </div>
+                ) : (
+                  <>
+                    <div className={`grid grid-cols-3 gap-3 sm:gap-4 transition-opacity ${storeSearchStale ? 'opacity-50' : ''}`}>
+                      {shownResults.slice(0, visibleCount).map(b => (
+                        <div key={b.id} className="flex flex-col gap-1.5 min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCover(b)}
+                            className="book-cover-3d w-full aspect-[2/3] rounded-md text-left p-2 flex flex-col justify-between text-white overflow-hidden"
+                            style={{ backgroundColor: b.spineColor || '#2e5934' }}
+                          >
+                            <CoverFace book={b} size="md" imgSize={coverSize} eager />
+                          </button>
+                          <h4
+                            onClick={() => handleOpenCover(b)}
+                            className="font-serif-display text-xs sm:text-sm leading-tight text-[#201a15] dark:text-[#f0e6d6] line-clamp-2 hover:underline cursor-pointer"
+                          >
+                            {b.title}
+                          </h4>
+                          <div className="text-[11px] sm:text-xs text-[#706256] dark:text-[#a89a8a] truncate">{b.author}</div>
+                          <button
+                            onClick={() => handleOpenCover(b)}
+                            className="mt-0.5 py-1.5 px-2 rounded-lg text-[11px] sm:text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] text-center"
+                          >
+                            View Details
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <ViewMoreBar
+                      shown={visibleCount}
+                      total={shownResults.length}
+                      outOf={filtersOn ? undefined : storeSearchTotal}
+                      step={SEARCH_STEP}
+                      onMore={() => setVisibleCount(n => n + SEARCH_STEP)}
+                      onAll={() => setVisibleCount(shownResults.length)}
+                      onLess={() => setVisibleCount(SEARCH_STEP)}
+                    />
+                    {storeSearchHasMore && visibleCount >= shownResults.length && (
+                      <button
+                        type="button"
+                        disabled={storeSearchLoadingMore}
+                        onClick={async () => { await loadMoreStoreSearch(); setVisibleCount(n => n + SEARCH_STEP); }}
+                        className="self-center px-4 py-2 rounded-xl text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] disabled:opacity-60 flex items-center gap-2"
+                      >
+                        {storeSearchLoadingMore ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Loading…</span></> : <span>Load more results</span>}
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Shelves, in the reader's own order (Customize Store). Hidden shelves are not drawn, so they also load nothing. */}
           {shelfOrder.filter(id => !hiddenShelves.includes(id)).map((id, position) => {
