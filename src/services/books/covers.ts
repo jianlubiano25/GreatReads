@@ -12,8 +12,8 @@ import { isFrontCoverShape } from './placeholderCover';
  *
  * A book's own link (coverUrl / Open Library coverId) is shown first. When it is missing or fails, `resolveCover` looks for
  * the best replacement, preferring the EXACT edition when an ISBN / volume id is known:
- *   1. Open Library cover for the ISBN   2. Google Books volume / ISBN   3. Apple Books (title + author)
- *   4. Google Books (title + author)     5. another Open Library edition of the same book
+ *   1. Apple Books (title + author)   2. Google Books volume / ISBN   3. Google Books (title + author)
+ *   4. Open Library cover for the ISBN   5. another Open Library edition of the same book (most-rated first)
  * Every candidate must really load (probed in an <img>), and a title/author mismatch is never accepted. Winners are remembered
  * on this device; misses are remembered for a day so a book with no cover anywhere is not searched on every render.
  */
@@ -179,9 +179,9 @@ async function search(b: MissingBook): Promise<string> {
   const accept = async (url?: string) => (url && (await probeImage(url, 5000, true)) ? url : '');
   let url = '';
 
-  // All three are asked at the same time (the slowest no longer holds up the others), then judged in order of look:
-  // Apple's art is flat, clean, front-facing and modern; Google's is usually a clean front too; Open Library's scans are the most
-  // likely to be a spine, a back or a photographed book, so they come last.
+  // All are asked at the same time (the slowest no longer holds up the others), then judged in a fixed order: Apple first, then
+  // Google, then Open Library. Apple's art is flat, clean, front-facing and modern, so it beats a paper / contents-looking scan
+  // whenever both exist; Open Library's scans are the most likely to be a spine, a back or a photographed book, so they come last.
   const isbn = id.isbn13 || id.isbn10;
   const appleAsk = findApple({ title: b.title, author });
   const olIsbnAsk = isbn ? accept(olCoverByIsbn(isbn, 'L')) : Promise.resolve('');
@@ -190,17 +190,18 @@ async function search(b: MissingBook): Promise<string> {
   if (apple?.book.coverUrl && (url = await accept(apple.book.coverUrl))) return url;
   const gb = await gbAsk.catch(() => null);
   if (gb?.book.coverUrl && (url = await accept(gb.book.coverUrl))) return url;
-  const olIsbnCover = await olIsbnAsk;
-  if (olIsbnCover) return olIsbnCover;
 
-  // then Google by name (title and author must really match)
+  // Google by name (title and author must really match)
   const byName = await findGoogle({ title: b.title, author });
   if (byName?.book.coverUrl && (url = await accept(byName.book.coverUrl))) return url;
 
-  // other Open Library editions of this book (under any of its title forms)
+  // Open Library: the exact edition by ISBN, then other editions of this book (under any of its title forms), most popular first
+  const olIsbnCover = await olIsbnAsk;
+  if (olIsbnCover) return olIsbnCover;
   for (const title of titleVariants(b.title)) {
     const editions = (await searchOpenLibrary({ title, ...(author ? { author } : {}) }, 8))
       .filter(h => h.book.coverId && h.book.coverId !== b.coverId && titlesMatch(h.book.title, b.title))
+      .sort((x, y) => (y.book.ratingCount || 0) - (x.book.ratingCount || 0) || (y.book.coverId || 0) - (x.book.coverId || 0)) // popular work first (ratings_count), then the newer cover_i
       .slice(0, 3);
     for (const h of editions) if ((url = await accept(olCoverById(h.book.coverId!, 'M')))) return url;
   }

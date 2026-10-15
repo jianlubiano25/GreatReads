@@ -21,12 +21,16 @@ test('longer titles get smaller type, and a long single word still fits', () => 
   assert.ok(titleSizeCqw('Dune') > titleSizeCqw('The Girl with the Dragon Tattoo'));
   assert.ok(titleSizeCqw('The Girl with the Dragon Tattoo') > titleSizeCqw('A Brief History of Time: From the Big Bang to Black Holes and Beyond the Edge'));
   assert.ok(titleSizeCqw('Incomprehensibilities') < titleSizeCqw('Dune'));
-  assert.ok(titleSizeCqw('x'.repeat(300)) >= 6);
+  assert.ok(titleSizeCqw('x'.repeat(300)) >= 6.5);
 });
 
 test('front covers pass; spreads, box sets and wide photos do not', () => {
   assert.equal(isFrontCoverShape(200, 300), true);
   assert.equal(isFrontCoverShape(600, 900), true);
+  assert.equal(isFrontCoverShape(438, 500), true); // Open Library scan of a squarish front (ratio ~0.876), e.g. "How to Win at Chess"
+  assert.equal(isFrontCoverShape(460, 500), true); // ratio 0.92: the upper limit
+  assert.equal(isFrontCoverShape(480, 500), false); // ratio 0.96: square-ish, not a front
+  assert.equal(isFrontCoverShape(1200, 1000), false); // spread, ratio 1.2
   assert.equal(isFrontCoverShape(1000, 700), false); // front + spine + back
   assert.equal(isFrontCoverShape(500, 500), false); // square photo of a book
   assert.equal(isFrontCoverShape(0, 0), true); // unknown

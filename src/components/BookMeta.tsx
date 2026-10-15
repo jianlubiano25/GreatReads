@@ -71,7 +71,7 @@ export function AwardBadges({ book }: { book: Book }) {
 }
 
 /** Author line size per cover size (title size is set from the cover's own width, see PlaceholderCover). */
-const AUTHOR_CQW: Record<string, number> = { xs: 8, nook: 0, md: 7.5, lg: 7, xl: 6.5 };
+const AUTHOR_CQW: Record<string, number> = { xs: 9.5, nook: 0, md: 9, lg: 8.5, xl: 8 };
 
 /**
  * The stand-in cover: flat colour, the whole title in bold white, the author in black (Apple Books style). Sizes use container

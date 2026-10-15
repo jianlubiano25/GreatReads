@@ -48,17 +48,18 @@ export function titleSizeCqw(title: string): number {
   const t = (title || '').trim();
   // the longest word decides the largest size that still fits on one line of a ~80%-wide text block
   const longest = t.split(/\s+/).reduce((m, w) => Math.max(m, w.length), 1);
-  const byLength = t.length <= 10 ? 19 : t.length <= 20 ? 15 : t.length <= 32 ? 12.5 : t.length <= 50 ? 10.5 : t.length <= 80 ? 8.5 : 7;
+  const byLength = t.length <= 10 ? 23 : t.length <= 20 ? 18 : t.length <= 32 ? 15 : t.length <= 50 ? 12.5 : t.length <= 80 ? 10 : 8.5;
   const byWord = 78 / (longest * 0.62); // an average bold capital-and-lowercase letter is about 0.62em wide
-  return Math.max(6, Math.min(byLength, byWord));
+  return Math.max(6.5, Math.min(byLength, byWord));
 }
 
 /**
- * A front cover is upright: about 0.6 to 0.72 wide for every 1 tall. A picture clearly wider than that is almost always a scan of
- * the spine and back as well (a flat wrap-around), a box set or a photo of a physical book on a table, none of which is wanted.
+ * A front cover is upright: about 0.6 to 0.9 wide for every 1 tall (Open Library scans of near-square trade paperbacks, e.g. 438x500,
+ * are ~0.88 and ARE fronts). A picture clearly wider than that is almost always a scan of the spine and back as well (a flat
+ * wrap-around, ratio ~1.2+), a box set or a photo of a physical book on a table, none of which is wanted.
  * Unknown sizes pass (nothing to judge).
  */
-export const MAX_FRONT_RATIO = 0.82;
+export const MAX_FRONT_RATIO = 0.92;
 export const MIN_FRONT_RATIO = 0.4;
 export function isFrontCoverShape(width: number, height: number): boolean {
   if (!(width > 0) || !(height > 0)) return true;
