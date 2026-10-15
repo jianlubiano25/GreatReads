@@ -60,18 +60,20 @@ export function rememberSeen(books: Book[]): void {
 }
 
 /** Books already seen that match what was typed: every word of the query is a word (or, for the word being typed, a beginning) of the title or author. */
-export function localMatches(q: ParsedQuery, limit = 8): Book[] {
+export function localMatches(q: ParsedQuery, limit = 8, known?: readonly Book[]): Book[] {
   if (q.isbn || (!q.tokens.length && !q.author)) return [];
   const need = contentTokens(q.tokens);
   const authorWords = q.author ? q.author.split(' ').filter(Boolean) : [];
   const out: Book[] = [];
-  for (const b of load()) {
+  // `known` = books the reader already owns (library, device): always shown when they match, never stored here, never filtered
+  for (const b of known ?? load()) {
     const w = wordsOf(b);
     const lastNeed = need[need.length - 1];
     const textOk = need.every(t => tokenHits(t, q.author ? w.title : w.all, q.partial && t === lastNeed) > 0);
     const authorOk = authorWords.every((t, i) => tokenHits(t, w.author, i === authorWords.length - 1) > 0);
-    if (textOk && authorOk && !isBlocked(b.title)) out.push(b);
+    if (textOk && authorOk && (known || !isBlocked(b.title))) out.push(b);
   }
+  if (known) return out.slice(0, Math.max(limit * 3, 24));
   return out.slice(-Math.max(limit * 3, 24)).reverse(); // newest first; ranking decides the order shown
 }
 

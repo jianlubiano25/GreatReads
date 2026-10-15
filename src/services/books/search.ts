@@ -163,6 +163,8 @@ export interface LiveSearchOptions {
   final?: boolean;
   /** Books already on this device are shown first, and remembered (default true) */
   local?: boolean;
+  /** Books the reader already has (library, device): matches are shown at once, ahead of the network, and are never remembered or filtered */
+  known?: readonly Book[];
   /** Read "title by author" as a title and an author (default true; bulk import has a column for each, so it turns this off) */
   by?: boolean;
   /** The result list improved: called with the best books so far, as soon as there are any, and again as each source answers */
@@ -175,9 +177,9 @@ const RECENT_MS = 10 * 60 * 1000;
 const RECENT_MAX = 40;
 
 /** Books already on this device that match what is typed: synchronous, so a screen can show them in the same frame as the keystroke. */
-export function searchLocal(title: string, author = '', limit = 10): Book[] {
+export function searchLocal(title: string, author = '', limit = 10, known?: readonly Book[]): Book[] {
   const q = parseQuery(title, author);
-  return rank(localMatches(q, limit), q, limit);
+  return rank([...(known?.length ? localMatches(q, limit, known) : []), ...localMatches(q, limit)], q, limit);
 }
 
 /**
@@ -192,7 +194,9 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   const useLocal = o.local !== false;
   const emit = (books: Book[], from: string, done: boolean) => { if (!o.signal?.aborted) o.onUpdate?.(books, { done, from }); };
 
-  const local = useLocal ? localMatches(q, limit) : [];
+  const mine = useLocal && o.known?.length ? localMatches(q, limit, o.known) : [];
+  const seenHere = useLocal ? localMatches(q, limit) : [];
+  const local = [...mine, ...seenHere];
   if (local.length) emit(rank(local, q, limit), 'local', false);
 
   const memo = useLocal && !o.final ? recent.get(q.key) : undefined;
@@ -218,7 +222,7 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
 
   const finalList = rank([...withoutBlocked(gathered), ...local], q, limit);
   if (useLocal && finalList.length) {
-    rememberSeen(finalList);
+    rememberSeen(rank([...withoutBlocked(gathered), ...seenHere], q, limit)); // what the sources and earlier searches gave; never the reader's own books
     if (gathered.length) { // a search that every source failed (offline) is never remembered as "the answer"
       recent.delete(q.key);
       recent.set(q.key, { at: Date.now(), books: finalList });

@@ -208,3 +208,21 @@ test('bulk import keeps a title that contains "by"; searchBooks never reads the 
   assert.ok(seen.every(s => s.url.searchParams.get('author') === null), 'not split into a title and an author');
   assert.deepEqual(searchLocal('death by'), [], 'and nothing was remembered by the plain search');
 });
+
+/* ---------- the reader's own books seed the search ---------- */
+
+test('books you already own are matched on the first keystroke, even before anything was ever searched', () => {
+  reset();
+  const mine = [book({ id: 'a1', title: 'Piranesi', author: 'Susanna Clarke' }), book({ id: 'a2', title: 'Dune', author: 'Frank Herbert' })];
+  assert.deepEqual(searchLocal('pira', '', 10, mine).map(b => b.id), ['a1']);
+  assert.deepEqual(searchLocal('herbert', '', 10, mine).map(b => b.id), ['a2']);
+  assert.deepEqual(searchLocal('pira', '', 10), []); // without them there is nothing on the device yet
+});
+
+test('your own books are never stored in the on-device search cache', async () => {
+  reset();
+  const mine = [book({ id: 'a1', title: 'Piranesi', author: 'Susanna Clarke' })];
+  mockFetch(() => ({ docs: [], items: [] }));
+  await searchBooksLive('piranesi', { known: mine, final: true });
+  assert.deepEqual(searchLocal('piranesi', '', 10), []);
+});

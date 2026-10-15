@@ -546,11 +546,15 @@ export default function App() {
           note={state.notes[ownKey]}
           highlightsCount={(state.highlights[ownKey] || []).length}
           onClose={() => setSelectedBookForDetail(null)}
-          onAddToLibrary={b => {
-            addBook(b, 'library');
+          onAddToLibrary={(b, status) => {
+            addBook(b, 'library', status);
           }}
-          onAddToDevice={b => {
-            addBook(b, 'device');
+          onAddToDevice={(b, status) => {
+            addBook(b, 'device', status);
+          }}
+          onSetStatus={(b, status) => {
+            if (owned) setBookStatus(owned.id, status);
+            else addBook(b, 'library', status); // not in the library yet: add it on the chosen list
           }}
           onOpenHighlights={() => {
             const b = owned ?? selectedBookForDetail;

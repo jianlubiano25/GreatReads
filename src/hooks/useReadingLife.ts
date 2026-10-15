@@ -5,7 +5,7 @@ import { INITIAL_WORDS } from '../data/defaultWords';
 import { normalizeV2, normalizeLegacy, parseBackup } from '../services/stateSanitizer';
 import { computeSnapshot, currentStreakFor, evaluateGarden, markCelebrated, movePlant as movePlantIn, pendingCelebrations, seedGarden } from '../services/garden';
 import { dateKey } from '../services/dates';
-import { applyAddBook, type AddDestination } from '../services/library';
+import { applyAddBook, type AddDestination, type AddStatus } from '../services/library';
 import { clearableCacheKeys } from '../services/books/cache';
 import { exportCoverPicks, restoreCoverPicksFromBackup } from '../services/books/coverPicks';
 import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
@@ -311,8 +311,8 @@ export function useReadingLife() {
     });
   }, []);
 
-  const addBook = useCallback((incoming: Book, destination: AddDestination = 'library') => {
-    setState(prev => applyAddBook(prev, incoming, destination));
+  const addBook = useCallback((incoming: Book, destination: AddDestination = 'library', status?: AddStatus) => {
+    setState(prev => applyAddBook(prev, incoming, destination, status));
   }, []);
 
   const removeBook = useCallback((bookId: string | number) => {

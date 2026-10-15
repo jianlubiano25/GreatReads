@@ -10,6 +10,13 @@ import { X, BookOpen, Smartphone, Star, Award, ChevronDown, Check, Bookmark, Ima
 // The cover viewer is only fetched the first time someone opens it
 const CoverPickerModal = lazy(() => import('./CoverPickerModal').then(m => ({ default: m.CoverPickerModal })));
 
+export type ListChoice = 'now' | 'next' | 'list';
+const LIST_CHOICES: { key: ListChoice; label: string; hint: string }[] = [
+  { key: 'now', label: 'Reading Now', hint: 'The book you are reading today' },
+  { key: 'next', label: 'Up Next', hint: 'Queued to read after this one' },
+  { key: 'list', label: 'On My List', hint: 'Someday, no rush' },
+];
+
 interface AppleBookDetailModalProps {
   book: Book;
   inLibrary: boolean;
@@ -20,8 +27,11 @@ interface AppleBookDetailModalProps {
   note?: string;
   highlightsCount?: number;
   onClose: () => void;
-  onAddToLibrary: (book: Book) => void;
-  onAddToDevice: (book: Book) => void;
+  /** `status` is what was picked in the "which list?" dialog */
+  onAddToLibrary: (book: Book, status: ListChoice) => void;
+  onAddToDevice: (book: Book, status: ListChoice) => void;
+  /** Move the book to Reading Now / Up Next / On My List (adds it to the library first when it is not there yet) */
+  onSetStatus: (book: Book, status: ListChoice) => void;
   onUpdateProgress?: (page: number) => void;
   onOpenHighlights?: () => void;
 }
@@ -37,6 +47,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   onClose,
   onAddToLibrary,
   onAddToDevice,
+  onSetStatus,
   onOpenHighlights,
 }) => {
   useModalA11y(onClose);
@@ -46,6 +57,8 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeTabAction, setActiveTabAction] = useState<'idle' | 'lib' | 'dev'>('idle');
   const [showCovers, setShowCovers] = useState(false);
+  // The "which list?" dialog: opened by the list button, Add to Library and Add to Device (all three ask the same question)
+  const [picker, setPicker] = useState<null | 'status' | 'lib' | 'dev'>(null);
   const coverTools = useSyncExternalStore(subscribeCoverAdmin, isCoverAdminOn, isCoverAdminOn); // the cover button is hidden until the owner switches it on
 
   const main = mainRating(book, siteRatings); // Library -> Apple -> Open Library -> Google; the other sites are listed beside it
@@ -62,17 +75,15 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
       ? book.source === 'google' ? '📚 Google Books' : '📚 Open Library'
       : `${shelfInfo.emoji} ${shelfInfo.label}`;
 
-  const handleLibraryClick = () => {
-    setActiveTabAction('lib');
-    onAddToLibrary(book);
-    setTimeout(() => setActiveTabAction('idle'), 1200);
+  const choose = (status: ListChoice) => {
+    const target = picker;
+    setPicker(null);
+    if (target === 'lib') { setActiveTabAction('lib'); onAddToLibrary(book, status); setTimeout(() => setActiveTabAction('idle'), 1200); }
+    else if (target === 'dev') { setActiveTabAction('dev'); onAddToDevice(book, status); setTimeout(() => setActiveTabAction('idle'), 1200); }
+    else onSetStatus(book, status);
   };
-
-  const handleDeviceClick = () => {
-    setActiveTabAction('dev');
-    onAddToDevice(book);
-    setTimeout(() => setActiveTabAction('idle'), 1200);
-  };
+  const currentChoice: ListChoice | null = inLibrary ? (readingStatus === 'now' || readingStatus === 'next' ? readingStatus : 'list') : null;
+  const currentLabel = LIST_CHOICES.find(c => c.key === currentChoice)?.label;
 
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchDeltaY, setTouchDeltaY] = useState(0);
@@ -175,7 +186,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
             {/* Apple Books Action Buttons (Instead of Get/Sample: Add to Library or Add to Device) */}
             <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full max-w-md mt-2">
               <button
-                onClick={handleLibraryClick}
+                onClick={() => setPicker('lib')}
                 disabled={inLibrary}
                 className={`flex-1 min-h-[44px] px-3 py-2.5 rounded-full text-sm font-semibold whitespace-nowrap flex items-center justify-center gap-2 transition-all ${
                   inLibrary
@@ -199,7 +210,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
               </button>
 
               <button
-                onClick={handleDeviceClick}
+                onClick={() => setPicker('dev')}
                 disabled={onDevice}
                 className={`flex-1 min-h-[44px] px-3 py-2.5 rounded-full text-sm font-semibold whitespace-nowrap flex items-center justify-center gap-2 transition-all border ${
                   onDevice
@@ -222,6 +233,19 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
                 )}
               </button>
             </div>
+
+            {/* One button for where the book is in your reading; tapping it asks which list */}
+            {readingStatus !== 'done' && (
+              <button
+                type="button"
+                onClick={() => setPicker('status')}
+                aria-haspopup="dialog"
+                className="w-full max-w-md mt-3 min-h-[44px] px-4 py-2.5 rounded-full text-sm font-semibold flex items-center justify-between gap-2 border border-[#e3d7c3] dark:border-[#382f25] text-[#2e5934] dark:text-[#86b880] hover:bg-[#2e5934]/10 active:scale-[0.98] transition-all"
+              >
+                <span className="flex items-center gap-2"><Bookmark className="w-4 h-4" />{currentLabel ?? 'Add to a list'}</span>
+                <ChevronDown className="w-4 h-4" aria-hidden="true" />
+              </button>
+            )}
 
             {/* Reading Status Indicator if in reading list */}
             {inLibrary && readingStatus && (
@@ -419,6 +443,44 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
         </div>
       </div>
     </div>
+    {picker && (
+      <div
+        className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4"
+        onClick={() => setPicker(null)}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Which list?"
+          className="w-full sm:max-w-sm bg-[#fdfaf5] dark:bg-[#1f1914] rounded-t-3xl sm:rounded-3xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl"
+          onClick={e => e.stopPropagation()}
+        >
+          <h3 className="text-base font-semibold text-[#2c241b] dark:text-[#f0e8dc]">
+            {picker === 'lib' ? 'Add to Library as…' : picker === 'dev' ? 'Add to Device as…' : 'Which list?'}
+          </h3>
+          <p className="text-xs text-[#706256] dark:text-[#a89a8a] mt-0.5 mb-3 line-clamp-1">{book.title}</p>
+          <div className="flex flex-col gap-2">
+            {LIST_CHOICES.map(c => (
+              <button
+                key={c.key}
+                type="button"
+                onClick={() => choose(c.key)}
+                className="w-full min-h-[48px] px-4 py-2 rounded-2xl border border-[#e3d7c3] dark:border-[#382f25] text-left flex items-center justify-between gap-3 hover:bg-[#2e5934]/10 active:scale-[0.99] transition-all"
+              >
+                <span>
+                  <span className="block text-sm font-semibold text-[#2c241b] dark:text-[#f0e8dc]">{c.label}</span>
+                  <span className="block text-xs text-[#706256] dark:text-[#a89a8a]">{c.hint}</span>
+                </span>
+                {currentChoice === c.key && <Check className="w-4 h-4 text-[#2e5934] dark:text-[#86b880]" aria-label="Current" />}
+              </button>
+            ))}
+          </div>
+          <button type="button" onClick={() => setPicker(null)} className="w-full mt-3 min-h-[44px] text-sm font-semibold text-[#706256] dark:text-[#a89a8a]">
+            Cancel
+          </button>
+        </div>
+      </div>
+    )}
     {coverTools && showCovers && (
       <Suspense fallback={null}>
         <CoverPickerModal book={book} onClose={() => setShowCovers(false)} />

@@ -22,8 +22,8 @@ export interface BookSearchState {
  * A newer keystroke cancels the older request, so a slow old answer can never replace the results of what was typed last.
  * Covers the search did not return are filled in quietly after the list is on screen.
  */
-export function useBookSearch(query: string, opts: { author?: string; limit?: number; enabled?: boolean } = {}): BookSearchState {
-  const { author = '', limit = 10, enabled = true } = opts;
+export function useBookSearch(query: string, opts: { author?: string; limit?: number; enabled?: boolean; known?: readonly Book[] } = {}): BookSearchState {
+  const { author = '', limit = 10, enabled = true, known } = opts;
   const [results, setResults] = useState<Book[]>([]);
   const [loading, setLoading] = useState(false);
   const [stale, setStale] = useState(false);
@@ -45,7 +45,7 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
     const live = (books: Book[]) => { if (!controller.signal.aborted) { setResults(books); setStale(false); setEmpty(false); } };
 
     // Instant: books already on this device. With none, the old list stays (dimmed) until the first answer.
-    const instant = searchLocal(query, author, limit);
+    const instant = searchLocal(query, author, limit, known);
     if (instant.length) live(instant);
     else setStale(true);
     setLoading(true);
@@ -56,6 +56,7 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
           author,
           limit,
           final,
+          known,
           signal: controller.signal,
           onUpdate: (books, p) => {
             if (books.length) live(books);
@@ -77,7 +78,7 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, author, limit, enabled, nudge]);
+  }, [query, author, limit, enabled, nudge, known]);
 
   return { results, loading, stale, empty, searchNow };
 }
