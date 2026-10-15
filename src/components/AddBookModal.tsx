@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { Book, ShelfKey } from '../types';
-import { searchBooks, getCoverUrl, getCoverPick, fillMissingCovers } from '../services/books';
+import { getCoverUrl, getCoverPick } from '../services/books';
+import { useBookSearch } from '../hooks/useBookSearch';
 import { SHELF_LABELS } from '../data/defaultBooks';
 import { Search, Plus, Smartphone, BookOpen, Check, X, Loader2 } from 'lucide-react';
 
@@ -25,10 +26,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
   // Search state
   const [searchTitle, setSearchTitle] = useState('');
   const [searchAuthor, setSearchAuthor] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<Book[]>([]);
+  // Live search: books already on the device appear with each keystroke, then the list improves as each source answers (hooks/useBookSearch.ts)
+  const { results: searchResults, loading: isSearching, stale: searchStale, empty: searchEmpty, searchNow } = useBookSearch(searchTitle, { author: searchAuthor, enabled: mode === 'search' });
   const [addedIds, setAddedIds] = useState<Record<string, boolean>>({});
-  const [searchError, setSearchError] = useState('');
 
   // Manual entry state
   const [manualTitle, setManualTitle] = useState('');
@@ -39,36 +39,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
   const [manualNotes, setManualNotes] = useState('');
   const [manualSuccess, setManualSuccess] = useState(false);
 
-  const searchAbort = useRef<AbortController | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => {
-    searchAbort.current?.abort();
-    clearTimeout(closeTimer.current);
-  }, []);
+  useEffect(() => () => clearTimeout(closeTimer.current), []);
 
-  const handleSearch = async (e?: React.FormEvent) => {
+  const handleSearch = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!searchTitle.trim()) return;
-
-    searchAbort.current?.abort();
-    const controller = new AbortController();
-    searchAbort.current = controller;
-    setIsSearching(true);
-    setSearchError('');
-    try {
-      const results = await searchBooks(searchTitle, searchAuthor, 10, controller.signal);
-      if (controller.signal.aborted) return;
-      if (results.length === 0) {
-        setSearchError('No matching books found. Try checking the spelling or use Manual Entry.');
-      }
-      setSearchResults(results);
-      fillMissingCovers(results, r => { if (!controller.signal.aborted) setSearchResults(r); }, controller.signal); // covers fill in after the list is already showing
-    } catch {
-      if (controller.signal.aborted) return;
-      setSearchError('Search failed. Switch to Manual Entry to add your book directly.');
-    } finally {
-      if (!controller.signal.aborted) setIsSearching(false);
-    }
+    if (!searchTitle.trim() && !searchAuthor.trim()) return;
+    searchNow(); // the Find button / Enter: search now, without waiting for typing to pause
   };
 
   const handleAddSearchResult = (book: Book) => {
@@ -212,7 +189,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
                   type="text"
                   value={searchTitle}
                   onChange={e => setSearchTitle(e.target.value)}
-                  placeholder="e.g. Tomorrow, and Tomorrow, and Tomorrow"
+                  placeholder="Title, author, keyword or ISBN: e.g. Tomorrow, and Tomorrow…"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-[#f5f0e6] dark:bg-[#181410] border border-[#e3d7c3] dark:border-[#382f25] text-sm focus:outline-none focus:ring-2 focus:ring-[#2e5934]"
                   autoFocus
                 />
@@ -233,13 +210,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
 
               <button
                 type="submit"
-                disabled={!searchTitle.trim() || isSearching}
+                disabled={(!searchTitle.trim() && !searchAuthor.trim()) || (isSearching && searchResults.length === 0)}
                 className="w-full min-h-[44px] bg-[#2e5934] text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2 hover:bg-[#244729] disabled:opacity-50 transition-all shadow-sm"
               >
-                {isSearching ? (
+                {isSearching && searchResults.length === 0 ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Searching catalog…</span>
+                    <span>Searching…</span>
                   </>
                 ) : (
                   <>
@@ -250,17 +227,17 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
               </button>
             </form>
 
-            {searchError && (
+            {searchEmpty && searchResults.length === 0 && (
               <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-200 text-xs rounded-xl">
-                {searchError}
+                No matching books found. Try checking the spelling or use Manual Entry.
               </div>
             )}
 
             {/* Results list */}
             {searchResults.length > 0 && (
-              <div className="flex flex-col gap-3 mt-2">
+              <div className={`flex flex-col gap-3 mt-2 transition-opacity ${searchStale ? 'opacity-50' : ''}`}>
                 <span className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a]">
-                  Matches ({searchResults.length})
+                  Matches ({searchResults.length}){isSearching ? ' · searching…' : ''}
                 </span>
                 {searchResults.map((b, idx) => {
                   const isAdded = addedIds[String(b.id)];

@@ -27,6 +27,8 @@ export interface VinePoint { x: number; y: number; /** direction of travel, radi
 export interface Vine {
   /** SVG path data */
   d: string;
+  /** The path as far as t (0..1) along the vine, as real geometry (no dash tricks, which Safari does not honour on long paths). */
+  dTo: (t: number) => string;
   /** The drawn path's real length in px (the stroke is clipped to a fraction of this) */
   length: number;
   /** Where the vine is a fraction t (0..1) of the way along it */
@@ -128,13 +130,23 @@ export function buildVine(g: VineGeometry): Vine {
     const f = (s - run[lo]) / span;
     return { x: out[lo].x + (out[hi].x - out[lo].x) * f, y: out[lo].y + (out[hi].y - out[lo].y) * f, angle: out[lo].angle };
   };
-  const d = 'M' + out.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L');
+  const strs = out.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`);
+  const d = 'M' + strs.join(' L');
+  const dTo = (t: number): string => {
+    if (!(t > 0)) return '';
+    if (t >= 0.999) return d;
+    const s = t * total;
+    let lo = 0, hi = run.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (run[mid] <= s) lo = mid; else hi = mid; }
+    const e = at(t);
+    return 'M' + strs.slice(0, lo + 1).join(' L') + ` L${e.x.toFixed(1)} ${e.y.toFixed(1)}`;
+  };
   const frac = (idx: number) => run[idx] / total;
-  return { d, length: total, at, bottomEdgeEnd: frac(bottomEdgeEndIdx), leftEnd: frac(leftEndIdx), archEnd: frac(archEndIdx), windowEnd: frac(windowEndIdx), bottomEnd: frac(bottomEndIdx) };
+  return { d, dTo, length: total, at, bottomEdgeEnd: frac(bottomEdgeEndIdx), leftEnd: frac(leftEndIdx), archEnd: frac(archEndIdx), windowEnd: frac(windowEndIdx), bottomEnd: frac(bottomEndIdx) };
 }
 
 /** Leaves, shoots and flowers at fixed distances along the vine, so they do not move as the vine grows. */
-export interface VineLeaf { t: number; x: number; y: number; /** degrees, the way the leaf points */ rot: number; /** 1 = a window leaf, smaller on the shelves */ size: number; flower: boolean; /** a small curling shoot grows from the other side of the vine */ shoot: boolean; side: 1 | -1 }
+export interface VineLeaf { t: number; x: number; y: number; /** degrees, the way the vine is travelling here */ ang: number; /** degrees, the way the leaf points */ rot: number; /** 1 = a window leaf, smaller on the shelves */ size: number; flower: boolean; /** a small curling shoot grows from the other side of the vine */ shoot: boolean; side: 1 | -1 }
 
 export function vineLeaves(v: Vine): VineLeaf[] {
   const leaves: VineLeaf[] = [];
@@ -145,8 +157,54 @@ export function vineLeaves(v: Vine): VineLeaf[] {
     const p = v.at(t);
     const side: 1 | -1 = k % 2 ? 1 : -1;
     const onShelf = t > v.windowEnd;
-    // pointing forward along the vine and out to one side
-    leaves.push({ t, x: p.x, y: p.y, rot: (p.angle * 180) / Math.PI + side * (onShelf ? 62 : 48), size: onShelf ? 0.6 : 0.85, flower: k % 4 === 2, shoot: k % 3 === 1, side });
+    // pointing forward along the vine and out to one side; the very last leaf grows straight on, so the vine ends in a leaf
+    const last = k === n - 1;
+    const ang = (p.angle * 180) / Math.PI;
+    // A curling shoot only grows on the window, from a leaf that points away from the glass, and curls INTO the glass (the vine runs
+    // clockwise, so the glass is on the right of travel). Out over the wood or the wall it would read as a bare stem.
+    const shoot = !last && !onShelf && side === -1 && k > 0 && k % 4 === 0;
+    leaves.push({ t, x: p.x, y: p.y, ang, rot: ang + (last ? 0 : side * (onShelf ? 62 : 48)), size: onShelf ? 0.6 : 0.85, flower: !last && k % 4 === 2, shoot, side });
   }
   return leaves;
 }
+
+/**
+ * Where the drawn stem ends: at the last leaf the growing tip has reached (`lead` is how early a leaf shows, as in the drawing), or 0
+ * before any leaf. The stem never runs on past its final leaf, so there is no bare trailing stem, and nothing is drawn before the
+ * first earned leaf. Leaves sit at fixed fractions, so the stem reaches each one as the tip passes it.
+ */
+export function stemEnd(leaves: readonly { t: number }[], shown: number, lead: number): number {
+  const i = tipIndex(leaves, shown, lead);
+  return i < 0 ? 0 : leaves[i].t;
+}
+
+/** The last leaf the growing tip has reached (-1 before any). It is drawn pointing straight on, so the stem runs into it and ends there. */
+export function tipIndex(leaves: readonly { t: number }[], shown: number, lead: number): number {
+  let idx = -1;
+  for (let i = 0; i < leaves.length; i++) if (shown >= leaves[i].t - lead && (idx < 0 || leaves[i].t > leaves[idx].t)) idx = i;
+  return idx;
+}
+
+/**
+ * How far to draw the vine for `earned` growth (0..1, from goal-met days). Even a blank account starts as a small sprout: a short stem
+ * with its first `SPROUT_LEAVES` leaves, never a bare stem. Earned growth then carries on from there up to the full vine at 1.
+ */
+export const SPROUT_LEAVES = 2;
+export function vineShown(leaves: readonly { t: number }[], earned: number): number {
+  const sprout = leaves.length ? leaves[Math.min(SPROUT_LEAVES, leaves.length) - 1].t : 0;
+  const e = Math.min(1, Math.max(0, earned || 0));
+  return Math.min(1, sprout + e * (1 - sprout));
+}
+
+/** Fairy-light bulbs strung along the vine, a little off the stem on alternate sides. Fixed positions, like the leaves. */
+export interface VineLight { t: number; x: number; y: number }
+export function vineLights(v: Vine, gap = 34): VineLight[] {
+  const n = Math.max(1, Math.floor(v.length / gap));
+  return Array.from({ length: n }, (_, k) => {
+    const t = (k + 0.5) / (n + 0.1), p = v.at(t), off = k % 2 ? 4 : -4;
+    return { t, x: p.x - Math.sin(p.angle) * off, y: p.y + Math.cos(p.angle) * off };
+  });
+}
+
+/** Where the growth settles for `earned` growth: exactly on a leaf (with the starter sprout), so a resting stem always ends where its last leaf is. */
+export const restAt = (leaves: readonly { t: number }[], earned: number, lead: number): number => stemEnd(leaves, vineShown(leaves, earned), lead);

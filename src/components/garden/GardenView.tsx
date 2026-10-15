@@ -4,29 +4,17 @@ import { GARDEN_AREAS, MILESTONE_BY_ID, defaultAreaFor, getPlantDef } from '../.
 import { growingMilestones, milestoneProgress, plantsByArea } from '../../services/garden';
 import { PlantArt } from './PlantArt';
 import { PlantShell } from './PlantShell';
-
-function Coffee() {
-  return (
-    <div className="flex flex-col items-center shrink-0 cursor-default select-none" title="A warm cup of coffee" style={{ marginRight: 4 }}>
-      <svg width={30} height={18} viewBox="0 0 30 18" aria-hidden="true">
-        {[6, 13, 20].map((x, i) => (
-          <path key={i} d={`M${x} 16 q-3 -5 0 -9 q3 -4 0 -7`} stroke="#a89a8a" strokeWidth={1.4} fill="none" strokeLinecap="round" opacity={0.7} className={`steam-${i}`} />
-        ))}
-      </svg>
-      <div style={{ width: 30, height: 22, background: '#fbf7ee', border: '2px solid #cfbe9f', borderRadius: '2px 2px 12px 12px', position: 'relative' }}>
-        <div style={{ position: 'absolute', right: -9, top: 3, width: 9, height: 11, border: '2px solid #cfbe9f', borderLeft: 0, borderRadius: '0 8px 8px 0' }} />
-        <div style={{ margin: '2px 3px', height: 4, background: '#523724', borderRadius: 4 }} />
-      </div>
-    </div>
-  );
-}
+import { DecorItem, useNookDecor } from '../NookDecor';
+import { visibleDecor } from '../../services/nookPrefs';
+import type { WeatherData } from '../../services/weather';
 
 /**
  * One garden area, drawn from data: the hanging rail above the window and bookshelf, or the shelf below them.
  * Each area scrolls sideways on its own, so the page never gets wider and any number of plants fits.
  * Plants are small memoised SVGs and nothing animates until it is tapped.
  */
-export function GardenArea({ garden, night, areaId }: { garden: GardenState; night: boolean; areaId: string }) {
+export function GardenArea({ garden, night, areaId, weather, live = true }: { garden: GardenState; night: boolean; areaId: string; weather?: WeatherData; live?: boolean }) {
+  const decor = useNookDecor();
   const area = GARDEN_AREAS.find(a => a.id === areaId);
   const byArea = useMemo(() => plantsByArea(garden), [garden.plants, garden.placements]);
   const items = byArea[areaId] ?? [];
@@ -93,7 +81,7 @@ export function GardenArea({ garden, night, areaId }: { garden: GardenState; nig
       ) : (
         <div className="garden-rows">
           <div className="garden-row garden-row-shelf">
-            <Coffee />
+            {weather && visibleDecor(decor, 'shelf').map(id => <DecorItem key={id} id={id} decor={decor} weather={weather} dark={night} large={false} live={live} />)}
             {cells}
           </div>
         </div>

@@ -78,38 +78,42 @@ const MONO = "ui-monospace, 'SF Mono', Menlo, monospace";
  * A digital clock hung on the wall above the shelves: dark casing, glowing LED digits, a blinking colon,
  * AM/PM, and the weather + temperature beside the time. `now` is only for previews and tests.
  */
+/**
+ * The current time, ticking once a minute (just after it changes) while `live`. Not live (another tab, app in the background, scrolled
+ * away): no timer at all. Going live again shows the right time at once and starts exactly one timer; every run cleans its own up.
+ */
+export function useMinuteTick(live: boolean, fixed?: Date): Date {
+  const [tick, setTick] = useState(() => new Date());
+  useEffect(() => {
+    if (fixed || !live) return;
+    setTick(new Date());
+    let timer: ReturnType<typeof setTimeout>;
+    const run = () => {
+      setTick(new Date());
+      timer = setTimeout(run, 60_000 - (Date.now() % 60_000) + 50);
+    };
+    timer = setTimeout(run, 60_000 - (Date.now() % 60_000) + 50);
+    return () => clearTimeout(timer);
+  }, [live, fixed]);
+  return fixed ?? tick;
+}
+
 export const NookClock = React.memo(function NookClock({
   weather,
   dark,
   large = false,
   now: fixedNow,
+  live = true,
 }: {
   weather: WeatherData;
   dark: boolean;
   large?: boolean;
   now?: Date;
+  /** false while the scene is not on screen: the minute timer stops and the colon holds still */
+  live?: boolean;
 }) {
-  const [tick, setTick] = useState(() => new Date());
   const look = CLOCK_LOOKS[useSyncExternalStore(subscribeClockTheme, getClockTheme, getClockTheme)] ?? CLOCK_LOOKS[0];
-  useEffect(() => {
-    if (fixedNow) return;
-    let timer: ReturnType<typeof setTimeout>;
-    const next = () => 60_000 - (Date.now() % 60_000) + 50; // wake up just after each minute changes
-    const run = () => {
-      setTick(new Date());
-      timer = setTimeout(run, next());
-    };
-    timer = setTimeout(run, next());
-    // a phone that slept comes back to the right time straight away
-    const onVisible = () => { if (document.visibilityState === 'visible') setTick(new Date()); };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
-  }, [fixedNow]);
-
-  const now = fixedNow ?? tick;
+  const now = useMinuteTick(live, fixedNow);
   const h24 = now.getHours();
   const mm = String(now.getMinutes()).padStart(2, '0');
   const h = uses12h ? h24 % 12 || 12 : h24;
