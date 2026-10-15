@@ -3,6 +3,8 @@ import { useModalA11y } from '../hooks/useModalA11y';
 import { Book, ShelfKey } from '../types';
 import { getCoverUrl, getCoverPick } from '../services/books';
 import { useBookSearch } from '../hooks/useBookSearch';
+import { ClearButton } from './ClearButton';
+import { ViewMoreBar } from './ViewMoreBar';
 import { SHELF_LABELS } from '../data/defaultBooks';
 import { Search, Plus, Smartphone, BookOpen, Check, X, Loader2 } from 'lucide-react';
 
@@ -11,6 +13,9 @@ interface AddBookModalProps {
   onClose: () => void;
   onAddBook: (book: Book, destination: 'device' | 'library') => void;
 }
+
+/** Matches shown at first; "View more" adds this many again */
+const ADD_STEP = 6;
 
 export const AddBookModal: React.FC<AddBookModalProps> = ({
   initialIsDevice = false,
@@ -27,7 +32,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
   const [searchTitle, setSearchTitle] = useState('');
   const [searchAuthor, setSearchAuthor] = useState('');
   // Live search: books already on the device appear with each keystroke, then the list improves as each source answers (hooks/useBookSearch.ts)
-  const { results: searchResults, loading: isSearching, stale: searchStale, empty: searchEmpty, searchNow } = useBookSearch(searchTitle, { author: searchAuthor, enabled: mode === 'search' });
+  const { results: searchResults, loading: isSearching, stale: searchStale, empty: searchEmpty, searchNow } = useBookSearch(searchTitle, { author: searchAuthor, enabled: mode === 'search', limit: 24 });
+  const [visibleCount, setVisibleCount] = useState(ADD_STEP);
+  useEffect(() => setVisibleCount(ADD_STEP), [searchTitle, searchAuthor]);
+  const titleInput = useRef<HTMLInputElement>(null);
+  const authorInput = useRef<HTMLInputElement>(null);
   const [addedIds, setAddedIds] = useState<Record<string, boolean>>({});
 
   // Manual entry state
@@ -185,27 +194,35 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
                 <label className="text-xs font-semibold text-[#706256] dark:text-[#a89a8a] mb-1 block">
                   Book Title *
                 </label>
-                <input
-                  type="text"
-                  value={searchTitle}
-                  onChange={e => setSearchTitle(e.target.value)}
-                  placeholder="Title, author, keyword or ISBN: e.g. Tomorrow, and Tomorrow…"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#f5f0e6] dark:bg-[#181410] border border-[#e3d7c3] dark:border-[#382f25] text-sm focus:outline-none focus:ring-2 focus:ring-[#2e5934]"
-                  autoFocus
-                />
+                <div className="relative">
+                  <input
+                    ref={titleInput}
+                    type="text"
+                    value={searchTitle}
+                    onChange={e => setSearchTitle(e.target.value)}
+                    placeholder="Title, author, keyword or ISBN: e.g. Tomorrow, and Tomorrow…"
+                    className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-[#f5f0e6] dark:bg-[#181410] border border-[#e3d7c3] dark:border-[#382f25] text-sm focus:outline-none focus:ring-2 focus:ring-[#2e5934]"
+                    autoFocus
+                  />
+                  <ClearButton show={!!searchTitle} onClear={() => { setSearchTitle(''); titleInput.current?.focus(); }} />
+                </div>
               </div>
 
               <div>
                 <label className="text-xs font-semibold text-[#706256] dark:text-[#a89a8a] mb-1 block">
                   Author (Optional)
                 </label>
-                <input
-                  type="text"
-                  value={searchAuthor}
-                  onChange={e => setSearchAuthor(e.target.value)}
-                  placeholder="e.g. Gabrielle Zevin"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#f5f0e6] dark:bg-[#181410] border border-[#e3d7c3] dark:border-[#382f25] text-sm focus:outline-none focus:ring-2 focus:ring-[#2e5934]"
-                />
+                <div className="relative">
+                  <input
+                    ref={authorInput}
+                    type="text"
+                    value={searchAuthor}
+                    onChange={e => setSearchAuthor(e.target.value)}
+                    placeholder="e.g. Gabrielle Zevin"
+                    className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-[#f5f0e6] dark:bg-[#181410] border border-[#e3d7c3] dark:border-[#382f25] text-sm focus:outline-none focus:ring-2 focus:ring-[#2e5934]"
+                  />
+                  <ClearButton show={!!searchAuthor} onClear={() => { setSearchAuthor(''); authorInput.current?.focus(); }} />
+                </div>
               </div>
 
               <button
@@ -239,7 +256,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
                 <span className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a]">
                   Matches ({searchResults.length}){isSearching ? ' · searching…' : ''}
                 </span>
-                {searchResults.map((b, idx) => {
+                {searchResults.slice(0, visibleCount).map((b, idx) => {
                   const isAdded = addedIds[String(b.id)];
                   const cover = getCoverPick(b, 'S') || getCoverUrl(b.coverId, 'S', b.coverUrl);
                   return (
@@ -291,6 +308,14 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
                     </div>
                   );
                 })}
+                <ViewMoreBar
+                  shown={visibleCount}
+                  total={searchResults.length}
+                  step={ADD_STEP}
+                  onMore={() => setVisibleCount(n => n + ADD_STEP)}
+                  onAll={() => setVisibleCount(searchResults.length)}
+                  onLess={() => setVisibleCount(ADD_STEP)}
+                />
               </div>
             )}
           </div>

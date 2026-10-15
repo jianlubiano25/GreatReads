@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Search, Award } from 'lucide-react';
 import type { Book } from '../../types';
 import { BOOK_AWARDS } from '../../data/defaultBooks';
@@ -6,6 +6,9 @@ import { useBookSearch } from '../../hooks/useBookSearch';
 import { DEFAULT_SHELF_ORDER, SHELF_BY_ID, hiddenShelfIds } from '../../services/store/registry';
 import { loadStorePrefs, NO_PREFS, orderShelves, saveStorePrefs, toggleShelf, type StorePrefs } from '../../services/store/prefs';
 import { milestone } from '../../services/books/perf';
+import { applySearchView, DEFAULT_SEARCH_VIEW, genreOptions, isDefaultView, SEARCH_SORT_LABEL, type SearchSort, type SearchView } from '../../services/books/searchView';
+import { ClearButton } from '../ClearButton';
+import { ViewMoreBar } from '../ViewMoreBar';
 import { CoverFace } from '../BookMeta';
 import { StoreShelf } from '../StoreShelf';
 import { StoreCustomize } from '../StoreCustomize';
@@ -21,6 +24,11 @@ interface Props {
   handleOpenCover: (book: Book) => void;
   onAddBook: () => void;
 }
+
+/** Search shows three rows of three at first; "View more" adds three more rows, "View all" shows the lot. */
+const SEARCH_STEP = 9;
+/** How many results one search asks for (the list is ranked, then cut to this) */
+const SEARCH_LIMIT = 36;
 
 const PRIZE_TITLE = (
   <>
@@ -42,13 +50,20 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
 
   // Store search: books already on the device show with each keystroke, then the list improves as each source answers (hooks/useBookSearch.ts)
   const [storeSearchQuery, setStoreSearchQuery] = useState('');
+  const searchInput = useRef<HTMLInputElement>(null);
+  const [visibleCount, setVisibleCount] = useState(SEARCH_STEP);
+  const [view, setView] = useState<SearchView>(DEFAULT_SEARCH_VIEW);
+  // A new query starts from the first rows, and a genre picked for the old results may not exist in the new ones
+  useEffect(() => { setVisibleCount(SEARCH_STEP); setView(v => (v.genre ? { ...v, genre: '' } : v)); }, [storeSearchQuery]);
 
   // The shelves compare their books with yours only to share ratings. A new array for every reading-progress change would redraw every
   // shelf (and rebuild the rating index), so `known` changes only when something a rating match depends on does.
   const knownSig = allBooks.map(b => `${b.id}|${b.title}|${b.ratingAverage ?? ''}|${b.ratingCount ?? ''}|${b.ratingSource ?? ''}|${b.identity?.olWork ?? ''}|${b.identity?.isbn13 ?? ''}`).join('\n');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const known = useMemo(() => allBooks, [knownSig]);
-  const { results: storeSearchResults, loading: isStoreSearching, stale: storeSearchStale, empty: storeSearchEmpty, searchNow: searchStoreNow } = useBookSearch(storeSearchQuery, { known });
+  const { results: storeSearchResults, loading: isStoreSearching, stale: storeSearchStale, empty: storeSearchEmpty, searchNow: searchStoreNow } = useBookSearch(storeSearchQuery, { known, limit: SEARCH_LIMIT });
+  const genres = useMemo(() => genreOptions(storeSearchResults), [storeSearchResults]);
+  const shownResults = useMemo(() => applySearchView(storeSearchResults, view), [storeSearchResults, view]);
 
   // Store shelves built from your own catalog
   const prizeBooks = useMemo(
@@ -94,54 +109,113 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
           <div className="relative">
             <Search className="w-4 h-4 text-[#706256] dark:text-[#a89a8a] absolute left-3.5 top-3.5 pointer-events-none" />
             <input
+              ref={searchInput}
               type="search"
               value={storeSearchQuery}
               onChange={e => setStoreSearchQuery(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') searchStoreNow(); }}
               placeholder="Search by title, author, or keyword in online catalog"
-              className="w-full pl-10 pr-4 py-3 rounded-xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-sm focus:outline-none focus:ring-2 focus:ring-[#2e5934]"
+              className="rl-search w-full pl-10 pr-10 py-3 rounded-xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-sm focus:outline-none focus:ring-2 focus:ring-[#2e5934]"
             />
+            <ClearButton show={!!storeSearchQuery} onClear={() => { setStoreSearchQuery(''); searchInput.current?.focus(); }} />
           </div>
 
           {/* Search Results if query present */}
           {storeSearchQuery.trim() && (
             <div className="flex flex-col gap-3">
               <span className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a]">
-                {storeSearchResults.length ? `Search Results (${storeSearchResults.length})${isStoreSearching ? ' · searching…' : ''}` : isStoreSearching ? 'Searching…' : 'Search Results (0)'}
+                {storeSearchResults.length
+                  ? `Search Results (${shownResults.length}${shownResults.length !== storeSearchResults.length ? ` of ${storeSearchResults.length}` : ''})${isStoreSearching ? ' · searching…' : ''}`
+                  : isStoreSearching ? 'Searching…' : 'Search Results (0)'}
               </span>
+
+              {storeSearchResults.length > 1 && (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <select
+                    aria-label="Sort results"
+                    value={view.sort}
+                    onChange={e => { setView({ ...view, sort: e.target.value as SearchSort }); setVisibleCount(SEARCH_STEP); }}
+                    className="px-2.5 py-1.5 rounded-lg bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-[#201a15] dark:text-[#f0e6d6]"
+                  >
+                    {(Object.keys(SEARCH_SORT_LABEL) as SearchSort[]).map(k => <option key={k} value={k}>{SEARCH_SORT_LABEL[k]}</option>)}
+                  </select>
+                  {genres.length > 1 && (
+                    <select
+                      aria-label="Filter by genre"
+                      value={view.genre}
+                      onChange={e => { setView({ ...view, genre: e.target.value }); setVisibleCount(SEARCH_STEP); }}
+                      className="px-2.5 py-1.5 rounded-lg bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-[#201a15] dark:text-[#f0e6d6] max-w-[9rem]"
+                    >
+                      <option value="">All genres</option>
+                      {genres.map(g => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                  )}
+                  {([['coverOnly', 'With cover'], ['ratedOnly', 'Rated']] as const).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      aria-pressed={view[key]}
+                      onClick={() => { setView({ ...view, [key]: !view[key] }); setVisibleCount(SEARCH_STEP); }}
+                      className={`px-2.5 py-1.5 rounded-lg border font-semibold ${view[key] ? 'bg-[#2e5934] text-white border-[#2e5934]' : 'bg-[#fbf7ee] dark:bg-[#231d17] border-[#e3d7c3] dark:border-[#382f25] text-[#706256] dark:text-[#a89a8a]'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  {!isDefaultView(view) && (
+                    <button type="button" onClick={() => setView(DEFAULT_SEARCH_VIEW)} className="px-2 py-1.5 font-semibold text-[#2e5934] dark:text-[#9ed0a6] underline">
+                      Reset
+                    </button>
+                  )}
+                </div>
+              )}
 
               {storeSearchResults.length === 0 && storeSearchEmpty ? (
                 <div className="p-8 text-center text-sm text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-xl border border-[#e3d7c3] dark:border-[#382f25]">
                   No books found. Check the title spelling or use the Add Book button to add manually.
                 </div>
-              ) : (
-                <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 transition-opacity ${storeSearchStale ? 'opacity-50' : ''}`}>
-                  {storeSearchResults.map(b => (
-                    <div key={b.id} className="flex flex-col gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenCover(b)}
-                        className="book-cover-3d w-full aspect-[2/3] rounded-md text-left p-2.5 flex flex-col justify-between text-white overflow-hidden"
-                        style={{ backgroundColor: b.spineColor || '#2e5934' }}
-                      >
-                        <CoverFace book={b} size="md" />
-                      </button>
-                      <h4
-                        onClick={() => handleOpenCover(b)}
-                        className="font-serif-display text-sm leading-tight text-[#201a15] dark:text-[#f0e6d6] line-clamp-2 hover:underline cursor-pointer"
-                      >
-                        {b.title}
-                      </h4>
-                      <div className="text-xs text-[#706256] dark:text-[#a89a8a] truncate">{b.author}</div>
-                      <button
-                        onClick={() => handleOpenCover(b)}
-                        className="mt-1 py-1.5 px-3 rounded-lg text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] text-center"
-                      >
-                        View Details
-                      </button>
-                    </div>
-                  ))}
+              ) : storeSearchResults.length > 0 && shownResults.length === 0 ? (
+                <div className="p-6 text-center text-sm text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-xl border border-[#e3d7c3] dark:border-[#382f25]">
+                  No results match these filters.{' '}
+                  <button type="button" onClick={() => setView(DEFAULT_SEARCH_VIEW)} className="font-semibold text-[#2e5934] dark:text-[#9ed0a6] underline">Reset filters</button>
                 </div>
+              ) : (
+                <>
+                  <div className={`grid grid-cols-3 gap-3 transition-opacity ${storeSearchStale ? 'opacity-50' : ''}`}>
+                    {shownResults.slice(0, visibleCount).map(b => (
+                      <div key={b.id} className="flex flex-col gap-1.5 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCover(b)}
+                          className="book-cover-3d w-full aspect-[2/3] rounded-md text-left p-2 flex flex-col justify-between text-white overflow-hidden"
+                          style={{ backgroundColor: b.spineColor || '#2e5934' }}
+                        >
+                          <CoverFace book={b} size="md" />
+                        </button>
+                        <h4
+                          onClick={() => handleOpenCover(b)}
+                          className="font-serif-display text-xs sm:text-sm leading-tight text-[#201a15] dark:text-[#f0e6d6] line-clamp-2 hover:underline cursor-pointer"
+                        >
+                          {b.title}
+                        </h4>
+                        <div className="text-[11px] sm:text-xs text-[#706256] dark:text-[#a89a8a] truncate">{b.author}</div>
+                        <button
+                          onClick={() => handleOpenCover(b)}
+                          className="mt-0.5 py-1.5 px-2 rounded-lg text-[11px] sm:text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] text-center"
+                        >
+                          View Details
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <ViewMoreBar
+                    shown={visibleCount}
+                    total={shownResults.length}
+                    step={SEARCH_STEP}
+                    onMore={() => setVisibleCount(n => n + SEARCH_STEP)}
+                    onAll={() => setVisibleCount(shownResults.length)}
+                    onLess={() => setVisibleCount(SEARCH_STEP)}
+                  />
+                </>
               )}
             </div>
           )}

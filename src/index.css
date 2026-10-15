@@ -377,3 +377,7 @@
 .rl-twinkle-1 { animation-duration: 4.1s; animation-delay: -1.1s; }
 .rl-twinkle-2 { animation-duration: 3.7s; animation-delay: -2.2s; }
 @media (prefers-reduced-motion: reduce) { .rl-twinkle { animation: none; opacity: 0.85; } }
+
+/* The search box draws its own "x" (ClearButton), so the browser's built-in one is hidden to avoid two */
+input.rl-search::-webkit-search-cancel-button,
+input.rl-search::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }

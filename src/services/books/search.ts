@@ -32,18 +32,30 @@ export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial =
   const lastNeed = need[need.length - 1];
   let score = 0;
   if (q && t) {
-    const same = titleKey(b.title) === titleKey(qTitle);
-    if (t === q || (same && !partial)) score += t === q ? 100 : 95; // "Hobbit" finds "The Hobbit" and "Dune: Deluxe Edition" finds "Dune"
-    else if (t.startsWith(`${q} `)) score += 70;
-    else if (partial && t.startsWith(q)) score += 66; // "harry pot" -> "Harry Potter and the ..."
-    else if (` ${t} `.includes(` ${q} `)) score += 55;
-    else if (partial && ` ${t}`.includes(` ${q}`)) score += 50; // a beginning inside the title
+    // The best of: the title as written, and the title without its leading article ("The Threshing" answers to "threshing" and to "threshing fl")
+    const titleTier = (tt: string): number => {
+      if (tt === q) return 100;
+      if (tt.startsWith(`${q} `)) return 70;
+      if (partial && tt.startsWith(q)) return 66; // "harry pot" -> "Harry Potter and the ..."
+      if (` ${tt} `.includes(` ${q} `)) return 55;
+      if (partial && ` ${tt}`.includes(` ${q}`)) return 50; // a beginning inside the title
+      return -1;
+    };
+    const bare = t.replace(/^(the|a|an) /, '');
+    let tier = Math.max(titleTier(t), bare === t ? -1 : titleTier(bare));
+    // "Hobbit" finds "The Hobbit" and "Dune: Deluxe Edition" finds "Dune". A word typed in full is a whole-title match even though the box
+    // cannot tell "finished" from "still typing" (no trailing space): the old `!partial` rule is why "threshing" ranked below longer titles.
+    if (titleKey(b.title) === titleKey(qTitle)) tier = Math.max(tier, 95);
+    if (tier >= 0) score += tier;
     else {
       const hits = need.reduce((n, w) => n + tokenHits(w, tWords, partial && w === lastNeed), 0);
       score += need.length ? (42 * hits) / need.length : 0;
     }
-    // Someone typing an author's name (e.g. "josh silver", or "stephen kin") wants that author's books
-    if (need.length && need.every(w => tokenHits(w, aWords, partial && w === lastNeed) > 0)) score += 60;
+    // Someone typing an author's name (e.g. "josh silver", or "stephen kin") wants that author's books. A full name (two or more words, every one
+    // of them a whole word of the author) is worth more than a title that merely starts with those words, so "jane austen" lists Jane Austen's
+    // books before "Jane Austen: A Life" by somebody else (that title alone scores as an exact match, so the author tier is set above it).
+    const authorHits = need.map(w => tokenHits(w, aWords, partial && w === lastNeed));
+    if (need.length && authorHits.every(h => h > 0)) score += need.length >= 2 && authorHits.every(h => h === 1) ? 130 : 60;
   }
   if (qAuthor) {
     const qa = normQ(qAuthor).split(' ').filter(Boolean);
@@ -82,8 +94,14 @@ export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial =
  * are judged BEFORE the sources are merged, and the verdict applies to the merged book: if one source flags a book, the copy from the other source
  * (which may carry no categories at all) is dropped too. Every blocked book is also remembered, so the Store shelves leave it out as well.
  */
-function withoutBlocked(hits: Hit[]): Book[] {
-  const blocked = hits.filter(h => isBlocked(h.book.title, h.flags)).map(h => h.book);
+function withoutBlocked(hits: Hit[], q?: ParsedQuery): Book[] {
+  // A book asked for by its exact title is still shown when the only thing against it is a description / maturity / publisher signal (a thriller
+  // whose blurb mentions sex, for example). A title or a category that is explicit or satanic is never exempt.
+  const askedFor = (h: Hit) => {
+    const k = titleKey(h.book.title);
+    return !!q && !!k && (k === titleKey(q.text) || (!!q.full && k === titleKey(q.full))) && !isBlocked(h.book.title, { subjects: h.flags.subjects });
+  };
+  const blocked = hits.filter(h => isBlocked(h.book.title, h.flags) && !askedFor(h)).map(h => h.book);
   blocked.forEach(rememberExcluded);
   if (!blocked.length) return hits.map(h => h.book);
   return hits.map(h => h.book).filter(b => !blocked.some(x => x === b || sameWork(x, b)));
@@ -91,13 +109,17 @@ function withoutBlocked(hits: Hit[]): Book[] {
 
 /* ------------------------------ ranking ------------------------------ */
 
-function rank(books: Book[], q: ParsedQuery, limit: number): Book[] {
+/** A book the reader already has on a shelf, library or device comes ahead of an equally good match they do not have. */
+const OWN_BONUS = 25;
+
+function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly Book[] = []): Book[] {
   return dedupeBooks(books)
     .map((book, order) => ({
       book,
       order,
       // "Death by Water" was split into a title and an author: the better of the two readings counts
-      score: Math.max(searchRelevance(book, q.text, q.author, q.partial), q.full ? searchRelevance(book, q.full, '', q.partial) : -Infinity),
+      score: Math.max(searchRelevance(book, q.text, q.author, q.partial), q.full ? searchRelevance(book, q.full, '', q.partial) : -Infinity)
+        + (own.length && own.some(o => o === book || sameWork(o, book)) ? OWN_BONUS : 0),
     }))
     .sort((x, y) => y.score - x.score || x.order - y.order)
     .slice(0, limit)
@@ -145,6 +167,21 @@ function tasksFor(q: ParsedQuery, final: boolean): Task[] {
   return tasks;
 }
 
+/**
+ * The author a query names, read from what the first sources returned: two to four words, every one of them a whole word of one result's author
+ * (the word being typed may be only a beginning). '' when the query is not an author's name, or an author was already given.
+ */
+function authorNamed(q: ParsedQuery, hits: Hit[]): string {
+  if (q.author || q.isbn || q.keywords || q.tokens.length < 2 || q.tokens.length > 4) return '';
+  const last = q.tokens[q.tokens.length - 1];
+  for (const h of hits) {
+    if (isUnknownAuthor(h.book.author)) continue;
+    const words = normQ(h.book.author).split(' ').filter(Boolean);
+    if (q.tokens.every(t => tokenHits(t, words, q.partial && t === last) > 0) && q.tokens.filter(t => tokenHits(t, words, false) === 1).length >= q.tokens.length - 1) return h.book.author;
+  }
+  return '';
+}
+
 /* ------------------------------ public API ------------------------------ */
 
 export interface SearchProgress {
@@ -179,7 +216,8 @@ const RECENT_MAX = 40;
 /** Books already on this device that match what is typed: synchronous, so a screen can show them in the same frame as the keystroke. */
 export function searchLocal(title: string, author = '', limit = 10, known?: readonly Book[]): Book[] {
   const q = parseQuery(title, author);
-  return rank([...(known?.length ? localMatches(q, limit, known) : []), ...localMatches(q, limit)], q, limit);
+  const mine = known?.length ? localMatches(q, limit, known) : [];
+  return rank([...mine, ...localMatches(q, limit)], q, limit, mine);
 }
 
 /**
@@ -197,7 +235,7 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   const mine = useLocal && o.known?.length ? localMatches(q, limit, o.known) : [];
   const seenHere = useLocal ? localMatches(q, limit) : [];
   const local = [...mine, ...seenHere];
-  if (local.length) emit(rank(local, q, limit), 'local', false);
+  if (local.length) emit(rank(local, q, limit, mine), 'local', false);
 
   const memo = useLocal && !o.final ? recent.get(q.key) : undefined;
   if (memo && Date.now() - memo.at < RECENT_MS) {
@@ -206,23 +244,34 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   }
 
   // A slightly larger candidate set than we show lets ranking pick the best (bulk import asks for 1 and stays small)
-  const candidates = limit <= 1 ? 10 : Math.min(24, Math.max(16, limit * 2));
+  const candidates = limit <= 1 ? 10 : Math.min(40, Math.max(16, limit * 2));
   const gathered: Hit[] = [];
-  let latest: Book[] = local.length ? rank(local, q, limit) : [];
-  await Promise.all(tasksFor(q, !!o.final).map(async t => {
+  let latest: Book[] = local.length ? rank(local, q, limit, mine) : [];
+  const runTask = async (t: Task) => {
     let hits: Hit[] = [];
     try { hits = await t.run(candidates, o.signal); } catch { hits = []; } // a failed source is an empty answer, never an error
     if (o.signal?.aborted) return;
     gathered.push(...hits);
     if (!hits.length) return;
-    latest = rank([...withoutBlocked(gathered), ...local], q, limit);
+    latest = rank([...withoutBlocked(gathered, q), ...local], q, limit, mine);
     emit(latest, t.name, false);
-  }));
+  };
+  await Promise.all(tasksFor(q, !!o.final).map(runTask));
+
+  // "jane austen": once a source has shown that the words are an author's name, ask for that author's own books too. Their works are what was
+  // wanted, and a plain keyword search is crowded with books ABOUT the author. Only then, so an ordinary title costs no extra request.
+  const name = !o.signal?.aborted ? authorNamed(q, gathered) : '';
+  if (name) {
+    await Promise.all([
+      runTask({ name: 'ol-author', run: (n, signal) => searchOpenLibrary({ author: name }, n, { signal }) }),
+      runTask({ name: 'google-author', run: (n, signal) => searchGoogle(`inauthor:\"${name}\"`, n, { signal }) }),
+    ]);
+  }
   if (o.signal?.aborted) return [];
 
-  const finalList = rank([...withoutBlocked(gathered), ...local], q, limit);
+  const finalList = rank([...withoutBlocked(gathered, q), ...local], q, limit, mine);
   if (useLocal && finalList.length) {
-    rememberSeen(rank([...withoutBlocked(gathered), ...seenHere], q, limit)); // what the sources and earlier searches gave; never the reader's own books
+    rememberSeen(rank([...withoutBlocked(gathered, q), ...seenHere], q, limit)); // what the sources and earlier searches gave; never the reader's own books
     if (gathered.length) { // a search that every source failed (offline) is never remembered as "the answer"
       recent.delete(q.key);
       recent.set(q.key, { at: Date.now(), books: finalList });
