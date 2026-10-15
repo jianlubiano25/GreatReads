@@ -1,4 +1,5 @@
 import { cleanIsbn } from './identity';
+import { isMoodQuery } from './keywords';
 
 /**
  * Reading what was typed into the search box.
@@ -39,6 +40,8 @@ export interface ParsedQuery {
   partial: boolean;
   /** The reader asked for books ABOUT something ("books about dragons") */
   keywords: boolean;
+  /** The whole box is one mood / genre word ("cozy", "fast-paced", "classics"): it is searched and ranked as keywords whichever button is on */
+  mood: boolean;
   /** Set when "x by y" was split into a title and an author: the whole phrase, because "Death by Water" is one title. It is searched and ranked too. */
   full: string;
   /** Stable key for caches */
@@ -55,7 +58,7 @@ export function parseQuery(rawTitle: string, rawAuthor = '', by = true, scope: S
   let keywords = scope === 'keywords'; // topics, themes and moods ("cozy", "dragons"): searched as subjects and matched against genre / description
 
   const isbn = cleanIsbn((rawTitle || '').trim()); // an ISBN is found from any scope
-  if (isbn) return { scope: 'all', text: isbn, author: '', isbn, tokens: [isbn], partial: false, keywords: false, full: '', key: `isbn:${isbn}` };
+  if (isbn) return { scope: 'all', text: isbn, author: '', isbn, tokens: [isbn], partial: false, keywords: false, mood: false, full: '', key: `isbn:${isbn}` };
   let full = '';
 
   // Search operators, as Google Books writes them
@@ -77,7 +80,8 @@ export function parseQuery(rawTitle: string, rawAuthor = '', by = true, scope: S
   const last = tokens[tokens.length - 1] || '';
   // A finished-looking last word (followed by a space, or a stop word) is matched whole; a short unfinished one is a beginning
   const partial = !!last && !trailingSpace && !STOP.has(last) && !!title.trim();
-  return { scope, text, author: authorN, isbn: '', tokens, partial, keywords, full, key: `${text}${partial ? '*' : ''}|${authorN}|${full}${scope === 'all' ? '' : `|${scope}`}` };
+  const mood = (scope === 'all' || scope === 'keywords') && !authorN && !full && isMoodQuery(tokens);
+  return { scope, text, author: authorN, isbn: '', tokens, partial, keywords, mood, full, key: `${text}${partial ? '*' : ''}|${authorN}|${full}${scope === 'all' ? '' : `|${scope}`}` };
 }
 
 /** Does `token` (a query word) match one of `words`? Whole word, or, for the word being typed, the beginning of one. */

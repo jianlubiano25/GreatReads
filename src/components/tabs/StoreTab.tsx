@@ -65,8 +65,10 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
   const [scope, setScope] = useState<SearchScope>('all');
   const [filterOpen, setFilterOpen] = useState(false);
   const searching = !!storeSearchQuery.trim();
-  // Tapping the box shows the scope buttons and the filter icon. Tapping anywhere OUTSIDE the search header closes them AND the filter panel; the query and the
+  // Focusing the box shows the scope buttons and the filter icon. Tapping anywhere OUTSIDE the search header closes them AND the filter panel; the query and the
   // chosen filters are kept, so tapping the box again brings the buttons back with the filter icon still lit (and counted) when a filter is applied.
+  // The buttons open from the box's FOCUS, never from the pointer-down of the tap: on iPhone / iPad, changing the page in the middle of a tap makes Safari drop the
+  // tap's own focus, which is why the box needed two taps before the keyboard came up.
   const [barOpen, setBarOpen] = useState(false);
   const headerRef = useRef<HTMLDivElement>(null);
   const openBar = useCallback(() => setBarOpen(true), []);
@@ -144,7 +146,7 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
                     <ArrowLeft className="w-5 h-5" />
                   </button>
                 )}
-                <div className="relative flex-1 min-w-0" onPointerDown={openBar}>
+                <div className="relative flex-1 min-w-0">
                   <Search className="w-4 h-4 text-[#706256] dark:text-[#a89a8a] absolute left-3.5 top-3.5 pointer-events-none" />
                   <input
                     ref={searchInput}
@@ -161,8 +163,8 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
 
               {/* The scope buttons and the filter icon appear once the box is tapped (or something is typed), centered under it */}
               {showBar && (
-                <div className="flex items-center justify-center gap-2" onPointerDown={openBar}>
-                  {!filterOpen && <div role="tablist" aria-label="Search in" className="flex rounded-xl overflow-hidden border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17]">
+                <div className="flex items-center justify-center gap-2">
+                  <div role="tablist" aria-label="Search in" className="flex rounded-xl overflow-hidden border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17]">
                     {SCOPES.map(sc => (
                       <button
                         key={sc.id}
@@ -175,7 +177,7 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
                         {sc.label}
                       </button>
                     ))}
-                  </div>}
+                  </div>
                   <button
                     type="button"
                     aria-label="Filters and sorting"

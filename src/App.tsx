@@ -310,6 +310,16 @@ export default function App() {
           <div className="flex items-center gap-2.5 shrink-0">
             {tab === 'store' && (
               <button
+                onClick={openAddBook}
+                className="w-10 h-10 aspect-square rounded-full border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880]"
+                title="Add a book"
+                aria-label="Add book"
+              >
+                <Plus className="w-5 h-5 text-[#2e5934] dark:text-[#86b880]" />
+              </button>
+            )}
+            {tab === 'store' && (
+              <button
                 onClick={() => setCustomizing(c => !c)}
                 className={`w-10 h-10 aspect-square rounded-full border bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880] ${customizing ? 'border-[#2e5934] dark:border-[#86b880] ring-2 ring-[#2e5934]/30' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}
                 title="Customize Store: reorder, hide and refresh shelves"
@@ -317,16 +327,6 @@ export default function App() {
                 aria-pressed={customizing}
               >
                 <SlidersHorizontal className="w-4 h-4 text-[#2e5934] dark:text-[#86b880]" />
-              </button>
-            )}
-            {tab === 'store' && (
-              <button
-                onClick={openAddBook}
-                className="w-10 h-10 aspect-square rounded-full border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880]"
-                title="Add a book"
-                aria-label="Add book"
-              >
-                <Plus className="w-5 h-5 text-[#2e5934] dark:text-[#86b880]" />
               </button>
             )}
             {tab !== 'store' && (

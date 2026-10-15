@@ -9,9 +9,26 @@ import { isBlocked } from './quality';
 import { rememberExcluded } from './eligibility';
 import { localMatches, rememberSeen } from './localIndex';
 import { contentTokens, normQ, parseQuery, tokenHits, type ParsedQuery, type SearchScope } from './query';
+import { keywordGroups, keywordPhrases, stem } from './keywords';
 
 /** Editions that are about a book, not the book ("Study Guide", "Summary of ...", boxed sets): ranked far down unless that is what was asked for. */
 const NOT_THE_BOOK = /\b(study guide|summary of|summary and analysis|sparknotes|cliffsnotes|workbook|analysis of|box(?:ed)? set|trivia|conversation starters|lesson plans?|teacher'?s? guide|readers? guide|large print|annotated|omnibus|graphic novel adaptation|import and export market|world forecasts?|market (?:research|report|forecast)s?|industry report|(?:19|20)\d\d (?:import|world|global|forecast))\b/i;
+
+/**
+ * Books ABOUT a method or a field of study (proceedings, monographs, bibliographies, handbooks of ...): on a broad one-word search they
+ * are what crowds out the widely read books ("chess" -> a shelf of old specialist titles above The Queen's Gambit). Only ever a penalty,
+ * and only for books few people have rated.
+ */
+const SPECIALIST = /\b(proceedings|symposium|monograph|bibliograph\w*|dissertation|thesis|journal of|annals of|handbook of|textbook|treatise|encyclopedia of|catalog(?:ue)?|directory|yearbook|lecture notes|conference|congress|statistics|studies in|report of|(?:19|20)\d\d (?:edition|annual))\b/i;
+
+/** How established a book is, 0..1, from how many readers rated it (about 2,000 ratings or more = 1). Only used by a broad search (`popular`). */
+const established = (b: Book): number => Math.min(1, Math.log10((b.ratingCount || 0) + 1) / 3.3);
+
+/** An old book that many people have rated: catalogs rarely label books as classics, so this stands in for the label in a "classics" search. */
+const classicish = (b: Book): boolean => {
+  const year = Number(b.year);
+  return !!year && year <= new Date().getFullYear() - 70 && (b.ratingCount || 0) >= 300;
+};
 
 /** An exact title match is worth more than anything else can add on top of a weaker title match (popularity, rating, metadata, cover, keywords: at most ~50). */
 const EXACT_TITLE = 130;
@@ -31,7 +48,7 @@ const COVER_BONUS = 8;
  *
  * `partial` says the last word typed may be only a beginning ("harry pot"): it then matches the start of a word, a little below a whole word.
  */
-export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial = false, titleOnly = false): number {
+export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial = false, titleOnly = false, popular = false): number {
   const q = normQ(qTitle);
   const t = normQ(b.title || '');
   const a = normQ(b.author || '');
@@ -56,7 +73,10 @@ export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial =
     // "Hobbit" finds "The Hobbit" and "Dune: Deluxe Edition" finds "Dune". A word typed in full is a whole-title match even though the box
     // cannot tell "finished" from "still typing" (no trailing space): the old `!partial` rule is why "threshing" ranked below longer titles.
     if (titleKey(b.title) === titleKey(qTitle)) tier = Math.max(tier, EXACT_TITLE_KEY);
-    if (tier >= 0) score += tier;
+    // A broad one-word search (no author): a title match counts for less when almost nobody has rated the book, so the widely read
+    // books about the subject are not buried under a shelf of obscure titles that merely contain the word.
+    const titleWeight = popular ? 0.45 + 0.55 * established(b) : 1;
+    if (tier >= 0) score += tier * titleWeight;
     else {
       const hits = need.reduce((n, w) => n + tokenHits(w, tWords, partial && w === lastNeed), 0);
       score += need.length ? (42 * hits) / need.length : 0;
@@ -85,6 +105,12 @@ export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial =
   }
   const count = b.ratingCount || 0;
   score += Math.min(14, Math.log10(count + 1) * 3.2); // popularity: 100 ratings ~6, 10k ~13
+  if (popular) {
+    score += 40 * established(b); // a broad search: the books people actually read come first among the books that fit
+    const published = Number(b.year);
+    if (established(b) < 0.6 && SPECIALIST.test(`${b.title} ${isKnownGenre(b.genre) ? b.genre : ''} ${(b.summary || '').slice(0, 200)}`)) score -= 30;
+    if (published && published < 1990 && count < 20) score -= 10; // an old book nobody rates
+  }
   if (b.ratingAverage) score += Math.max(-3, Math.min(9, (shrunkRating(b.ratingAverage, count) - 3.5) * 6)); // quality, shrunk for small samples
   let meta = 0;
   if (b.pageCount) meta += 1.5;
@@ -142,26 +168,38 @@ function inScope(b: Book, q: ParsedQuery): boolean {
   return true;
 }
 
-/** In the Keywords scope: how many of the typed words (a topic, a theme, a mood) the book's genre, description or title carries, worth up to 60. */
+/**
+ * In the Keywords scope (and for a box that holds only a mood): how many of the typed words (a topic, a theme, a mood) the book's genre, description or title
+ * carries, worth up to 60. A word counts through its mapping too (keywords.ts: "cozy" also finds "heartwarming", "classics" also finds an old, widely
+ * read book), and "classics" meets "classic". Ranking by this comes AFTER a strong title / author match and next to popularity, never before.
+ */
 function keywordFit(b: Book, q: ParsedQuery): number {
-  const need = contentTokens(q.tokens);
-  if (!need.length) return 0;
-  const about = normQ(`${isKnownGenre(b.genre) ? b.genre : ''} ${hasRealSummary(b.summary) ? b.summary : ''} ${b.title || ''}`).split(' ');
-  const last = need[need.length - 1];
-  const hits = need.reduce((n, w) => n + tokenHits(w, about, q.partial && w === last), 0);
-  return (60 * hits) / need.length;
+  const groups = keywordGroups(contentTokens(q.tokens));
+  if (!groups.length) return 0;
+  const about = new Set(normQ(`${isKnownGenre(b.genre) ? b.genre : ''} ${hasRealSummary(b.summary) ? b.summary : ''} ${b.title || ''}`).split(' ').map(stem));
+  const lastGroup = groups[groups.length - 1];
+  const hits = groups.reduce((n, g) => {
+    if (g.words.some(w => about.has(w)) || (g.classic && classicish(b))) return n + 1;
+    // the word still being typed matches the beginning of one
+    return n + (q.partial && g === lastGroup && g.text.length >= 3 && [...about].some(w => w.startsWith(g.text)) ? 0.7 : 0);
+  }, 0);
+  return (60 * hits) / groups.length;
 }
 
 /** `skip`: books an earlier page already showed (a later page never repeats them). */
 function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly Book[] = [], skip: readonly Book[] = []): Book[] {
+  // A broad search (ONE word, no author, no ISBN: "chess") ranks the widely read books ahead of obscure ones that merely contain the word.
+  // Two words are usually a title or an author's name ("jane austen"), where the title / author tiers must stay in charge.
+  const byKeywords = q.scope === 'keywords' || q.mood;
+  const popular = q.scope !== 'author' && !q.author && !q.isbn && !q.full && q.tokens.length > 0 && (q.tokens.length === 1 || byKeywords); // keyword / mood searches are broad by nature, whatever their length
   return dedupeBooks(books)
     .filter(b => inScope(b, q) && !(skip.length && skip.some(x => x === b || sameWork(x, b))))
     .map((book, order) => ({
       book,
       order,
       // "Death by Water" was split into a title and an author: the better of the two readings counts
-      score: Math.max(searchRelevance(book, q.text, q.author, q.partial, q.scope === 'title' || q.scope === 'keywords'), q.full ? searchRelevance(book, q.full, '', q.partial, q.scope === 'title') : -Infinity)
-        + (q.scope === 'keywords' ? keywordFit(book, q) : 0)
+      score: Math.max(searchRelevance(book, q.text, q.author, q.partial, q.scope === 'title' || q.scope === 'keywords', popular), q.full ? searchRelevance(book, q.full, '', q.partial, q.scope === 'title') : -Infinity)
+        + (byKeywords ? keywordFit(book, q) : 0)
         + (own.length && own.some(o => o === book || sameWork(o, book)) ? OWN_BONUS : 0),
     }))
     .sort((x, y) => y.score - x.score || x.order - y.order)
@@ -192,15 +230,22 @@ function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
   }
   const text = q.tokens.join(' ');
   const wild = q.partial && q.tokens.length ? `${q.tokens.slice(0, -1).join(' ')} ${q.tokens[q.tokens.length - 1]}*`.trim() : text;
-  if (q.scope === 'keywords') {
-    // Topics, themes and moods ("cozy mystery", "dragons"): the catalogs' subject searches first, plus the plain query (descriptions count there).
-    // Only the subject requests report the "of N" count, so the number stays about the subject.
-    return [
+  if (q.scope === 'keywords' || q.mood) {
+    // Topics, themes and moods ("cozy mystery", "dragons", "classics"): the catalogs' subject searches first, plus the plain query (descriptions count there).
+    // Only the subject requests report the "of N" count, so the number stays about the subject. A mapped word (keywords.ts) adds ONE more phrase:
+    // "cozy" is also asked as "cozy mystery", "classics mystery" as "classic mystery".
+    const [, more] = keywordPhrases(q.tokens);
+    const tasks: Task[] = [
       { name: 'ol', run: (n, signal) => ol({ subject: text }, n, signal) },
       { name: 'google', run: (n, signal) => google(`subject:${text.includes(' ') ? `"${text}"` : text}`, n, signal) },
       { name: 'ol-keyword', run: (n, signal) => ol({ q: wild }, n, signal, false) },
       { name: 'google-keyword', run: (n, signal) => google(text, n, signal, false) },
     ];
+    if (more) {
+      tasks.push({ name: 'ol-mapped', run: (n, signal) => ol({ subject: more }, n, signal, false) });
+      tasks.push({ name: 'google-mapped', run: (n, signal) => google(more, n, signal, false) });
+    }
+    return tasks;
   }
   if (q.scope === 'title') {
     // Titles only: Open Library's title field; Google's plain query (its intitle: is a phrase match), narrowed to real title matches by rank()
@@ -248,6 +293,20 @@ function authorNamed(q: ParsedQuery, hits: Hit[]): string {
     if (q.tokens.every(t => tokenHits(t, words, q.partial && t === last) > 0) && q.tokens.filter(t => tokenHits(t, words, false) === 1).length >= q.tokens.length - 1) return h.book.author;
   }
   return '';
+}
+
+/**
+ * A one-word search that turned out to be a TOPIC ("chess"): many titles contain the word and almost none of them is widely read, because the books people
+ * know about it (a novel, a history) do not have it in the title. Then, and only then, the catalogs are also asked for books FILED under that subject.
+ * Returns the subject, or '' (an ordinary title such as "hobbit" costs no extra request).
+ */
+function topicNamed(q: ParsedQuery, hits: Hit[]): string {
+  if (q.author || q.isbn || q.scope !== 'all' || q.mood || q.tokens.length !== 1 || q.tokens[0].length < 4) return '';
+  const word = q.tokens[0];
+  const books = dedupeBooks(hits.map(h => h.book));
+  const titled = books.filter(b => normQ(b.title).split(' ').includes(word)).length;
+  const known = books.filter(b => (b.ratingCount || 0) >= 500).length;
+  return titled >= 6 && known < 3 ? word : '';
 }
 
 /* ------------------------------ public API ------------------------------ */
@@ -350,6 +409,13 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
     await Promise.all([
       runTask({ name: 'ol-author', run: (n, signal) => searchOpenLibrary({ author: name }, n, { signal }) }),
       runTask({ name: 'google-author', run: (n, signal) => searchGoogle(`inauthor:"${name}"`, n, { signal }) }),
+    ]);
+  }
+  const topic = !name && !o.signal?.aborted && page === 1 && scope === 'all' ? topicNamed(q, gathered) : '';
+  if (topic) {
+    await Promise.all([
+      runTask({ name: 'ol-subject', run: (n, signal) => searchOpenLibrary({ subject: topic }, n, { signal }) }),
+      runTask({ name: 'google-subject', run: (n, signal) => searchGoogle(`subject:${topic}`, n, { signal }) }),
     ]);
   }
   if (o.signal?.aborted) return [];

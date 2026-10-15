@@ -43,12 +43,13 @@ test('satanic, demonic and sexual books are blocked; the Bible, classics and ord
   assert.ok(isBlocked('The Sex Bible: The Complete Guide to Sexual Love'));
   assert.ok(isBlocked('The Ultimate Sex Guide'));
   assert.ok(isBlocked('Dark Desires: An Erotica Collection'));
-  assert.ok(isBlocked('Some Book', { subjects: ['Fiction'], description: 'A satanic cult leader rules a town through devil worship and demonic rites.' }));
+  assert.ok(isBlocked('Some Book', { description: 'A practical guide to satanic rituals and devil worship, with spells to invoke demons.' }), 'instructional: two different practice terms in the description');
   // not blocked
   assert.ok(!isBlocked('The Holy Bible'));
   assert.ok(!isBlocked('The Bible', { subjects: ['Bibles', 'Religion'], description: 'The complete text of the Old and New Testaments.' }));
   assert.ok(!isBlocked('Paradise Lost', { subjects: ['Epic poetry'], description: 'Milton\'s epic of the fall of man, with Satan, the rebel angel, as its most compelling figure.' }));
   assert.ok(!isBlocked('The Screwtape Letters', { subjects: ['Christian life'], description: 'Letters from a senior demon to his nephew, a junior tempter. C. S. Lewis on Satan\'s methods and the demons\' failures.' }));
+  assert.ok(!isBlocked('Some Novel', { subjects: ['Fiction'], description: 'A satanic cult leader rules a town through devil worship and demonic rites.' }), 'a novel that merely has a cult in it is not instructional');
   assert.ok(!isBlocked('Demon Copperhead', { subjects: ['Fiction'], description: 'A boy born to a teenage single mother in a single-wide trailer in Appalachia.' }));
   assert.ok(!isBlocked('Beach Read', { subjects: ['Romance fiction'], description: 'A witty love story about two rival writers.' }));
   assert.ok(!isBlocked('Our Bodies, Ourselves', { subjects: ['Sex instruction', 'Women'], description: 'Sexual health, contraception and reproductive medicine.' }));
