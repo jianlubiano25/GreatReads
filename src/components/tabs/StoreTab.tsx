@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Search, Award, ArrowLeft, SlidersHorizontal, Loader2 } from 'lucide-react';
+import { Search, Award, ArrowLeft, SlidersHorizontal, Loader2 } from 'lucide-react';
 import type { Book } from '../../types';
 import { BOOK_AWARDS } from '../../data/defaultBooks';
 import { useBookSearch } from '../../hooks/useBookSearch';
@@ -7,7 +7,7 @@ import { lockBodyScroll } from '../../hooks/bodyScrollLock';
 import { DEFAULT_SHELF_ORDER, SHELF_BY_ID, hiddenShelfIds } from '../../services/store/registry';
 import { loadStorePrefs, NO_PREFS, orderShelves, saveStorePrefs, toggleShelf, type StorePrefs } from '../../services/store/prefs';
 import { milestone } from '../../services/books/perf';
-import { activeFilterCount, applySearchView, DEFAULT_SEARCH_VIEW, genreOptions, getCoverUrl, isDefaultView, SEARCH_PUBLISHED_LABEL, SEARCH_SORT_LABEL, type SearchScope, type SearchSort, type SearchView } from '../../services/books';
+import { activeFilterCount, applySearchView, DEFAULT_SEARCH_VIEW, genreOptions, getCoverPick, getCoverUrl, isDefaultView, SEARCH_PUBLISHED_LABEL, SEARCH_SORT_LABEL, type SearchScope, type SearchSort, type SearchView } from '../../services/books';
 import { ClearButton } from '../ClearButton';
 import { ViewMoreBar } from '../ViewMoreBar';
 import { CoverFace } from '../BookMeta';
@@ -23,7 +23,6 @@ interface Props {
   customizing: boolean;
   setCustomizing: (on: boolean) => void;
   handleOpenCover: (book: Book) => void;
-  onAddBook: () => void;
 }
 
 /** Search shows 20 results (rows of three) at first; "View more" adds 20 more, "View all" shows everything loaded, "Load more results" asks the catalog for its next batch. */
@@ -47,8 +46,8 @@ const PRIZE_TITLE = (
   </>
 );
 
-/** The Store tab: search, the shelves in the reader's own order, and Customize Store. */
-export function StoreTab({ active, allBooks, customizing, setCustomizing, handleOpenCover, onAddBook }: Props) {
+/** The Discover tab (the Store): search, the shelves in the reader's own order, and Customize Store. */
+export function StoreTab({ active, allBooks, customizing, setCustomizing, handleOpenCover }: Props) {
   // Store layout: the reader's own shelf order and hidden shelves (prefs only; shelf data is never touched, see services/store/prefs.ts)
   const [storePrefs, setStorePrefs] = useState<StorePrefs>(loadStorePrefs);
   const shelfOrder = useMemo(() => orderShelves(DEFAULT_SHELF_ORDER, storePrefs.order), [storePrefs.order]);
@@ -66,14 +65,23 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
   const [scope, setScope] = useState<SearchScope>('all');
   const [filterOpen, setFilterOpen] = useState(false);
   const searching = !!storeSearchQuery.trim();
-  // Tapping the box shows the scope buttons before anything is typed. They stay while focus is in the search block; a short delay on leaving lets a tap on
-  // one of them land (a phone blurs the box the moment a button is touched) and tapping a button cancels the hide.
+  // Tapping the box shows the scope buttons and the filter icon. Tapping anywhere OUTSIDE the search header closes them AND the filter panel; the query and the
+  // chosen filters are kept, so tapping the box again brings the buttons back with the filter icon still lit (and counted) when a filter is applied.
   const [barOpen, setBarOpen] = useState(false);
-  const barTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const openBar = useCallback(() => { clearTimeout(barTimer.current); setBarOpen(true); }, []);
-  const closeBarSoon = useCallback(() => { clearTimeout(barTimer.current); barTimer.current = setTimeout(() => setBarOpen(false), 250); }, []);
-  useEffect(() => () => clearTimeout(barTimer.current), []);
-  const showBar = searching || barOpen;
+  const headerRef = useRef<HTMLDivElement>(null);
+  const openBar = useCallback(() => setBarOpen(true), []);
+  const showBar = barOpen;
+  useEffect(() => {
+    if (!barOpen && !filterOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (headerRef.current?.contains(e.target as Node)) return;
+      setFilterOpen(false);
+      setBarOpen(false);
+      searchInput.current?.blur(); // the next tap on the box then really re-focuses it (and re-opens the buttons)
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    return () => document.removeEventListener('pointerdown', onDown, true);
+  }, [barOpen, filterOpen]);
   // A new query (or scope) starts from the first rows, and a genre picked for the old results may not exist in the new ones
   useEffect(() => { setVisibleCount(SEARCH_STEP); setView(v => (v.genre ? { ...v, genre: '' } : v)); }, [storeSearchQuery, scope]);
   const clearSearch = useCallback(() => { setStoreSearchQuery(''); setFilterOpen(false); setBarOpen(false); }, []);
@@ -97,7 +105,7 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
   useEffect(() => {
     if (!searching) return;
     for (const b of shownResults.slice(visibleCount, visibleCount + SEARCH_STEP)) {
-      const url = getCoverUrl(b.coverId, coverSize, b.coverUrl);
+      const url = getCoverPick(b, coverSize) || getCoverUrl(b.coverId, coverSize, b.coverUrl);
       if (url) new Image().src = url;
     }
   }, [searching, shownResults, visibleCount, coverSize]);
@@ -112,25 +120,6 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
   return (
     <TabPane active={active}>
       <div className="flex flex-col gap-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="font-serif-display text-2xl sm:text-3xl text-[#201a15] dark:text-[#f0e6d6]">
-              Book Store
-            </h2>
-            <p className="text-xs sm:text-sm text-[#706256] dark:text-[#a89a8a]">
-              Browse popular works, prize winners, and discover new books. Tap any cover to see author, year &amp; page details.
-            </p>
-          </div>
-
-          <button
-            onClick={() => onAddBook()}
-            className="flex px-4 py-2 rounded-xl text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] items-center gap-1.5 shadow-sm shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Book</span>
-          </button>
-        </div>
-
         {customizing ? (
           <StoreCustomize
             order={shelfOrder}
@@ -144,18 +133,18 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
           <>
           {/* Search: the box, the Title / Author selector and the filter icon. While a query is typed this whole block fills the screen (same elements, so the keyboard stays up). */}
           <div
-            className={searching ? 'fixed inset-0 z-[55] overflow-y-auto overscroll-contain bg-[#f5f0e6] dark:bg-[#181410]' : 'flex flex-col gap-2'}
+            className={searching ? 'fixed inset-0 z-[45] overflow-y-auto overscroll-contain bg-[#f5f0e6] dark:bg-[#181410]' : 'flex flex-col gap-2'}
             // The filter panel sits in the sticky header and would cover the results as they scroll under it: scrolling the list closes it
             onScroll={searching && filterOpen ? e => { if (e.currentTarget.scrollTop > 8) setFilterOpen(false); } : undefined}
           >
-            <div onFocus={openBar} onBlur={closeBarSoon} className={searching ? 'sticky top-0 z-30 bg-[#f5f0e6] dark:bg-[#181410] px-3 pt-[max(env(safe-area-inset-top),0.75rem)] pb-2 flex flex-col gap-2 border-b border-[#e3d7c3] dark:border-[#382f25]' : 'flex flex-col gap-2'}>
+            <div ref={headerRef} onFocus={openBar} className={searching ? 'sticky top-0 z-30 bg-[#f5f0e6] dark:bg-[#181410] px-3 pt-[max(env(safe-area-inset-top),0.75rem)] pb-2 flex flex-col gap-2 border-b border-[#e3d7c3] dark:border-[#382f25]' : 'flex flex-col gap-2'}>
               <div className="flex items-center gap-2">
                 {searching && (
                   <button type="button" aria-label="Back to the Store" onClick={clearSearch} className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-[#2e5934] dark:text-[#9ed0a6] hover:bg-[#e3d7c3]/60 dark:hover:bg-[#382f25]">
                     <ArrowLeft className="w-5 h-5" />
                   </button>
                 )}
-                <div className="relative flex-1 min-w-0">
+                <div className="relative flex-1 min-w-0" onPointerDown={openBar}>
                   <Search className="w-4 h-4 text-[#706256] dark:text-[#a89a8a] absolute left-3.5 top-3.5 pointer-events-none" />
                   <input
                     ref={searchInput}
@@ -173,7 +162,7 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
               {/* The scope buttons and the filter icon appear once the box is tapped (or something is typed), centered under it */}
               {showBar && (
                 <div className="flex items-center justify-center gap-2" onPointerDown={openBar}>
-                  <div role="tablist" aria-label="Search in" className="flex rounded-xl overflow-hidden border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17]">
+                  {!filterOpen && <div role="tablist" aria-label="Search in" className="flex rounded-xl overflow-hidden border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17]">
                     {SCOPES.map(sc => (
                       <button
                         key={sc.id}
@@ -186,7 +175,7 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
                         {sc.label}
                       </button>
                     ))}
-                  </div>
+                  </div>}
                   <button
                     type="button"
                     aria-label="Filters and sorting"
@@ -268,7 +257,7 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
 
                 {storeSearchResults.length === 0 && storeSearchEmpty ? (
                   <div className="p-8 text-center text-sm text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-xl border border-[#e3d7c3] dark:border-[#382f25]">
-                    No books found{scope === 'all' ? '' : ` by ${scope}`}. Check the spelling, try All, or use the Add Book button to add manually.
+                    No books found{scope === 'all' ? '' : ` by ${scope}`}. Check the spelling, try All, or use the + button at the top to add it manually.
                   </div>
                 ) : storeSearchResults.length > 0 && shownResults.length === 0 ? (
                   <div className="p-6 text-center text-sm text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-xl border border-[#e3d7c3] dark:border-[#382f25]">

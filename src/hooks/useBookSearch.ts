@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Book } from '../types';
-import { fillMissingCovers, resolveCover, searchBooksLive, searchLocal, type SearchScope } from '../services/books';
+import { fillMissingCovers, getCoverPick, resolveCover, searchBooksLive, searchLocal, type SearchScope } from '../services/books';
 
 /** Wait this long after the last keystroke before asking the network (books already on the device are shown with no wait at all). */
 const TYPING_DELAY_MS = 150;
@@ -8,6 +8,22 @@ const TYPING_DELAY_MS = 150;
 const MIN_NETWORK_CHARS = 3;
 /** The books on the first screen: their covers are looked up as soon as the first source answers, not after the last one. */
 const EARLY_COVERS = 12;
+
+/**
+ * A book with a cover you picked / published (getCoverPick) counts as having a cover: the "With cover" filter keeps it and no lookup is spent on it.
+ * The card itself already draws the pick (CoverFace); this only fills the gap for results whose source returned no cover of its own.
+ */
+const withPicks = (books: Book[]): Book[] => {
+  let changed = false;
+  const out = books.map(b => {
+    if (b.coverId || b.coverUrl || !b.title) return b;
+    const url = getCoverPick(b, 'M');
+    if (!url) return b;
+    changed = true;
+    return { ...b, coverUrl: url };
+  });
+  return changed ? out : books;
+};
 
 export interface BookSearchState {
   results: Book[];
@@ -64,7 +80,7 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
     const final = forced.current;
     forced.current = false;
     const controller = new AbortController();
-    const live = (books: Book[]) => { if (!controller.signal.aborted) { setResults(books); latest.current = books; setStale(false); setEmpty(false); } };
+    const live = (raw: Book[]) => { const books = withPicks(raw); if (!controller.signal.aborted) { setResults(books); latest.current = books; setStale(false); setEmpty(false); } };
 
     // Instant: books already on this device. With none, the old list stays (dimmed) until the first answer.
     const instant = searchLocal(query, author, limit, known, scope);
@@ -78,7 +94,7 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
 
     const timer = setTimeout(async () => {
       try {
-        const finalList = await searchBooksLive(query, {
+        const finalRaw = await searchBooksLive(query, {
           author,
           scope,
           limit,
@@ -90,12 +106,13 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
             if (books.length) live(books);
             if (!earlyCovers && books.length && !controller.signal.aborted) { // covers for the first screen start now; the lookups are shared and remembered, so the list is not held up
               earlyCovers = true;
-              books.slice(0, EARLY_COVERS).filter(b => b.title && !b.coverId && !b.coverUrl).forEach(b => { void resolveCover(b); });
+              withPicks(books.slice(0, EARLY_COVERS)).filter(b => b.title && !b.coverId && !b.coverUrl).forEach(b => { void resolveCover(b); });
             }
             if (p.done) setLoading(false);
           },
         });
         if (controller.signal.aborted) return;
+        const finalList = withPicks(finalRaw);
         setLoading(false);
         setStale(false);
         setEmpty(finalList.length === 0);
@@ -126,7 +143,7 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
       const got = await searchBooksLive(query, { author, scope, limit, page: next, final: true, known, local: false, exclude: [...latest.current, ...moreRef.current] });
       if (g !== gen.current) return; // a newer search started while this was in flight: the answer belongs to the old query
       page.current = next;
-      if (got.length) { moreRef.current = [...moreRef.current, ...got]; setMore(moreRef.current); } else setExhausted(true);
+      if (got.length) { moreRef.current = [...moreRef.current, ...withPicks(got)]; setMore(moreRef.current); } else setExhausted(true);
     } finally {
       if (g === gen.current) { inFlight.current = false; setLoadingMore(false); }
     }

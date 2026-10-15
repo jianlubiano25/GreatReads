@@ -47,15 +47,14 @@ test('every tab draws, and an inactive tab is mounted but hidden', () => {
   const emptyDev = renderToStaticMarkup(h(DeviceTab, { active: true, onDeviceBooks: [], finishedBooks: [], state, handleOpenCover: noop, handleOpenHighlights: noop, moveToReadingList: noop, readAgain: noop, confirmRemoveFromDevice: noop, confirmRemoveFinished: noop, onAddToDevice: noop, onPasteList: noop }));
   assert.match(emptyDev, /Nothing on your device yet/);
 
-  const store = renderToStaticMarkup(h(StoreTab, { active: true, allBooks: books, customizing: false, setCustomizing: noop, handleOpenCover: noop, onAddBook: noop }));
-  assert.match(store, /Book Store/);
+  const store = renderToStaticMarkup(h(StoreTab, { active: true, allBooks: books, customizing: false, setCustomizing: noop, handleOpenCover: noop }));
+  assert.ok(!/Book Store/.test(store)); // the page title (Discover) lives in the App header, not a second heading here
   assert.match(store, /Title, Author, ISBN, or Keywords/);
   assert.match(store, /Top 15 this week/); // the shelves are drawn in the saved/default order
 });
 
-test('Store tab: Customize Store replaces the search and shelves, and the Add Book button stays', () => {
-  const store = renderToStaticMarkup(h(StoreTab, { active: true, allBooks: [], customizing: true, setCustomizing: noop, handleOpenCover: noop, onAddBook: noop }));
+test('Store tab: Customize Store replaces the search and shelves', () => {
+  const store = renderToStaticMarkup(h(StoreTab, { active: true, allBooks: [], customizing: true, setCustomizing: noop, handleOpenCover: noop }));
   assert.match(store, /Customize Store/);
-  assert.match(store, /Add Book/);
   assert.ok(!/Title, Author, ISBN, or Keywords/.test(store));
 });
