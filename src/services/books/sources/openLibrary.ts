@@ -81,6 +81,14 @@ export async function findOpenLibrary(q: { title: string; author?: string; isbn?
       if (hits.length || opts.signal?.aborted) break;
     }
   }
+  if (!hits.length && !isbn) {
+    // The title= + author= fields found nothing (a book catalogued under another title, e.g. "The Stranger" = "L'étranger"): ask the plain query, still judged by title and author
+    const named = !!q.author && !/^(Unknown|Featured) Author$/.test(q.author);
+    for (const title of titleVariants(q.title)) {
+      hits = (await searchOpenLibrary({ q: named ? `${title} ${q.author}` : title }, 8, opts)).filter(h => titlesMatch(h.book.title, q.title) && authorListMatches(h.book.author, q.author || ''));
+      if (hits.length || opts.signal?.aborted) break;
+    }
+  }
   if (!hits.length) return null;
   const withCover = hits.filter(h => h.book.coverId);
   const pool = withCover.length ? withCover : hits;

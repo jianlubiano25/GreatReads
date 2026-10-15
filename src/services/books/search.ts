@@ -264,6 +264,8 @@ function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
     const both: Task[] = [
       { name: 'ol', run: (n, signal) => ol({ title: wild, author: q.author }, n, signal) },
       { name: 'google', run: (n, signal) => google(`${text} inauthor:${q.author}`, n, signal) },
+      // Open Library's title= + author= fields miss a book catalogued under another title ("The Stranger" by Camus is "L'étranger" there): the plain query finds it
+      { name: 'ol-q', run: (n, signal) => ol({ q: `${text} ${q.author}` }, n, signal, false) },
     ];
     if (q.full) both.push({ name: 'google-full', run: (n, signal) => google(q.full, n, signal, false) }); // "x by y" read as one title too
     return both;
