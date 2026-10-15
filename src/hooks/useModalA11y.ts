@@ -1,8 +1,7 @@
 import { useEffect, useRef } from 'react';
+import { lockBodyScroll } from './bodyScrollLock';
 
 const escapeStack: Array<() => void> = [];
-let openModals = 0;
-let previousBodyOverflow = '';
 
 export function useModalA11y(onClose: () => void) {
   const closeRef = useRef(onClose);
@@ -38,10 +37,7 @@ export function useModalA11y(onClose: () => void) {
     };
     document.addEventListener('keydown', onTab);
 
-    if (openModals++ === 0) {
-      previousBodyOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-    }
+    const unlockScroll = lockBodyScroll();
 
     const dialogs = document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]');
     const dialog = dialogs[dialogs.length - 1];
@@ -55,7 +51,7 @@ export function useModalA11y(onClose: () => void) {
       document.removeEventListener('keydown', onTab);
       const index = escapeStack.lastIndexOf(close);
       if (index >= 0) escapeStack.splice(index, 1);
-      if (--openModals === 0) document.body.style.overflow = previousBodyOverflow;
+      unlockScroll();
       if (opener && document.contains(opener)) opener.focus({ preventScroll: true });
     };
   }, []);

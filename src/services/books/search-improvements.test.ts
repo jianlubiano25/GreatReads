@@ -186,3 +186,9 @@ test('market-report spam and "study guide" editions rank far down unless asked f
   const spam = book({ title: 'The 2000 World Forecasts of Harvesting and Threshing', author: 'B' });
   assert.ok(searchRelevance(real, 'threshing', '', true) - searchRelevance(spam, 'threshing', '', true) > 60);
 });
+
+import { parseQuery } from './query';
+test('an ISBN is recognised from every scope, and Keywords searches subjects', () => {
+  for (const scope of ['all', 'title', 'author', 'keywords'] as const) assert.equal(parseQuery('978-0-8021-4853-7', '', true, scope).isbn, '9780802148537');
+  assert.equal(parseQuery('cozy mystery', '', true, 'keywords').keywords, true);
+});

@@ -66,6 +66,8 @@
     0 1px 3px rgba(0, 0, 0, 0.12);
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
+  /* The cover image inside has z-index 20: without its own stacking context it ranks against the whole page and paints over sticky bars (the search box) */
+  isolation: isolate;
 }
 
 /* Touch screens have no hover: without this a tap or a scroll can leave a cover "lifted", and every shelf card keeps a shadow transition to track */

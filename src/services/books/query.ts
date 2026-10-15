@@ -54,7 +54,7 @@ export function parseQuery(rawTitle: string, rawAuthor = '', by = true, scope: S
   const trailingSpace = /\s$/.test(rawTitle || '');
   let keywords = scope === 'keywords'; // topics, themes and moods ("cozy", "dragons"): searched as subjects and matched against genre / description
 
-  const isbn = cleanIsbn(title.trim());
+  const isbn = cleanIsbn((rawTitle || '').trim()); // an ISBN is found from any scope
   if (isbn) return { scope: 'all', text: isbn, author: '', isbn, tokens: [isbn], partial: false, keywords: false, full: '', key: `isbn:${isbn}` };
   let full = '';
 

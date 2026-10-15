@@ -3,6 +3,7 @@ import { Plus, Search, Award, ArrowLeft, SlidersHorizontal, Loader2 } from 'luci
 import type { Book } from '../../types';
 import { BOOK_AWARDS } from '../../data/defaultBooks';
 import { useBookSearch } from '../../hooks/useBookSearch';
+import { lockBodyScroll } from '../../hooks/bodyScrollLock';
 import { DEFAULT_SHELF_ORDER, SHELF_BY_ID, hiddenShelfIds } from '../../services/store/registry';
 import { loadStorePrefs, NO_PREFS, orderShelves, saveStorePrefs, toggleShelf, type StorePrefs } from '../../services/store/prefs';
 import { milestone } from '../../services/books/perf';
@@ -30,12 +31,14 @@ const SEARCH_STEP = 20;
 /** How many results one search asks for (the list is ranked, then cut to this) */
 const SEARCH_LIMIT = 100;
 
-const SCOPES: { id: SearchScope; label: string; placeholder: string }[] = [
-  { id: 'all', label: 'All', placeholder: 'Search by title, author, or keyword' },
-  { id: 'title', label: 'Title', placeholder: 'Search by book title' },
-  { id: 'author', label: 'Author', placeholder: 'Search by author name' },
-  { id: 'keywords', label: 'Keywords', placeholder: 'Search by keyword or mood (cozy, dragons, found family)' },
+const SCOPES: { id: SearchScope; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'title', label: 'Title' },
+  { id: 'author', label: 'Author' },
+  { id: 'keywords', label: 'Keywords' },
 ];
+/** An ISBN is found from any scope, and Keywords take topics and moods ("cozy", "dragons"), so the box says all of it whichever button is on */
+const SEARCH_PLACEHOLDER = 'Title, Author, ISBN, or Keywords';
 
 const PRIZE_TITLE = (
   <>
@@ -63,15 +66,21 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
   const [scope, setScope] = useState<SearchScope>('all');
   const [filterOpen, setFilterOpen] = useState(false);
   const searching = !!storeSearchQuery.trim();
+  // Tapping the box shows the scope buttons before anything is typed. They stay while focus is in the search block; a short delay on leaving lets a tap on
+  // one of them land (a phone blurs the box the moment a button is touched) and tapping a button cancels the hide.
+  const [barOpen, setBarOpen] = useState(false);
+  const barTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const openBar = useCallback(() => { clearTimeout(barTimer.current); setBarOpen(true); }, []);
+  const closeBarSoon = useCallback(() => { clearTimeout(barTimer.current); barTimer.current = setTimeout(() => setBarOpen(false), 250); }, []);
+  useEffect(() => () => clearTimeout(barTimer.current), []);
+  const showBar = searching || barOpen;
   // A new query (or scope) starts from the first rows, and a genre picked for the old results may not exist in the new ones
   useEffect(() => { setVisibleCount(SEARCH_STEP); setView(v => (v.genre ? { ...v, genre: '' } : v)); }, [storeSearchQuery, scope]);
-  const clearSearch = useCallback(() => { setStoreSearchQuery(''); setFilterOpen(false); }, []);
+  const clearSearch = useCallback(() => { setStoreSearchQuery(''); setFilterOpen(false); setBarOpen(false); }, []);
   // Results take over the whole screen: the page behind must not scroll with them
   useEffect(() => {
     if (!searching || !active) return; // another tab hides this one: the page must scroll again there
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
+    return lockBodyScroll(); // shared with the modals: a book's details opened over the results can be closed before or after the search, either order
   }, [searching, active]);
 
   // The shelves compare their books with yours only to share ratings. A new array for every reading-progress change would redraw every
@@ -135,11 +144,11 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
           <>
           {/* Search: the box, the Title / Author selector and the filter icon. While a query is typed this whole block fills the screen (same elements, so the keyboard stays up). */}
           <div
-            className={searching ? 'fixed inset-0 z-[60] overflow-y-auto overscroll-contain bg-[#f5f0e6] dark:bg-[#181410]' : 'flex flex-col gap-2'}
+            className={searching ? 'fixed inset-0 z-[55] overflow-y-auto overscroll-contain bg-[#f5f0e6] dark:bg-[#181410]' : 'flex flex-col gap-2'}
             // The filter panel sits in the sticky header and would cover the results as they scroll under it: scrolling the list closes it
             onScroll={searching && filterOpen ? e => { if (e.currentTarget.scrollTop > 8) setFilterOpen(false); } : undefined}
           >
-            <div className={searching ? 'sticky top-0 z-10 bg-[#f5f0e6] dark:bg-[#181410] px-3 pt-[max(env(safe-area-inset-top),0.75rem)] pb-2 flex flex-col gap-2 border-b border-[#e3d7c3] dark:border-[#382f25]' : 'flex flex-col gap-2'}>
+            <div onFocus={openBar} onBlur={closeBarSoon} className={searching ? 'sticky top-0 z-30 bg-[#f5f0e6] dark:bg-[#181410] px-3 pt-[max(env(safe-area-inset-top),0.75rem)] pb-2 flex flex-col gap-2 border-b border-[#e3d7c3] dark:border-[#382f25]' : 'flex flex-col gap-2'}>
               <div className="flex items-center gap-2">
                 {searching && (
                   <button type="button" aria-label="Back to the Store" onClick={clearSearch} className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-[#2e5934] dark:text-[#9ed0a6] hover:bg-[#e3d7c3]/60 dark:hover:bg-[#382f25]">
@@ -153,17 +162,17 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
                     type="search"
                     value={storeSearchQuery}
                     onChange={e => setStoreSearchQuery(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') { setFilterOpen(false); searchStoreNow(); } else if (e.key === 'Escape') { if (filterOpen) setFilterOpen(false); else clearSearch(); } }}
-                    placeholder={SCOPES.find(x => x.id === scope)!.placeholder}
+                    onKeyDown={e => { if (e.key === 'Enter') { setFilterOpen(false); searchStoreNow(); } else if (e.key === 'Escape') { if (filterOpen) setFilterOpen(false); else { clearSearch(); searchInput.current?.blur(); } } }}
+                    placeholder={SEARCH_PLACEHOLDER}
                     className="rl-search w-full pl-10 pr-10 py-3 rounded-xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-sm focus:outline-none focus:ring-2 focus:ring-[#2e5934]"
                   />
                   <ClearButton show={!!storeSearchQuery} onClear={() => { setStoreSearchQuery(''); searchInput.current?.focus(); }} />
                 </div>
               </div>
 
-              {/* The scope buttons and the filter icon appear once something is typed, centered under the box */}
-              {searching && (
-                <div className="flex items-center justify-center gap-2">
+              {/* The scope buttons and the filter icon appear once the box is tapped (or something is typed), centered under it */}
+              {showBar && (
+                <div className="flex items-center justify-center gap-2" onPointerDown={openBar}>
                   <div role="tablist" aria-label="Search in" className="flex rounded-xl overflow-hidden border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17]">
                     {SCOPES.map(sc => (
                       <button
@@ -171,7 +180,7 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
                         type="button"
                         role="tab"
                         aria-selected={scope === sc.id}
-                        onClick={() => setScope(sc.id)}
+                        onClick={() => { setScope(sc.id); searchInput.current?.focus(); }}
                         className={`px-3 py-2 text-xs font-semibold transition-colors ${scope === sc.id ? 'bg-[#2e5934] text-white' : 'text-[#706256] dark:text-[#a89a8a] hover:bg-[#e3d7c3]/50 dark:hover:bg-[#382f25]'}`}
                       >
                         {sc.label}
