@@ -163,3 +163,26 @@ test('"published within" keeps recent books and leaves out books with no year', 
   assert.deepEqual(applySearchView([recent, old, none], { ...DEFAULT_SEARCH_VIEW, years: 5 }).map(b => b.id), ['r']);
   assert.deepEqual(applySearchView([recent, old, none], DEFAULT_SEARCH_VIEW).length, 3);
 });
+
+test('a report with the word in its title AND its author never beats the book with that exact title ("Threshing")', () => {
+  const exact = book({ title: 'Threshing', author: 'Faye Reineberg Holt', ratingCount: 0, ratingAverage: 0 });
+  const day = book({ title: 'Threshing Day', author: 'Somebody Else' });
+  const report = book({ title: 'The 2000 Import and Export Market for Harvesting and Threshing Machinery', author: 'The Harvesting and Threshing Machinery Research Group', coverUrl: undefined });
+  const reportWithCover = { ...report, coverUrl: 'https://example.test/c.jpg', ratingCount: 50, ratingAverage: 4 };
+  const s = (b: any) => searchRelevance(b, 'threshing', '', true);
+  assert.ok(s(exact) > s(day), 'the exact title comes first');
+  assert.ok(s(day) > s(report), 'a title that starts with the word beats one that merely contains it');
+  assert.ok(s(exact) > s(reportWithCover) && s(day) > s(reportWithCover));
+});
+
+test('a well-rated book that merely starts with the word does not pass an exact title ("Verity")', () => {
+  const exact = book({ title: 'Verity', author: 'Colleen Hoover' });
+  const famous = book({ title: 'Verity Lambert: A Life in Television', author: 'Verity Lambert', ratingAverage: 4.8, ratingCount: 50000, coverUrl: 'https://example.test/c.jpg' });
+  assert.ok(searchRelevance(exact, 'verity', '', true) > searchRelevance(famous, 'verity', '', true));
+});
+
+test('market-report spam and "study guide" editions rank far down unless asked for', () => {
+  const real = book({ title: 'Threshing', author: 'A' });
+  const spam = book({ title: 'The 2000 World Forecasts of Harvesting and Threshing', author: 'B' });
+  assert.ok(searchRelevance(real, 'threshing', '', true) - searchRelevance(spam, 'threshing', '', true) > 60);
+});

@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Book } from '../types';
-import { fillMissingCovers, searchBooksLive, searchLocal, type SearchScope } from '../services/books';
+import { fillMissingCovers, resolveCover, searchBooksLive, searchLocal, type SearchScope } from '../services/books';
 
 /** Wait this long after the last keystroke before asking the network (books already on the device are shown with no wait at all). */
 const TYPING_DELAY_MS = 150;
+/** One or two letters match half the catalog: while typing, the network is asked from this many characters on (Enter always asks). */
+const MIN_NETWORK_CHARS = 3;
+/** The books on the first screen: their covers are looked up as soon as the first source answers, not after the last one. */
+const EARLY_COVERS = 12;
 
 export interface BookSearchState {
   results: Book[];
@@ -64,9 +68,13 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
 
     // Instant: books already on this device. With none, the old list stays (dimmed) until the first answer.
     const instant = searchLocal(query, author, limit, known, scope);
+    const tooShort = !final && !author.trim() && q.length < MIN_NETWORK_CHARS;
     if (instant.length) live(instant);
+    else if (tooShort) { setResults([]); latest.current = []; setStale(false); setEmpty(false); }
     else setStale(true);
+    if (tooShort) { setLoading(false); return () => controller.abort(); } // a letter or two: the device answers, the network waits for a third letter or Enter
     setLoading(true);
+    let earlyCovers = false;
 
     const timer = setTimeout(async () => {
       try {
@@ -80,6 +88,10 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
           onUpdate: (books, p) => {
             if (!controller.signal.aborted && p.total) setTotal(p.total);
             if (books.length) live(books);
+            if (!earlyCovers && books.length && !controller.signal.aborted) { // covers for the first screen start now; the lookups are shared and remembered, so the list is not held up
+              earlyCovers = true;
+              books.slice(0, EARLY_COVERS).filter(b => b.title && !b.coverId && !b.coverUrl).forEach(b => { void resolveCover(b); });
+            }
             if (p.done) setLoading(false);
           },
         });

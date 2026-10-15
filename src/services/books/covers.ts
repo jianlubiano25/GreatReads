@@ -145,7 +145,7 @@ export function clearMissingCover(book: { title?: string; author?: string }) {
 /* ---------------- finding a cover ---------------- */
 
 /** Does this image actually load (and isn't a 1×1 placeholder)? */
-export function probeImage(url: string, ms = 9000): Promise<boolean> {
+export function probeImage(url: string, ms = 5000): Promise<boolean> {
   return new Promise(resolve => {
     if (typeof Image === 'undefined') return resolve(true);
     const img = new Image();
@@ -165,7 +165,7 @@ export function probeImage(url: string, ms = 9000): Promise<boolean> {
   });
 }
 
-const lookupSlots = pool(2); // covers are looked up two at a time, however many ask at once
+const lookupSlots = pool(6); // covers are looked up six at a time (a results page shows nine at once), however many ask
 const inflight = new Map<string, Promise<string>>();
 
 async function search(b: MissingBook): Promise<string> {
@@ -176,8 +176,12 @@ async function search(b: MissingBook): Promise<string> {
 
   // exact edition first
   const isbn = id.isbn13 || id.isbn10;
-  if (isbn && (url = await accept(olCoverByIsbn(isbn, 'L')))) return url;
-  const gb = id.gbVolume ? await googleVolume(id.gbVolume) : isbn ? await findGoogle({ title: b.title, author, isbn }, {}, ['cover']) : null;
+  // Open Library's cover for the ISBN and Google's record for the book are asked at the same time: the slower one no longer holds up the other
+  const [olIsbnCover, gb] = await Promise.all([
+    isbn ? accept(olCoverByIsbn(isbn, 'L')) : Promise.resolve(''),
+    id.gbVolume ? googleVolume(id.gbVolume) : isbn ? findGoogle({ title: b.title, author, isbn }, {}, ['cover']) : Promise.resolve(null),
+  ]);
+  if (olIsbnCover) return olIsbnCover;
   if (gb?.book.coverUrl && (url = await accept(gb.book.coverUrl))) return url;
 
   // then by name, always checking the title and author really match

@@ -22,7 +22,7 @@ export const normQ = (s: string) =>
 const STOP = new Set(['a', 'an', 'the', 'of', 'and', 'or', 'in', 'on', 'to', 'for', 'by', 'with', 'at', 'is', 'it']);
 
 /** What the box is searching: everything (title, author, keywords), titles only, or authors only (the Goodreads-style selector next to the box). */
-export type SearchScope = 'all' | 'title' | 'author';
+export type SearchScope = 'all' | 'title' | 'author' | 'keywords';
 
 export interface ParsedQuery {
   /** The scope the reader picked; 'title' and 'author' keep only results whose title / author match what was typed */
@@ -50,9 +50,9 @@ export function parseQuery(rawTitle: string, rawAuthor = '', by = true, scope: S
   let title = (rawTitle || '').replace(/\s+/g, ' ');
   let author = (rawAuthor || '').trim();
   if (scope === 'author') { author = title.trim() || author; title = ''; } // everything typed is an author's name
-  else if (scope === 'title') by = false; // "Death by Water" is one title
+  else if (scope === 'title' || scope === 'keywords') by = false; // "Death by Water" is one title; keywords are never "x by y"
   const trailingSpace = /\s$/.test(rawTitle || '');
-  let keywords = false;
+  let keywords = scope === 'keywords'; // topics, themes and moods ("cozy", "dragons"): searched as subjects and matched against genre / description
 
   const isbn = cleanIsbn(title.trim());
   if (isbn) return { scope: 'all', text: isbn, author: '', isbn, tokens: [isbn], partial: false, keywords: false, full: '', key: `isbn:${isbn}` };

@@ -37,14 +37,29 @@ export function mergeBooks(a: Book, b: Book): Book {
   return out;
 }
 
-/** Collapse a list so each book appears once (first occurrence wins, later ones fill its gaps). */
+/** `long` is `short` plus a subtitle or edition note ("Verity: Special Edition", "Dune (Deluxe Edition)"): the shorter one is the clean title. */
+function isDecorated(long: string, short: string): boolean {
+  const l = long.trim().toLowerCase();
+  const s = short.trim().toLowerCase();
+  if (!s || l.length <= s.length || !l.startsWith(s)) return false;
+  return /^\s*[:([\-–—,]/.test(l.slice(s.length));
+}
+
+/**
+ * Collapse a list so each book appears once (first occurrence wins, later ones fill its gaps).
+ * The record keeps the cleanest title of its copies, so an edition that happened to be listed first ("Verity: Special Edition") does not
+ * make the book read, rank and display as a secondary edition.
+ */
 export function dedupeBooks(list: Book[]): Book[] {
   const out: Book[] = [];
   for (const book of list) {
     if (!book.title) continue;
     const i = out.findIndex(m => sameWork(m, book));
-    if (i >= 0) out[i] = mergeBooks(out[i], book);
-    else out.push(book);
+    if (i >= 0) {
+      const merged = mergeBooks(out[i], book);
+      if (isDecorated(out[i].title, book.title)) merged.title = book.title;
+      out[i] = merged;
+    } else out.push(book);
   }
   return out;
 }

@@ -11,13 +11,23 @@ import { localMatches, rememberSeen } from './localIndex';
 import { contentTokens, normQ, parseQuery, tokenHits, type ParsedQuery, type SearchScope } from './query';
 
 /** Editions that are about a book, not the book ("Study Guide", "Summary of ...", boxed sets): ranked far down unless that is what was asked for. */
-const NOT_THE_BOOK = /\b(study guide|summary of|summary and analysis|sparknotes|cliffsnotes|workbook|analysis of|box(?:ed)? set|trivia|conversation starters|lesson plans?|teacher'?s? guide|readers? guide)\b/i;
+const NOT_THE_BOOK = /\b(study guide|summary of|summary and analysis|sparknotes|cliffsnotes|workbook|analysis of|box(?:ed)? set|trivia|conversation starters|lesson plans?|teacher'?s? guide|readers? guide|large print|annotated|omnibus|graphic novel adaptation|import and export market|world forecasts?|market (?:research|report|forecast)s?|industry report|(?:19|20)\d\d (?:import|world|global|forecast))\b/i;
+
+/** An exact title match is worth more than anything else can add on top of a weaker title match (popularity, rating, metadata, cover, keywords: at most ~50). */
+const EXACT_TITLE = 130;
+const EXACT_TITLE_KEY = 125; // the same title once a subtitle / edition note is dropped ("Verity: Special Edition" -> "Verity")
+/** A full author name (two or more words, all whole words of the author) must stay above an exact title match by somebody else ("jane austen" -> her books before "Jane Austen: A Life"). */
+const AUTHOR_FULL_NAME = 170;
+/** One word of an author's name: only counts when the title did not already match, otherwise a title that merely CONTAINS the word and an author who has it stack up above the exact title. */
+const AUTHOR_PARTIAL = 60;
+/** Having a cover: a tiebreaker among books of the same relevance, never enough to lift a weaker title match over a better one. */
+const COVER_BONUS = 8;
 
 /**
  * How well a result fits what was typed, in this order of importance:
  * exact / strong title match -> author match -> keyword match -> popularity (rating count) -> rating quality -> metadata completeness -> cover -> a small recency nudge.
- * The title tier is worth up to 100; everything after it adds only a few points each, so a better title match nearly always
- * wins, and among similar title matches the established, well-documented book comes first.
+ * The title tier is worth up to 130 (an exact title); everything after it adds only a few points each, so a better title match nearly always
+ * wins, and among similar title matches the established, well-documented book comes first. One author word never stacks on a title match.
  *
  * `partial` says the last word typed may be only a beginning ("harry pot"): it then matches the start of a word, a little below a whole word.
  */
@@ -34,7 +44,7 @@ export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial =
   if (q && t) {
     // The best of: the title as written, and the title without its leading article ("The Threshing" answers to "threshing" and to "threshing fl")
     const titleTier = (tt: string): number => {
-      if (tt === q) return 100;
+      if (tt === q) return EXACT_TITLE;
       if (tt.startsWith(`${q} `)) return 70;
       if (partial && tt.startsWith(q)) return 66; // "harry pot" -> "Harry Potter and the ..."
       if (` ${tt} `.includes(` ${q} `)) return 55;
@@ -45,7 +55,7 @@ export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial =
     let tier = Math.max(titleTier(t), bare === t ? -1 : titleTier(bare));
     // "Hobbit" finds "The Hobbit" and "Dune: Deluxe Edition" finds "Dune". A word typed in full is a whole-title match even though the box
     // cannot tell "finished" from "still typing" (no trailing space): the old `!partial` rule is why "threshing" ranked below longer titles.
-    if (titleKey(b.title) === titleKey(qTitle)) tier = Math.max(tier, 95);
+    if (titleKey(b.title) === titleKey(qTitle)) tier = Math.max(tier, EXACT_TITLE_KEY);
     if (tier >= 0) score += tier;
     else {
       const hits = need.reduce((n, w) => n + tokenHits(w, tWords, partial && w === lastNeed), 0);
@@ -55,7 +65,12 @@ export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial =
     // of them a whole word of the author) is worth more than a title that merely starts with those words, so "jane austen" lists Jane Austen's
     // books before "Jane Austen: A Life" by somebody else (that title alone scores as an exact match, so the author tier is set above it).
     const authorHits = need.map(w => tokenHits(w, aWords, partial && w === lastNeed));
-    if (!titleOnly && need.length && authorHits.every(h => h > 0)) score += need.length >= 2 && authorHits.every(h => h === 1) ? 130 : 60;
+    if (!titleOnly && need.length && authorHits.every(h => h > 0)) {
+      const fullName = need.length >= 2 && authorHits.every(h => h === 1);
+      // "Threshing": a machinery report with "Threshing" in its title AND in its author name must not beat the book called "Threshing"
+      if (fullName) score += AUTHOR_FULL_NAME;
+      else if (tier < 55) score += AUTHOR_PARTIAL;
+    }
   }
   if (qAuthor) {
     const qa = normQ(qAuthor).split(' ').filter(Boolean);
@@ -78,7 +93,7 @@ export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial =
   if (isKnownGenre(b.genre)) meta += 1;
   if (!isUnknownAuthor(b.author)) meta += 1;
   score += meta; // up to 6
-  if (b.coverId || b.coverUrl) score += 4;
+  if (b.coverId || b.coverUrl) score += COVER_BONUS;
   const year = Number(b.year);
   const thisYear = new Date().getFullYear();
   if (year && year >= thisYear - 1) score += 2; // a small nudge for brand-new releases
@@ -127,6 +142,16 @@ function inScope(b: Book, q: ParsedQuery): boolean {
   return true;
 }
 
+/** In the Keywords scope: how many of the typed words (a topic, a theme, a mood) the book's genre, description or title carries, worth up to 60. */
+function keywordFit(b: Book, q: ParsedQuery): number {
+  const need = contentTokens(q.tokens);
+  if (!need.length) return 0;
+  const about = normQ(`${isKnownGenre(b.genre) ? b.genre : ''} ${hasRealSummary(b.summary) ? b.summary : ''} ${b.title || ''}`).split(' ');
+  const last = need[need.length - 1];
+  const hits = need.reduce((n, w) => n + tokenHits(w, about, q.partial && w === last), 0);
+  return (60 * hits) / need.length;
+}
+
 /** `skip`: books an earlier page already showed (a later page never repeats them). */
 function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly Book[] = [], skip: readonly Book[] = []): Book[] {
   return dedupeBooks(books)
@@ -135,7 +160,8 @@ function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly Book[]
       book,
       order,
       // "Death by Water" was split into a title and an author: the better of the two readings counts
-      score: Math.max(searchRelevance(book, q.text, q.author, q.partial, q.scope === 'title'), q.full ? searchRelevance(book, q.full, '', q.partial, q.scope === 'title') : -Infinity)
+      score: Math.max(searchRelevance(book, q.text, q.author, q.partial, q.scope === 'title' || q.scope === 'keywords'), q.full ? searchRelevance(book, q.full, '', q.partial, q.scope === 'title') : -Infinity)
+        + (q.scope === 'keywords' ? keywordFit(book, q) : 0)
         + (own.length && own.some(o => o === book || sameWork(o, book)) ? OWN_BONUS : 0),
     }))
     .sort((x, y) => y.score - x.score || x.order - y.order)
@@ -166,6 +192,16 @@ function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
   }
   const text = q.tokens.join(' ');
   const wild = q.partial && q.tokens.length ? `${q.tokens.slice(0, -1).join(' ')} ${q.tokens[q.tokens.length - 1]}*`.trim() : text;
+  if (q.scope === 'keywords') {
+    // Topics, themes and moods ("cozy mystery", "dragons"): the catalogs' subject searches first, plus the plain query (descriptions count there).
+    // Only the subject requests report the "of N" count, so the number stays about the subject.
+    return [
+      { name: 'ol', run: (n, signal) => ol({ subject: text }, n, signal) },
+      { name: 'google', run: (n, signal) => google(`subject:${text.includes(' ') ? `"${text}"` : text}`, n, signal) },
+      { name: 'ol-keyword', run: (n, signal) => ol({ q: wild }, n, signal, false) },
+      { name: 'google-keyword', run: (n, signal) => google(text, n, signal, false) },
+    ];
+  }
   if (q.scope === 'title') {
     // Titles only: Open Library's title field; Google's plain query (its intitle: is a phrase match), narrowed to real title matches by rank()
     return [
@@ -292,7 +328,8 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   }
 
   // A slightly larger candidate set than we show lets ranking pick the best (bulk import asks for 1 and stays small)
-  const candidates = limit <= 1 ? 10 : Math.min(100, Math.max(16, limit * 2));
+  // (capped at 40: Google Books never returns more than 40 per request, and a 100-row Open Library request is the slow half of the first answer)
+  const candidates = limit <= 1 ? 10 : Math.min(40, Math.max(16, limit * 2));
   const gathered: Hit[] = [];
   let latest: Book[] = local.length ? rank(local, q, limit, mine) : [];
   const runTask = async (t: Task) => {

@@ -34,6 +34,7 @@ const SCOPES: { id: SearchScope; label: string; placeholder: string }[] = [
   { id: 'all', label: 'All', placeholder: 'Search by title, author, or keyword' },
   { id: 'title', label: 'Title', placeholder: 'Search by book title' },
   { id: 'author', label: 'Author', placeholder: 'Search by author name' },
+  { id: 'keywords', label: 'Keywords', placeholder: 'Search by keyword or mood (cozy, dragons, found family)' },
 ];
 
 const PRIZE_TITLE = (
@@ -133,7 +134,11 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
         ) : (
           <>
           {/* Search: the box, the Title / Author selector and the filter icon. While a query is typed this whole block fills the screen (same elements, so the keyboard stays up). */}
-          <div className={searching ? 'fixed inset-0 z-[60] overflow-y-auto overscroll-contain bg-[#f5f0e6] dark:bg-[#181410]' : 'flex flex-col gap-2'}>
+          <div
+            className={searching ? 'fixed inset-0 z-[60] overflow-y-auto overscroll-contain bg-[#f5f0e6] dark:bg-[#181410]' : 'flex flex-col gap-2'}
+            // The filter panel sits in the sticky header and would cover the results as they scroll under it: scrolling the list closes it
+            onScroll={searching && filterOpen ? e => { if (e.currentTarget.scrollTop > 8) setFilterOpen(false); } : undefined}
+          >
             <div className={searching ? 'sticky top-0 z-10 bg-[#f5f0e6] dark:bg-[#181410] px-3 pt-[max(env(safe-area-inset-top),0.75rem)] pb-2 flex flex-col gap-2 border-b border-[#e3d7c3] dark:border-[#382f25]' : 'flex flex-col gap-2'}>
               <div className="flex items-center gap-2">
                 {searching && (
@@ -148,7 +153,7 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
                     type="search"
                     value={storeSearchQuery}
                     onChange={e => setStoreSearchQuery(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') searchStoreNow(); else if (e.key === 'Escape') clearSearch(); }}
+                    onKeyDown={e => { if (e.key === 'Enter') { setFilterOpen(false); searchStoreNow(); } else if (e.key === 'Escape') { if (filterOpen) setFilterOpen(false); else clearSearch(); } }}
                     placeholder={SCOPES.find(x => x.id === scope)!.placeholder}
                     className="rl-search w-full pl-10 pr-10 py-3 rounded-xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-sm focus:outline-none focus:ring-2 focus:ring-[#2e5934]"
                   />
@@ -156,32 +161,35 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <div role="tablist" aria-label="Search in" className="flex rounded-xl overflow-hidden border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17]">
-                  {SCOPES.map(sc => (
-                    <button
-                      key={sc.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={scope === sc.id}
-                      onClick={() => setScope(sc.id)}
-                      className={`px-4 py-2 text-xs font-semibold transition-colors ${scope === sc.id ? 'bg-[#2e5934] text-white' : 'text-[#706256] dark:text-[#a89a8a] hover:bg-[#e3d7c3]/50 dark:hover:bg-[#382f25]'}`}
-                    >
-                      {sc.label}
-                    </button>
-                  ))}
+              {/* The scope buttons and the filter icon appear once something is typed, centered under the box */}
+              {searching && (
+                <div className="flex items-center justify-center gap-2">
+                  <div role="tablist" aria-label="Search in" className="flex rounded-xl overflow-hidden border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17]">
+                    {SCOPES.map(sc => (
+                      <button
+                        key={sc.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={scope === sc.id}
+                        onClick={() => setScope(sc.id)}
+                        className={`px-3 py-2 text-xs font-semibold transition-colors ${scope === sc.id ? 'bg-[#2e5934] text-white' : 'text-[#706256] dark:text-[#a89a8a] hover:bg-[#e3d7c3]/50 dark:hover:bg-[#382f25]'}`}
+                      >
+                        {sc.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Filters and sorting"
+                    aria-expanded={filterOpen}
+                    onClick={() => setFilterOpen(o => !o)}
+                    className={`relative w-10 h-9 shrink-0 rounded-xl border flex items-center justify-center transition-colors ${filterOpen || filtersOn ? 'bg-[#2e5934] text-white border-[#2e5934]' : 'bg-[#fbf7ee] dark:bg-[#231d17] border-[#e3d7c3] dark:border-[#382f25] text-[#2e5934] dark:text-[#9ed0a6]'}`}
+                  >
+                    <SlidersHorizontal className="w-4 h-4" />
+                    {filtersOn && <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">{activeFilterCount(view)}</span>}
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  aria-label="Filters and sorting"
-                  aria-expanded={filterOpen}
-                  onClick={() => setFilterOpen(o => !o)}
-                  className={`relative w-10 h-9 rounded-xl border flex items-center justify-center transition-colors ${filterOpen || filtersOn ? 'bg-[#2e5934] text-white border-[#2e5934]' : 'bg-[#fbf7ee] dark:bg-[#231d17] border-[#e3d7c3] dark:border-[#382f25] text-[#2e5934] dark:text-[#9ed0a6]'}`}
-                >
-                  <SlidersHorizontal className="w-4 h-4" />
-                  {filtersOn && <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">{activeFilterCount(view)}</span>}
-                </button>
-              </div>
+              )}
 
               {filterOpen && (
                 <div className="rounded-xl border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] p-3 flex flex-col gap-3 text-xs">
