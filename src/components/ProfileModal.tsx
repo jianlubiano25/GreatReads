@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { GardenState, UserProfile } from '../types';
 import { Camera, Moon, Sun, Monitor, RefreshCw, Copy, Check, Upload, X, Download } from 'lucide-react';
@@ -8,6 +8,8 @@ import { getNookMatchesTheme, setNookMatchesTheme, getWindowFollowsTime, setWind
 import { useAppUpdate, checkForUpdate, applyUpdate, restartApp, APP_BUILD } from '../services/appUpdate';
 import { AchievementsModal } from './garden/AchievementsModal';
 import { MILESTONES } from '../data/gardenCatalog';
+import { isCoverAdminOn, subscribeCoverAdmin } from '../services/books';
+import { TITLE_FONTS, TEXT_FONTS, getFontPrefs, setFontPrefs, loadFontPreviews } from '../services/fontPrefs';
 
 interface ProfileModalProps {
   profile: UserProfile;
@@ -55,6 +57,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [nookMatchesTheme, setNookTheme] = useState(getNookMatchesTheme);
   const [windowFollowsTime, setWindowTime] = useState(getWindowFollowsTime);
   const [showAchievements, setShowAchievements] = useState(false);
+  // Developer mode (five taps on the name in Today): Google Fonts picker under Appearance
+  const devMode = useSyncExternalStore(subscribeCoverAdmin, isCoverAdminOn, isCoverAdminOn);
+  const [fonts, setFonts] = useState(getFontPrefs);
+  useEffect(() => { if (devMode) loadFontPreviews(); }, [devMode]);
   const plantsEarned = MILESTONES.filter(m => garden.achievements[m.id]).length;
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -291,6 +297,32 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 <span>Night</span>
               </button>
             </div>
+            {devMode && (
+              <div className="mt-3 p-3 rounded-xl border border-dashed border-[#e3d7c3] dark:border-[#382f25] space-y-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] block">Fonts · developer</span>
+                {([['Title font', 'title', TITLE_FONTS], ['Text font', 'text', TEXT_FONTS]] as const).map(([label, key, list]) => (
+                  <div key={key}>
+                    <label className="text-xs font-semibold text-[#706256] dark:text-[#a89a8a] block mb-1" htmlFor={`font-${key}`}>{label}</label>
+                    <select
+                      id={`font-${key}`}
+                      value={fonts[key]}
+                      onChange={e => setFonts(setFontPrefs({ [key]: e.target.value }))}
+                      className="w-full py-2 px-3 rounded-xl border border-[#e3d7c3] dark:border-[#382f25] bg-[#f5f0e6] dark:bg-[#181410] text-sm"
+                    >
+                      {list.map(f => <option key={f.family} value={f.family} style={f.family.startsWith('System') ? undefined : { fontFamily: `"${f.family}"` }}>{f.family}</option>)}
+                    </select>
+                  </div>
+                ))}
+                <p className="text-sm" style={{ fontFamily: 'var(--rl-title-font, "DM Serif Display", Georgia, serif)' }}>The quick brown fox reads a great book</p>
+                <button
+                  type="button"
+                  onClick={() => setFonts(setFontPrefs({ title: 'DM Serif Display', text: 'System (default)' }))}
+                  className="text-[11px] font-semibold text-[#706256] dark:text-[#a89a8a] underline"
+                >
+                  Reset fonts
+                </button>
+              </div>
+            )}
             <label className="flex items-start justify-between gap-3 cursor-pointer mt-3">
               <span>
                 <span className="text-xs font-semibold text-[#706256] dark:text-[#a89a8a] block">Match the reading nook to the theme</span>

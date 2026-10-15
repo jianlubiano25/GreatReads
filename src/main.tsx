@@ -4,8 +4,10 @@ import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { registerServiceWorker } from './services/appUpdate.ts';
 import './index.css';
 import { milestone } from './services/books/perf.ts';
+import { applyFontPrefs } from './services/fontPrefs.ts';
 
 milestone('main-start');
+applyFontPrefs(); // a font chosen in developer mode (nothing changes for everyone else)
 
 createRoot(document.getElementById('root')!).render(
   <ErrorBoundary>

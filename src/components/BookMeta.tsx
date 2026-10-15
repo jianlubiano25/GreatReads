@@ -3,6 +3,7 @@ import { Book } from '../types';
 import { BOOK_AWARDS } from '../data/defaultBooks';
 import { honorKind, mergeHonors } from '../services/store/honors';
 import { externalRating, ratingOf, starFills } from '../services/books';
+import { placeholderStyleFor, titleSizeCqw, isFrontCoverShape } from '../services/books/placeholderCover';
 import { coverKey, getCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, reportMissingCover, clearMissingCover, getCoverPickInfo, pickSizedUrl, markCoverPickFailed } from '../services/books';
 
 export type AwardKind = 'w' | 's' | 'c'; // winner, shortlist, other pick (book club, series...)
@@ -69,14 +70,60 @@ export function AwardBadges({ book }: { book: Book }) {
   );
 }
 
-const SIZES = {
-  xs: { t: 'relative z-10 line-clamp-3 leading-tight text-[9px]', a: 'relative z-10 text-[7px] truncate opacity-80' },
-  // The reading-nook shelf: tiny spines, so the placeholder title is small and the author is left out until the real cover loads
-  nook: { t: 'relative z-10 line-clamp-4 leading-[1.1] text-[5.5px] font-semibold break-words', a: 'hidden' },
-  md: { t: 'relative z-10 font-serif-display text-xs line-clamp-3', a: 'relative z-10 text-[9px] truncate' },
-  lg: { t: 'relative z-10 font-serif-display text-xs sm:text-sm leading-tight line-clamp-4', a: 'relative z-10 text-[10px] font-sans opacity-85 truncate' },
-  xl: { t: 'relative z-10 font-serif-display text-base sm:text-lg leading-tight line-clamp-4 drop-shadow-md', a: 'relative z-10 text-[11px] font-sans opacity-90 truncate' },
-} as const;
+/** Author line size per cover size (title size is set from the cover's own width, see PlaceholderCover). */
+const AUTHOR_CQW: Record<string, number> = { xs: 8, nook: 0, md: 7.5, lg: 7, xl: 6.5 };
+
+/**
+ * The stand-in cover: flat colour, the whole title in bold white, the author in black (Apple Books style). Sizes use container
+ * query units, so one rule fits the tiny nook spines and the large detail cover alike; a long title simply gets smaller type.
+ */
+function PlaceholderCover({ book, size }: { book: Book; size: keyof typeof AUTHOR_CQW }) {
+  const st = placeholderStyleFor(book);
+  const author = AUTHOR_CQW[size] ?? 7;
+  const showAuthor = author > 0 && !!book.author && !/^unknown/i.test(book.author);
+  return (
+    <div
+      className="absolute inset-0 z-10 flex flex-col justify-between pointer-events-none select-none overflow-hidden"
+      style={{
+        containerType: 'size',
+        background: `linear-gradient(180deg, ${st.bg} 0%, ${st.bg} 55%, ${st.shade} 100%)`,
+        padding: '9cqw 9cqw 8cqw',
+      }}
+      aria-hidden="true"
+    >
+      <b
+        style={{
+          fontFamily: '"SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif',
+          fontWeight: 800,
+          color: '#fff',
+          fontSize: `${titleSizeCqw(book.title)}cqw`,
+          lineHeight: 1.08,
+          letterSpacing: '-0.01em',
+          overflowWrap: 'anywhere',
+          textShadow: '0 1px 2px rgba(0,0,0,.18)',
+        }}
+      >
+        {book.title}
+      </b>
+      {showAuthor ? (
+        <span
+          style={{
+            fontWeight: 600,
+            color: '#000',
+            opacity: 0.85,
+            fontSize: `${author}cqw`,
+            lineHeight: 1.2,
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+            overflowWrap: 'anywhere',
+          }}
+        >
+          {book.author}
+        </span>
+      ) : <span />}
+    </div>
+  );
+}
 
 // URLs that have already loaded once on this device. Used only to skip the fade-in for covers that appear instantly.
 // (Kept apart from 'readlife.preload', the short list index.html starts loading before the app code runs.)
@@ -107,7 +154,7 @@ function recordLoadedCover(url: string) {
  * Cover contents. The real cover image is shown on its own; the title/author text
  * appears gracefully as the book jacket while loading or when no cover exists.
  */
-type CoverFaceProps = { book: Book; size?: keyof typeof SIZES; imgSize?: 'S' | 'M' | 'L'; badge?: boolean; eager?: boolean };
+type CoverFaceProps = { book: Book; size?: 'xs' | 'nook' | 'md' | 'lg' | 'xl'; imgSize?: 'S' | 'M' | 'L'; badge?: boolean; eager?: boolean };
 
 /**
  * Cover state belongs to one book. Keying the inner component ensures that when a different book takes a reused shelf slot,
@@ -141,7 +188,7 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
   const imgRef = useRef<HTMLImageElement>(null);
   useEffect(() => {
     const im = imgRef.current;
-    if (im && im.complete && im.naturalWidth >= 8) {
+    if (im && im.complete && im.naturalWidth >= 8 && (pick || isFrontCoverShape(im.naturalWidth, im.naturalHeight))) {
       recordLoadedCover(src);
       setImgLoaded(true);
     }
@@ -171,6 +218,12 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
     giveUp();
   };
 
+  // Loaded fine but is a spine / back / photographed book: no retries (the same picture would come back), look for a flat front cover
+  const onWrongShape = () => {
+    if (cur.alt) return setSt({ ...cur, dead: true });
+    giveUp();
+  };
+
   const url = src;
   const failed = cur.dead;
   const won = awardsFor(book).some(a => a.type === 'w');
@@ -195,6 +248,8 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
             // A 1x1 placeholder counts as a failure; a real image clears any earlier miss
             const im = e.currentTarget;
             if (im.naturalWidth > 0 && im.naturalWidth < 8) return onErr();
+            // A spine / back / box-set / physical-book photo is not a front cover: look for a flat front-facing one instead
+            if (!pick && !isFrontCoverShape(im.naturalWidth, im.naturalHeight)) return onWrongShape();
             recordLoadedCover(url);
             setImgLoaded(true);
             clearMissingCover(book);
@@ -202,12 +257,7 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
           onError={onErr}
         />
       ) : null}
-      {(!url || failed || !isReady) ? (
-        <div className="flex flex-col justify-between h-full w-full pointer-events-none select-none">
-          <b className={SIZES[size].t}>{book.title}</b>
-          <span className={SIZES[size].a}>{book.author}</span>
-        </div>
-      ) : null}
+      {(!url || failed || !isReady) ? <PlaceholderCover book={book} size={size} /> : null}
       {badge && won && size !== 'xs' ? (
         <span className="rl-prize" title="Prize winner" aria-label="Prize winner">🏆</span>
       ) : null}

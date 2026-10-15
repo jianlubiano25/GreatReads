@@ -38,7 +38,7 @@
   }
 
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+    font-family: var(--rl-text-font, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif);
     background-color: var(--bg-paper);
     color: var(--ink-dark);
     -webkit-tap-highlight-color: transparent;
@@ -46,7 +46,7 @@
   }
 
   h1, h2, h3, .font-serif-display {
-    font-family: "DM Serif Display", Georgia, serif;
+    font-family: var(--rl-title-font, "DM Serif Display", Georgia, serif);
   }
 
   /* Prevent iOS Safari from auto-zooming when focusing text fields */

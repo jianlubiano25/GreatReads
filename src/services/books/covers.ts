@@ -5,6 +5,7 @@ import { identityOf, isUnknownAuthor, primaryAuthor, titleVariants, titlesMatch 
 import { findApple } from './sources/appleBooks';
 import { findGoogle, googleVolume } from './sources/googleBooks';
 import { olCoverById, olCoverByIsbn, searchOpenLibrary } from './sources/openLibrary';
+import { isFrontCoverShape } from './placeholderCover';
 
 /**
  * Covers: ONE system for Store, Search, Trending, Library and the nook.
@@ -144,8 +145,11 @@ export function clearMissingCover(book: { title?: string; author?: string }) {
 
 /* ---------------- finding a cover ---------------- */
 
-/** Does this image actually load (and isn't a 1×1 placeholder)? */
-export function probeImage(url: string, ms = 5000): Promise<boolean> {
+/**
+ * Does this image actually load (and isn't a 1×1 placeholder)? With `front`, it must also be shaped like a FRONT cover: a wide picture
+ * (spine + back, a box set, a photographed book) is refused so the next source is tried.
+ */
+export function probeImage(url: string, ms = 5000, front = false): Promise<boolean> {
   return new Promise(resolve => {
     if (typeof Image === 'undefined') return resolve(true);
     const img = new Image();
@@ -159,7 +163,7 @@ export function probeImage(url: string, ms = 5000): Promise<boolean> {
     };
     const timer = setTimeout(() => finish(false), ms);
     img.referrerPolicy = 'no-referrer';
-    img.onload = () => finish(img.naturalWidth > 8 && img.naturalHeight > 8);
+    img.onload = () => finish(img.naturalWidth > 8 && img.naturalHeight > 8 && (!front || isFrontCoverShape(img.naturalWidth, img.naturalHeight)));
     img.onerror = () => finish(false);
     img.src = url;
   });
@@ -171,22 +175,25 @@ const inflight = new Map<string, Promise<string>>();
 async function search(b: MissingBook): Promise<string> {
   const id = identityOf(b);
   const author = isUnknownAuthor(b.author) ? '' : primaryAuthor(b.author);
-  const accept = async (url?: string) => (url && (await probeImage(url)) ? url : '');
+  // Every candidate must load AND be a flat front cover (no spine / back / photographed book)
+  const accept = async (url?: string) => (url && (await probeImage(url, 5000, true)) ? url : '');
   let url = '';
 
-  // exact edition first
+  // All three are asked at the same time (the slowest no longer holds up the others), then judged in order of look:
+  // Apple's art is flat, clean, front-facing and modern; Google's is usually a clean front too; Open Library's scans are the most
+  // likely to be a spine, a back or a photographed book, so they come last.
   const isbn = id.isbn13 || id.isbn10;
-  // Open Library's cover for the ISBN and Google's record for the book are asked at the same time: the slower one no longer holds up the other
-  const [olIsbnCover, gb] = await Promise.all([
-    isbn ? accept(olCoverByIsbn(isbn, 'L')) : Promise.resolve(''),
-    id.gbVolume ? googleVolume(id.gbVolume) : isbn ? findGoogle({ title: b.title, author, isbn }, {}, ['cover']) : Promise.resolve(null),
-  ]);
-  if (olIsbnCover) return olIsbnCover;
-  if (gb?.book.coverUrl && (url = await accept(gb.book.coverUrl))) return url;
-
-  // then by name, always checking the title and author really match
-  const apple = await findApple({ title: b.title, author });
+  const appleAsk = findApple({ title: b.title, author });
+  const olIsbnAsk = isbn ? accept(olCoverByIsbn(isbn, 'L')) : Promise.resolve('');
+  const gbAsk = id.gbVolume ? googleVolume(id.gbVolume) : isbn ? findGoogle({ title: b.title, author, isbn }, {}, ['cover']) : Promise.resolve(null);
+  const apple = await appleAsk.catch(() => null);
   if (apple?.book.coverUrl && (url = await accept(apple.book.coverUrl))) return url;
+  const gb = await gbAsk.catch(() => null);
+  if (gb?.book.coverUrl && (url = await accept(gb.book.coverUrl))) return url;
+  const olIsbnCover = await olIsbnAsk;
+  if (olIsbnCover) return olIsbnCover;
+
+  // then Google by name (title and author must really match)
   const byName = await findGoogle({ title: b.title, author });
   if (byName?.book.coverUrl && (url = await accept(byName.book.coverUrl))) return url;
 

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { isFrontCoverShape } from '../services/books/placeholderCover';
 import { ChevronLeft, ChevronRight, Star, X } from 'lucide-react';
 import type { Book } from '../types';
 import { useModalA11y } from '../hooks/useModalA11y';
@@ -162,6 +163,7 @@ export function CoverPickerModal({ book, onClose }: Props) {
                 onLoad={e => {
                   const im = e.currentTarget;
                   if (im.naturalWidth > 0 && im.naturalWidth < 8) return setBad(p => ({ ...p, [s.key]: true })); // a 1x1 placeholder is no cover
+                  if (!isFrontCoverShape(im.naturalWidth, im.naturalHeight)) return setBad(p => ({ ...p, [s.key]: true })); // a spine / back / photographed book is no front cover
                   if (im.naturalWidth) setDims(p => (p[s.key] ? p : { ...p, [s.key]: `${im.naturalWidth}×${im.naturalHeight}` }));
                 }}
                 onError={() => setBad(p => ({ ...p, [s.key]: true }))}
