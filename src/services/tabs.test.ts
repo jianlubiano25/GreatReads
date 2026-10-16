@@ -30,8 +30,11 @@ test('every tab draws, and an inactive tab is mounted but hidden', () => {
   assert.match(today, /Books finished so far: <b>4<\/b>/);
   assert.ok(!/ hidden=""/.test(today));
 
-  const lib = renderToStaticMarkup(h(LibraryTab, { active: false, libraryBooks: books, state, handleOpenCover: noop, handleOpenHighlights: noop, setBookStatus: noop, confirmRemoveFromLibrary: noop, onAddBook: noop }));
-  assert.match(lib, /Library/);
+  const lib = renderToStaticMarkup(h(LibraryTab, { active: false, libraryBooks: books, state, handleOpenCover: noop, handleOpenHighlights: noop, setBookStatus: noop, confirmRemoveFromLibrary: noop, newShelfRequest: 0 }));
+  assert.match(lib, /Master list/); // books with no status sit on the Master list shelf
+  assert.match(lib, /Alpha Book/);
+  assert.match(lib, /aria-label="Add tag"/);
+  assert.ok(!/Your reading list\. Finished books/.test(lib)); // the old title + description are gone
   assert.match(lib, / hidden=""/); // not the active tab: kept in the page, not shown
 
   const words = renderToStaticMarkup(h(WordsTab, { active: true, state, updateWord: noop, editWord: noop, lookupAgain: noop, toggleWordLearned: noop, confirmDeleteWord: noop, onLookupNew: noop, onPractice: noop, onPasteWords: noop }));

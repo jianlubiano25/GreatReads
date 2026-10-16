@@ -162,6 +162,8 @@ export default function App() {
   }, []);
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [libAddMenuOpen, setLibAddMenuOpen] = useState(false); // the + in the Library header: Add book / Add shelf
+  const [newShelfRequest, setNewShelfRequest] = useState(0);
   const [showWordPracticeModal, setShowWordPracticeModal] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState<{ open: boolean; type: 'books' | 'words' }>({
     open: false,
@@ -329,7 +331,42 @@ export default function App() {
                 <SlidersHorizontal className="w-4 h-4 text-[#2e5934] dark:text-[#86b880]" />
               </button>
             )}
-            {tab !== 'store' && (
+            {tab === 'lib' && (
+              <div className="relative shrink-0">
+                <button
+                  onClick={() => setLibAddMenuOpen(o => !o)}
+                  className={`w-10 h-10 aspect-square rounded-full border bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880] ${libAddMenuOpen ? 'border-[#2e5934] dark:border-[#86b880] ring-2 ring-[#2e5934]/30' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}
+                  title="Add a book or a shelf"
+                  aria-label="Add"
+                  aria-haspopup="menu"
+                  aria-expanded={libAddMenuOpen}
+                >
+                  <Plus className="w-5 h-5 text-[#2e5934] dark:text-[#86b880]" />
+                </button>
+                {libAddMenuOpen && (
+                  <>
+                    <button type="button" className="fixed inset-0 z-40 cursor-default" aria-label="Close menu" tabIndex={-1} onClick={() => setLibAddMenuOpen(false)} />
+                    <div role="menu" className="absolute right-0 top-12 z-50 w-40 rounded-2xl border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] shadow-xl overflow-hidden">
+                      <button
+                        role="menuitem"
+                        onClick={() => { setLibAddMenuOpen(false); openAddBook(); }}
+                        className="w-full px-4 py-3 text-left text-sm text-[#201a15] dark:text-[#f0e6d6] hover:bg-black/5"
+                      >
+                        Add book
+                      </button>
+                      <button
+                        role="menuitem"
+                        onClick={() => { setLibAddMenuOpen(false); setNewShelfRequest(n => n + 1); }}
+                        className="w-full px-4 py-3 text-left text-sm text-[#201a15] dark:text-[#f0e6d6] hover:bg-black/5 border-t border-[#e3d7c3] dark:border-[#382f25]"
+                      >
+                        Add shelf
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+            {tab !== 'store' && tab !== 'lib' && (
             <button
               onClick={() => setShowShareModal(true)}
               className="w-10 h-10 aspect-square rounded-full border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880]"
@@ -431,7 +468,7 @@ export default function App() {
             handleOpenHighlights={handleOpenHighlights}
             setBookStatus={setBookStatus}
             confirmRemoveFromLibrary={confirmRemoveFromLibrary}
-            onAddBook={openAddBook}
+            newShelfRequest={newShelfRequest}
           />
         )}
 

@@ -1,12 +1,42 @@
-import { useMemo, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Pencil, Plus } from 'lucide-react';
 import type { Book, BookStatus, ReadingState } from '../../types';
 import { BOOK_AWARDS } from '../../data/defaultBooks';
 import { bookKind } from '../../services/bookKind';
+import { booksOf, loadCollections, newCollectionId, saveCollections, type Collection } from '../../services/libraryCollections';
 import { LibraryCard } from '../cards';
+import { LibraryCollectionModal } from '../LibraryCollectionModal';
 import { TabPane } from './TabPane';
 
 const noStatus: BookStatus = 'list';
+
+/** The reading-status shelves, top to bottom. Finished books live in On my device, so they are not here. */
+const STATUS_SHELVES: Array<{ status: BookStatus; title: string }> = [
+  { status: 'now', title: 'Reading now' },
+  { status: 'next', title: 'Up next' },
+  { status: 'list', title: 'Master list' },
+  { status: 'skip', title: 'Skipped' },
+];
+
+const BUILT_IN_TAGS: Array<[string, string]> = [
+  ['all', 'All Books'],
+  ['f', 'First 12'],
+  ['heal', '🧠 Heal'],
+  ['love', '💕 Love'],
+  ['life', '🌱 Life at 30'],
+  ['joy', '✨ Joy'],
+  ['prize', '🌷 Prize winners'],
+  ['world', '🌍 World'],
+  ['art', '🎵 Art & music'],
+  ['aw', '🏆 Prize winners'],
+  ['s', 'New suggestions'],
+  ['fic', '📖 Fiction'],
+  ['nf', '🧭 Non-fiction'],
+];
+
+const CHIP_BASE = 'shrink-0 px-3.5 py-1.5 rounded-full border text-xs font-semibold transition-all whitespace-nowrap';
+const CHIP_ON = 'bg-[#2e5934] text-white border-[#2e5934]';
+const CHIP_OFF = 'bg-[#fbf7ee] dark:bg-[#231d17] border-[#e3d7c3] dark:border-[#382f25] text-[#706256] dark:text-[#a89a8a] hover:text-[#201a15]';
 
 interface Props {
   active: boolean;
@@ -17,105 +47,187 @@ interface Props {
   handleOpenHighlights: (book: Book) => void;
   setBookStatus: (id: string | number, status: BookStatus) => void;
   confirmRemoveFromLibrary: (book: Book) => void;
-  onAddBook: () => void;
+  /** Goes up by one each time the header's "Add shelf" is chosen */
+  newShelfRequest: number;
 }
 
-/** The Library tab: your reading list, filtered by shelf. */
-export function LibraryTab({ active, libraryBooks, state, handleOpenCover, handleOpenHighlights, setBookStatus, confirmRemoveFromLibrary, onAddBook }: Props) {
-  // Library filters
-  const [libFilter, setLibFilter] = useState<string>('f');
+type Editing = { id?: string; kind: Collection['kind']; name: string; bookIds: string[] };
 
-  // Library filtered books (includes all catalog challenge books + custom books)
-  const filteredLibraryBooks = useMemo(() => {
-    const list = libraryBooks;
-    if (libFilter === 'f') {
-      return list.filter(b => b.first12Order && b.first12Order > 0).sort((a, b) => (a.first12Order || 0) - (b.first12Order || 0));
+/** The Library tab: your reading list as shelves you scroll sideways, with tags to narrow them down. */
+export function LibraryTab({ active, libraryBooks, state, handleOpenCover, handleOpenHighlights, setBookStatus, confirmRemoveFromLibrary, newShelfRequest }: Props) {
+  const [libFilter, setLibFilter] = useState<string>('all');
+  const [collections, setCollections] = useState<Collection[]>(() => loadCollections());
+  const [editing, setEditing] = useState<Editing | null>(null);
+
+  // The header's "Add shelf" opens the new-shelf dialog (each new request opens it once)
+  const handledRequest = useRef(newShelfRequest);
+  useEffect(() => {
+    if (newShelfRequest === handledRequest.current) return;
+    handledRequest.current = newShelfRequest;
+    setEditing({ kind: 'shelf', name: '', bookIds: [] });
+  }, [newShelfRequest]);
+
+  const customTags = useMemo(() => collections.filter(c => c.kind === 'tag'), [collections]);
+  const customShelves = useMemo(() => collections.filter(c => c.kind === 'shelf'), [collections]);
+
+  /** Does a book pass the tag that is selected? */
+  const passesTag = useMemo<(b: Book) => boolean>(() => {
+    switch (libFilter) {
+      case 'all': return () => true;
+      case 'f': return b => !!b.first12Order && b.first12Order > 0;
+      case 's': return b => !!b.isNew;
+      case 'aw': return b => typeof b.id === 'number' && (BOOK_AWARDS[b.id] || []).length > 0;
+      case 'fic': return b => bookKind(b) === 'fiction';
+      case 'nf': return b => bookKind(b) === 'nonfiction';
+      default: {
+        const own = collections.find(c => c.id === libFilter);
+        if (own) { const ids = new Set(own.bookIds); return b => ids.has(String(b.id)); }
+        return b => b.shelf === libFilter;
+      }
     }
-    if (libFilter === 's') {
-      return list.filter(b => b.isNew);
+  }, [libFilter, collections]);
+
+  const visibleBooks = useMemo(() => {
+    const list = libraryBooks.filter(passesTag);
+    // "First 12" keeps its own reading order
+    return libFilter === 'f' ? list.sort((a, b) => (a.first12Order || 0) - (b.first12Order || 0)) : list;
+  }, [libraryBooks, passesTag, libFilter]);
+
+  const statusRows = useMemo(() => {
+    const byStatus = new Map<BookStatus, Book[]>();
+    for (const b of visibleBooks) {
+      const s = state.status[String(b.id)] || noStatus;
+      byStatus.set(s, [...(byStatus.get(s) || []), b]);
     }
-    if (libFilter === 'aw') {
-      return list.filter(b => typeof b.id === 'number' && (BOOK_AWARDS[b.id] || []).length > 0);
+    return STATUS_SHELVES.map(s => ({ ...s, books: byStatus.get(s.status) || [] })).filter(r => r.books.length > 0);
+  }, [visibleBooks, state.status]);
+
+  const shownIds = useMemo(() => new Set(visibleBooks.map(b => String(b.id))), [visibleBooks]);
+
+  const persist = useCallback((next: Collection[]) => {
+    setCollections(next);
+    saveCollections(next);
+  }, []);
+
+  const saveEditing = (v: { id?: string; kind: Collection['kind']; name: string; bookIds: string[] }) => {
+    if (v.id) {
+      persist(collections.map(c => (c.id === v.id ? { ...c, name: v.name, bookIds: v.bookIds } : c)));
+    } else {
+      const id = newCollectionId();
+      persist([...collections, { id, kind: v.kind, name: v.name, bookIds: v.bookIds }]);
+      if (v.kind === 'tag') setLibFilter(id); // a new tag opens straight away
     }
-    if (libFilter === 'fic' || libFilter === 'nf') {
-      const expected = libFilter === 'fic' ? 'fiction' : 'nonfiction';
-      return list.filter(b => bookKind(b) === expected);
-    }
-    if (libFilter === 'all') {
-      return list;
-    }
-    return list.filter(b => b.shelf === libFilter);
-  }, [libraryBooks, libFilter]);
+    setEditing(null);
+  };
+
+  const deleteEditing = () => {
+    if (!editing?.id) return;
+    const id = editing.id;
+    if (!confirm(`Delete "${editing.name}"? Your books stay in the Library.`)) return;
+    persist(collections.filter(c => c.id !== id));
+    if (libFilter === id) setLibFilter('all');
+    setEditing(null);
+  };
+
+  const renderRow = (key: string, title: string, books: Book[], onEdit?: () => void, emptyHint?: string) => (
+    <section key={key} className="flex flex-col gap-3" aria-label={title}>
+      <h3 className="font-serif-display text-xl text-[#201a15] dark:text-[#f0e6d6] flex items-center gap-2">
+        {title}
+        <span className="text-xs font-sans font-medium text-[#706256] dark:text-[#a89a8a]">{books.length}</span>
+        {onEdit && (
+          <button type="button" onClick={onEdit} className="p-1.5 rounded-lg text-[#706256] dark:text-[#a89a8a] hover:bg-black/5" aria-label={`Edit ${title}`} title="Edit shelf">
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </h3>
+      {books.length === 0 ? (
+        <p className="text-sm text-[#706256] dark:text-[#a89a8a]">{emptyHint}</p>
+      ) : (
+        <div className="flex gap-4 overflow-x-auto pb-3 no-scrollbar snap-x">
+          {books.map(b => (
+            <div key={b.id} className="w-[300px] sm:w-[340px] shrink-0 snap-start flex flex-col [&>*]:flex-1">
+              <LibraryCard
+                book={b}
+                status={state.status[String(b.id)] || noStatus}
+                highlightCount={(state.highlights[String(b.id)] || []).length}
+                onOpen={handleOpenCover}
+                onQuotes={handleOpenHighlights}
+                onStatus={setBookStatus}
+                onRemove={confirmRemoveFromLibrary}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+
+  const selectedOwn = collections.find(c => c.id === libFilter && c.kind === 'tag');
 
   return (
     <TabPane active={active}>
       <div className="flex flex-col gap-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="font-serif-display text-2xl sm:text-3xl text-[#201a15] dark:text-[#f0e6d6]">
-              Library
-            </h2>
-            <p className="text-xs sm:text-sm text-[#706256] dark:text-[#a89a8a]">
-              Your reading list. Finished books move to On my device. Tap any cover to see author, year &amp; page count.
-            </p>
-          </div>
-
+        {/* Tags: scroll sideways; the + makes a new one */}
+        <div className="flex items-center gap-2 text-xs overflow-x-auto no-scrollbar -mx-1 px-1 py-0.5">
           <button
-            onClick={() => onAddBook()}
-            className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] flex items-center gap-1.5 shadow-sm"
+            type="button"
+            onClick={() => setEditing({ kind: 'tag', name: '', bookIds: [] })}
+            className={`${CHIP_BASE} ${CHIP_OFF} flex items-center gap-1 !px-2.5`}
+            aria-label="Add tag"
+            title="Add a tag"
           >
             <Plus className="w-4 h-4" />
-            <span>Add Book</span>
           </button>
-        </div>
-
-        {/* Filter Chips */}
-        <div className="flex flex-wrap gap-2 text-xs">
-          {[
-            ['f', 'First 12'],
-            ['heal', '🧠 Heal'],
-            ['love', '💕 Love'],
-            ['life', '🌱 Life at 30'],
-            ['joy', '✨ Joy'],
-            ['prize', '🌷 Prize winners'],
-            ['world', '🌍 World'],
-            ['art', '🎵 Art & music'],
-            ['aw', '🏆 Prize winners'],
-            ['s', 'New suggestions'],
-            ['fic', '📖 Fiction'],
-            ['nf', '🧭 Non-fiction'],
-            ['all', 'All Books'],
-          ].map(([k, label]) => (
-            <button
-              key={k}
-              onClick={() => setLibFilter(k)}
-              className={`px-3.5 py-1.5 rounded-full border text-xs font-semibold transition-all ${
-                libFilter === k
-                  ? 'bg-[#2e5934] text-white border-[#2e5934]'
-                  : 'bg-[#fbf7ee] dark:bg-[#231d17] border-[#e3d7c3] dark:border-[#382f25] text-[#706256] dark:text-[#a89a8a] hover:text-[#201a15]'
-              }`}
-            >
+          {BUILT_IN_TAGS.map(([k, label]) => (
+            <button key={k} type="button" onClick={() => setLibFilter(k)} aria-pressed={libFilter === k} className={`${CHIP_BASE} ${libFilter === k ? CHIP_ON : CHIP_OFF}`}>
               {label}
             </button>
           ))}
+          {customTags.map(c => (
+            <button key={c.id} type="button" onClick={() => setLibFilter(c.id)} aria-pressed={libFilter === c.id} className={`${CHIP_BASE} ${libFilter === c.id ? CHIP_ON : CHIP_OFF}`}>
+              {c.name}
+            </button>
+          ))}
+          {selectedOwn && (
+            <button
+              type="button"
+              onClick={() => setEditing({ id: selectedOwn.id, kind: 'tag', name: selectedOwn.name, bookIds: selectedOwn.bookIds })}
+              className={`${CHIP_BASE} ${CHIP_OFF} !px-2.5`}
+              aria-label={`Edit tag ${selectedOwn.name}`}
+              title="Edit tag"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
-        {/* Book Cards Grid - Responsive for iPad and iPhone */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredLibraryBooks.map(b => (
-            <LibraryCard
-              key={b.id}
-              book={b}
-              status={state.status[String(b.id)] || noStatus}
-              highlightCount={(state.highlights[String(b.id)] || []).length}
-              onOpen={handleOpenCover}
-              onQuotes={handleOpenHighlights}
-              onStatus={setBookStatus}
-              onRemove={confirmRemoveFromLibrary}
-            />
-          ))}
-        </div>
+        {statusRows.map(r => renderRow(r.status, r.title, r.books))}
+        {customShelves.map(c =>
+          renderRow(
+            c.id,
+            c.name,
+            booksOf(c, libraryBooks).filter(b => shownIds.has(String(b.id))),
+            () => setEditing({ id: c.id, kind: 'shelf', name: c.name, bookIds: c.bookIds }),
+            libFilter === 'all' ? 'No books here yet. Tap the pencil to add some.' : 'None of this shelf\u2019s books have this tag.',
+          ),
+        )}
+
+        {statusRows.length === 0 && customShelves.length === 0 && (
+          <p className="text-sm text-[#706256] dark:text-[#a89a8a]">
+            {libraryBooks.length === 0 ? 'Your Library is empty. Use + at the top to add a book.' : 'No books have this tag yet.'}
+          </p>
+        )}
       </div>
+
+      {editing && (
+        <LibraryCollectionModal
+          initial={editing}
+          books={libraryBooks}
+          onSave={saveEditing}
+          onDelete={editing.id ? deleteEditing : undefined}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </TabPane>
   );
 }
