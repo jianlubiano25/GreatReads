@@ -6,10 +6,14 @@ import { GARDEN_AREAS, MILESTONES, MILESTONE_BY_ID, canPlaceIn, getPlantDef } fr
 import { milestoneProgress, plantsByArea } from '../../services/garden';
 import { PlantArt } from './PlantArt';
 import { getVineStyle, setVineStyle, subscribeVineStyle, type VineStyle } from '../../services/nookPrefs';
+import { NookArrange } from './NookArrange';
 
 const VINE_CHOICES: { id: VineStyle; label: string; hint: string }[] = [
-  { id: 'nook', label: '🌿 Nook vine', hint: 'Winds round the window and both shelves (current)' },
-  { id: 'classic', label: '🍃 Classic vine', hint: 'The short climbing vine inside the window (main)' },
+  { id: 'classic', label: '🍃 Classic', hint: 'Climbs the window and arches over the top' },
+  { id: 'nook', label: '🌿 Nook', hint: 'Winds round the window and both shelves' },
+  { id: 'lights', label: '✨ Nook + fairy lights', hint: 'The nook vine with softly twinkling lights' },
+  { id: 'halloween', label: '🎃 Halloween', hint: 'Autumn leaves and little pumpkins' },
+  { id: 'christmas', label: '🎄 Christmas', hint: 'Holly green with red berries' },
 ];
 
 interface Props {
@@ -60,10 +64,10 @@ export function AchievementsModal({ garden, onMovePlant, onClose }: Props) {
           </button>
         </div>
 
-        {/* ---------- Vine look (saved on this device; the vine grows the same either way) ---------- */}
+        {/* ---------- Vine look (saved on this device and in backups; the vine grows the same either way) ---------- */}
         <section className="px-4 sm:px-5 pt-4" aria-label="Vine look">
           <h4 className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a]">Vine look</h4>
-          <div role="radiogroup" aria-label="Vine look" className="grid grid-cols-2 gap-2 mt-2">
+          <div role="radiogroup" aria-label="Vine look" className="no-scrollbar flex gap-2 mt-2 overflow-x-auto snap-x snap-mandatory py-1 -mx-1 px-1 sm:flex-wrap sm:overflow-visible" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y' }}>
             {VINE_CHOICES.map(c => {
               const on = vineStyle === c.id;
               return (
@@ -73,7 +77,7 @@ export function AchievementsModal({ garden, onMovePlant, onClose }: Props) {
                   role="radio"
                   aria-checked={on}
                   onClick={() => setVineStyle(c.id)}
-                  className={`min-h-[56px] px-3 py-2 rounded-xl text-left border active:scale-95 transition-all ${on ? 'border-[#2e5934] bg-[#e7f0e3] dark:bg-[#1f2d20] ring-1 ring-[#2e5934]' : 'border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17]'}`}
+                  className={`shrink-0 snap-start w-[150px] sm:w-[calc(50%-4px)] min-h-[56px] px-3 py-2 rounded-xl text-left border active:scale-95 transition-all ${on ? 'border-[#2e5934] bg-[#e7f0e3] dark:bg-[#1f2d20] ring-1 ring-[#2e5934]' : 'border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17]'}`}
                 >
                   <span className="block text-xs font-semibold">{c.label}</span>
                   <span className="block text-[10px] leading-snug text-[#706256] dark:text-[#a89a8a]">{c.hint}</span>
@@ -82,6 +86,9 @@ export function AchievementsModal({ garden, onMovePlant, onClose }: Props) {
             })}
           </div>
         </section>
+
+        {/* ---------- Arrange the nook: wall decorations, the mug ---------- */}
+        <NookArrange />
 
         {/* ---------- Arrange ---------- */}
         <section className="px-4 sm:px-5 pt-4" aria-label="Arrange your garden">

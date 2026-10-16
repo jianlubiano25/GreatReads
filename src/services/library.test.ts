@@ -48,3 +48,12 @@ test('Mistborn volumes are different books, so the second one is really added', 
   assert.equal(s.status.m1, 'list');
   assert.equal(s.status.m2, 'list');
 });
+
+test('the list chosen in the Add dialog is the status, for library and device alike', () => {
+  const b = { id: 'x1', title: 'Some New Book', author: 'Nobody', shelf: 'mine', difficulty: 2, isOnDevice: false, year: '2020', genre: 'Fiction', summary: '', authorBio: '', pageCount: 100 } as any;
+  assert.equal(applyAddBook(base(), b, 'library', 'now').status.x1, 'now');
+  const dev = applyAddBook(base(), b, 'device', 'next');
+  assert.equal(dev.status.x1, 'next');
+  assert.equal(dev.onDeviceOverrides.x1, true);
+  assert.equal(applyAddBook(base(), b, 'library', 'list').status.x1, 'list'); // no choice: unchanged behaviour
+});

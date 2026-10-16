@@ -22,7 +22,8 @@ import { DeviceTab } from './components/tabs/DeviceTab';
 // Icons
 import {
   BookOpen,
-  ShoppingBag,
+  Compass,
+  Plus,
   Library,
   Sprout,
   Smartphone,
@@ -66,7 +67,7 @@ const WordPracticeModal = lazyModal<typeof import('./components/WordPracticeModa
 const BulkImportModal = lazyModal<typeof import('./components/BulkImportModal').BulkImportModal>(() => import('./components/BulkImportModal'), 'BulkImportModal');
 const ShareModal = lazyModal<typeof import('./components/ShareModal').ShareModal>(() => import('./components/ShareModal'), 'ShareModal');
 
-const TAB_TITLES: Record<string, string> = { store: 'Book Store', lib: 'Library', words: 'Word Garden', dev: 'On my device' };
+const TAB_TITLES: Record<string, string> = { store: 'Discover', lib: 'Library', words: 'Word Garden', dev: 'On my device' };
 
 export default function App() {
   const {
@@ -309,6 +310,16 @@ export default function App() {
           <div className="flex items-center gap-2.5 shrink-0">
             {tab === 'store' && (
               <button
+                onClick={openAddBook}
+                className="w-10 h-10 aspect-square rounded-full border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880]"
+                title="Add a book"
+                aria-label="Add book"
+              >
+                <Plus className="w-5 h-5 text-[#2e5934] dark:text-[#86b880]" />
+              </button>
+            )}
+            {tab === 'store' && (
+              <button
                 onClick={() => setCustomizing(c => !c)}
                 className={`w-10 h-10 aspect-square rounded-full border bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880] ${customizing ? 'border-[#2e5934] dark:border-[#86b880] ring-2 ring-[#2e5934]/30' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}
                 title="Customize Store: reorder, hide and refresh shelves"
@@ -318,6 +329,7 @@ export default function App() {
                 <SlidersHorizontal className="w-4 h-4 text-[#2e5934] dark:text-[#86b880]" />
               </button>
             )}
+            {tab !== 'store' && (
             <button
               onClick={() => setShowShareModal(true)}
               className="w-10 h-10 aspect-square rounded-full border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880]"
@@ -326,6 +338,7 @@ export default function App() {
             >
               <Share2 className="w-4 h-4 text-[#2e5934] dark:text-[#86b880]" />
             </button>
+            )}
 
             <button
               onClick={() => setShowProfileModal(true)}
@@ -405,7 +418,6 @@ export default function App() {
             customizing={customizing}
             setCustomizing={setCustomizing}
             handleOpenCover={handleOpenCover}
-            onAddBook={openAddBook}
           />
         )}
 
@@ -477,6 +489,16 @@ export default function App() {
                 <SlidersHorizontal className="w-4 h-4 text-[#2e5934] dark:text-[#86b880]" />
               </button>
             )}
+            {tab === 'store' && (
+              <button
+                onClick={openAddBook}
+                className="w-10 h-10 aspect-square rounded-full border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880]"
+                title="Add a book"
+                aria-label="Add book"
+              >
+                <Plus className="w-5 h-5 text-[#2e5934] dark:text-[#86b880]" />
+              </button>
+            )}
             <button
               onClick={() => setShowBackupModal(true)}
               className="w-10 h-10 aspect-square rounded-full border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880]"
@@ -505,7 +527,7 @@ export default function App() {
       >
         {([
           { id: 'today', label: 'Today', Icon: BookOpen },
-          { id: 'store', label: 'Store', Icon: ShoppingBag },
+          { id: 'store', label: 'Discover', Icon: Compass },
           { id: 'lib', label: 'Library', Icon: Library },
           { id: 'words', label: 'Words', Icon: Sprout },
           { id: 'dev', label: 'Device', Icon: Smartphone },
@@ -546,11 +568,15 @@ export default function App() {
           note={state.notes[ownKey]}
           highlightsCount={(state.highlights[ownKey] || []).length}
           onClose={() => setSelectedBookForDetail(null)}
-          onAddToLibrary={b => {
-            addBook(b, 'library');
+          onAddToLibrary={(b, status) => {
+            addBook(b, 'library', status);
           }}
-          onAddToDevice={b => {
-            addBook(b, 'device');
+          onAddToDevice={(b, status) => {
+            addBook(b, 'device', status);
+          }}
+          onSetStatus={(b, status) => {
+            if (owned) setBookStatus(owned.id, status);
+            else addBook(b, 'library', status); // not in the library yet: add it on the chosen list
           }}
           onOpenHighlights={() => {
             const b = owned ?? selectedBookForDetail;

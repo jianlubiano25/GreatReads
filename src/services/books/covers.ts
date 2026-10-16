@@ -5,15 +5,18 @@ import { identityOf, isUnknownAuthor, primaryAuthor, titleVariants, titlesMatch 
 import { findApple } from './sources/appleBooks';
 import { findGoogle, googleVolume } from './sources/googleBooks';
 import { olCoverById, olCoverByIsbn, searchOpenLibrary } from './sources/openLibrary';
+import { isFrontCoverShape } from './placeholderCover';
+import { inspectCover } from './coverFlatness';
 
 /**
  * Covers: ONE system for Store, Search, Trending, Library and the nook.
  *
  * A book's own link (coverUrl / Open Library coverId) is shown first. When it is missing or fails, `resolveCover` looks for
  * the best replacement, preferring the EXACT edition when an ISBN / volume id is known:
- *   1. Open Library cover for the ISBN   2. Google Books volume / ISBN   3. Apple Books (title + author)
- *   4. Google Books (title + author)     5. another Open Library edition of the same book
- * Every candidate must really load (probed in an <img>), and a title/author mismatch is never accepted. Winners are remembered
+ *   1. Apple Books (title + author)   2. Google Books volume / ISBN   3. Google Books (title + author)
+ *   4. Open Library cover for the ISBN   5. another Open Library edition of the same book (most-rated first)
+ * Every candidate must really load (probed in an <img>), and a title/author mismatch is never accepted. Within that order a FLAT front cover wins: a candidate that
+ * is a 3D render (coverFlatness.ts) is skipped for the next, and used only when no source has a flat one. Winners are remembered
  * on this device; misses are remembered for a day so a book with no cover anywhere is not searched on every render.
  */
 
@@ -144,8 +147,11 @@ export function clearMissingCover(book: { title?: string; author?: string }) {
 
 /* ---------------- finding a cover ---------------- */
 
-/** Does this image actually load (and isn't a 1×1 placeholder)? */
-export function probeImage(url: string, ms = 9000): Promise<boolean> {
+/**
+ * Does this image actually load (and isn't a 1×1 placeholder)? With `front`, it must also be shaped like a FRONT cover: a wide picture
+ * (spine + back, a box set, a photographed book) is refused so the next source is tried.
+ */
+export function probeImage(url: string, ms = 5000, front = false): Promise<boolean> {
   return new Promise(resolve => {
     if (typeof Image === 'undefined') return resolve(true);
     const img = new Image();
@@ -159,41 +165,57 @@ export function probeImage(url: string, ms = 9000): Promise<boolean> {
     };
     const timer = setTimeout(() => finish(false), ms);
     img.referrerPolicy = 'no-referrer';
-    img.onload = () => finish(img.naturalWidth > 8 && img.naturalHeight > 8);
+    img.onload = () => finish(img.naturalWidth > 8 && img.naturalHeight > 8 && (!front || isFrontCoverShape(img.naturalWidth, img.naturalHeight)));
     img.onerror = () => finish(false);
     img.src = url;
   });
 }
 
-const lookupSlots = pool(2); // covers are looked up two at a time, however many ask at once
+const lookupSlots = pool(6); // covers are looked up six at a time (a results page shows nine at once), however many ask
 const inflight = new Map<string, Promise<string>>();
 
 async function search(b: MissingBook): Promise<string> {
   const id = identityOf(b);
   const author = isUnknownAuthor(b.author) ? '' : primaryAuthor(b.author);
-  const accept = async (url?: string) => (url && (await probeImage(url)) ? url : '');
+  // Every candidate must load AND be a flat front cover (no spine / back / photographed book). A picture that loads but is a 3D RENDER (a tilted book,
+  // the spine showing: coverFlatness.ts) is set aside and only used when nothing flat is found anywhere: no source is flat for every book, so the picture decides
+  const renders: string[] = [];
+  const accept = async (url?: string) => {
+    if (!url || !(await probeImage(url, 5000, true))) return '';
+    if ((await inspectCover(url)) === 'render') { renders.push(url); return ''; }
+    return url;
+  };
   let url = '';
 
-  // exact edition first
+  // All are asked at the same time (the slowest no longer holds up the others), then judged in a fixed order: Apple first, then
+  // Google, then Open Library. Apple's art is flat, clean, front-facing and modern, so it beats a paper / contents-looking scan
+  // whenever both exist; Open Library's scans are the most likely to be a spine, a back or a photographed book, so they come last.
   const isbn = id.isbn13 || id.isbn10;
-  if (isbn && (url = await accept(olCoverByIsbn(isbn, 'L')))) return url;
-  const gb = id.gbVolume ? await googleVolume(id.gbVolume) : isbn ? await findGoogle({ title: b.title, author, isbn }, {}, ['cover']) : null;
-  if (gb?.book.coverUrl && (url = await accept(gb.book.coverUrl))) return url;
-
-  // then by name, always checking the title and author really match
-  const apple = await findApple({ title: b.title, author });
+  const appleAsk = findApple({ title: b.title, author });
+  const olIsbnAsk = isbn ? accept(olCoverByIsbn(isbn, 'L')) : Promise.resolve('');
+  const gbAsk = id.gbVolume ? googleVolume(id.gbVolume) : isbn ? findGoogle({ title: b.title, author, isbn }, {}, ['cover']) : Promise.resolve(null);
+  const apple = await appleAsk.catch(() => null);
   if (apple?.book.coverUrl && (url = await accept(apple.book.coverUrl))) return url;
+  const gb = await gbAsk.catch(() => null);
+  if (gb?.book.coverUrl && gb.flags.language && gb.flags.language !== 'en') { /* another language's jacket: skip */ }
+  else if (gb?.book.coverUrl && (url = await accept(gb.book.coverUrl))) return url;
+
+  // Google by name (title and author must really match)
   const byName = await findGoogle({ title: b.title, author });
   if (byName?.book.coverUrl && (url = await accept(byName.book.coverUrl))) return url;
 
-  // other Open Library editions of this book (under any of its title forms)
+  // Open Library: the exact edition by ISBN, then other editions of this book (under any of its title forms), most popular first
+  const olIsbnCover = await olIsbnAsk;
+  if (olIsbnCover) return olIsbnCover;
   for (const title of titleVariants(b.title)) {
     const editions = (await searchOpenLibrary({ title, ...(author ? { author } : {}) }, 8))
       .filter(h => h.book.coverId && h.book.coverId !== b.coverId && titlesMatch(h.book.title, b.title))
-      .slice(0, 3);
+      .sort((x, y) => (y.book.ratingCount || 0) - (x.book.ratingCount || 0) || (y.book.coverId || 0) - (x.book.coverId || 0)) // popular work first (ratings_count), then the newer cover_i
+      .slice(0, 4);
     for (const h of editions) if ((url = await accept(olCoverById(h.book.coverId!, 'M')))) return url;
   }
-  return '';
+  // Nothing flat anywhere: a render is better than no cover at all, but never a replacement for a cover the book already has (that would only swap one render for another)
+  return (!ownLinkOf(b) && renders[0]) || '';
 }
 
 /**

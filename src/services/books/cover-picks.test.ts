@@ -115,3 +115,14 @@ test('coverSourceOf names the site a link belongs to', async () => {
   assert.equal(c.coverSourceOf('https://nyt.example/cover.jpg'), 'link');
   assert.equal(c.coverSourceOf('not a url'), 'link');
 });
+
+test('a pick also reaches a search result that spells the book differently (subtitle, initials, article), never an unknown author or another author', async () => {
+  const c = await load('loose');
+  c.setCoverPick({ title: 'The Fruit Fly', author: 'Jane Q. Doe' }, { url: APPLE, source: 'apple' });
+  assert.equal(c.getCoverPickInfo({ title: 'Fruit Fly: A Novel', author: 'Jane Doe' })?.url, APPLE);
+  assert.equal(c.getCoverPickInfo({ title: 'The Fruit Fly (Special Edition)', author: 'Doe, Jane' })?.url, APPLE);
+  assert.equal(c.getCoverPickInfo({ title: 'The Fruit Fly', author: 'Someone Else' }), undefined);
+  assert.equal(c.getCoverPickInfo({ title: 'The Fruit Fly', author: 'Unknown Author' }), undefined);
+  c.clearCoverPick({ title: 'The Fruit Fly', author: 'Jane Q. Doe' });
+  assert.equal(c.getCoverPickInfo({ title: 'Fruit Fly: A Novel', author: 'Jane Doe' }), undefined); // the loose index follows changes
+});

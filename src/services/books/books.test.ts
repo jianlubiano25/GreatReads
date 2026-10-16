@@ -144,3 +144,10 @@ test('sameWork: Mistborn volumes by one author are not the same work', () => {
   assert.equal(sameWork(a, b), false);
   assert.equal(sameWork(a, { ...a, id: 'c' }), true);
 });
+
+test('merging editions keeps the cleanest title ("Verity: Special Edition" + "Verity" -> "Verity")', () => {
+  const mk = (title: string) => ({ id: title, title, author: 'Colleen Hoover', shelf: 'mine', difficulty: 2, isOnDevice: false, year: '2018', genre: 'Fiction', summary: '', authorBio: '', pageCount: 300 }) as any;
+  const out = dedupeBooks([mk('Verity: Special Edition'), mk('Verity')]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].title, 'Verity');
+});

@@ -5,9 +5,10 @@ import { INITIAL_WORDS } from '../data/defaultWords';
 import { normalizeV2, normalizeLegacy, parseBackup } from '../services/stateSanitizer';
 import { computeSnapshot, currentStreakFor, evaluateGarden, markCelebrated, movePlant as movePlantIn, pendingCelebrations, seedGarden } from '../services/garden';
 import { dateKey } from '../services/dates';
-import { applyAddBook, type AddDestination } from '../services/library';
+import { applyAddBook, type AddDestination, type AddStatus } from '../services/library';
 import { clearableCacheKeys } from '../services/books/cache';
 import { exportCoverPicks, restoreCoverPicksFromBackup } from '../services/books/coverPicks';
+import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
 
 // Small helper lists that are not persistentCache instances but can be rebuilt (never user data)
 export const EXTRA_CLEARABLE = ['readlife.preload', 'readlife.loaded', 'readlife.phoneticTried'];
@@ -146,10 +147,11 @@ export function useReadingLife() {
       const k = getTodayKey();
       return k === prev ? prev : k;
     });
+    const tick = () => { if (document.visibilityState !== 'hidden') refresh(); }; // coming back to the app refreshes (below), so a hidden app need not
     const onVisible = () => { if (document.visibilityState === 'visible') refresh(); };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', refresh);
-    const timer = setInterval(refresh, 60_000);
+    const timer = setInterval(tick, 60_000);
     return () => {
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', refresh);
@@ -309,8 +311,8 @@ export function useReadingLife() {
     });
   }, []);
 
-  const addBook = useCallback((incoming: Book, destination: AddDestination = 'library') => {
-    setState(prev => applyAddBook(prev, incoming, destination));
+  const addBook = useCallback((incoming: Book, destination: AddDestination = 'library', status?: AddStatus) => {
+    setState(prev => applyAddBook(prev, incoming, destination, status));
   }, []);
 
   const removeBook = useCallback((bookId: string | number) => {
@@ -498,13 +500,15 @@ export function useReadingLife() {
   const exportBackup = useCallback(() => {
     // Covers you picked (the star in the cover viewer) travel with the backup; a backup without picks looks exactly as before
     const coverPicks = exportCoverPicks();
-    return JSON.stringify(Object.keys(coverPicks).length ? { ...state, coverPicks } : state, null, 2);
+    const nookLook = exportNookLook(); // vine look, clock colours and nook decorations; absent when they are all default
+    return JSON.stringify({ ...state, ...(Object.keys(coverPicks).length ? { coverPicks } : {}), ...(nookLook ? { nookLook } : {}) }, null, 2);
   }, [state]);
 
   const importBackup = useCallback((jsonStr: string) => {
     const restored = parseBackup(jsonStr, buildDefaultState());
     if (!restored) return false;
     restoreCoverPicksFromBackup(jsonStr); // a backup made before picks existed leaves the current picks alone
+    restoreNookLook(jsonStr); // likewise for a backup made before the nook look was saved
     // A restore never shows "new plant" prompts: bring the garden up to date silently and mark everything as seen.
     const snap = computeSnapshot({
       dailyLog: restored.dailyLog, goal: restored.goal, status: restored.status, todayKey: getTodayKey(),

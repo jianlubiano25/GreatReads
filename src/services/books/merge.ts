@@ -1,12 +1,15 @@
 import type { Book } from '../../types';
-import { mergeIdentity, sameWork } from './identity';
-import { hasRealSummary, isKnownGenre } from './model';
+import { mergeIdentity, sameWork, titleKey, titlesMatch } from './identity';
+import { looksEnglish, titleLooksForeign } from './language';
+import { hasRealSummary, isAppleCoverUrl, isKnownGenre } from './model';
 import { chooseRating, externalRating, ratingOf, type RatingPair } from './ratings';
 
 /** The same book from two places becomes one record that keeps the best of both. `a` wins on identity (id, title, author). */
 export function mergeBooks(a: Book, b: Book): Book {
   const out: Book = { ...a };
-  if (!out.coverId && !out.coverUrl) {
+  // Apple's flat front cover beats another copy's jacket (a publisher's 3D render with the spine showing, a scan of the whole wrap); otherwise the first cover found stays
+  if (isAppleCoverUrl(b.coverUrl) && !isAppleCoverUrl(out.coverUrl)) { out.coverUrl = b.coverUrl; out.coverId = undefined; }
+  else if (!out.coverId && !out.coverUrl) {
     if (b.coverId) out.coverId = b.coverId;
     else if (b.coverUrl) out.coverUrl = b.coverUrl;
   }
@@ -31,20 +34,37 @@ export function mergeBooks(a: Book, b: Book): Book {
     }
   }
   if (!hasRealSummary(out.summary) && hasRealSummary(b.summary)) out.summary = b.summary;
-  if (!out.authorBio && b.authorBio) out.authorBio = b.authorBio;
+  if ((!out.authorBio || !looksEnglish(out.authorBio)) && b.authorBio && looksEnglish(b.authorBio)) out.authorBio = b.authorBio;
+  // The same book catalogued under a foreign title ("L’étranger") takes the English title of its other copy ("The Stranger"); a different spelling alone ("Pokémon") is not a translation
+  if (titleLooksForeign(out.title) && !titleLooksForeign(b.title) && titleKey(out.title) !== titleKey(b.title) && titlesMatch(out.title, b.title)) out.title = b.title;
   if (!isKnownGenre(out.genre) && isKnownGenre(b.genre)) out.genre = b.genre;
   out.identity = mergeIdentity(out.identity, b.identity);
   return out;
 }
 
-/** Collapse a list so each book appears once (first occurrence wins, later ones fill its gaps). */
+/** `long` is `short` plus a subtitle or edition note ("Verity: Special Edition", "Dune (Deluxe Edition)"): the shorter one is the clean title. */
+function isDecorated(long: string, short: string): boolean {
+  const l = long.trim().toLowerCase();
+  const s = short.trim().toLowerCase();
+  if (!s || l.length <= s.length || !l.startsWith(s)) return false;
+  return /^\s*[:([\-–—,]/.test(l.slice(s.length));
+}
+
+/**
+ * Collapse a list so each book appears once (first occurrence wins, later ones fill its gaps).
+ * The record keeps the cleanest title of its copies, so an edition that happened to be listed first ("Verity: Special Edition") does not
+ * make the book read, rank and display as a secondary edition.
+ */
 export function dedupeBooks(list: Book[]): Book[] {
   const out: Book[] = [];
   for (const book of list) {
     if (!book.title) continue;
     const i = out.findIndex(m => sameWork(m, book));
-    if (i >= 0) out[i] = mergeBooks(out[i], book);
-    else out.push(book);
+    if (i >= 0) {
+      const merged = mergeBooks(out[i], book);
+      if (isDecorated(out[i].title, book.title)) merged.title = book.title;
+      out[i] = merged;
+    } else out.push(book);
   }
   return out;
 }

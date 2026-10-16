@@ -20,7 +20,7 @@ const legitBook = () => mk({ id: 'ol__works_OL1W', title: 'Quiet Memoir', author
 const saveEntry = (key: string, id: string, value: unknown) => store.set(key, JSON.stringify({ ...JSON.parse(store.get(key) || '{}'), [id]: { t: Date.now(), v: value } }));
 saveEntry('readlife.shelves1', 'trending', [fixtureBook(), legitBook()]); // the stale list from the buggy version
 saveEntry('readlife.top15', 'elig-old', { mode: 'collated', books: [fixtureBook(), legitBook()], at: Date.now() }); // no version
-saveEntry('readlife.top15', 'elig-v1', { mode: 'collated', books: [fixtureBook(), legitBook()], at: Date.now(), v: 1 }); // current version
+saveEntry('readlife.top15', 'elig-v1', { mode: 'collated', books: [fixtureBook(), legitBook()], at: Date.now(), v: 2 }); // current version
 const nytOfficial = mk({ id: 'nyt_1', title: 'Dark Desires: An Erotica Collection', author: 'Some Author', awardLabel: 'NYT bestseller · new this week' });
 saveEntry('readlife.top15', 'elig-nyt', { mode: 'nyt', books: [nytOfficial], at: Date.now() });
 
@@ -41,7 +41,7 @@ const titles = (bs: { title: string }[]) => bs.map(b => b.title);
 /* ------------------------------ saved lists from before the fix are never trusted (first, before anything else reads them) ------------------------------ */
 
 test('a Trending list saved by the buggy version (readlife.shelves1) is not drawn, and is removed at startup', () => {
-  assert.equal(trendingSource.cached(), null, 'the shelf reads readlife.shelves2, so the old list with the fixture card is never drawn');
+  assert.equal(trendingSource.cached(), null, 'the shelf reads readlife.shelves3, so the old list with the fixture card is never drawn');
   assert.ok(LEGACY_BOOK_CACHE_KEYS.includes('readlife.shelves1'));
   dropLegacyBookCaches();
   assert.equal(store.get('readlife.shelves1'), undefined);
@@ -271,7 +271,7 @@ test('fallback: the collated Top 15 (NYT down) never holds the fixture, and its 
 
   // a list saved under the current version that holds a book judged since: cleaned on read
   assert.deepEqual(titles(bestsellerSource({ ...NYT_SHELVES[1], id: 'elig-v1' }).cached() ?? []), ['Quiet Memoir']);
-  assert.equal(CONTENT_FILTER_VERSION, 1);
+  assert.equal(CONTENT_FILTER_VERSION, 2);
 });
 
 test('startup stays light: judging candidates asks for nothing extra, and a candidate is looked up at most once', async () => {

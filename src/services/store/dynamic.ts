@@ -4,7 +4,7 @@ import { persistentCache } from '../books/cache';
 import { dedupeInflight, getJson, getJsonDetailed, pool } from '../books/http';
 import { authorKey, authorsCompatible, isUnknownAuthor, titleKey, titlesMatch } from '../books/identity';
 import { shrunkRating } from '../books/model';
-import { isExplicit } from '../books/quality';
+import { isBlocked } from '../books/quality';
 import { searchOpenLibrary } from '../books/sources/openLibrary';
 import type { Hit } from '../books/sources/types';
 import { READER_CAPS, recencyValue } from './collate';
@@ -393,7 +393,7 @@ export function rankDiscovery(hits: Hit[], o: { year: number; limit: number; min
   const now = new Date(o.year, 6, 1);
   const total = hits.length || 1;
   const rated = (h: Hit) => (h.book.ratingCount || 0) >= (o.minRatings ?? 3);
-  let pool = hits.map((h, i) => ({ h, i })).filter(({ h }) => (h.book.coverId || h.book.coverUrl) && !isUnknownAuthor(h.book.author) && !JUNK.test(h.book.title) && !isExplicit(h.book.title, h.flags));
+  let pool = hits.map((h, i) => ({ h, i })).filter(({ h }) => (h.book.coverId || h.book.coverUrl) && !isUnknownAuthor(h.book.author) && !JUNK.test(h.book.title) && !isBlocked(h.book.title, h.flags));
   if (pool.filter(({ h }) => rated(h)).length >= o.limit) pool = pool.filter(({ h }) => rated(h)); // otherwise a young list keeps its unrated books
 
   const scored = pool.map(({ h, i }) => {

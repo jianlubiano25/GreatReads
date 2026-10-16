@@ -1,7 +1,7 @@
 import type { Book } from '../../types';
 import { isbnPair } from '../books/identity';
 import { mergeBooks } from '../books/merge';
-import { makeBook } from '../books/model';
+import { isAppleCoverUrl, makeBook } from '../books/model';
 import type { NytEntry } from '../books/sources/nyt';
 
 export const nytLabel = (e: NytEntry) =>
@@ -22,9 +22,13 @@ export function nytEntryToBook(e: NytEntry, genre: string): Book {
   });
 }
 
-/** NYT facts win on what the list says; resolved data fills everything else (and supplies the Open Library work id). */
+/**
+ * NYT facts win on what the list says; resolved data fills everything else (and supplies the Open Library work id). The jacket is the exception: the NYT's
+ * own image is the publisher's marketing shot of the primary edition, often a tilted 3D render with the spine and page edges showing (special editions), so
+ * Apple's flat front cover wins when the resolver found one; the NYT image is next, then whatever else the resolver had.
+ */
 export function combineWithNyt(nytBook: Book, resolved: Book | null): Book {
   if (!resolved) return nytBook;
   const merged = mergeBooks(resolved, nytBook);
-  return { ...merged, title: nytBook.title, author: nytBook.author, awardLabel: nytBook.awardLabel, coverUrl: nytBook.coverUrl || merged.coverUrl, genre: nytBook.genre !== 'Book' && merged.genre === 'Book' ? nytBook.genre : merged.genre };
+  return { ...merged, title: nytBook.title, author: nytBook.author, awardLabel: nytBook.awardLabel, coverUrl: isAppleCoverUrl(resolved.coverUrl) ? resolved.coverUrl : nytBook.coverUrl || merged.coverUrl, coverId: isAppleCoverUrl(resolved.coverUrl) ? undefined : merged.coverId, genre: nytBook.genre !== 'Book' && merged.genre === 'Book' ? nytBook.genre : merged.genre };
 }

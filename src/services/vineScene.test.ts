@@ -4,10 +4,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { buildVine, vineLeaves, type VineGeometry } from './vinePath';
+import { buildVine, vineLeaves, stemEnd, tipIndex, vineShown, restAt, SPROUT_LEAVES, type VineGeometry } from './vinePath';
 import { runReveal, revealValue, revealDuration, browserFrames, type FrameScheduler } from './vineReveal';
 import { vineForDays, vineFor, emptyPeaks, emptyGarden, computeSnapshot, evaluateGarden, currentStreakFor, goalDaysFor } from './garden';
-import { VineDrawing, clip } from '../components/VineOverlay';
+import { VineDrawing, CLASSIC_LEAVES, clip } from '../components/VineOverlay';
 
 const G: VineGeometry = {
   frame: { x: 12, y: 12, w: 109, h: 145 }, wood: 5, radius: 54, width: 390,
@@ -20,35 +20,35 @@ const parts = vineLeaves(vine);
 
 const logOf = (days: number[], pages = 12) => Object.fromEntries(days.map(d => [`2026-03-${String(d).padStart(2, '0')}`, pages]));
 
-test('with no goal-met days only the small initial growth shows, on the first leg of the route', () => {
+test('with no goal-met days (a blank account) nothing grows: no stem and no leaf, anywhere on the route', () => {
   const g0 = vineForDays(goalDaysFor({}, 10));
-  assert.equal(g0, 0.12);
-  assert.ok(g0 < vine.windowEnd, 'nothing on the shelves');
-  const shelf = parts.filter(l => l.t > vine.windowEnd);
-  assert.ok(shelf.length > 0 && shelf.every(l => !(l.t - 0.004 <= g0)), 'no shelf leaf, shoot or flower yet');
+  assert.equal(g0, 0);
+  assert.ok(parts.every(l => !(l.t - 0.004 <= g0)), 'no leaf, shoot or flower yet');
+  assert.equal(stemEnd(parts, g0, 0.004), 0, 'and no stem');
+  assert.ok(vineForDays(1) > 0 && parts.some(l => l.t - 0.004 <= vineForDays(1)), 'the first goal-met day starts it');
   assert.equal(goalDaysFor(logOf([1, 2], 5), 10), 0, 'days under the goal do not count');
 });
 
 test('every goal-met day grows the vine one step, with the same progression as the existing vineFor', () => {
   let prev = -1;
-  for (let d = 0; d <= 14; d++) {
+  for (let d = 0; d <= 31; d++) {
     const g = vineForDays(d);
     assert.ok(g >= prev && g <= 1);
-    assert.equal(g, vineFor({ ...emptyPeaks(), bestStreak: d }), 'one progression, not a second one');
+    assert.equal(g, d === 0 ? 0 : vineFor({ ...emptyPeaks(), bestStreak: d }), 'one progression, not a second one (nothing before the first day)');
     prev = g;
   }
   assert.ok(vineForDays(1) > vineForDays(0) && vineForDays(3) > vineForDays(1));
-  assert.equal(vineForDays(11), 1);
-  const dayWindowDone = [...Array(14).keys()].find(d => vineForDays(d) >= vine.windowEnd)!;
-  const dayBottomDone = [...Array(14).keys()].find(d => vineForDays(d) >= vine.bottomEnd)!;
-  assert.ok(dayWindowDone > 0 && dayWindowDone < dayBottomDone && dayBottomDone <= 11, 'window first, then the bottom shelf, then the top');
-  assert.equal(vineForDays(-3), 0.12);
-  assert.equal(vineForDays(NaN), 0.12);
+  assert.equal(vineForDays(30), 1);
+  const dayWindowDone = [...Array(32).keys()].find(d => vineForDays(d) >= vine.windowEnd)!;
+  const dayBottomDone = [...Array(32).keys()].find(d => vineForDays(d) >= vine.bottomEnd)!;
+  assert.ok(dayWindowDone > 0 && dayWindowDone < dayBottomDone && dayBottomDone <= 30, 'window first, then the bottom shelf, then the top');
+  assert.equal(vineForDays(-3), 0);
+  assert.equal(vineForDays(NaN), 0);
 });
 
 test('books finished never grow the vine, only goal-met days do', () => {
-  assert.equal(vineForDays(goalDaysFor({}, 10)), 0.12);
-  assert.equal(vineFor({ ...emptyPeaks(), booksFinished: 9 }) > 0.5, true, 'the old saved value would have been long');
+  assert.equal(vineForDays(goalDaysFor({}, 10)), 0);
+  assert.equal(vineFor({ ...emptyPeaks(), booksFinished: 9 }) > 0.2, true, 'the old saved value would have been long');
 });
 
 test('a lost streak does not reset the vine: it stops, keeps what it grew, and carries on when you read again', () => {
@@ -168,16 +168,78 @@ test('the vine drawing never takes a tap: pointer-events none on the svg, nothin
   assert.match(html, /role="img"/);
 });
 
-test('no goal-met days draw only the initial growth; a full vine shows every leaf, shoot and flower', () => {
+test('no goal-met days draw nothing; a full vine shows every leaf, shoot and flower', () => {
   const draw = (shown: number) => renderToStaticMarkup(React.createElement(VineDrawing, { vine, parts, width: G.width, shown, animate: false }));
   const count = (html: string, re: RegExp) => (html.match(re) || []).length;
   const visible = (html: string) => count(html, /opacity:1/g);
-  const none = draw(0), start = draw(vineForDays(0)), full = draw(1);
+  const none = draw(0), blank = draw(vineForDays(0)), start = draw(vineForDays(1)), full = draw(1);
   assert.equal(visible(none), 0, 'nothing visible before it starts growing');
+  assert.equal(visible(blank), 0, 'a blank account shows no leaf');
+  assert.ok(!/stroke-width="2\.6"/.test(blank), 'and no stem');
   assert.ok(visible(start) < visible(full), 'the start is smaller than the full vine');
   assert.ok(visible(full) >= parts.length + parts.filter(l => l.shoot).length + parts.filter(l => l.flower).length, 'every leaf, shoot and flower');
-  assert.ok(start.includes(`stroke-dasharray="${clip(vineForDays(0), vine.length)}"`));
-  assert.ok(full.includes(`stroke-dasharray="${clip(1, vine.length)}"`));
+  assert.ok(/stroke-width="2\.6"/.test(start), 'one goal-met day draws the first stem');
+  const lastLeaf = parts[parts.length - 1];
+  assert.ok(full.includes(`d="${vine.dTo(lastLeaf.t)}"`), 'the full stem ends at its last leaf');
   assert.ok(!/transition:(?!none)/.test(full), 'no transitions when animation is off (reduced motion)');
   assert.match(renderToStaticMarkup(React.createElement(VineDrawing, { vine, parts, width: G.width, shown: 1, animate: true })), /transition:opacity \.7s/);
+});
+
+/* ---------- a blank account starts as a sprout; the stem always ends in a leaf ---------- */
+
+test('a blank account shows a small sprout: a short stem with its first two leaves, never a bare stem', () => {
+  const shown = vineShown(parts, vineForDays(0));
+  const visible = parts.filter(l => shown >= l.t - 0.004);
+  assert.equal(visible.length, SPROUT_LEAVES, 'two leaves');
+  assert.equal(stemEnd(parts, shown, 0.004), visible[visible.length - 1].t, 'the stem ends at the second leaf');
+  const html = renderToStaticMarkup(React.createElement(VineDrawing, { vine, parts, width: G.width, shown, animate: false }));
+  assert.match(html, /stroke-width="2\.6"/);
+  assert.equal((html.match(/opacity:1/g) ?? []).length, SPROUT_LEAVES, 'only the sprout leaves are visible; no shoots or flowers yet');
+  const classic = vineShown(CLASSIC_LEAVES, 0);
+  assert.equal(CLASSIC_LEAVES.filter(l => classic >= l.t - 0.02).length, SPROUT_LEAVES, 'the classic vine starts the same way');
+});
+
+test('earned growth carries on from the sprout: every goal-met day adds growth, and a full streak is the full vine', () => {
+  let prev = vineShown(parts, vineForDays(0));
+  for (let d = 1; d <= 30; d++) {
+    const v = vineShown(parts, vineForDays(d));
+    assert.ok(v > prev - 1e-9 && v <= 1, `day ${d}`);
+    prev = v;
+  }
+  assert.ok(vineShown(parts, vineForDays(1)) > vineShown(parts, vineForDays(0)) && parts.filter(l => vineShown(parts, vineForDays(1)) >= l.t - 0.004).length > SPROUT_LEAVES, 'the first day visibly grows it');
+  assert.equal(vineShown(parts, 1), 1);
+  assert.equal(vineShown([], 0.5), 0.5 * 1, 'no leaves, no sprout, no crash');
+});
+
+test('the newest leaf grows straight on from the stem, so the stem ends in it, at any growth (14 days included)', () => {
+  for (const shown of [vineShown(parts, 0), vineForDays(3), vineForDays(14), vineForDays(30)]) {
+    const i = tipIndex(parts, shown, 0.004);
+    assert.ok(i >= 0);
+    const html = renderToStaticMarkup(React.createElement(VineDrawing, { vine, parts, width: G.width, shown, animate: false }));
+    const rots = [...html.matchAll(/translate\(([\d.-]+) ([\d.-]+)\) rotate\(([\d.-]+)\) scale/g)].map(m => ({ x: +m[1], y: +m[2], r: +m[3] }));
+    const tip = rots.find(r => Math.abs(r.x - parts[i].x) < 0.06 && Math.abs(r.y - parts[i].y) < 0.06)!;
+    assert.ok(Math.abs(tip.r - parts[i].ang) < 0.06, 'the tip leaf points along the vine');
+  }
+});
+
+test('shoots only grow on the window and curl into the glass, never out over the wood, the wall or the shelves', () => {
+  const shoots = parts.filter(l => l.shoot);
+  assert.ok(shoots.length > 0 && shoots.every(l => l.t <= vine.windowEnd), 'none on the shelves');
+  assert.ok(shoots.every(l => l.side === -1), 'always from a leaf that points away from the glass, so the shoot goes the other way, inwards');
+  assert.ok(!parts[parts.length - 1].shoot && !parts[0].shoot, 'no shoot on the first or the last leaf');
+});
+
+test('the vine settles exactly on a leaf and its stem grows with the tip while animating', () => {
+  for (const d of [0, 1, 5, 14, 29, 30]) {
+    const rest = restAt(parts, vineForDays(d), 0.004);
+    assert.equal(stemEnd(parts, rest, 0.004), rest, `day ${d}: the resting stem ends on its last leaf`);
+  }
+  const rest = restAt(parts, vineForDays(14), 0.004), mid = rest - 0.011;
+  const draw = (shown: number, growing: boolean) => renderToStaticMarkup(React.createElement(VineDrawing, { vine, parts, width: G.width, shown, animate: false, growing }));
+  const len = (h: string) => {
+    const pts = h.match(/<path d="([^"]+)"[^>]*stroke-width="2\.6"/)![1].slice(1).split(' L').map(q => q.split(' ').map(Number));
+    return pts.reduce((n, q, i) => (i ? n + Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1]) : 0), 0);
+  };
+  assert.ok(len(draw(mid, true)) > len(draw(mid, false)), 'mid-growth the stem follows the tip instead of jumping from leaf to leaf');
+  assert.ok(Math.abs(len(draw(rest, true)) - len(draw(rest, false))) < 1, 'and arrives exactly on the last leaf');
 });

@@ -66,6 +66,7 @@ export function TodayTab({
         garden={state.garden}
         dailyLog={state.dailyLog}
         onOpenBook={handleOpenCover}
+        active={active}
       />
       </TabPane>
 
@@ -130,7 +131,7 @@ export function TodayTab({
 
             {nowReadingBooks.length === 0 ? (
               <div className="p-8 rounded-2xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-center text-[#706256] dark:text-[#a89a8a] text-sm">
-                Nothing in progress. Open the Library or Book Store to choose your first book.
+                Nothing in progress. Open the Library or Discover to choose your first book.
               </div>
             ) : (
               nowReadingBooks.map(b => (

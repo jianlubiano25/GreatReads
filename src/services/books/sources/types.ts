@@ -11,4 +11,10 @@ export interface CallOpts {
   signal?: AbortSignal;
   /** Extra attempts after a timeout, a 429 or a 5xx (default 0) */
   retries?: number;
+  /** Search only: the 1-based page of results (Open Library) */
+  page?: number;
+  /** Google Books search only: index of the first result (paging) */
+  start?: number;
+  /** Search only: how many books the source says match in all (not just the ones returned) */
+  onTotal?: (n: number) => void;
 }

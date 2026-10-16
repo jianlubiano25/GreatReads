@@ -76,9 +76,20 @@ export function dualTitleParts(title = ''): string[] {
   return parts.every(p => titleKey(p).split(' ').filter(Boolean).length >= 2) ? parts : [];
 }
 
-/** Every main-title key a title answers to: the whole main title, plus each half of a dual title. */
+/**
+ * Narrow English aliases of a famous title catalogued under another language's name (Camus: "L'Etranger" is "The Stranger" / "The Outsider").
+ * One-way on purpose: the foreign title also answers to its English names, but the English names do not answer to each other
+ * ("The Outsider" by Stephen King must never match "The Stranger"). Authors are still compared by every caller.
+ */
+const TITLE_ALIASES: Record<string, string[]> = {
+  'l etranger': ['stranger', 'outsider'],
+  'etranger': ['stranger', 'outsider'],
+};
+
+/** Every main-title key a title answers to: the whole main title, plus each half of a dual title, plus any narrow alias. */
 export function titleKeys(title = ''): string[] {
-  return [...new Set([titleKey(title), ...dualTitleParts(title).map(titleKey)].filter(Boolean))];
+  const keys = [titleKey(title), ...dualTitleParts(title).map(titleKey)].filter(Boolean);
+  return [...new Set([...keys, ...keys.flatMap(k => TITLE_ALIASES[k] || [])])];
 }
 
 /**

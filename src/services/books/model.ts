@@ -1,12 +1,16 @@
 import type { Book } from '../../types';
+import { looksEnglish } from './language';
 
 /** Builders and tiny helpers shared by every source, so a book looks the same whichever API it came from. */
 
 export const difficultyFor = (pages: number) => (!pages ? 0 : pages > 450 ? 3 : pages > 250 ? 2 : 1);
 
 /** Placeholder summaries older versions saved; recognised so a real description can replace them. */
-export const hasRealSummary = (t?: string) => !!t && t.length >= 60 && !/^(A distinguished work by|A book by) /.test(t) && !/^.+ by .+\.$/.test(t);
+export const hasRealSummary = (t?: string) => !!t && t.length >= 60 && !/^(A distinguished work by|A book by) /.test(t) && !/^.+ by .+\.$/.test(t) && looksEnglish(t); // a synopsis in another language is not one: an English one replaces it
 export const isKnownGenre = (g?: string) => !!g && !/^(book|general)$/i.test(g);
+
+/** Is this an Apple Books artwork address? Apple's art is flat, front-facing and clean, so it is the preferred jacket wherever it exists. */
+export const isAppleCoverUrl = (url?: string): boolean => !!url && /(^|\.)mzstatic\.com\//i.test(url.replace(/^https?:\/\//i, ''));
 
 export const plainText = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 

@@ -1,6 +1,7 @@
 import { cleanPicks, coverSourceOf, isHttps, pickSizedUrl, type CoverPick, type CoverSource } from './coverRecords';
 import { coverKey, notifyCoversChanged, type CoverSize } from './covers';
-import { getSharedPick } from './sharedCovers';
+import { getSharedPick, sharedCoverPicks, sharedCoversVersion } from './sharedCovers';
+import { authorKey, isUnknownAuthor, titleKey } from './identity';
 
 export { COVER_SOURCE_LABEL, coverSourceOf, pickSizedUrl, pickBook, type CoverPick, type CoverSource } from './coverRecords';
 
@@ -33,13 +34,42 @@ const persist = () => { try { localStorage.setItem(PICKS_KEY, JSON.stringify(all
 /** Picks that failed to load during this session (not saved). */
 const failed = new Set<string>();
 
+/**
+ * The same book is spelled differently by different sources ("Dune: Deluxe Edition" / "Dune", "J.K. Rowling" / "J. K. Rowling"), so a pick saved
+ * under one spelling must still reach a search result with another. The loose key is the title without subtitle / brackets / article + the author's
+ * surname. It is only a FALLBACK: an exact title + author match always wins, and books with an unknown author are never matched loosely.
+ */
+const looseKey = (title = '', author = ''): string => {
+  const t = titleKey(title);
+  if (!t || isUnknownAuthor(author)) return '';
+  return `${t}|${authorKey(author).split(' ').pop()}`;
+};
+const splitKey = (k: string): [string, string] => { const i = k.lastIndexOf('|'); return i < 0 ? [k, ''] : [k.slice(0, i), k.slice(i + 1)]; };
+let picksRev = 0; // bumped whenever the owner's own picks change
+let loose: { rev: number; shared: number; mine: Map<string, CoverPick>; pub: Map<string, CoverPick> } | undefined;
+const looseIndex = () => {
+  const shared = sharedCoversVersion();
+  if (!loose || loose.rev !== picksRev || loose.shared !== shared) {
+    const build = (src: Record<string, CoverPick>) => {
+      const m = new Map<string, CoverPick>();
+      for (const [k, p] of Object.entries(src)) { const [t, a] = splitKey(k); const lk = looseKey(t, a); if (lk && !m.has(lk)) m.set(lk, p); }
+      return m;
+    };
+    loose = { rev: picksRev, shared, mine: build(all()), pub: build(sharedCoverPicks()) };
+  }
+  return loose;
+};
+
 /** The cover in use for this book: your own pick, else the one published for everyone; undefined when neither (or it failed to load this session). */
 export function getCoverPickInfo(book: { title?: string; author?: string }): CoverPick | undefined {
   const key = coverKey(book);
-  const mine = all()[key];
-  if (mine && !failed.has(mine.url)) return mine;
-  const shared = getSharedPick(key);
-  return shared && !failed.has(shared.url) ? shared : undefined;
+  const ok = (p?: CoverPick) => (p && !failed.has(p.url) ? p : undefined);
+  const exact = ok(all()[key]) ?? ok(getSharedPick(key));
+  if (exact) return exact;
+  const lk = looseKey(book.title, book.author);
+  if (!lk) return undefined;
+  const idx = looseIndex();
+  return ok(idx.mine.get(lk)) ?? ok(idx.pub.get(lk));
 }
 
 /** Your own pick for this book (not the published one). */
@@ -60,6 +90,7 @@ export function setCoverPick(book: { title?: string; author?: string }, pick: { 
   const keys = Object.keys(map);
   if (keys.length > MAX_PICKS) keys.slice(0, keys.length - MAX_PICKS).forEach(k => delete map[k]);
   failed.delete(pick.url);
+  picksRev++;
   persist();
   notifyCoversChanged();
   return true;
@@ -71,6 +102,7 @@ export function clearCoverPick(book: { title?: string; author?: string }): void 
   const key = coverKey(book);
   if (!map[key]) return;
   delete map[key];
+  picksRev++;
   persist();
   notifyCoversChanged();
 }
@@ -90,6 +122,7 @@ export const exportCoverPicks = (): Record<string, CoverPick> => ({ ...all() });
 /** Replace every pick with these (checked entry by entry). Returns how many were kept. */
 export function restoreCoverPicks(raw: unknown): number {
   picks = cleanPicks(raw);
+  picksRev++;
   failed.clear();
   persist();
   notifyCoversChanged();
