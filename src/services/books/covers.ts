@@ -6,6 +6,7 @@ import { findApple } from './sources/appleBooks';
 import { findGoogle, googleVolume } from './sources/googleBooks';
 import { olCoverById, olCoverByIsbn, searchOpenLibrary } from './sources/openLibrary';
 import { isFrontCoverShape } from './placeholderCover';
+import { inspectCover } from './coverFlatness';
 
 /**
  * Covers: ONE system for Store, Search, Trending, Library and the nook.
@@ -14,7 +15,8 @@ import { isFrontCoverShape } from './placeholderCover';
  * the best replacement, preferring the EXACT edition when an ISBN / volume id is known:
  *   1. Apple Books (title + author)   2. Google Books volume / ISBN   3. Google Books (title + author)
  *   4. Open Library cover for the ISBN   5. another Open Library edition of the same book (most-rated first)
- * Every candidate must really load (probed in an <img>), and a title/author mismatch is never accepted. Winners are remembered
+ * Every candidate must really load (probed in an <img>), and a title/author mismatch is never accepted. Within that order a FLAT front cover wins: a candidate that
+ * is a 3D render (coverFlatness.ts) is skipped for the next, and used only when no source has a flat one. Winners are remembered
  * on this device; misses are remembered for a day so a book with no cover anywhere is not searched on every render.
  */
 
@@ -175,8 +177,14 @@ const inflight = new Map<string, Promise<string>>();
 async function search(b: MissingBook): Promise<string> {
   const id = identityOf(b);
   const author = isUnknownAuthor(b.author) ? '' : primaryAuthor(b.author);
-  // Every candidate must load AND be a flat front cover (no spine / back / photographed book)
-  const accept = async (url?: string) => (url && (await probeImage(url, 5000, true)) ? url : '');
+  // Every candidate must load AND be a flat front cover (no spine / back / photographed book). A picture that loads but is a 3D RENDER (a tilted book,
+  // the spine showing: coverFlatness.ts) is set aside and only used when nothing flat is found anywhere: no source is flat for every book, so the picture decides
+  const renders: string[] = [];
+  const accept = async (url?: string) => {
+    if (!url || !(await probeImage(url, 5000, true))) return '';
+    if ((await inspectCover(url)) === 'render') { renders.push(url); return ''; }
+    return url;
+  };
   let url = '';
 
   // All are asked at the same time (the slowest no longer holds up the others), then judged in a fixed order: Apple first, then
@@ -203,10 +211,11 @@ async function search(b: MissingBook): Promise<string> {
     const editions = (await searchOpenLibrary({ title, ...(author ? { author } : {}) }, 8))
       .filter(h => h.book.coverId && h.book.coverId !== b.coverId && titlesMatch(h.book.title, b.title))
       .sort((x, y) => (y.book.ratingCount || 0) - (x.book.ratingCount || 0) || (y.book.coverId || 0) - (x.book.coverId || 0)) // popular work first (ratings_count), then the newer cover_i
-      .slice(0, 3);
+      .slice(0, 4);
     for (const h of editions) if ((url = await accept(olCoverById(h.book.coverId!, 'M')))) return url;
   }
-  return '';
+  // Nothing flat anywhere: a render is better than no cover at all, but never a replacement for a cover the book already has (that would only swap one render for another)
+  return (!ownLinkOf(b) && renders[0]) || '';
 }
 
 /**

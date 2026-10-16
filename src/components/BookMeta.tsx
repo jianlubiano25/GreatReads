@@ -4,6 +4,7 @@ import { BOOK_AWARDS } from '../data/defaultBooks';
 import { honorKind, mergeHonors } from '../services/store/honors';
 import { externalRating, ratingOf, starFills } from '../services/books';
 import { placeholderStyleFor, titleSizeCqw, isFrontCoverShape } from '../services/books/placeholderCover';
+import { inspectCover } from '../services/books/coverFlatness';
 import { coverKey, getCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, reportMissingCover, clearMissingCover, getCoverPickInfo, pickSizedUrl, markCoverPickFailed } from '../services/books';
 
 export type AwardKind = 'w' | 's' | 'c'; // winner, shortlist, other pick (book club, series...)
@@ -191,11 +192,28 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
     if (im && im.complete && im.naturalWidth >= 8 && (pick || isFrontCoverShape(im.naturalWidth, im.naturalHeight))) {
       recordLoadedCover(src);
       setImgLoaded(true);
+      vet(src);
     }
   }, [src]);
 
   const giveUp = () => {
     resolveCover(book).then(u => setSt(u ? { ...cur, alt: u } : { ...cur, dead: true }));
+  };
+
+  // A cover that loaded fine can still be a 3D render (a tilted book, the spine showing). Its pixels are measured once per picture (remembered on this device);
+  // a render is replaced by a flat front cover from another source when there is one. Not for a cover you picked, nor for one that already is a replacement.
+  const liveSrc = useRef('');
+  liveSrc.current = src;
+  const vetted = useRef(new Set<string>());
+  const vet = (u: string) => {
+    if (pick || cur.alt || !u || vetted.current.has(u)) return;
+    vetted.current.add(u);
+    void inspectCover(u).then(async v => {
+      if (v !== 'render' || liveSrc.current !== u) return;
+      // Swap only for a replacement that is itself NOT a render: with none, the cover stays (a render is still better than a placeholder)
+      const alt = await resolveCover(book).catch(() => '');
+      if (alt && alt !== u && liveSrc.current === u && (await inspectCover(alt)) !== 'render') setSt({ ...cur, alt });
+    });
   };
   useEffect(() => {
     if (!baseUrl && !cur.alt && !cur.dead) giveUp();
@@ -253,6 +271,7 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
             recordLoadedCover(url);
             setImgLoaded(true);
             clearMissingCover(book);
+            vet(url);
           }}
           onError={onErr}
         />
