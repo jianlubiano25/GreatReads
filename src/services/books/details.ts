@@ -17,7 +17,7 @@ import { findOpenLibrary, openLibraryDescription, openLibraryEditionPages, openL
 export const weak = (t?: string) => !hasRealSummary(t); // one definition (model.ts): placeholder, too short, or not English
 export const weakBio = (t?: string) => !t || t.length < 40 || /is an author published worldwide|is the author of this work/.test(t) || t.startsWith('No author') || !looksEnglish(t);
 
-/** The best synopsis found (Open Library -> Google Books), or '' when neither has one; a caller that needs a real one checks `weak`. Lookups only: nothing is saved here (see infoStore.ts). */
+/** The best synopsis found (Open Library -> Google Books -> Apple Books), or '' when none has one; a caller that needs a real one checks `weak`. Lookups only: nothing is saved here (see infoStore.ts). */
 export async function lookupSummary(book: Book): Promise<string> {
   const generic = isUnknownAuthor(book.author);
   const id = identityOf(book);
@@ -29,6 +29,11 @@ export async function lookupSummary(book: Book): Promise<string> {
     const gb = await findGoogle({ title: book.title, author: generic ? '' : book.author, isbn: id.isbn13 || id.isbn10 }, {}, ['text']);
     const desc = gb?.flags.description ? plainText(gb.flags.description) : '';
     if (desc.length > 60 && looksEnglish(desc)) summary = desc.slice(0, 600);
+  }
+  if (weak(summary)) { // last: Apple Books' own description (US store, English)
+    const apple = (await lookupApple({ title: book.title, author: generic ? '' : book.author }).catch(() => ({ hit: null }))).hit;
+    const text = apple?.flags.description ? plainText(apple.flags.description) : '';
+    if (text.length > 60 && looksEnglish(text)) summary = text.slice(0, 600);
   }
   return summary;
 }

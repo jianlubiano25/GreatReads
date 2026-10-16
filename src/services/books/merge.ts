@@ -1,13 +1,15 @@
 import type { Book } from '../../types';
 import { mergeIdentity, sameWork, titleKey, titlesMatch } from './identity';
 import { looksEnglish, titleLooksForeign } from './language';
-import { hasRealSummary, isKnownGenre } from './model';
+import { hasRealSummary, isAppleCoverUrl, isKnownGenre } from './model';
 import { chooseRating, externalRating, ratingOf, type RatingPair } from './ratings';
 
 /** The same book from two places becomes one record that keeps the best of both. `a` wins on identity (id, title, author). */
 export function mergeBooks(a: Book, b: Book): Book {
   const out: Book = { ...a };
-  if (!out.coverId && !out.coverUrl) {
+  // Apple's flat front cover beats another copy's jacket (a publisher's 3D render with the spine showing, a scan of the whole wrap); otherwise the first cover found stays
+  if (isAppleCoverUrl(b.coverUrl) && !isAppleCoverUrl(out.coverUrl)) { out.coverUrl = b.coverUrl; out.coverId = undefined; }
+  else if (!out.coverId && !out.coverUrl) {
     if (b.coverId) out.coverId = b.coverId;
     else if (b.coverUrl) out.coverUrl = b.coverUrl;
   }
