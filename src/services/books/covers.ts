@@ -189,7 +189,8 @@ async function search(b: MissingBook): Promise<string> {
   const apple = await appleAsk.catch(() => null);
   if (apple?.book.coverUrl && (url = await accept(apple.book.coverUrl))) return url;
   const gb = await gbAsk.catch(() => null);
-  if (gb?.book.coverUrl && (url = await accept(gb.book.coverUrl))) return url;
+  if (gb?.book.coverUrl && gb.flags.language && gb.flags.language !== 'en') { /* another language's jacket: skip */ }
+  else if (gb?.book.coverUrl && (url = await accept(gb.book.coverUrl))) return url;
 
   // Google by name (title and author must really match)
   const byName = await findGoogle({ title: b.title, author });

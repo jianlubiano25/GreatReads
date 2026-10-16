@@ -1,10 +1,11 @@
 import { getJson } from '../http';
 import { authorVariants, cleanIsbn, titleVariants, titlesMatch, authorListMatches, workIdFromKey } from '../identity';
 import { genreFromSubjects, makeBook } from '../model';
+import { looksEnglish, titleLooksForeign } from '../language';
 import type { CallOpts, Hit } from './types';
 
 const OL = 'https://openlibrary.org';
-const FIELDS = 'key,title,author_name,author_key,first_publish_year,cover_i,cover_edition_key,ratings_average,ratings_count,number_of_pages_median,subject';
+const FIELDS = 'key,title,author_name,author_key,first_publish_year,cover_i,cover_edition_key,ratings_average,ratings_count,number_of_pages_median,subject,language';
 
 export interface OlDoc {
   key: string;
@@ -17,6 +18,7 @@ export interface OlDoc {
   ratings_count?: number;
   number_of_pages_median?: number;
   subject?: string[];
+  language?: string[];
 }
 
 export type OlSize = 'S' | 'M' | 'L';
@@ -41,7 +43,7 @@ export function olDocToHit(doc: OlDoc, idx = 0, genreHint = ''): Hit {
     source: 'openlibrary',
     identity: { olWork: workIdFromKey(doc.key), olEdition: doc.cover_edition_key },
   });
-  return { book, flags: { subjects: doc.subject } };
+  return { book, flags: { subjects: doc.subject, language: doc.language?.includes('eng') ? 'en' : doc.language?.[0] } };
 }
 
 /** Raw search. Never throws; returns [] on any failure. */
@@ -81,7 +83,7 @@ export async function findOpenLibrary(q: { title: string; author?: string; isbn?
       if (hits.length || opts.signal?.aborted) break;
     }
   }
-  if (!hits.length && !isbn) {
+  if (!hits.length) {
     // The title= + author= fields found nothing (a book catalogued under another title, e.g. "The Stranger" = "L'étranger"): ask the plain query, still judged by title and author
     const named = !!q.author && !/^(Unknown|Featured) Author$/.test(q.author);
     for (const title of titleVariants(q.title)) {
@@ -104,13 +106,32 @@ export async function openLibraryRatings(workId: string, opts: CallOpts = {}): P
 export async function openLibraryDescription(workId: string, opts: CallOpts = {}): Promise<string> {
   const w = await getJson(`${OL}/works/${workId}.json`, { timeout: 8000, signal: opts.signal });
   const val = typeof w?.description === 'string' ? w.description : w?.description?.value;
-  return val ? String(val).split(/\n-{3,}|\n\n/)[0].replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').slice(0, 600) : '';
+  const text = val ? String(val).split(/\n-{3,}|\n\n/)[0].replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').slice(0, 600) : '';
+  return looksEnglish(text) ? text : ''; // a blurb in another language is no blurb: Google's English one is used instead
 }
+
+/** A work's editions (first 40), read once per session and shared by the page count, the cover list and the English title below: one request, not three. */
+const editionsMemo = new Map<string, Promise<any[] | null>>();
+function workEditions(workId: string, opts: CallOpts = {}): Promise<any[] | null> {
+  const memo = editionsMemo.get(workId);
+  if (memo) return memo;
+  const p = getJson(`${OL}/works/${workId}/editions.json?limit=40`, { signal: opts.signal }).then(d => (d ? ((d.entries || []) as any[]) : null));
+  editionsMemo.set(workId, p);
+  p.then(v => { if (v === null || opts.signal?.aborted) editionsMemo.delete(workId); }); // a failure (or a cancelled read) is asked again next time
+  if (editionsMemo.size > 200) editionsMemo.delete(editionsMemo.keys().next().value as string);
+  return p;
+}
+/** Tests only. */
+export const forgetEditionsForTests = () => editionsMemo.clear();
+
+const isEnglishEdition = (e: any): boolean => {
+  const langs: string[] = Array.isArray(e?.languages) ? e.languages.map((l: any) => String(l?.key || '')) : [];
+  return !langs.length || langs.includes('/languages/eng');
+};
 
 /** Median page count across a work's editions (used when the search index has no page count). */
 export async function openLibraryEditionPages(workId: string, opts: CallOpts = {}): Promise<number | undefined> {
-  const data = await getJson(`${OL}/works/${workId}/editions.json?limit=40`, { signal: opts.signal });
-  const pages: number[] = ((data && data.entries) || [])
+  const pages: number[] = ((await workEditions(workId, opts)) || [])
     .map((e: any) => Number(e.number_of_pages))
     .filter((n: number) => Number.isFinite(n) && n >= 30 && n <= 2500)
     .sort((a: number, b: number) => a - b);
@@ -122,16 +143,30 @@ export async function openLibraryEditionPages(workId: string, opts: CallOpts = {
  * One request; the ids need no image check because Open Library only lists covers it has.
  */
 export async function openLibraryEditionCovers(workId: string, max = 8, opts: CallOpts = {}): Promise<number[]> {
-  const data = await getJson(`${OL}/works/${workId}/editions.json?limit=40`, { signal: opts.signal });
   const ids: number[] = [];
-  for (const e of (data?.entries || []) as any[]) {
-    const langs: string[] = Array.isArray(e?.languages) ? e.languages.map((l: any) => String(l?.key || '')) : [];
-    if (langs.length && !langs.includes('/languages/eng')) continue; // a translation's jacket is a different book to look at
+  for (const e of ((await workEditions(workId, opts)) || [])) {
+    if (!isEnglishEdition(e)) continue; // a translation's jacket is a different book to look at
     const id = (Array.isArray(e?.covers) ? e.covers : []).find((c: unknown) => Number.isInteger(c) && (c as number) > 0);
     if (id && !ids.includes(id)) ids.push(id);
     if (ids.length >= max) break;
   }
   return ids;
+}
+
+/**
+ * The English title of a work Open Library files under another language's title ("L’étranger" -> "The Stranger"): the title most of its tagged-English
+ * editions use (ties: the one listed first). Editions with no language tag are not trusted for this. '' when no edition is tagged English or the work has none.
+ */
+export async function openLibraryEnglishTitle(workId: string, opts: CallOpts = {}): Promise<string> {
+  const counts = new Map<string, { title: string; n: number }>();
+  for (const e of ((await workEditions(workId, opts)) || [])) {
+    const langs: string[] = Array.isArray(e?.languages) ? e.languages.map((l: any) => String(l?.key || '')) : [];
+    const title = typeof e?.title === 'string' ? e.title.trim() : '';
+    if (!title || !langs.includes('/languages/eng') || titleLooksForeign(title)) continue;
+    const k = title.toLowerCase();
+    counts.set(k, { title, n: (counts.get(k)?.n || 0) + 1 });
+  }
+  return [...counts.values()].reduce<{ title: string; n: number } | undefined>((best, c) => (!best || c.n > best.n ? c : best), undefined)?.title ?? '';
 }
 
 /** Re-read one work's search record (ratings, pages, genre, year). */

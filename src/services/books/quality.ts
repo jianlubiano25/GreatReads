@@ -22,6 +22,7 @@ export interface ContentFlags {
   publisher?: string;
   googleMaturity?: string; // Google Books "MATURE" / "NOT_MATURE"
   appleAdvisory?: string; // Apple's content advisory text, when present
+  language?: string; // Google Books' volume language ("en", "fr"), when it says
 }
 
 export const EXPLICIT_FILTER_AT = 40; // at or above: left out of discovery shelves

@@ -3,12 +3,13 @@ import { dedupeInflight, transientFailureCount } from './http';
 import { bump } from './perf';
 import { persistentCache } from './cache';
 import { authorKey, cleanIsbn, isbnPair, mergeIdentity, titleKey } from './identity';
+import { titleLooksForeign } from './language';
 import { mergeBooks } from './merge';
 import { chooseRating, externalRating, setRating, settleSiteRating, SUFFICIENT_RATINGS, type SourceRating } from './ratings';
 import type { ContentFlags } from './quality';
 import { lookupApple } from './sources/appleBooks';
 import { findGoogle, findGoogleRating } from './sources/googleBooks';
-import { findOpenLibrary, openLibraryRatings } from './sources/openLibrary';
+import { findOpenLibrary, openLibraryEnglishTitle, openLibraryRatings } from './sources/openLibrary';
 import type { CallOpts } from './sources/types';
 
 /**
@@ -109,6 +110,12 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
     }
     let book: Book = hits.map(h => h.book).reduce((a, b) => mergeBooks(a, b));
     book.identity = mergeIdentity(book.identity, isbnPair(q.isbn));
+    // English title: a work catalogued under another language's title ("L’étranger") is shown by its English one, from the other sources that matched this book or from
+    // Open Library's own English editions. A book with no English title anywhere keeps the one it has.
+    if (titleLooksForeign(book.title)) {
+      const english = [gb?.book.title, ap?.book.title].find(t => t && !titleLooksForeign(t)) || (book.identity?.olWork ? await openLibraryEnglishTitle(book.identity.olWork, opts) : '');
+      if (english) book.title = english;
+    }
     // Apple's 600x900 art, when Apple (asked for, and matched on title AND author) has the book, is the cover. Every caller that asks Apple
     // (Store cards, the book info, the prefetch script) therefore gets the same cover, instead of each picking the first source that had one.
     if (ap?.book.coverUrl) book = { ...book, coverUrl: ap.book.coverUrl, coverId: undefined };

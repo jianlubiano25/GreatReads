@@ -6,6 +6,7 @@ import { searchOpenLibrary } from './sources/openLibrary';
 import type { Hit } from './sources/types';
 import { isUnknownAuthor, sameWork, titleKey } from './identity';
 import { isBlocked } from './quality';
+import { titleLooksForeign } from './language';
 import { rememberExcluded } from './eligibility';
 import { localMatches, rememberSeen } from './localIndex';
 import { contentTokens, normQ, parseQuery, tokenHits, type ParsedQuery, type SearchScope } from './query';
@@ -152,6 +153,8 @@ function withoutBlocked(hits: Hit[], q?: ParsedQuery): Book[] {
 
 /** A book the reader already has on a shelf, library or device comes ahead of an equally good match they do not have. */
 const OWN_BONUS = 25;
+/** A result whose title is not English ranks a little below an equally good English one (never out of the list). */
+const FOREIGN_TITLE_PENALTY = 12;
 
 /** In the Title / Author scopes only books whose title / author match what was typed are kept (the last word may be a beginning). */
 function inScope(b: Book, q: ParsedQuery): boolean {
@@ -200,6 +203,7 @@ function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly Book[]
       // "Death by Water" was split into a title and an author: the better of the two readings counts
       score: Math.max(searchRelevance(book, q.text, q.author, q.partial, q.scope === 'title' || q.scope === 'keywords', popular), q.full ? searchRelevance(book, q.full, '', q.partial, q.scope === 'title') : -Infinity)
         + (byKeywords ? keywordFit(book, q) : 0)
+        - (titleLooksForeign(book.title) && !titleLooksForeign(q.text) && !titleLooksForeign(q.full) ? FOREIGN_TITLE_PENALTY : 0) // English editions first, unless a foreign title was typed
         + (own.length && own.some(o => o === book || sameWork(o, book)) ? OWN_BONUS : 0),
     }))
     .sort((x, y) => y.score - x.score || x.order - y.order)

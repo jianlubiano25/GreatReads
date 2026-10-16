@@ -6,7 +6,7 @@ import { externalRating } from '../ratings';
 import type { CallOpts, Hit } from './types';
 
 const GB = 'https://www.googleapis.com/books/v1';
-const FIELDS = 'id,volumeInfo(title,authors,publisher,description,categories,pageCount,publishedDate,averageRating,ratingsCount,maturityRating,imageLinks,industryIdentifiers)';
+const FIELDS = 'id,volumeInfo(title,authors,publisher,description,categories,pageCount,publishedDate,averageRating,ratingsCount,maturityRating,imageLinks,industryIdentifiers,language)';
 
 /**
  * Optional API key (higher quota). It ships inside the app, so restrict it to this site's address in the Google Cloud console.
@@ -66,13 +66,14 @@ export function gbItemToHit(item: any, fallbackTitle = ''): Hit {
     source: 'google',
     identity: { gbVolume: item?.id, ...isbn },
   });
-  return { book, flags: { subjects: v.categories, description: v.description ? String(v.description) : undefined, googleMaturity: v.maturityRating, publisher: v.publisher ? String(v.publisher) : undefined } };
+  return { book, flags: { language: v.language ? String(v.language).toLowerCase() : undefined, subjects: v.categories, description: v.description ? String(v.description) : undefined, googleMaturity: v.maturityRating, publisher: v.publisher ? String(v.publisher) : undefined } };
 }
 
-const searchUrl = (q: string, max: number, start = 0) => `${GB}/volumes?q=${encodeURIComponent(q)}&maxResults=${Math.min(40, max)}${start > 0 ? `&startIndex=${start}` : ''}&printType=books&fields=${encodeURIComponent(`totalItems,items(${FIELDS})`)}`;
+/** English volumes only (`langRestrict=en`): English titles, covers and blurbs are preferred. An exact ISBN / volume lookup is the one edition asked for, so it is not restricted. */
+const searchUrl = (q: string, max: number, start = 0, anyLanguage = false) => `${GB}/volumes?q=${encodeURIComponent(q)}&maxResults=${Math.min(40, max)}${start > 0 ? `&startIndex=${start}` : ''}${anyLanguage ? '' : '&langRestrict=en'}&printType=books&fields=${encodeURIComponent(`totalItems,items(${FIELDS})`)}`;
 
-export async function searchGoogle(q: string, max: number, opts: CallOpts = {}): Promise<Hit[]> {
-  const data = (await googleJson(searchUrl(q, max, opts.start), { signal: opts.signal })).data;
+export async function searchGoogle(q: string, max: number, opts: CallOpts & { anyLanguage?: boolean } = {}): Promise<Hit[]> {
+  const data = (await googleJson(searchUrl(q, max, opts.start, opts.anyLanguage), { signal: opts.signal })).data;
   if (typeof data?.totalItems === 'number') opts.onTotal?.(data.totalItems);
   return (data?.items || []).map((i: any) => gbItemToHit(i));
 }
@@ -81,7 +82,7 @@ export async function searchGoogle(q: string, max: number, opts: CallOpts = {}):
 export async function googleByIsbn(isbn: string, opts: CallOpts = {}): Promise<Hit | null> {
   const clean = cleanIsbn(isbn);
   if (!clean) return null;
-  return (await searchGoogle(`isbn:${clean}`, 3, opts))[0] ?? null;
+  return (await searchGoogle(`isbn:${clean}`, 3, { ...opts, anyLanguage: true }))[0] ?? null;
 }
 
 export async function googleVolume(id: string, opts: CallOpts = {}): Promise<Hit | null> {
@@ -91,6 +92,9 @@ export async function googleVolume(id: string, opts: CallOpts = {}): Promise<Hit
 
 /** Is this Google volume the book that was asked for? Title and author must agree; an unknown wanted author or an empty title contradicts nothing. */
 const isWanted = (h: Hit, q: { title: string; author?: string }): boolean => (!q.title.trim() || titlesMatch(h.book.title, q.title)) && authorListMatches(h.book.author, q.author || '');
+
+/** Is this volume in English (or does Google not say)? */
+export const isEnglishVolume = (h: Hit): boolean => !h.flags.language || h.flags.language === 'en';
 
 /** What a caller wants from a Google volume. Only a missing NEEDED field is worth another search (a cover lookup does not care about the description). */
 export type GoogleNeed = 'cover' | 'pages' | 'year' | 'text';
@@ -159,9 +163,14 @@ export async function findGoogle(q: { title: string; author?: string; isbn?: str
   if (cleanIsbn(q.isbn)) {
     const byIsbn = await googleByIsbn(q.isbn!, opts);
     if (byIsbn && isWanted(byIsbn, q)) exact = byIsbn;
-    if (exact && !isSparseGoogle(exact, need)) return exact;
+    if (exact && !isSparseGoogle(exact, need) && isEnglishVolume(exact)) return exact;
   }
-  const matches = await matchingEditions(q, opts, exact ? SPARSE_SEARCHES : Infinity);
+  const matches = await matchingEditions(q, opts, exact && isEnglishVolume(exact) ? SPARSE_SEARCHES : Infinity);
+  // The exact edition is in another language: an English edition of the same book (found by title and author) stands in for it; with none, the exact edition is kept
+  if (exact && !isEnglishVolume(exact)) {
+    const english = matches.filter(isEnglishVolume).reduce<Hit | undefined>((best, h) => (!best || (h.book.ratingCount || 0) > (best.book.ratingCount || 0) ? h : best), undefined);
+    if (english) return fillGoogleGaps(english, matches);
+  }
   if (exact) return fillGoogleGaps(exact, matches);
   // Editions of one book differ in whether Google has ratings for them: take the best-rated match, else the first
   const found = matches.reduce<Hit | undefined>((best, h) => (!best || (h.book.ratingCount || 0) > (best.book.ratingCount || 0) ? h : best), undefined);

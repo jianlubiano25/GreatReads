@@ -16,7 +16,7 @@ export async function lookupApple(q: { title: string; author?: string }, opts: C
   let failed = false;
   for (const title of titleVariants(q.title)) {
     const term = encodeURIComponent(`${title} ${generic ? '' : q.author}`.trim());
-    const r = await getJsonDetailed(`https://itunes.apple.com/search?media=ebook&entity=ebook&limit=6&term=${term}`, { timeout: 4500, signal: opts.signal });
+    const r = await getJsonDetailed(`https://itunes.apple.com/search?media=ebook&entity=ebook&limit=6&country=us&lang=en_us&term=${term}`, { timeout: 4500, signal: opts.signal });
     if (!r.data && !opts.signal?.aborted && (r.status === 0 || r.status === 429 || r.status >= 500 || r.failure === 'not-json')) failed = true; // a malformed answer is not "no such book"
     // The same book can be listed more than once (editions, re-listings). Apple's first match stays the book, but when that listing is unrated,
     // an identically titled duplicate that Apple's readers rated (the most ratings) is taken instead: an unrated duplicate must not hide the

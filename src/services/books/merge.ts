@@ -1,5 +1,6 @@
 import type { Book } from '../../types';
-import { mergeIdentity, sameWork } from './identity';
+import { mergeIdentity, sameWork, titleKey, titlesMatch } from './identity';
+import { looksEnglish, titleLooksForeign } from './language';
 import { hasRealSummary, isKnownGenre } from './model';
 import { chooseRating, externalRating, ratingOf, type RatingPair } from './ratings';
 
@@ -31,7 +32,9 @@ export function mergeBooks(a: Book, b: Book): Book {
     }
   }
   if (!hasRealSummary(out.summary) && hasRealSummary(b.summary)) out.summary = b.summary;
-  if (!out.authorBio && b.authorBio) out.authorBio = b.authorBio;
+  if ((!out.authorBio || !looksEnglish(out.authorBio)) && b.authorBio && looksEnglish(b.authorBio)) out.authorBio = b.authorBio;
+  // The same book catalogued under a foreign title ("L’étranger") takes the English title of its other copy ("The Stranger"); a different spelling alone ("Pokémon") is not a translation
+  if (titleLooksForeign(out.title) && !titleLooksForeign(b.title) && titleKey(out.title) !== titleKey(b.title) && titlesMatch(out.title, b.title)) out.title = b.title;
   if (!isKnownGenre(out.genre) && isKnownGenre(b.genre)) out.genre = b.genre;
   out.identity = mergeIdentity(out.identity, b.identity);
   return out;
