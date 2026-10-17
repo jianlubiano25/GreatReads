@@ -74,7 +74,7 @@ export function LibraryCollectionModal({ initial, books, onSave, onDelete, onClo
           <p className="text-xs text-[#706256] dark:text-[#a89a8a]">Tick the books in your Library that belong here ({picked.size} chosen).</p>
         </div>
 
-        <ul className="px-6 py-2 overflow-y-auto min-h-0 flex-1 basis-0">
+        <ul className="px-6 py-2 overflow-y-auto overscroll-contain min-h-0 flex-1">
           {shown.length === 0 && <li className="py-3 text-sm text-[#706256] dark:text-[#a89a8a]">{sorted.length === 0 ? 'Your Library has no books yet. You can add some later.' : 'No books match your search.'}</li>}
           {shown.map(b => {
             const id = String(b.id);

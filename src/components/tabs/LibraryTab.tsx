@@ -74,7 +74,7 @@ function TabStrip({ label, tabs, value, onChange, trailing }: {
   trailing?: React.ReactNode;
 }) {
   return (
-    <div role="tablist" aria-label={label} className="flex items-center gap-1 overflow-x-auto no-scrollbar border-b border-[#e3d7c3] dark:border-[#382f25]">
+    <div role="tablist" aria-label={label} className="flex items-baseline gap-5 overflow-x-auto no-scrollbar">
       {tabs.map(t => (
         <button
           key={t.id}
@@ -82,9 +82,11 @@ function TabStrip({ label, tabs, value, onChange, trailing }: {
           role="tab"
           aria-selected={value === t.id}
           onClick={() => onChange(t.id)}
-          className={`shrink-0 px-3 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors ${value === t.id ? 'border-[#2e5934] text-[#2e5934] dark:border-[#86b880] dark:text-[#86b880]' : 'border-transparent text-[#706256] dark:text-[#a89a8a] hover:text-[#201a15] dark:hover:text-[#f0e6d6]'}`}
+          // The same titles as before (serif, large, a small count). The tab that is not open is a little greyed out.
+          className={`shrink-0 whitespace-nowrap font-serif-display text-xl flex items-baseline gap-2 py-1 transition-colors ${value === t.id ? 'text-[#201a15] dark:text-[#f0e6d6]' : 'text-[#201a15]/40 dark:text-[#f0e6d6]/40 hover:text-[#201a15]/70 dark:hover:text-[#f0e6d6]/70'}`}
         >
-          {t.label} <span className="font-medium opacity-70">{t.count}</span>
+          {t.label}
+          <span className="text-xs font-sans font-medium opacity-80">{t.count}</span>
         </button>
       ))}
       {trailing}

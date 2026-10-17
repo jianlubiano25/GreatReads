@@ -253,9 +253,6 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           </div>
         </div>
 
-        {/* Your own rating (every book), right above Honors & Awards */}
-        {onRate && <RateThisBook title={book.title} value={userRating} onRate={onRate} />}
-
         {/* Awards Section if available */}
         {awards && awards.length > 0 && (
           <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25] bg-[#f5f0e6]/50 dark:bg-[#181410]/50">
@@ -276,6 +273,9 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
             </div>
           </div>
         )}
+
+        {/* Your own rating (every book), right below Honors & Awards */}
+        {onRate && <RateThisBook title={book.title} value={userRating} onRate={onRate} />}
 
         {/* Synopsis / Description Section */}
         <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25]">

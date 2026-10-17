@@ -96,13 +96,13 @@ test('My Library: status tabs with counts, a few cards sideways, View all for th
     collections: [{ id: 'sh1', name: 'Cozy reads', kind: 'shelf', bookIds: ['a1', 'a2'] }],
   }));
   assert.match(html, /role="tablist"/);
-  assert.match(html, /Reading now <span[^>]*>1</);
-  assert.match(html, /Finished <span[^>]*>5</);
-  assert.match(html, /Up next <span[^>]*>0</);
+  assert.match(html, /Reading now\s*<span[^>]*>1</);
+  assert.match(html, /Finished\s*<span[^>]*>5</);
+  assert.match(html, /Up next\s*<span[^>]*>0</);
   assert.match(html, /Did not finish/);
   assert.match(html, /Not for me/);
-  assert.match(html, /Master list <span[^>]*>6</);
-  assert.match(html, /Cozy reads <span[^>]*>2</);
+  assert.match(html, /Master list\s*<span[^>]*>6</);
+  assert.match(html, /Cozy reads\s*<span[^>]*>2</);
   assert.match(html, /aria-label="Add shelf"/);
   assert.ok(!/View all/.test(html), 'Reading now is the open tab and has one book');
   // every book is in the Master list at once (a1 is also the one Reading now card, so it shows twice)
@@ -158,7 +158,7 @@ test('Rate this book: where the pointer is decides the quarter star (the left ed
   assert.equal(ratingAt(10, 0), 0); // nothing measured yet
 });
 
-test('Book info: one control (Add to My Library, or your status once it is yours), no Add to Device, and Rate this book is above Honors & Awards', () => {
+test('Book info: one control (Add to My Library, or your status once it is yours), no Add to Device, and Rate this book is below Honors & Awards', () => {
   const awarded = DEFAULT_BOOKS.find(b => typeof b.id === 'number' && b.id === 4)!;
   const html = renderToStaticMarkup(h(AppleBookDetailModal, {
     book: awarded, inLibrary: false, onRate: noop, onClose: noop, onOpenLibrarySheet: noop,
@@ -175,7 +175,7 @@ test('Book info: one control (Add to My Library, or your status once it is yours
   const rate = html.indexOf('Rate this book');
   const honors = html.indexOf('Honors &amp; Awards');
   assert.ok(rate > 0 && honors > 0, 'both sections are drawn');
-  assert.ok(rate < honors, 'Rate this book comes first');
+  assert.ok(rate > honors, 'Rate this book comes after Honors & Awards');
   // the same title size: both headings use the same size, weight and letter-spacing classes (Honors also lays its trophy icon out with flex)
   const heading = (name: string) => html.slice(html.lastIndexOf('<h4', html.indexOf(name)), html.indexOf(name)).match(/class="([^"]*)"/)![1];
   const SIZE = 'text-xs font-bold uppercase tracking-wider';

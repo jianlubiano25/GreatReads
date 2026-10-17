@@ -112,7 +112,7 @@ export function LibrarySheet({ book, inLibrary, status: initialStatus, shelves, 
           <p className={`text-xs mt-0.5 line-clamp-1 ${MUTED}`}>{book.title}</p>
         </div>
 
-        <div className="flex-1 min-h-0 basis-0 overflow-y-auto px-5 flex flex-col gap-5 pb-4">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 flex flex-col gap-5 pb-4">
           <section className="flex flex-col gap-2" aria-label="Reading status">
             <h4 className={`text-xs font-bold uppercase tracking-wider ${MUTED}`}>Reading status</h4>
             <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Reading status">

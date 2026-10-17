@@ -39,3 +39,12 @@ test('Rating: "Rate this book" until rated, then "Your rating: 4.25 of 5" with a
   assert.match(rated, /aria-label="Clear your rating"/);
   assert.match(rated, /aria-valuenow="4.25"/);
 });
+
+test('the sheet and the shelf editor keep a visible, scrollable body (a flex-basis of 0 once collapsed it to nothing)', () => {
+  const sheet = renderToStaticMarkup(h(LibrarySheet, {
+    book: makeBook({ id: 'x', title: 'Piranesi', author: 'Susanna Clarke' }),
+    inLibrary: false, status: 'list', shelves: [], tags: [], checked: [], onCreate: () => null, onApply: noop, onClose: noop,
+  }));
+  assert.ok(!/basis-0/.test(sheet));
+  assert.match(sheet, /overflow-y-auto/);
+});
