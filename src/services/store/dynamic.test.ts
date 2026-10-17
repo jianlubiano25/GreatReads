@@ -284,7 +284,7 @@ test('extra NYT lists are official-or-nothing, show 10, and do not duplicate the
   assert.ok(NYT_EXTRA_SHELVES.length >= 3);
   for (const s of NYT_EXTRA_SHELVES) {
     assert.equal(s.fallback, false);
-    assert.ok(!main.has(s.list) && (s.list === 'hardcover-nonfiction' || !/^(hardcover|combined)/.test(s.list)), s.list); // combined lists repeat the two main shelves (Hardcover Non-Fiction is wanted on purpose: it is the weekly replacement for the retired weekly paperback list)
+    assert.ok(!main.has(s.list) && (['hardcover-fiction', 'hardcover-nonfiction'].includes(s.list) || !/^(hardcover|combined)/.test(s.list)), s.list); // combined lists repeat the two main shelves (the two Hardcover lists are wanted on purpose, hidden by default)
   }
   assert.equal(new Set(NYT_EXTRA_SHELVES.map(s => s.list)).size, NYT_EXTRA_SHELVES.length);
 

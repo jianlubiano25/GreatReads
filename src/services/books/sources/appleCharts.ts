@@ -41,8 +41,8 @@ export function parseAppleChart(data: any, chart: AppleChartEntry['chart']): App
     }));
 }
 
-async function loadOne(chart: AppleChartEntry['chart'], opts: CallOpts): Promise<AppleChartEntry[] | null> {
-  const fresh = cache.get(chart);
+async function loadOne(chart: AppleChartEntry['chart'], opts: CallOpts & { force?: boolean }): Promise<AppleChartEntry[] | null> {
+  const fresh = opts.force ? undefined : cache.get(chart);
   if (fresh) return fresh;
   return dedupeInflight(inflight, chart, async () => {
     const urls = [`/api/apple-charts?feed=${chart}&limit=100`, `https://rss.applemarketingtools.com/api/v2/us/books/${chart}/100/books.json`];
@@ -54,9 +54,15 @@ async function loadOne(chart: AppleChartEntry['chart'], opts: CallOpts): Promise
         return entries;
       }
     }
+    if (opts.force) return null; // a manual refresh must tell a failure from a success: it never answers with the old chart
     return cache.peek(chart)?.value ?? null; // up to a day old: a chart still tells what was popular
   });
 }
+
+/** One chart (Top Free or Top Paid). `force` = a manual refresh: ask Apple again now, and null when it cannot be reached. */
+export const loadAppleChart = (chart: AppleChartEntry['chart'], opts: CallOpts & { force?: boolean } = {}) => loadOne(chart, opts);
+/** What is saved for a chart (up to a day old) and how old it is, without asking Apple. */
+export const peekAppleChart = (chart: AppleChartEntry['chart']) => cache.peek(chart);
 
 /** Both charts (free + paid). null when neither could be loaded. */
 export async function loadAppleCharts(opts: CallOpts = {}): Promise<AppleChartEntry[] | null> {

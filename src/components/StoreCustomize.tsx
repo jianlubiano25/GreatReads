@@ -33,6 +33,7 @@ export function StoreCustomize({ order, hidden, onReorder, onToggle, onDone, onR
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [, redraw] = useState(0); // re-read update times after a refresh
+  const [confirmReset, setConfirmReset] = useState(false); // Reset layout asks first: it undoes every reorder and every hidden / shown choice
 
   // Pointer drag (works with a finger as well as a mouse; the browser's own drag-and-drop does not on touch screens).
   useEffect(() => {
@@ -205,7 +206,15 @@ export function StoreCustomize({ order, hidden, onReorder, onToggle, onDone, onR
           <span className="inline-block w-2 h-2 rounded-full bg-sky-500 ml-3 mr-1" />GreatReads discovery
           <span className="inline-block w-2 h-2 rounded-full bg-stone-400 ml-3 mr-1" />hand-picked
         </span>
-        <button type="button" onClick={onResetLayout} className="underline underline-offset-2 hover:text-[#2e5934] dark:hover:text-[#86b880] shrink-0">Reset layout</button>
+        {confirmReset ? (
+          <span className="flex items-center gap-2 shrink-0" role="alertdialog" aria-label="Reset layout?">
+            <span className="text-[#201a15] dark:text-[#f0e6d6] font-medium">Reset order and hidden shelves?</span>
+            <button type="button" autoFocus onClick={() => setConfirmReset(false)} className="px-2.5 py-1 rounded-lg border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] font-semibold">Cancel</button>
+            <button type="button" onClick={() => { setConfirmReset(false); onResetLayout(); }} className="px-2.5 py-1 rounded-lg bg-[#2e5934] text-white font-semibold">Reset</button>
+          </span>
+        ) : (
+          <button type="button" onClick={() => setConfirmReset(true)} className="underline underline-offset-2 hover:text-[#2e5934] dark:hover:text-[#86b880] shrink-0">Reset layout</button>
+        )}
       </div>
     </section>
   );

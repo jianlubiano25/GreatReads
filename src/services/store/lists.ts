@@ -9,8 +9,8 @@ export interface NytShelf {
   fallback?: boolean;
   /** How many entries to show (default 15). */
   limit?: number;
-  /** The NYT publishes this list monthly, not weekly (the schedule line in Customize Store says so) */
-  monthly?: boolean;
+  /** What Customize Store says about when the list updates, when "NYT publishes weekly" is not right for it */
+  schedule?: string;
 }
 
 export const NYT_SHELVES: NytShelf[] = [
@@ -38,13 +38,14 @@ export const NYT_SHELVES: NytShelf[] = [
  * what the shelf below uses (check:nyt settles it).
  */
 export const NYT_EXTRA_SHELVES: NytShelf[] = [
-  // Hardcover Non-Fiction is weekly and replaces the old weekly paperback list on the Store.
-  { id: 'nyt-hardcover-nonfiction', list: 'hardcover-nonfiction', title: 'NYT Best Sellers · Hardcover Non-Fiction', genre: 'Non-fiction', kind: 'nonfiction', fallback: false, limit: 10 },
   // The API's list name is the list_name, not the display name: NYT's own API spec shows "list_name": "Trade Fiction Paperback" with
   // "display_name": "Paperback Trade Fiction", and queries /lists/.../trade-fiction-paperback.json. `npm run check:nyt` re-checks all of these.
   { id: 'nyt-paperback-fiction', list: 'trade-fiction-paperback', title: 'NYT Best Sellers · Paperback Fiction', genre: 'Fiction', kind: 'fiction', fallback: false, limit: 10 },
+  // The weekly paperback non-fiction list was retired; this is its replacement. Off by default (registry.ts).
+  { id: 'nyt-paperback-nonfiction', list: 'paperback-nonfiction-monthly', title: 'NYT Best Sellers · Paperback Non-Fiction', genre: 'Non-fiction', kind: 'nonfiction', fallback: false, limit: 10, schedule: 'Checked every 6 hours when opened' },
+  // The two hardcover lists are off by default (registry.ts): the combined lists at the top already include hardcovers.
+  { id: 'nyt-hardcover-fiction', list: 'hardcover-fiction', title: 'NYT Best Sellers · Hardcover Fiction', genre: 'Fiction', kind: 'fiction', fallback: false, limit: 10 },
+  { id: 'nyt-hardcover-nonfiction', list: 'hardcover-nonfiction', title: 'NYT Best Sellers · Hardcover Non-Fiction', genre: 'Non-fiction', kind: 'nonfiction', fallback: false, limit: 10 },
   { id: 'nyt-advice', list: 'advice-how-to-and-miscellaneous', title: 'NYT Best Sellers · Advice & How-To', genre: 'Self-help', kind: 'nonfiction', fallback: false, limit: 10 },
-  // The weekly paperback non-fiction list was retired; the NYT now publishes this one monthly. Off by default (registry.ts).
-  { id: 'nyt-paperback-nonfiction', list: 'paperback-nonfiction-monthly', title: 'NYT Best Sellers · Paperback Non-Fiction (monthly)', genre: 'Non-fiction', kind: 'nonfiction', fallback: false, limit: 10, monthly: true },
   { id: 'nyt-ya', list: 'young-adult-hardcover', title: 'NYT Best Sellers · Young Adult', genre: 'Young adult', kind: 'fiction', fallback: false, limit: 10 },
 ];

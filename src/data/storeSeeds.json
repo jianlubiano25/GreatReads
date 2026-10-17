@@ -1278,5 +1278,136 @@
     "Hugo Award 2015"
    ]
   ]
+ },
+ {
+  "id": "nobel",
+  "title": "Nobel Prize in Literature",
+  "emoji": "🎖️",
+  "genre": "Prize winner",
+  "seeds": [
+   [
+    "Autobiography of Red",
+    "Anne Carson",
+    "Nobel Prize in Literature 2026"
+   ],
+   [
+    "Satantango",
+    "László Krasznahorkai",
+    "Nobel Prize in Literature 2025"
+   ],
+   [
+    "The Vegetarian",
+    "Han Kang",
+    "Nobel Prize in Literature 2024"
+   ],
+   [
+    "Septology",
+    "Jon Fosse",
+    "Nobel Prize in Literature 2023"
+   ],
+   [
+    "The Years",
+    "Annie Ernaux",
+    "Nobel Prize in Literature 2022"
+   ],
+   [
+    "Paradise",
+    "Abdulrazak Gurnah",
+    "Nobel Prize in Literature 2021"
+   ],
+   [
+    "The Wild Iris",
+    "Louise Glück",
+    "Nobel Prize in Literature 2020"
+   ],
+   [
+    "A Sorrow Beyond Dreams",
+    "Peter Handke",
+    "Nobel Prize in Literature 2019"
+   ],
+   [
+    "Flights",
+    "Olga Tokarczuk",
+    "Nobel Prize in Literature 2018"
+   ],
+   [
+    "The Remains of the Day",
+    "Kazuo Ishiguro",
+    "Nobel Prize in Literature 2017"
+   ],
+   [
+    "Voices from Chernobyl",
+    "Svetlana Alexievich",
+    "Nobel Prize in Literature 2015"
+   ],
+   [
+    "Missing Person",
+    "Patrick Modiano",
+    "Nobel Prize in Literature 2014"
+   ]
+  ]
+ },
+ {
+  "id": "nebula",
+  "title": "Nebula Award for Best Novel",
+  "emoji": "🌌",
+  "genre": "Prize winner",
+  "seeds": [
+   [
+    "The Buffalo Hunter Hunter",
+    "Stephen Graham Jones",
+    "Nebula Award 2026"
+   ],
+   [
+    "Someone You Can Build a Nest In",
+    "John Wiswell",
+    "Nebula Award 2025"
+   ],
+   [
+    "Babel",
+    "R. F. Kuang",
+    "Nebula Award 2023"
+   ],
+   [
+    "A Master of Djinn",
+    "P. Djèlí Clark",
+    "Nebula Award 2022"
+   ],
+   [
+    "Network Effect",
+    "Martha Wells",
+    "Nebula Award 2021"
+   ],
+   [
+    "A Song for a New Day",
+    "Sarah Pinsker",
+    "Nebula Award 2020"
+   ],
+   [
+    "The Calculating Stars",
+    "Mary Robinette Kowal",
+    "Nebula Award 2019"
+   ],
+   [
+    "The Stone Sky",
+    "N. K. Jemisin",
+    "Nebula Award 2018"
+   ],
+   [
+    "Uprooted",
+    "Naomi Novik",
+    "Nebula Award 2016"
+   ],
+   [
+    "Annihilation",
+    "Jeff VanderMeer",
+    "Nebula Award 2015"
+   ],
+   [
+    "Ancillary Justice",
+    "Ann Leckie",
+    "Nebula Award 2014"
+   ]
+  ]
  }
 ]
