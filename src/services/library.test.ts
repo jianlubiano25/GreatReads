@@ -8,7 +8,7 @@ import type { ReadingState } from '../types';
 const base = (over: Partial<ReadingState> = {}): ReadingState => ({
   status: {}, currentPage: {}, totalPages: {}, dailyLog: {}, notes: {}, highlights: {}, goal: 10, readingIntention: '',
   profile: { name: '', photo: '', theme: 'auto' }, customBooks: [], onDeviceOverrides: {}, hiddenBookIds: {}, words: [],
-  garden: { plants: {}, placements: {}, achievements: {}, celebrated: {} } as any, ...over,
+  garden: { plants: {}, placements: {}, achievements: {}, celebrated: {} } as any, history: {}, ratings: {}, ...over,
 });
 const piranesi = () => DEFAULT_BOOKS.find(b => b.title === 'Piranesi')!;
 const fromSearch = () => ({ ...piranesi(), id: 'search_piranesi', identity: undefined, isOnDevice: false } as any);

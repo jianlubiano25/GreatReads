@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pencil, Plus } from 'lucide-react';
+import { Pencil, Plus, Search, X } from 'lucide-react';
 import type { Book, BookStatus, ReadingState } from '../../types';
 import { BOOK_AWARDS } from '../../data/defaultBooks';
 import { bookKind } from '../../services/bookKind';
+import { readingNowOrder } from '../../services/bookHistory';
 import { booksOf, loadCollections, newCollectionId, saveCollections, type Collection } from '../../services/libraryCollections';
 import { LibraryCard } from '../cards';
 import { LibraryCollectionModal } from '../LibraryCollectionModal';
@@ -42,7 +43,7 @@ interface Props {
   active: boolean;
   /** Every library book that is not finished */
   libraryBooks: Book[];
-  state: Pick<ReadingState, 'status' | 'highlights'>;
+  state: Pick<ReadingState, 'status' | 'highlights' | 'currentPage' | 'totalPages' | 'history'>;
   handleOpenCover: (book: Book) => void;
   handleOpenHighlights: (book: Book) => void;
   setBookStatus: (id: string | number, status: BookStatus) => void;
@@ -58,6 +59,7 @@ export function LibraryTab({ active, libraryBooks, state, handleOpenCover, handl
   const [libFilter, setLibFilter] = useState<string>('all');
   const [collections, setCollections] = useState<Collection[]>(() => loadCollections());
   const [editing, setEditing] = useState<Editing | null>(null);
+  const [query, setQuery] = useState('');
 
   // The header's "Add shelf" opens the new-shelf dialog (each new request opens it once)
   const handledRequest = useRef(newShelfRequest);
@@ -87,11 +89,12 @@ export function LibraryTab({ active, libraryBooks, state, handleOpenCover, handl
     }
   }, [libFilter, collections]);
 
+  const needle = query.trim().toLowerCase();
   const visibleBooks = useMemo(() => {
-    const list = libraryBooks.filter(passesTag);
+    const list = libraryBooks.filter(passesTag).filter(b => !needle || `${b.title} ${b.author} ${b.genre || ''}`.toLowerCase().includes(needle));
     // "First 12" keeps its own reading order
     return libFilter === 'f' ? list.sort((a, b) => (a.first12Order || 0) - (b.first12Order || 0)) : list;
-  }, [libraryBooks, passesTag, libFilter]);
+  }, [libraryBooks, passesTag, libFilter, needle]);
 
   const statusRows = useMemo(() => {
     const byStatus = new Map<BookStatus, Book[]>();
@@ -99,8 +102,12 @@ export function LibraryTab({ active, libraryBooks, state, handleOpenCover, handl
       const s = state.status[String(b.id)] || noStatus;
       byStatus.set(s, [...(byStatus.get(s) || []), b]);
     }
-    return STATUS_SHELVES.map(s => ({ ...s, books: byStatus.get(s.status) || [] })).filter(r => r.books.length > 0);
-  }, [visibleBooks, state.status]);
+    return STATUS_SHELVES.map(s => {
+      const books = byStatus.get(s.status) || [];
+      // Reading now: the book you read most recently comes first
+      return { ...s, books: s.status === 'now' ? readingNowOrder(books, state.history) : books };
+    }).filter(r => r.books.length > 0);
+  }, [visibleBooks, state.status, state.history]);
 
   const shownIds = useMemo(() => new Set(visibleBooks.map(b => String(b.id))), [visibleBooks]);
 
@@ -150,6 +157,8 @@ export function LibraryTab({ active, libraryBooks, state, handleOpenCover, handl
                 book={b}
                 status={state.status[String(b.id)] || noStatus}
                 highlightCount={(state.highlights[String(b.id)] || []).length}
+                currentPage={state.currentPage[String(b.id)] || 0}
+                totalPages={state.totalPages[String(b.id)] || b.pageCount || 0}
                 onOpen={handleOpenCover}
                 onQuotes={handleOpenHighlights}
                 onStatus={setBookStatus}
@@ -167,6 +176,24 @@ export function LibraryTab({ active, libraryBooks, state, handleOpenCover, handl
   return (
     <TabPane active={active}>
       <div className="flex flex-col gap-6">
+        {/* Search the Library */}
+        <div className="relative">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#706256] dark:text-[#a89a8a] pointer-events-none" aria-hidden="true" />
+          <input
+            type="search"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search your library"
+            aria-label="Search your library"
+            className="w-full py-2.5 pl-10 pr-10 rounded-full text-sm bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-[#201a15] dark:text-[#f0e6d6] placeholder:text-[#706256] dark:placeholder:text-[#a89a8a] focus:outline-none focus:border-[#2e5934]"
+          />
+          {query && (
+            <button type="button" onClick={() => setQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full hover:bg-black/5" aria-label="Clear search">
+              <X className="w-4 h-4 text-[#706256] dark:text-[#a89a8a]" />
+            </button>
+          )}
+        </div>
+
         {/* Tags: scroll sideways; the + makes a new one */}
         <div className="flex items-center gap-2 text-xs overflow-x-auto no-scrollbar -mx-1 px-1 py-0.5">
           <button
@@ -208,13 +235,13 @@ export function LibraryTab({ active, libraryBooks, state, handleOpenCover, handl
             c.name,
             booksOf(c, libraryBooks).filter(b => shownIds.has(String(b.id))),
             () => setEditing({ id: c.id, kind: 'shelf', name: c.name, bookIds: c.bookIds }),
-            libFilter === 'all' ? 'No books here yet. Tap the pencil to add some.' : 'None of this shelf\u2019s books have this tag.',
+            libFilter === 'all' && !needle ? 'No books here yet. Tap the pencil to add some.' : needle ? 'None of this shelf\u2019s books match your search.' : 'None of this shelf\u2019s books have this tag.',
           ),
         )}
 
         {statusRows.length === 0 && customShelves.length === 0 && (
           <p className="text-sm text-[#706256] dark:text-[#a89a8a]">
-            {libraryBooks.length === 0 ? 'Your Library is empty. Use + at the top to add a book.' : 'No books have this tag yet.'}
+            {libraryBooks.length === 0 ? 'Your Library is empty. Use + at the top to add a book.' : needle ? 'No books match your search.' : 'No books have this tag yet.'}
           </p>
         )}
       </div>

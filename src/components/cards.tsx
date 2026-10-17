@@ -285,9 +285,12 @@ function ShelfCardTop({ book: b, onOpen }: { book: Book; onOpen: (b: Book) => vo
 const ICON_BTN = 'p-1.5 rounded-lg border border-[#e3d7c3] dark:border-[#382f25] hover:bg-black/5 text-[#706256] dark:text-[#a89a8a]';
 
 export const LibraryCard = React.memo(function LibraryCard({
-  book: b, status, highlightCount, onOpen, onQuotes, onStatus, onRemove,
+  book: b, status, highlightCount, currentPage = 0, totalPages = 0, onOpen, onQuotes, onStatus, onRemove,
 }: ShelfCardProps & {
   status: BookStatus;
+  /** Pages read so far / book length: shown as a progress line while you are reading it */
+  currentPage?: number;
+  totalPages?: number;
   onStatus: (id: string | number, status: BookStatus) => void;
   onRemove: (b: Book) => void;
 }) {
@@ -297,6 +300,21 @@ export const LibraryCard = React.memo(function LibraryCard({
 
       {b.notes && (
         <p className="text-xs text-[#706256] dark:text-[#a89a8a] italic line-clamp-2">“{b.notes}”</p>
+      )}
+
+      {(status === 'now' || currentPage > 0) && (
+        <div className="flex flex-col gap-1" aria-label={`Progress in ${b.title}`}>
+          {totalPages > 0 && (
+            <div className="w-full h-1.5 rounded-full bg-[#e3d7c3] dark:bg-[#382f25] overflow-hidden">
+              <div className="h-full bg-[#2e5934] dark:bg-[#86b880] rounded-full" style={{ width: `${Math.min(100, Math.round((currentPage / totalPages) * 100))}%` }} />
+            </div>
+          )}
+          <span className="text-[11px] text-[#706256] dark:text-[#a89a8a]">
+            {totalPages > 0
+              ? `Page ${currentPage} of ${totalPages} · ${Math.min(100, Math.round((currentPage / totalPages) * 100))}%`
+              : `Page ${currentPage}`}
+          </span>
+        </div>
       )}
 
       <div className="flex items-center gap-2 pt-2 border-t border-[#e3d7c3] dark:border-[#382f25]">

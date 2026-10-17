@@ -5,6 +5,7 @@ import { INITIAL_WORDS } from '../data/defaultWords';
 import { normalizeV2, normalizeLegacy, parseBackup } from '../services/stateSanitizer';
 import { computeSnapshot, currentStreakFor, evaluateGarden, markCelebrated, movePlant as movePlantIn, pendingCelebrations, seedGarden } from '../services/garden';
 import { dateKey } from '../services/dates';
+import { applyHistoryEdit, applyRating, stampProgress, stampStatus, type HistoryPatch } from '../services/bookHistory';
 import { applyAddBook, type AddDestination, type AddStatus } from '../services/library';
 import { clearableCacheKeys } from '../services/books/cache';
 import { exportCoverPicks, restoreCoverPicksFromBackup } from '../services/books/coverPicks';
@@ -41,6 +42,8 @@ function buildDefaultState(): ReadingState {
     words: [...INITIAL_WORDS],
     // Starter plants are owned from the first launch (no celebration prompt for them).
     garden: seedGarden({ dailyLog: {}, goal: 10, status: {}, todayKey: getTodayKey() }),
+    history: {},
+    ratings: {},
   };
 }
 
@@ -276,6 +279,8 @@ export function useReadingLife() {
           ...prev.dailyLog,
           [todayK]: Math.max(0, (prev.dailyLog[todayK] || 0) + diff),
         } : prev.dailyLog,
+        // Reading pages starts the book and makes it the latest one you read
+        history: diff > 0 ? { ...prev.history, [idKey]: stampProgress(prev.history[idKey], todayK, Date.now()) } : prev.history,
       };
     });
   }, []);
@@ -288,7 +293,18 @@ export function useReadingLife() {
         ...prev.status,
         [idKey]: status,
       },
+      history: { ...prev.history, [idKey]: stampStatus(prev.history[idKey], prev.status[idKey], status, getTodayKey(), Date.now()) },
     }));
+  }, []);
+
+  /** Edit when a book was added, started or finished (null clears a date). */
+  const setBookHistory = useCallback((bookId: string | number, patch: HistoryPatch) => {
+    setState(prev => applyHistoryEdit(prev, bookId, patch, getTodayKey()));
+  }, []);
+
+  /** Your own star rating of a book (0 takes it back). */
+  const setBookRating = useCallback((bookId: string | number, stars: number) => {
+    setState(prev => applyRating(prev, bookId, stars));
   }, []);
 
   const toggleOnDevice = useCallback((bookId: string | number, targetValue?: boolean) => {
@@ -335,6 +351,8 @@ export function useReadingLife() {
         totalPages: without(prev.totalPages),
         notes: without(prev.notes),
         highlights: without(prev.highlights),
+        history: without(prev.history),
+        ratings: without(prev.ratings),
         onDeviceOverrides: without(prev.onDeviceOverrides),
       };
     });
@@ -467,6 +485,8 @@ export function useReadingLife() {
       totalPages: {},
       notes: {},
       highlights: {},
+      history: {},
+      ratings: {},
       onDeviceOverrides: {},
     }));
   }, []);
@@ -532,6 +552,8 @@ export function useReadingLife() {
     setDayPages,
     updateBookProgress,
     setBookStatus,
+    setBookHistory,
+    setBookRating,
     toggleOnDevice,
     addBook,
     removeBook,

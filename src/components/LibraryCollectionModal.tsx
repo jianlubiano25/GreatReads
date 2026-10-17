@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Check, Trash2, X } from 'lucide-react';
+import { Check, Search, Trash2, X } from 'lucide-react';
 import type { Book } from '../types';
 import { useModalA11y } from '../hooks/useModalA11y';
 import type { Collection } from '../services/libraryCollections';
@@ -19,7 +19,10 @@ export function LibraryCollectionModal({ initial, books, onSave, onDelete, onClo
   useModalA11y(onClose);
   const [name, setName] = useState(initial.name);
   const [picked, setPicked] = useState<Set<string>>(() => new Set(initial.bookIds));
+  const [find, setFind] = useState('');
   const sorted = useMemo(() => books.slice().sort((a, b) => a.title.localeCompare(b.title)), [books]);
+  const needle = find.trim().toLowerCase();
+  const shown = useMemo(() => (needle ? sorted.filter(b => `${b.title} ${b.author}`.toLowerCase().includes(needle)) : sorted), [sorted, needle]);
   const label = initial.kind === 'shelf' ? 'shelf' : 'tag';
   const trimmed = name.trim();
 
@@ -34,20 +37,20 @@ export function LibraryCollectionModal({ initial, books, onSave, onDelete, onClo
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
       <div
-        className="relative w-full max-w-[500px] max-h-[85vh] bg-[#fbf7ee] dark:bg-[#231d17] text-[#201a15] dark:text-[#f0e6d6] rounded-3xl shadow-2xl border border-[#e3d7c3] dark:border-[#382f25] flex flex-col overflow-hidden"
+        className="relative w-full max-w-[500px] max-h-[85dvh] bg-[#fbf7ee] dark:bg-[#231d17] text-[#201a15] dark:text-[#f0e6d6] rounded-3xl shadow-2xl border border-[#e3d7c3] dark:border-[#382f25] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label={`${initial.id ? 'Edit' : 'New'} ${label}`}
       >
-        <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25] flex items-center justify-between">
+        <div className="shrink-0 px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25] flex items-center justify-between">
           <h3 className="font-serif-display text-xl">{initial.id ? `Edit ${label}` : `New ${label}`}</h3>
           <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-black/5" aria-label="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="px-6 pt-4 flex flex-col gap-3 min-h-0">
+        <div className="shrink-0 px-6 pt-4 pb-2 flex flex-col gap-3">
           <input
             autoFocus
             value={name}
@@ -57,12 +60,23 @@ export function LibraryCollectionModal({ initial, books, onSave, onDelete, onClo
             aria-label={`${label} name`}
             className="w-full py-2 px-3 rounded-xl text-sm bg-[#f5f0e6] dark:bg-[#181410] border border-[#e3d7c3] dark:border-[#382f25] focus:outline-none focus:border-[#2e5934]"
           />
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#706256] dark:text-[#a89a8a] pointer-events-none" aria-hidden="true" />
+            <input
+              type="search"
+              value={find}
+              onChange={e => setFind(e.target.value)}
+              placeholder="Search books"
+              aria-label="Search books to add"
+              className="w-full py-2 pl-9 pr-3 rounded-xl text-sm bg-[#f5f0e6] dark:bg-[#181410] border border-[#e3d7c3] dark:border-[#382f25] focus:outline-none focus:border-[#2e5934]"
+            />
+          </div>
           <p className="text-xs text-[#706256] dark:text-[#a89a8a]">Tick the books in your Library that belong here ({picked.size} chosen).</p>
         </div>
 
-        <ul className="px-6 py-2 overflow-y-auto min-h-0 flex-1">
-          {sorted.length === 0 && <li className="py-3 text-sm text-[#706256] dark:text-[#a89a8a]">Your Library has no books yet. You can add some later.</li>}
-          {sorted.map(b => {
+        <ul className="px-6 py-2 overflow-y-auto min-h-0 flex-1 basis-0">
+          {shown.length === 0 && <li className="py-3 text-sm text-[#706256] dark:text-[#a89a8a]">{sorted.length === 0 ? 'Your Library has no books yet. You can add some later.' : 'No books match your search.'}</li>}
+          {shown.map(b => {
             const id = String(b.id);
             const on = picked.has(id);
             return (
@@ -86,7 +100,7 @@ export function LibraryCollectionModal({ initial, books, onSave, onDelete, onClo
           })}
         </ul>
 
-        <div className="px-6 py-4 border-t border-[#e3d7c3] dark:border-[#382f25] flex items-center gap-2">
+        <div className="shrink-0 px-6 py-4 border-t border-[#e3d7c3] dark:border-[#382f25] flex items-center gap-2">
           {initial.id && onDelete && (
             <button type="button" onClick={onDelete} className="p-2 rounded-xl text-[#706256] hover:text-red-500" aria-label={`Delete ${label}`} title={`Delete ${label} (your books stay in the Library)`}>
               <Trash2 className="w-4 h-4" />

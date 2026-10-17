@@ -3,6 +3,7 @@ import { Book, TabType, WordItem } from './types';
 import { useReadingLife } from './hooks/useReadingLife';
 import { getCoverPick, getCoverUrl, sameWork, withKnownRating, isCoverAdminOn, subscribeCoverAdmin, tapSecret, syncSharedCovers } from './services/books';
 import { milestone } from './services/books/perf';
+import { prettyDate, readingNowOrder } from './services/bookHistory';
 import { enrichInBackground } from './services/books/infoQueue';
 import { DEFAULT_BOOKS } from './data/defaultBooks';
 import { useAppUpdate, applyUpdate, dismissUpdate, restartApp } from './services/appUpdate';
@@ -82,6 +83,8 @@ export default function App() {
     setDayPages,
     updateBookProgress,
     setBookStatus,
+    setBookHistory,
+    setBookRating,
     toggleOnDevice,
     addBook,
     removeBook,
@@ -179,8 +182,9 @@ export default function App() {
   // Books categorization
   const nowReadingBooks = useMemo(() => {
     const statusMap = state.status || {};
-    return allBooks.filter(b => statusMap[String(b.id)] === 'now');
-  }, [allBooks, state.status]);
+    // The book you read most recently comes first
+    return readingNowOrder(allBooks.filter(b => statusMap[String(b.id)] === 'now'), state.history);
+  }, [allBooks, state.status, state.history]);
 
   const upNextBooks = useMemo(() => {
     const statusMap = state.status || {};
@@ -226,6 +230,26 @@ export default function App() {
   }, [libraryBooks, state.status]);
 
   // The books whose own rating wins (ratings policy, step 1). One array per library, so its index (see indexKnownRatings) is built once, not on every render.
+  // Discover cards show where each book you own stands (status, pages, dates) and your own stars
+  const discoverLine = useMemo(() => {
+    const byId = new Map(libraryBooks.map(b => [String(b.id), b]));
+    return (b: Book): string | undefined => {
+      const owned = byId.get(String(b.id)) ?? libraryBooks.find(x => sameWork(x, b, true));
+      const key = String(owned ? owned.id : b.id);
+      const stars = state.ratings[key] ? `You rated it ${'★'.repeat(state.ratings[key])}` : '';
+      if (!owned) return stars || undefined;
+      const st = state.status[key];
+      const total = state.totalPages[key] || owned.pageCount || 0;
+      const page = state.currentPage[key] || 0;
+      const where =
+        st === 'now' ? `Reading now${page ? ` · page ${page}${total ? ` of ${total}` : ''}` : ''}`
+        : st === 'next' ? 'Up next'
+        : st === 'done' ? `Finished${state.history[key]?.finished ? ` ${prettyDate(state.history[key]?.finished)}` : ''}`
+        : st === 'skip' ? '' : 'On your list';
+      return [where, stars].filter(Boolean).join(' · ') || undefined;
+    };
+  }, [libraryBooks, state.status, state.currentPage, state.totalPages, state.history, state.ratings]);
+
   const knownPool = useMemo(() => [...DEFAULT_BOOKS, ...libraryBooks], [libraryBooks]);
 
   // Fill in missing ratings / pages / year / synopsis / author bio in the background while the app is open (a few books at a time, paused when hidden or
@@ -455,6 +479,7 @@ export default function App() {
             customizing={customizing}
             setCustomizing={setCustomizing}
             handleOpenCover={handleOpenCover}
+            mine={discoverLine}
           />
         )}
 
@@ -604,6 +629,11 @@ export default function App() {
           totalPages={state.totalPages[ownKey]}
           note={state.notes[ownKey]}
           highlightsCount={(state.highlights[ownKey] || []).length}
+          history={state.history[ownKey]}
+          userRating={state.ratings[ownKey]}
+          onRate={stars => setBookRating(ownKey, stars)}
+          onEditHistory={patch => setBookHistory(ownKey, patch)}
+          onUpdateProgress={(page, total) => updateBookProgress(ownKey, page, total)}
           onClose={() => setSelectedBookForDetail(null)}
           onAddToLibrary={(b, status) => {
             addBook(b, 'library', status);

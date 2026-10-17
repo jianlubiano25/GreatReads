@@ -19,6 +19,8 @@ const book = (id: string, title: string): Book => makeBook({ id, title, author: 
 const state = {
   status: {}, currentPage: {}, totalPages: {}, highlights: {}, notes: {}, dailyLog: {}, goal: 10, readingIntention: '',
   garden: seedGarden({ dailyLog: {}, goal: 10, status: {}, todayKey: '2026-10-09' }),
+  history: {},
+  ratings: {},
   words: [{ id: 'w1', word: 'petrichor', definition: 'The smell of rain', isLearned: false }],
 } as any;
 
@@ -60,4 +62,20 @@ test('Store tab: Customize Store replaces the search and shelves', () => {
   const store = renderToStaticMarkup(h(StoreTab, { active: true, allBooks: [], customizing: true, setCustomizing: noop, handleOpenCover: noop }));
   assert.match(store, /Customize Store/);
   assert.ok(!/Title, Author, ISBN, or Keywords/.test(store));
+});
+
+test('Library: Reading now shows the book you read last first, with its page progress, and has a search box', () => {
+  const books = [book('a', 'Alpha Book'), book('b', 'Beta Book')];
+  const s = {
+    ...state,
+    status: { a: 'now', b: 'now' },
+    currentPage: { a: 10, b: 120 },
+    totalPages: { a: 100, b: 300 },
+    history: { a: { lastRead: 1 }, b: { lastRead: 2 } },
+  };
+  const html = renderToStaticMarkup(h(LibraryTab, { active: true, libraryBooks: books, state: s as any, handleOpenCover: noop, handleOpenHighlights: noop, setBookStatus: noop, confirmRemoveFromLibrary: noop, newShelfRequest: 0 }));
+  assert.ok(html.indexOf('Beta Book') < html.indexOf('Alpha Book'), 'latest read comes first');
+  assert.match(html, /Page 120 of 300/);
+  assert.match(html, /aria-label="Search your library"/);
+  assert.match(html, /Reading now/);
 });

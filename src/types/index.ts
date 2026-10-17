@@ -111,6 +111,14 @@ export interface GardenState {
   vine: number; // 0..1 window vine growth, high-water mark
 }
 
+/** When things happened to one book. Dates are local "YYYY-MM-DD"; you can edit them in Book Info. */
+export interface BookHistory {
+  added?: string;    // put on your list
+  started?: string;  // started reading
+  finished?: string; // finished
+  lastRead?: number; // when you last read or moved it to Reading now (time stamp; decides which Reading now book comes first)
+}
+
 export interface ReadingState {
   status: Record<string, BookStatus>;
   currentPage: Record<string, number>;
@@ -126,6 +134,8 @@ export interface ReadingState {
   hiddenBookIds: Record<string, boolean>;
   words: WordItem[];
   garden: GardenState;
+  history: Record<string, BookHistory>; // bookId -> dates
+  ratings: Record<string, number>; // bookId -> your own rating, 1 to 5
 }
 
 export type TabType = 'today' | 'store' | 'lib' | 'words' | 'dev';

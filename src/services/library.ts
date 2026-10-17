@@ -1,6 +1,8 @@
-import type { Book, ReadingState } from '../types';
+import type { Book, BookStatus, ReadingState } from '../types';
 import { DEFAULT_BOOKS } from '../data/defaultBooks';
 import { mergeBooks, sameWork } from './books';
+import { stampStatus } from './bookHistory';
+import { dateKey } from './dates';
 
 export type AddDestination = 'device' | 'library' | 'now' | 'next';
 /** Where in your reading a book sits when you add it: Reading Now, Up Next, or just on your list */
@@ -31,8 +33,12 @@ export function applyAddBook(prev: ReadingState, incoming: Book, destination: Ad
     updatedCustom = [{ ...incoming, isOnDevice: isDevice }, ...prev.customBooks];
   }
 
+  const newStatus: BookStatus = chosen ?? (destination === 'now' || destination === 'next' ? destination : (prev.status[idKey] || 'list'));
+
   return {
     ...prev,
+    // The day it joined your list (and the day you started it, if it goes straight to Reading now)
+    history: { ...prev.history, [idKey]: stampStatus(prev.history?.[idKey], prev.status[idKey], newStatus, dateKey(), Date.now()) },
     customBooks: updatedCustom,
     // Only write an on-device setting when the person chose "device": adding to the library must never turn a built-in book's device copy off
     onDeviceOverrides: isDevice ? { ...prev.onDeviceOverrides, [idKey]: true } : prev.onDeviceOverrides,
@@ -40,7 +46,7 @@ export function applyAddBook(prev: ReadingState, incoming: Book, destination: Ad
     status: {
       ...prev.status,
       // `chosen` is the status picked in the Add dialog (an explicit choice); without one, only 'now' / 'next' destinations set it
-      [idKey]: chosen ?? (destination === 'now' || destination === 'next' ? destination : (prev.status[idKey] || 'list')),
+      [idKey]: newStatus,
     },
   };
 }

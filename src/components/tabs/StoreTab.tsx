@@ -23,6 +23,8 @@ interface Props {
   customizing: boolean;
   setCustomizing: (on: boolean) => void;
   handleOpenCover: (book: Book) => void;
+  /** Your own status, pages, dates and stars for a book, shown on its Discover card */
+  mine?: (b: Book) => string | undefined;
 }
 
 /** Search shows 20 results (rows of three) at first; "View more" adds 20 more, "View all" shows everything loaded, "Load more results" asks the catalog for its next batch. */
@@ -47,7 +49,7 @@ const PRIZE_TITLE = (
 );
 
 /** The Discover tab (the Store): search, the shelves in the reader's own order, and Customize Store. */
-export function StoreTab({ active, allBooks, customizing, setCustomizing, handleOpenCover }: Props) {
+export function StoreTab({ active, allBooks, customizing, setCustomizing, handleOpenCover, mine }: Props) {
   // Store layout: the reader's own shelf order and hidden shelves (prefs only; shelf data is never touched, see services/store/prefs.ts)
   const [storePrefs, setStorePrefs] = useState<StorePrefs>(loadStorePrefs);
   const shelfOrder = useMemo(() => orderShelves(DEFAULT_SHELF_ORDER, storePrefs.order), [storePrefs.order]);
@@ -327,9 +329,9 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
             if (def.library) {
               const books = def.library === 'prize' ? prizeBooks : easyBooks;
               const title = def.library === 'prize' ? PRIZE_TITLE : def.title;
-              return <StoreShelf key={id} id={id} title={title} books={books} known={known} priority={priority} onOpen={handleOpenCover} />;
+              return <StoreShelf key={id} id={id} title={title} books={books} known={known} priority={priority} mine={mine} onOpen={handleOpenCover} />;
             }
-            return <StoreShelf key={id} id={id} title={def.title} source={def.source} ranked={def.ranked} lazy={def.lazy} hideIfUnavailable={def.hideIfUnavailable} known={known} priority={priority} onOpen={handleOpenCover} />;
+            return <StoreShelf key={id} id={id} title={def.title} source={def.source} ranked={def.ranked} lazy={def.lazy} hideIfUnavailable={def.hideIfUnavailable} known={known} priority={priority} mine={mine} onOpen={handleOpenCover} />;
           })}
           <p className="text-xs text-[#706256] dark:text-[#a89a8a]">Bestsellers from The New York Times. Covers and ratings from Open Library, Google Books and Apple Books readers.</p>
           </>

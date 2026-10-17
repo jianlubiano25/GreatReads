@@ -1,6 +1,8 @@
 import React, { Suspense, lazy, useState, useSyncExternalStore } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
-import { Book } from '../types';
+import { Book, BookHistory } from '../types';
+import type { HistoryPatch } from '../services/bookHistory';
+import { RateThisBook, YourReading } from './BookJourney';
 import { DIFFICULTY_LABELS, SHELF_LABELS } from '../data/defaultBooks';
 import { useBookInfo } from '../hooks/useBookInfo';
 import { mainRating, otherRatings, RATING_SOURCE_LABEL, isCoverAdminOn, subscribeCoverAdmin, type SourceRating } from '../services/books';
@@ -26,13 +28,19 @@ interface AppleBookDetailModalProps {
   totalPages?: number;
   note?: string;
   highlightsCount?: number;
+  /** When you added / started / finished it (your copy only) */
+  history?: BookHistory;
+  /** Your own 1 to 5 rating */
+  userRating?: number;
+  onRate?: (stars: number) => void;
+  onEditHistory?: (patch: HistoryPatch) => void;
   onClose: () => void;
   /** `status` is what was picked in the "which list?" dialog */
   onAddToLibrary: (book: Book, status: ListChoice) => void;
   onAddToDevice: (book: Book, status: ListChoice) => void;
   /** Move the book to Reading Now / Up Next / On My List (adds it to the library first when it is not there yet) */
   onSetStatus: (book: Book, status: ListChoice) => void;
-  onUpdateProgress?: (page: number) => void;
+  onUpdateProgress?: (page: number, total?: number) => void;
   onOpenHighlights?: () => void;
 }
 
@@ -44,11 +52,16 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   currentPage = 0,
   totalPages: propTotalPages,
   highlightsCount = 0,
+  history,
+  userRating,
+  onRate,
+  onEditHistory,
   onClose,
   onAddToLibrary,
   onAddToDevice,
   onSetStatus,
   onOpenHighlights,
+  onUpdateProgress,
 }) => {
   useModalA11y(onClose);
   // Everything already found about this book is here on the first render (no loading state); what is missing is fetched in the background,
@@ -381,6 +394,20 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
         ) : loading.ratings ? (
           <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25] text-sm text-[#706256] dark:text-[#a89a8a]" role="status" aria-live="polite">Loading ratings…</div>
         ) : null}
+
+        {/* Your own rating (every book) and, for books on your list, your reading dates and pages */}
+        {onRate && <RateThisBook title={book.title} value={userRating} onRate={onRate} />}
+        {inLibrary && onEditHistory && (
+          <YourReading
+            title={book.title}
+            history={history}
+            status={readingStatus}
+            currentPage={currentPage}
+            totalPages={displayPages}
+            onEdit={onEditHistory}
+            onProgress={onUpdateProgress}
+          />
+        )}
 
         {/* Information */}
         <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25]">
