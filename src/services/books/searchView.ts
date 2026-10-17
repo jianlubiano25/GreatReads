@@ -1,4 +1,5 @@
 import type { Book } from '../../types';
+import { bookKind } from '../bookKind';
 import { isKnownGenre, shrunkRating } from './model';
 
 /**
@@ -15,9 +16,19 @@ export interface SearchView {
   ratedOnly: boolean;
   /** Published within this many years (0 = any time); a book with no year is left out while this is on */
   years: number;
+  /** '' = both. A book whose genre is not known is kept (it cannot be said to be the other kind). */
+  kind: '' | 'fiction' | 'nonfiction';
+  /** '' = any length; a book with no page count is left out while this is on */
+  length: '' | 'short' | 'medium' | 'long';
 }
 
-export const DEFAULT_SEARCH_VIEW: SearchView = { sort: 'relevance', genre: '', coverOnly: false, ratedOnly: false, years: 0 };
+/** Page counts: short is under 250 pages, long is over 450 */
+export const SHORT_PAGES = 250;
+export const LONG_PAGES = 450;
+export const SEARCH_KIND_LABEL: Record<string, string> = { '': 'Fiction & non-fiction', fiction: 'Fiction', nonfiction: 'Non-fiction' };
+export const SEARCH_LENGTH_LABEL: Record<string, string> = { '': 'Any length', short: `Short (under ${SHORT_PAGES} pages)`, medium: `Medium (${SHORT_PAGES}–${LONG_PAGES})`, long: `Long (over ${LONG_PAGES})` };
+
+export const DEFAULT_SEARCH_VIEW: SearchView = { sort: 'relevance', genre: '', coverOnly: false, ratedOnly: false, years: 0, kind: '', length: '' };
 
 export const SEARCH_PUBLISHED_LABEL: Record<number, string> = { 0: 'Any time', 2: 'Last 2 years', 5: 'Last 5 years', 10: 'Last 10 years', 25: 'Last 25 years' };
 
@@ -29,7 +40,7 @@ export const SEARCH_SORT_LABEL: Record<SearchSort, string> = {
 };
 
 /** How many things differ from the default view (shown on the filter icon; the sort order counts as one) */
-export const activeFilterCount = (v: SearchView): number => (v.sort !== 'relevance' ? 1 : 0) + (v.genre ? 1 : 0) + (v.coverOnly ? 1 : 0) + (v.ratedOnly ? 1 : 0) + (v.years ? 1 : 0);
+export const activeFilterCount = (v: SearchView): number => (v.sort !== 'relevance' ? 1 : 0) + (v.genre ? 1 : 0) + (v.coverOnly ? 1 : 0) + (v.ratedOnly ? 1 : 0) + (v.years ? 1 : 0) + (v.kind ? 1 : 0) + (v.length ? 1 : 0);
 
 export const isDefaultView = (v: SearchView): boolean => activeFilterCount(v) === 0;
 
@@ -48,10 +59,17 @@ export function genreOptions(books: readonly Book[], max = 10): string[] {
 const hasRating = (b: Book): boolean => !!b.ratingAverage && (b.ratingCount ?? 1) > 0;
 const hasCover = (b: Book): boolean => !!(b.coverId || b.coverUrl);
 
+const lengthOk = (b: Book, length: SearchView['length']): boolean => {
+  if (!length) return true;
+  const n = b.pageCount || 0;
+  if (!n) return false;
+  return length === 'short' ? n < SHORT_PAGES : length === 'long' ? n > LONG_PAGES : n >= SHORT_PAGES && n <= LONG_PAGES;
+};
+
 /** The list in the chosen order, with the chosen filters applied. Sorting is stable: books that tie keep their best-match order. */
 export function applySearchView(books: readonly Book[], v: SearchView): Book[] {
   const thisYear = new Date().getFullYear();
-  let out = books.filter(b => (!v.genre || genreOf(b).toLowerCase() === v.genre.toLowerCase()) && (!v.coverOnly || hasCover(b)) && (!v.ratedOnly || hasRating(b)) && (!v.years || (Number(b.year) || 0) >= thisYear - v.years));
+  let out = books.filter(b => (!v.genre || genreOf(b).toLowerCase() === v.genre.toLowerCase()) && (!v.coverOnly || hasCover(b)) && (!v.ratedOnly || hasRating(b)) && (!v.years || (Number(b.year) || 0) >= thisYear - v.years) && (!v.kind || !isKnownGenre(b.genre) || bookKind(b) === v.kind) && lengthOk(b, v.length));
   if (v.sort === 'relevance') return out;
   const key = (b: Book): number => {
     if (v.sort === 'newest') return Number(b.year) || 0; // no year sorts last

@@ -1,6 +1,6 @@
 import type { Book } from '../../types';
 import { bookKind } from '../bookKind';
-import { SEARCH_GENRES } from '../../data/searchGenres';
+import { SEARCH_GENRES, type SearchGenre } from '../../data/searchGenres';
 import { isKnownGenre } from './model';
 import { normQ } from './query';
 
@@ -47,4 +47,26 @@ export function diversify<T extends Pick<Book, 'author'>>(list: readonly T[], pe
     later.push(b);
   }
   return [...first, ...later];
+}
+
+/**
+ * Typed words that are a genre or one of its sub-genres ("fantasy", "Cozy Mystery"): which genre page they belong to, and the Keywords query to open it with.
+ * A genre's own name wins over another genre's sub-genre of the same words ("fantasy romance" is a sub-genre of both Fantasy and Romance: the first listed owns it).
+ */
+const GENRE_OF_QUERY: Map<string, { genre: SearchGenre; query: string }> = new Map();
+for (const g of SEARCH_GENRES) { const k = normQ(g.query); if (!GENRE_OF_QUERY.has(k)) GENRE_OF_QUERY.set(k, { genre: g, query: g.query }); }
+for (const g of SEARCH_GENRES) for (const s of g.subgenres) { const k = normQ(s.query); if (!GENRE_OF_QUERY.has(k)) GENRE_OF_QUERY.set(k, { genre: g, query: s.query }); }
+for (const g of SEARCH_GENRES) { const k = normQ(g.label); if (!GENRE_OF_QUERY.has(k)) GENRE_OF_QUERY.set(k, { genre: g, query: g.query }); }
+
+export const genreForQuery = (text: string): { genre: SearchGenre; query: string } | undefined => GENRE_OF_QUERY.get(normQ(text));
+
+/**
+ * "More like this" for a book: its genre's page when the book's genre is one the Search tab knows, otherwise the author's other books.
+ * It only goes by what the book says about itself (its genre and author); nothing is guessed.
+ */
+export function moreLikeThis(b: Pick<Book, 'genre' | 'author'>): { kind: 'genre'; genre: SearchGenre; query: string } | { kind: 'author'; query: string } | null {
+  const hit = isKnownGenre(b.genre) ? genreForQuery(b.genre) : undefined;
+  if (hit) return { kind: 'genre', ...hit };
+  const author = (b.author || '').trim();
+  return author && !/unknown/i.test(author) ? { kind: 'author', query: author } : null;
 }

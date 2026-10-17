@@ -1,6 +1,7 @@
 import type { Book } from '../types';
 import type { SearchGenre } from '../data/searchGenres';
 import { genrePicks, genrePopular } from '../services/store/genrePicks';
+import { genreRowSource } from '../services/store/genreRows';
 import { StoreShelf } from './StoreShelf';
 
 interface Props {
@@ -41,6 +42,8 @@ export function GenrePicks({ genre, query, known, onPick, onOpen }: Props) {
 
       {popular && <StoreShelf key={popular.id} id={popular.id} title="Popular now" source={popular.source} ranked lazy hideIfUnavailable known={known} onOpen={onOpen} />}
       {picks && <StoreShelf key={picks.id} id={picks.id} title="Hand-picked" source={picks.source} known={known} onOpen={onOpen} />}
+      {onGenre && <StoreShelf key={`new-${genre.label}`} id={`genre-new-${genre.label}`} title="New releases" source={genreRowSource(genre, 'new')} lazy hideIfUnavailable known={known} onOpen={onOpen} />}
+      {onGenre && <StoreShelf key={`gems-${genre.label}`} id={`genre-gems-${genre.label}`} title="Hidden gems" source={genreRowSource(genre, 'gems')} lazy hideIfUnavailable known={known} onOpen={onOpen} />}
     </div>
   );
 }

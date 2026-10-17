@@ -1,3 +1,4 @@
+import { moreLikeThis } from '../services/books/genreRank';
 import React, { Suspense, lazy, useState, useSyncExternalStore } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { Book, BookHistory } from '../types';
@@ -32,6 +33,8 @@ interface AppleBookDetailModalProps {
   onClose: () => void;
   /** Opens the "Add to My Library" sheet: reading status, shelves and tags (adds the book when it is not there yet) */
   onOpenLibrarySheet: () => void;
+  /** Opens the Search tab on more books like this one (its genre, else its author); left out where that makes no sense */
+  onMoreLikeThis?: () => void;
   onUpdateProgress?: (page: number, total?: number) => void;
   onOpenHighlights?: () => void;
 }
@@ -49,6 +52,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   onEditHistory,
   onClose,
   onOpenLibrarySheet,
+  onMoreLikeThis,
   onOpenHighlights,
   onUpdateProgress,
 }) => {
@@ -198,6 +202,11 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
                 )}
               </button>
             </div>
+            {onMoreLikeThis && moreLikeThis(book) && (
+              <button type="button" onClick={onMoreLikeThis} className="mt-2 text-sm font-semibold text-[#2e5934] dark:text-[#86b880] underline underline-offset-2">
+                More like this
+              </button>
+            )}
 
             {/* Pages read so far (the status itself is the button above) */}
             {inLibrary && currentPage > 0 && (
