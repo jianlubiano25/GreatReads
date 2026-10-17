@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ReadingState } from '../types';
-import { applyHistoryEdit, applyRating, isDateKey, prettyDate, readingNowOrder, sanitizeHistory, sanitizeRatings, stampProgress, stampStatus } from './bookHistory';
+import { applyHistoryEdit, applyRating, isDateKey, prettyDate, readingNowOrder, sanitizeHistory, sanitizeRatings, snapRating, stampProgress, stampStatus } from './bookHistory';
 
 const base = (over: Partial<ReadingState> = {}): ReadingState => ({ status: {}, history: {}, ratings: {}, ...over } as ReadingState);
 
@@ -51,6 +51,31 @@ test('rating: set, change, clear', () => {
   assert.equal(s.ratings.x, 4);
   assert.equal(applyRating(s, 'x', 4), s);
   assert.deepEqual(applyRating(s, 'x', 0).ratings, {});
+});
+
+test('rating: quarter stars are kept as they are, anything between is snapped to the nearest quarter', () => {
+  assert.equal(applyRating(base(), 'x', 3.75).ratings.x, 3.75);
+  assert.equal(applyRating(base(), 'x', 0.25).ratings.x, 0.25);
+  assert.equal(applyRating(base(), 'x', 2.6).ratings.x, 2.5);
+  assert.equal(applyRating(base(), 'x', 4.9).ratings.x, 5);
+  assert.equal(snapRating(1.1), 1);
+  assert.equal(snapRating(1.13), 1.25);
+});
+
+test('rating: nothing, zero, below a quarter star or above five stars means no rating', () => {
+  assert.equal(snapRating(0), 0);
+  assert.equal(snapRating(0.1), 0);
+  assert.equal(snapRating(5.4), 0);
+  assert.equal(snapRating(NaN), 0);
+  const s = applyRating(base(), 'x', 4.25);
+  assert.deepEqual(applyRating(s, 'x', 0.05).ratings, {}); // takes the rating back, like 0 does
+  assert.deepEqual(applyRating(s, 'x', 0).ratings, {});
+  assert.equal(applyRating(base(), 'x', 0.05).ratings.x, undefined); // and does not invent one
+  assert.equal(applyRating(s, 'x', 4.3), s); // snaps to the 4.25 already saved: nothing changes
+});
+
+test('sanitize keeps quarter-star ratings (saved ones and older whole-number ones) and repairs odd values', () => {
+  assert.deepEqual(sanitizeRatings({ a: 3.75, b: 4, c: '2.5', d: 4.6, e: 0.1, f: 5.5 }), { a: 3.75, b: 4, c: 2.5, d: 4.5 });
 });
 
 test('Reading now: latest read first, then latest started, otherwise unchanged order', () => {

@@ -7,7 +7,7 @@ import { X, Loader2 } from 'lucide-react';
 interface BulkImportModalProps {
   type: 'books' | 'words';
   onClose: () => void;
-  onAddBooks?: (books: Book[], isDevice: boolean) => void;
+  onAddBooks?: (books: Book[]) => void;
   onAddWords?: (entries: Array<{ word: string; definition?: string }>) => void;
 }
 
@@ -19,7 +19,6 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
 }) => {
   useModalA11y(onClose);
   const [text, setText] = useState('');
-  const [isDevice, setIsDevice] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [done, setDone] = useState(false);
   const [progressMsg, setProgressMsg] = useState('');
@@ -64,7 +63,7 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
             shelf: 'mine',
             difficulty: 0,
             notes: 'Added via bulk list',
-            isOnDevice: isDevice,
+            isOnDevice: false,
             year: '',
             genre: 'Book',
             summary: '',
@@ -78,14 +77,14 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
           try {
             const results = await searchBooks(title, author, 1, controller.signal);
             if (controller.signal.aborted) return;
-            added.push(results.length > 0 ? { ...results[0], isOnDevice: isDevice } : placeholder());
+            added.push(results.length > 0 ? { ...results[0], isOnDevice: false } : placeholder());
           } catch {
             if (controller.signal.aborted) return;
             added.push(placeholder());
           }
         }
         if (controller.signal.aborted) return;
-        onAddBooks(added, isDevice);
+        onAddBooks(added);
         setProgressMsg(`Done! Added ${added.length} books.`);
       } else if (type === 'words' && onAddWords) {
         const parsed = lines.map(line => {
@@ -136,32 +135,6 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
             ? 'One book per line: "Title - Author" or simply the title. Info, ratings, and covers are discovered automatically.'
             : 'One word per line. Optionally add a meaning after a dash: "ephemeral - short-lived".'}
         </p>
-
-        {type === 'books' && (
-          <div className="mb-4 flex items-center gap-3 text-xs">
-            <span className="font-semibold text-[#706256] dark:text-[#a89a8a]">Destination:</span>
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input
-                type="radio"
-                name="dest"
-                checked={isDevice}
-                onChange={() => setIsDevice(true)}
-                className="accent-[#2e5934]"
-              />
-              <span>On My Device</span>
-            </label>
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input
-                type="radio"
-                name="dest"
-                checked={!isDevice}
-                onChange={() => setIsDevice(false)}
-                className="accent-[#2e5934]"
-              />
-              <span>Reading List</span>
-            </label>
-          </div>
-        )}
 
         <form onSubmit={handleImport} className="flex flex-col gap-4">
           <textarea

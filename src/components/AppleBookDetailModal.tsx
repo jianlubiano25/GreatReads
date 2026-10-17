@@ -7,7 +7,7 @@ import { DIFFICULTY_LABELS, SHELF_LABELS } from '../data/defaultBooks';
 import { useBookInfo } from '../hooks/useBookInfo';
 import { mainRating, otherRatings, RATING_SOURCE_LABEL, isCoverAdminOn, subscribeCoverAdmin, type SourceRating } from '../services/books';
 import { CoverFace, StarRating, compactCount, honorsListFor } from './BookMeta';
-import { X, BookOpen, Smartphone, Star, Award, ChevronDown, Check, Bookmark, Image as ImageIcon } from 'lucide-react';
+import { X, BookOpen, Star, Award, ChevronDown, Check, Bookmark, Image as ImageIcon } from 'lucide-react';
 
 // The cover viewer is only fetched the first time someone opens it
 const CoverPickerModal = lazy(() => import('./CoverPickerModal').then(m => ({ default: m.CoverPickerModal })));
@@ -22,7 +22,6 @@ const LIST_CHOICES: { key: ListChoice; label: string; hint: string }[] = [
 interface AppleBookDetailModalProps {
   book: Book;
   inLibrary: boolean;
-  onDevice: boolean;
   readingStatus?: string;
   currentPage?: number;
   totalPages?: number;
@@ -37,7 +36,6 @@ interface AppleBookDetailModalProps {
   onClose: () => void;
   /** `status` is what was picked in the "which list?" dialog */
   onAddToLibrary: (book: Book, status: ListChoice) => void;
-  onAddToDevice: (book: Book, status: ListChoice) => void;
   /** Move the book to Reading Now / Up Next / On My List (adds it to the library first when it is not there yet) */
   onSetStatus: (book: Book, status: ListChoice) => void;
   onUpdateProgress?: (page: number, total?: number) => void;
@@ -47,7 +45,6 @@ interface AppleBookDetailModalProps {
 export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   book: initialBook,
   inLibrary,
-  onDevice,
   readingStatus,
   currentPage = 0,
   totalPages: propTotalPages,
@@ -58,7 +55,6 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   onEditHistory,
   onClose,
   onAddToLibrary,
-  onAddToDevice,
   onSetStatus,
   onOpenHighlights,
   onUpdateProgress,
@@ -68,10 +64,10 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   // joining any lookup already running, and each field appears as it is found. See services/books/infoStore.ts.
   const { book, siteRatings, loading } = useBookInfo(initialBook);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [activeTabAction, setActiveTabAction] = useState<'idle' | 'lib' | 'dev'>('idle');
+  const [activeTabAction, setActiveTabAction] = useState<'idle' | 'lib'>('idle');
   const [showCovers, setShowCovers] = useState(false);
-  // The "which list?" dialog: opened by the list button, Add to Library and Add to Device (all three ask the same question)
-  const [picker, setPicker] = useState<null | 'status' | 'lib' | 'dev'>(null);
+  // The "which list?" dialog: opened by the list button and by Add to Library (both ask the same question)
+  const [picker, setPicker] = useState<null | 'status' | 'lib'>(null);
   const coverTools = useSyncExternalStore(subscribeCoverAdmin, isCoverAdminOn, isCoverAdminOn); // the cover button is hidden until the owner switches it on
 
   const main = mainRating(book, siteRatings); // Library -> Apple -> Open Library -> Google; the other sites are listed beside it
@@ -92,7 +88,6 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
     const target = picker;
     setPicker(null);
     if (target === 'lib') { setActiveTabAction('lib'); onAddToLibrary(book, status); setTimeout(() => setActiveTabAction('idle'), 1200); }
-    else if (target === 'dev') { setActiveTabAction('dev'); onAddToDevice(book, status); setTimeout(() => setActiveTabAction('idle'), 1200); }
     else onSetStatus(book, status);
   };
   const currentChoice: ListChoice | null = inLibrary ? (readingStatus === 'now' || readingStatus === 'next' ? readingStatus : 'list') : null;
@@ -196,12 +191,12 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
               </p>
             )}
 
-            {/* Apple Books Action Buttons (Instead of Get/Sample: Add to Library or Add to Device) */}
-            <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full max-w-md mt-2">
+            {/* Add to Library and, beside it, one button for where the book is in your reading (tapping it asks which list) */}
+            <div className="flex items-center gap-3 w-full max-w-md mt-2">
               <button
                 onClick={() => setPicker('lib')}
                 disabled={inLibrary}
-                className={`flex-1 min-h-[44px] px-3 py-2.5 rounded-full text-sm font-semibold whitespace-nowrap flex items-center justify-center gap-2 transition-all ${
+                className={`flex-1 min-w-0 min-h-[44px] px-3 py-2.5 rounded-full text-sm font-semibold whitespace-nowrap flex items-center justify-center gap-2 transition-all ${
                   inLibrary
                     ? 'bg-[#e8efe7] dark:bg-[#243422] text-[#2e5934] dark:text-[#86b880] cursor-default'
                     : 'bg-[#2e5934] text-white hover:bg-[#244729] active:scale-[0.98] shadow-sm'
@@ -209,56 +204,31 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
               >
                 {inLibrary ? (
                   <>
-                    <Check className="w-4 h-4" />
-                    <span>In Library</span>
+                    <Check className="w-4 h-4 shrink-0" />
+                    <span className="truncate">In Library</span>
                   </>
                 ) : activeTabAction === 'lib' ? (
                   <span>Adding…</span>
                 ) : (
                   <>
-                    <BookOpen className="w-4 h-4" />
-                    <span>Add to Library</span>
+                    <BookOpen className="w-4 h-4 shrink-0" />
+                    <span className="truncate">Add to Library</span>
                   </>
                 )}
               </button>
 
-              <button
-                onClick={() => setPicker('dev')}
-                disabled={onDevice}
-                className={`flex-1 min-h-[44px] px-3 py-2.5 rounded-full text-sm font-semibold whitespace-nowrap flex items-center justify-center gap-2 transition-all border ${
-                  onDevice
-                    ? 'bg-[#e8efe7] dark:bg-[#243422] text-[#2e5934] dark:text-[#86b880] border-transparent cursor-default'
-                    : 'bg-transparent border-[#2e5934] dark:border-[#86b880] text-[#2e5934] dark:text-[#86b880] hover:bg-[#2e5934]/10 active:scale-[0.98]'
-                }`}
-              >
-                {onDevice ? (
-                  <>
-                    <Check className="w-4 h-4" />
-                    <span>On Device</span>
-                  </>
-                ) : activeTabAction === 'dev' ? (
-                  <span>Adding…</span>
-                ) : (
-                  <>
-                    <Smartphone className="w-4 h-4" />
-                    <span>Add to Device</span>
-                  </>
-                )}
-              </button>
+              {readingStatus !== 'done' && (
+                <button
+                  type="button"
+                  onClick={() => setPicker('status')}
+                  aria-haspopup="dialog"
+                  className="flex-1 min-w-0 min-h-[44px] px-3 py-2.5 rounded-full text-sm font-semibold whitespace-nowrap flex items-center justify-between gap-2 border border-[#2e5934] dark:border-[#86b880] text-[#2e5934] dark:text-[#86b880] hover:bg-[#2e5934]/10 active:scale-[0.98] transition-all"
+                >
+                  <span className="flex items-center gap-2 min-w-0"><Bookmark className="w-4 h-4 shrink-0" /><span className="truncate">{currentLabel ?? 'Add to a list'}</span></span>
+                  <ChevronDown className="w-4 h-4 shrink-0" aria-hidden="true" />
+                </button>
+              )}
             </div>
-
-            {/* One button for where the book is in your reading; tapping it asks which list */}
-            {readingStatus !== 'done' && (
-              <button
-                type="button"
-                onClick={() => setPicker('status')}
-                aria-haspopup="dialog"
-                className="w-full max-w-md mt-3 min-h-[44px] px-4 py-2.5 rounded-full text-sm font-semibold flex items-center justify-between gap-2 border border-[#e3d7c3] dark:border-[#382f25] text-[#2e5934] dark:text-[#86b880] hover:bg-[#2e5934]/10 active:scale-[0.98] transition-all"
-              >
-                <span className="flex items-center gap-2"><Bookmark className="w-4 h-4" />{currentLabel ?? 'Add to a list'}</span>
-                <ChevronDown className="w-4 h-4" aria-hidden="true" />
-              </button>
-            )}
 
             {/* Reading Status Indicator if in reading list */}
             {inLibrary && readingStatus && (
@@ -317,6 +287,9 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
             <span className="text-[10px] sm:text-[11px] text-[#706256] dark:text-[#a89a8a]">Pages</span>
           </div>
         </div>
+
+        {/* Your own rating (every book), right above Honors & Awards */}
+        {onRate && <RateThisBook title={book.title} value={userRating} onRate={onRate} />}
 
         {/* Awards Section if available */}
         {awards && awards.length > 0 && (
@@ -395,8 +368,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25] text-sm text-[#706256] dark:text-[#a89a8a]" role="status" aria-live="polite">Loading ratings…</div>
         ) : null}
 
-        {/* Your own rating (every book) and, for books on your list, your reading dates and pages */}
-        {onRate && <RateThisBook title={book.title} value={userRating} onRate={onRate} />}
+        {/* For books on your list, your reading dates and pages */}
         {inLibrary && onEditHistory && (
           <YourReading
             title={book.title}
@@ -483,7 +455,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           onClick={e => e.stopPropagation()}
         >
           <h3 className="text-base font-semibold text-[#2c241b] dark:text-[#f0e8dc]">
-            {picker === 'lib' ? 'Add to Library as…' : picker === 'dev' ? 'Add to Device as…' : 'Which list?'}
+            {picker === 'lib' ? 'Add to Library as…' : 'Which list?'}
           </h3>
           <p className="text-xs text-[#706256] dark:text-[#a89a8a] mt-0.5 mb-3 line-clamp-1">{book.title}</p>
           <div className="flex flex-col gap-2">

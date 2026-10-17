@@ -6,26 +6,21 @@ import { useBookSearch } from '../hooks/useBookSearch';
 import { ClearButton } from './ClearButton';
 import { ViewMoreBar } from './ViewMoreBar';
 import { SHELF_LABELS } from '../data/defaultBooks';
-import { Search, Plus, Smartphone, BookOpen, Check, X, Loader2 } from 'lucide-react';
+import { Search, Plus, Check, X, Loader2 } from 'lucide-react';
 
 interface AddBookModalProps {
-  initialIsDevice?: boolean;
   onClose: () => void;
-  onAddBook: (book: Book, destination: 'device' | 'library') => void;
+  onAddBook: (book: Book) => void;
 }
 
 /** Matches shown at first; "View more" adds this many again */
 const ADD_STEP = 6;
 
 export const AddBookModal: React.FC<AddBookModalProps> = ({
-  initialIsDevice = false,
   onClose,
   onAddBook,
 }) => {
   useModalA11y(onClose);
-  const [destination, setDestination] = useState<'device' | 'library'>(
-    initialIsDevice ? 'device' : 'library'
-  );
   const [mode, setMode] = useState<'search' | 'manual'>('search');
 
   // Search state
@@ -59,11 +54,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
 
   const handleAddSearchResult = (book: Book) => {
     if (Object.keys(addedIds).length > 0) return;
-    const updatedBook = {
-      ...book,
-      isOnDevice: destination === 'device',
-    };
-    onAddBook(updatedBook, destination);
+    onAddBook({ ...book, isOnDevice: false });
     setAddedIds(prev => ({ ...prev, [String(book.id)]: true }));
     closeTimer.current = setTimeout(onClose, 600);
   };
@@ -79,7 +70,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
       shelf: manualShelf,
       difficulty: Number(manualPages) > 400 ? 3 : Number(manualPages) > 220 ? 2 : Number(manualPages) > 0 ? 1 : 0,
       notes: manualNotes.trim() || undefined,
-      isOnDevice: destination === 'device',
+      isOnDevice: false,
       year: manualYear.trim(),
       genre: SHELF_LABELS[manualShelf]?.label || 'Book',
       summary: '',
@@ -90,7 +81,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
       addedAt: Date.now(),
     };
 
-    onAddBook(newBook, destination);
+    onAddBook(newBook);
     setManualSuccess(true);
     closeTimer.current = setTimeout(onClose, 600);
   };
@@ -111,12 +102,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
         <div className="sticky top-0 z-20 px-6 py-4 bg-[#fbf7ee]/95 dark:bg-[#231d17]/95 backdrop-blur-md border-b border-[#e3d7c3] dark:border-[#382f25] flex items-center justify-between">
           <div>
             <h3 className="font-serif-display text-xl text-[#201a15] dark:text-[#f0e6d6]">
-              {destination === 'device' ? 'Add to On Device Library' : 'Add to Reading List'}
+              Add to Reading List
             </h3>
             <p className="text-xs text-[#706256] dark:text-[#a89a8a]">
-              {destination === 'device'
-                ? 'Books you own or store on your iPad & iPhone'
-                : 'Queue for your reading challenge'}
+              Queue for your reading challenge
             </p>
           </div>
           <button
@@ -129,36 +118,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
           </button>
         </div>
 
-        {/* Destination & Mode Selectors */}
+        {/* Mode Selector */}
         <div className="px-6 pt-4 pb-2 flex flex-col gap-3">
-          {/* Destination Selector: On Device vs Reading List */}
-          <div className="p-1 bg-[#f5f0e6] dark:bg-[#181410] rounded-xl flex items-center border border-[#e3d7c3] dark:border-[#382f25]">
-            <button
-              type="button"
-              onClick={() => setDestination('device')}
-              className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                destination === 'device'
-                  ? 'bg-white dark:bg-[#2a221a] text-[#2e5934] dark:text-[#86b880] shadow-sm'
-                  : 'text-[#706256] dark:text-[#a89a8a] hover:text-[#201a15]'
-              }`}
-            >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span>On My Device</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setDestination('library')}
-              className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                destination === 'library'
-                  ? 'bg-white dark:bg-[#2a221a] text-[#2e5934] dark:text-[#86b880] shadow-sm'
-                  : 'text-[#706256] dark:text-[#a89a8a] hover:text-[#201a15]'
-              }`}
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              <span>Reading List</span>
-            </button>
-          </div>
-
           {/* Mode Switch: Search vs Manual */}
           <div className="flex gap-4 border-b border-[#e3d7c3] dark:border-[#382f25] text-xs font-medium">
             <button
@@ -421,16 +382,12 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
               {manualSuccess ? (
                 <>
                   <Check className="w-4 h-4" />
-                  <span>
-                    {destination === 'device' ? 'Added to On Device ✓' : 'Added to Library ✓'}
-                  </span>
+                  <span>Added to Library ✓</span>
                 </>
               ) : (
                 <>
                   <Plus className="w-4 h-4" />
-                  <span>
-                    {destination === 'device' ? 'Save Book to On Device' : 'Save Book to Library'}
-                  </span>
+                  <span>Save Book to Library</span>
                 </>
               )}
             </button>

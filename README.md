@@ -1,6 +1,6 @@
 # My Reading Life (GreatReads)
 
-Reading companion: daily page goal and streak, reading nook, library, book store, Word Garden and on-device shelf.
+Reading companion: daily page goal and streak, reading nook, library, book store, search by title, author or genre, and Word Garden.
 React + Vite + Tailwind. Reading data stays in the browser (use Backup to keep copies).
 
     npm install

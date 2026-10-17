@@ -10,12 +10,14 @@ import { LibraryCollectionModal } from '../LibraryCollectionModal';
 import { TabPane } from './TabPane';
 
 const noStatus: BookStatus = 'list';
+const NO_BOOKS: Book[] = [];
 
-/** The reading-status shelves, top to bottom. Finished books live in On my device, so they are not here. */
+/** The reading-status shelves, top to bottom. */
 const STATUS_SHELVES: Array<{ status: BookStatus; title: string }> = [
   { status: 'now', title: 'Reading now' },
   { status: 'next', title: 'Up next' },
   { status: 'list', title: 'Master list' },
+  { status: 'done', title: 'Finished' },
   { status: 'skip', title: 'Skipped' },
 ];
 
@@ -43,6 +45,8 @@ interface Props {
   active: boolean;
   /** Every library book that is not finished */
   libraryBooks: Book[];
+  /** The books you have finished: they have their own "Finished" shelf here */
+  finishedBooks?: Book[];
   state: Pick<ReadingState, 'status' | 'highlights' | 'currentPage' | 'totalPages' | 'history'>;
   handleOpenCover: (book: Book) => void;
   handleOpenHighlights: (book: Book) => void;
@@ -57,7 +61,9 @@ interface Props {
 type Editing = { id?: string; kind: Collection['kind']; name: string; bookIds: string[] };
 
 /** The Library tab: your reading list as shelves you scroll sideways, with tags to narrow them down. */
-export function LibraryTab({ active, libraryBooks, state, handleOpenCover, handleOpenHighlights, setBookStatus, confirmRemoveFromLibrary, newShelfRequest, collectionsReload = 0 }: Props) {
+export function LibraryTab({ active, libraryBooks: unfinishedBooks, finishedBooks = NO_BOOKS, state, handleOpenCover, handleOpenHighlights, setBookStatus, confirmRemoveFromLibrary, newShelfRequest, collectionsReload = 0 }: Props) {
+  // Tags, shelves and the search box cover every book you have, finished or not
+  const libraryBooks = useMemo(() => (finishedBooks.length ? [...unfinishedBooks, ...finishedBooks] : unfinishedBooks), [unfinishedBooks, finishedBooks]);
   const [libFilter, setLibFilter] = useState<string>('all');
   const [collections, setCollections] = useState<Collection[]>(() => loadCollections());
   const [editing, setEditing] = useState<Editing | null>(null);

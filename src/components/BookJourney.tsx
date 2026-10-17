@@ -1,34 +1,100 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Check, Pencil, Star, X } from 'lucide-react';
 import type { BookHistory } from '../types';
-import { prettyDate, type HistoryPatch } from '../services/bookHistory';
+import { prettyDate, RATING_STEP, snapRating, type HistoryPatch } from '../services/bookHistory';
 import { dateKey } from '../services/dates';
 
 const LINE = 'border-[#e3d7c3] dark:border-[#382f25]';
 const MUTED = 'text-[#706256] dark:text-[#a89a8a]';
 
-/** "Rate this book": five stars; tap the one you already chose to take the rating back. */
+/** How much of star number `index` (0 to 4) is filled for a rating of `value`: 0, 1, or the fraction in between. */
+export const starFill = (value: number, index: number): number => Math.min(1, Math.max(0, value - index));
+
+/** The quarter star a pointer at `x` (0 = left edge of the first star, `width` = right edge of the fifth) stands on. Rounds up, so touching a star at all gives at least a quarter. */
+export function ratingAt(x: number, width: number): number {
+  if (!(width > 0)) return 0;
+  const raw = (x / width) * 5;
+  return Math.min(5, Math.max(RATING_STEP, Math.ceil(raw / RATING_STEP - 1e-9) * RATING_STEP));
+}
+
+/**
+ * "Rate this book": five stars in quarter-star steps (0.25 to 5). Tap a spot, swipe across the stars, or press and drag: the stars fill
+ * to the exact fraction under your finger while you move, and the rating is saved when you let go. A drag that turns into a scroll is
+ * cancelled and saves nothing. Arrow keys move it by a quarter star (Page Up / Down by a whole one) for keyboard and screen reader users.
+ */
 export function RateThisBook({ title, value, onRate }: { title: string; value?: number; onRate: (stars: number) => void }) {
+  const track = useRef<HTMLDivElement>(null);
+  const [live, setLive] = useState<number | null>(null); // the rating under the finger while it is down (not saved yet)
+  const shown = live ?? value ?? 0;
+
+  const at = (clientX: number): number => {
+    const r = track.current?.getBoundingClientRect();
+    return r ? ratingAt(clientX - r.left, r.width) : 0;
+  };
+  const step = (delta: number) => onRate(snapRating((value ?? 0) + delta));
+  const text = (n: number) => `${n} of 5`;
+
   return (
     <div className={`px-6 py-5 border-b ${LINE}`}>
-      <h4 className="font-serif-display text-lg mb-2">Rate this book</h4>
-      <div className="flex items-center gap-1" role="group" aria-label={`Your rating of ${title}`}>
-        {[1, 2, 3, 4, 5].map(n => {
-          const on = !!value && n <= value;
-          return (
-            <button
-              key={n}
-              type="button"
-              onClick={() => onRate(value === n ? 0 : n)}
-              aria-label={`${n} ${n === 1 ? 'star' : 'stars'}${value === n ? ' (tap to clear)' : ''}`}
-              aria-pressed={value === n}
-              className="w-11 h-11 flex items-center justify-center rounded-full active:scale-90 transition-transform"
-            >
-              <Star className={`w-7 h-7 ${on ? 'fill-amber-400 text-amber-400' : 'text-[#c9bba4] dark:text-[#5a4d3e]'}`} />
-            </button>
-          );
-        })}
-        <span className={`ml-2 text-sm ${MUTED}`}>{value ? `Your rating: ${value} of 5` : 'Tap a star'}</span>
+      <h4 className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] mb-2">Rate this book</h4>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div
+          ref={track}
+          role="slider"
+          tabIndex={0}
+          aria-label={`Your rating of ${title}`}
+          aria-valuemin={0}
+          aria-valuemax={5}
+          aria-valuenow={value ?? 0}
+          aria-valuetext={value ? `${value} stars` : 'Not rated'}
+          // pan-y: swiping across the stars is ours, swiping up or down still scrolls the page
+          style={{ touchAction: 'pan-y' }}
+          className="flex h-11 items-center select-none cursor-pointer rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2e5934]"
+          onPointerDown={e => {
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
+            e.currentTarget.setPointerCapture?.(e.pointerId); // keep following the finger if it slides above or below the stars
+            setLive(at(e.clientX));
+          }}
+          onPointerMove={e => { if (live !== null) setLive(at(e.clientX)); }}
+          onPointerUp={e => {
+            if (live === null) return;
+            const n = at(e.clientX);
+            setLive(null);
+            if (n !== (value ?? 0)) onRate(n);
+          }}
+          onPointerCancel={() => setLive(null)}
+          // The sheet behind closes on a pull-down: a swipe that starts on the stars must not count as one
+          onTouchStart={e => e.stopPropagation()}
+          onTouchMove={e => e.stopPropagation()}
+          onTouchEnd={e => e.stopPropagation()}
+          onKeyDown={e => {
+            if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); step(RATING_STEP); }
+            else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { e.preventDefault(); step(-RATING_STEP); }
+            else if (e.key === 'PageUp') { e.preventDefault(); step(1); }
+            else if (e.key === 'PageDown') { e.preventDefault(); step(-1); }
+            else if (e.key === 'Home') { e.preventDefault(); onRate(0); }
+            else if (e.key === 'End') { e.preventDefault(); onRate(5); }
+          }}
+        >
+          {[0, 1, 2, 3, 4].map(i => (
+            <span key={i} aria-hidden="true" className="relative inline-block w-9 h-9 shrink-0">
+              <Star className="absolute inset-0 w-9 h-9 text-[#c9bba4] dark:text-[#5a4d3e]" />
+              {starFill(shown, i) > 0 && (
+                <span className="absolute inset-y-0 left-0 overflow-hidden" style={{ width: `${starFill(shown, i) * 100}%` }}>
+                  <Star className="w-9 h-9 max-w-none shrink-0 fill-amber-400 text-amber-400" />
+                </span>
+              )}
+            </span>
+          ))}
+        </div>
+        <span className={`text-sm ${MUTED}`} aria-live="polite">
+          {shown ? `Your rating: ${text(shown)}` : 'Tap, swipe or drag across the stars'}
+        </span>
+        {!!value && live === null && (
+          <button type="button" onClick={() => onRate(0)} className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${LINE} ${MUTED} hover:bg-black/5`}>
+            Clear
+          </button>
+        )}
       </div>
     </div>
   );

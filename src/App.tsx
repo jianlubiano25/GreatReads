@@ -18,7 +18,7 @@ import { TodayTab } from './components/tabs/TodayTab';
 import { StoreTab } from './components/tabs/StoreTab';
 import { LibraryTab } from './components/tabs/LibraryTab';
 import { WordsTab } from './components/tabs/WordsTab';
-import { DeviceTab } from './components/tabs/DeviceTab';
+import { SearchTab } from './components/tabs/SearchTab';
 
 // Icons
 import {
@@ -27,7 +27,7 @@ import {
   Plus,
   Library,
   Sprout,
-  Smartphone,
+  Search,
   RotateCcw,
   Sparkles,
   Share2,
@@ -68,7 +68,7 @@ const WordPracticeModal = lazyModal<typeof import('./components/WordPracticeModa
 const BulkImportModal = lazyModal<typeof import('./components/BulkImportModal').BulkImportModal>(() => import('./components/BulkImportModal'), 'BulkImportModal');
 const ShareModal = lazyModal<typeof import('./components/ShareModal').ShareModal>(() => import('./components/ShareModal'), 'ShareModal');
 
-const TAB_TITLES: Record<string, string> = { store: 'Discover', lib: 'Library', words: 'Word Garden', dev: 'On my device' };
+const TAB_TITLES: Record<string, string> = { store: 'Discover', lib: 'Library', words: 'Word Garden', search: 'Search' };
 
 export default function App() {
   const {
@@ -87,7 +87,6 @@ export default function App() {
     setBookRating,
     findDuplicates,
     mergeDuplicates,
-    toggleOnDevice,
     addBook,
     removeBook,
     restoreHiddenBooks,
@@ -133,10 +132,7 @@ export default function App() {
   // Modals state
   const [selectedBookForDetail, setSelectedBookForDetail] = useState<Book | null>(null);
   const [selectedBookForHighlights, setSelectedBookForHighlights] = useState<Book | null>(null);
-  const [showAddBookModal, setShowAddBookModal] = useState<{ open: boolean; isDevice: boolean }>({
-    open: false,
-    isDevice: false,
-  });
+  const [showAddBookModal, setShowAddBookModal] = useState(false);
   const [showLookupModal, setShowLookupModal] = useState<{
     open: boolean;
     initialWord?: string;
@@ -204,11 +200,6 @@ export default function App() {
     return allBooks.filter(b => statusMap[String(b.id)] === 'done');
   }, [allBooks, state.status]);
 
-  const onDeviceBooks = useMemo(() => {
-    const statusMap = state.status || {};
-    return allBooks.filter(b => b.isOnDevice && statusMap[String(b.id)] !== 'done');
-  }, [allBooks, state.status]);
-
   const finishedCount = finishedBooks.length;
 
   // Totals for the profile's Achievements card
@@ -240,7 +231,7 @@ export default function App() {
       const owned = byId.get(String(b.id)) ?? libraryBooks.find(x => sameWork(x, b, true));
       const key = String(owned ? owned.id : b.id);
       const mine = state.ratings[key] ?? (owned ? undefined : state.ratings[`w:${bookKey(b)}`]);
-      const stars = mine ? `You rated it ${'★'.repeat(mine)}` : '';
+      const stars = mine ? `You rated it ${mine} ★` : '';
       if (!owned) return stars || undefined;
       const st = state.status[key];
       const total = state.totalPages[key] || owned.pageCount || 0;
@@ -285,27 +276,19 @@ export default function App() {
   const handleOpenCover = useCallback((book: Book) => setSelectedBookForDetail(book), []);
   const handleOpenHighlights = useCallback((book: Book) => setSelectedBookForHighlights(book), []);
   const startReading = useCallback((id: string | number) => setBookStatus(id, 'now'), [setBookStatus]);
-  const moveToReadingList = useCallback((id: string | number) => {
-    setBookStatus(id, 'next');
-  }, [setBookStatus]);
-  const readAgain = useCallback((id: string | number) => setBookStatus(id, 'list'), [setBookStatus]);
+  const statusOf = state.status;
   const confirmRemoveFromLibrary = useCallback((b: Book) => {
-    const message = b.isOnDevice
-      ? `Remove "${b.title}" from your books? It is also on your device, and its notes and highlights will be removed too.`
-      : `Remove "${b.title}" from library?`;
+    const message = statusOf[String(b.id)] === 'done'
+      ? `Remove "${b.title}" from your finished books? Its notes and highlights will be removed too.`
+      : b.isOnDevice
+        ? `Remove "${b.title}" from your books? It is also on your device, and its notes and highlights will be removed too.`
+        : `Remove "${b.title}" from library?`;
     if (confirm(message)) removeBook(b.id);
-  }, [removeBook]);
-  const confirmRemoveFromDevice = useCallback((b: Book) => {
-    if (confirm(`Remove "${b.title}" from your device? It stays in your Library.`)) toggleOnDevice(b.id, false);
-  }, [toggleOnDevice]);
-  const confirmRemoveFinished = useCallback((b: Book) => {
-    if (confirm(`Remove "${b.title}" from your finished books? Its notes and highlights will be removed too.`)) removeBook(b.id);
-  }, [removeBook]);
+  }, [removeBook, statusOf]);
   const editWord = useCallback((w: WordItem) => setShowLookupModal({ open: true, existingWord: w }), []);
   const lookupAgain = useCallback((word: string) => setShowLookupModal({ open: true, initialWord: word }), []);
   // Tabs ask App to open the modals (App owns every modal's state)
-  const openAddBook = useCallback(() => setShowAddBookModal({ open: true, isDevice: false }), []);
-  const openAddToDevice = useCallback(() => setShowAddBookModal({ open: true, isDevice: true }), []);
+  const openAddBook = useCallback(() => setShowAddBookModal(true), []);
   const openLookupNew = useCallback(() => setShowLookupModal({ open: true }), []);
   const openPractice = useCallback(() => setShowWordPracticeModal(true), []);
   const openPasteWords = useCallback(() => setShowBulkModal({ open: true, type: 'words' }), []);
@@ -338,7 +321,7 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2.5 shrink-0">
-            {tab === 'store' && (
+            {(tab === 'store' || tab === 'search') && (
               <button
                 onClick={openAddBook}
                 className="w-10 h-10 aspect-square rounded-full border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880]"
@@ -384,6 +367,13 @@ export default function App() {
                       </button>
                       <button
                         role="menuitem"
+                        onClick={() => { setLibAddMenuOpen(false); openPasteList(); }}
+                        className="w-full px-4 py-3 text-left text-sm text-[#201a15] dark:text-[#f0e6d6] hover:bg-black/5 border-t border-[#e3d7c3] dark:border-[#382f25]"
+                      >
+                        Paste list
+                      </button>
+                      <button
+                        role="menuitem"
                         onClick={() => { setLibAddMenuOpen(false); setNewShelfRequest(n => n + 1); }}
                         className="w-full px-4 py-3 text-left text-sm text-[#201a15] dark:text-[#f0e6d6] hover:bg-black/5 border-t border-[#e3d7c3] dark:border-[#382f25]"
                       >
@@ -394,7 +384,7 @@ export default function App() {
                 )}
               </div>
             )}
-            {tab !== 'store' && tab !== 'lib' && (
+            {tab !== 'store' && tab !== 'search' && tab !== 'lib' && (
             <button
               onClick={() => setShowShareModal(true)}
               className="w-10 h-10 aspect-square rounded-full border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880]"
@@ -492,6 +482,7 @@ export default function App() {
           <LibraryTab
             active={tab === 'lib'}
             libraryBooks={libraryBooks}
+            finishedBooks={finishedBooks}
             state={state}
             handleOpenCover={handleOpenCover}
             handleOpenHighlights={handleOpenHighlights}
@@ -518,21 +509,12 @@ export default function App() {
           />
         )}
 
-        {/* Tab 5: ON MY DEVICE VIEW */}
-        {visitedTabs.has('dev') && (
-          <DeviceTab
-            active={tab === 'dev'}
-            onDeviceBooks={onDeviceBooks}
-            finishedBooks={finishedBooks}
-            state={state}
+        {/* Tab 5: SEARCH VIEW (the same search as Discover, and genres to browse) */}
+        {visitedTabs.has('search') && (
+          <SearchTab
+            active={tab === 'search'}
+            allBooks={allBooks}
             handleOpenCover={handleOpenCover}
-            handleOpenHighlights={handleOpenHighlights}
-            moveToReadingList={moveToReadingList}
-            readAgain={readAgain}
-            confirmRemoveFromDevice={confirmRemoveFromDevice}
-            confirmRemoveFinished={confirmRemoveFinished}
-            onAddToDevice={openAddToDevice}
-            onPasteList={openPasteList}
           />
         )}
 
@@ -556,7 +538,7 @@ export default function App() {
                 <SlidersHorizontal className="w-4 h-4 text-[#2e5934] dark:text-[#86b880]" />
               </button>
             )}
-            {tab === 'store' && (
+            {(tab === 'store' || tab === 'search') && (
               <button
                 onClick={openAddBook}
                 className="w-10 h-10 aspect-square rounded-full border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880]"
@@ -597,7 +579,7 @@ export default function App() {
           { id: 'store', label: 'Discover', Icon: Compass },
           { id: 'lib', label: 'Library', Icon: Library },
           { id: 'words', label: 'Words', Icon: Sprout },
-          { id: 'dev', label: 'Device', Icon: Smartphone },
+          { id: 'search', label: 'Search', Icon: Search },
         ] as const).map(({ id, label, Icon }) => (
           <button
             key={id}
@@ -611,7 +593,6 @@ export default function App() {
           >
             <Icon className="rl-tab-icon" strokeWidth={tab === id ? 2.2 : 1.8} />
             <span className="rl-tab-label">{label}</span>
-            {id === 'dev' && onDeviceBooks.length + finishedBooks.length > 0 && <i className="rl-tab-dot" aria-hidden="true" />}
           </button>
         ))}
       </nav>
@@ -630,7 +611,6 @@ export default function App() {
         <AppleBookDetailModal
           book={shownBook}
           inLibrary={!!owned}
-          onDevice={allBooks.some(b => String(b.id) === ownKey && (b.isOnDevice || state.status[ownKey] === 'done'))}
           readingStatus={state.status[ownKey]}
           currentPage={state.currentPage[ownKey]}
           totalPages={state.totalPages[ownKey]}
@@ -644,9 +624,6 @@ export default function App() {
           onClose={() => setSelectedBookForDetail(null)}
           onAddToLibrary={(b, status) => {
             addBook(b, 'library', status);
-          }}
-          onAddToDevice={(b, status) => {
-            addBook(b, 'device', status);
           }}
           onSetStatus={(b, status) => {
             if (owned) setBookStatus(owned.id, status);
@@ -676,12 +653,11 @@ export default function App() {
       )}
 
       {/* Modal 3: Add Book Modal */}
-      {showAddBookModal.open && (
+      {showAddBookModal && (
         <AddBookModal
-          initialIsDevice={showAddBookModal.isDevice}
-          onClose={() => setShowAddBookModal({ open: false, isDevice: false })}
-          onAddBook={(newBook, dest) => {
-            addBook(newBook, dest);
+          onClose={() => setShowAddBookModal(false)}
+          onAddBook={newBook => {
+            addBook(newBook, 'library');
           }}
         />
       )}
@@ -740,8 +716,8 @@ export default function App() {
         <BulkImportModal
           type={showBulkModal.type}
           onClose={() => setShowBulkModal({ open: false, type: 'books' })}
-          onAddBooks={(books, isDev) => {
-            books.forEach(b => addBook(b, isDev ? 'device' : 'library'));
+          onAddBooks={books => {
+            books.forEach(b => addBook(b, 'library'));
           }}
           onAddWords={entries => {
             entries.forEach(e => {
