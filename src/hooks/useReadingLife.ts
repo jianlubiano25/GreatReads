@@ -10,6 +10,8 @@ import { applyAddBook, type AddDestination, type AddStatus } from '../services/l
 import { clearableCacheKeys } from '../services/books/cache';
 import { exportCoverPicks, restoreCoverPicksFromBackup } from '../services/books/coverPicks';
 import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
+import { applyMerge, findDuplicateGroups, idMapOf, remapCollections } from '../services/mergeDuplicates';
+import { loadCollections, saveCollections } from '../services/libraryCollections';
 
 // Small helper lists that are not persistentCache instances but can be rebuilt (never user data)
 export const EXTRA_CLEARABLE = ['readlife.preload', 'readlife.loaded', 'readlife.phoneticTried'];
@@ -307,6 +309,18 @@ export function useReadingLife() {
     setState(prev => applyRating(prev, bookId, stars));
   }, []);
 
+  /** Books that are in the Library more than once (changes nothing). */
+  const findDuplicates = useCallback(() => findDuplicateGroups(latestState.current), []);
+
+  /** Folds every duplicate into one book, keeping status, pages, notes, quotes, dates and rating. Returns how many books were merged. */
+  const mergeDuplicates = useCallback((): number => {
+    const groups = findDuplicateGroups(latestState.current);
+    if (!groups.length) return 0;
+    setState(prev => applyMerge(prev, findDuplicateGroups(prev)));
+    saveCollections(remapCollections(loadCollections(), idMapOf(groups))); // your own tags and shelves follow the kept copy
+    return groups.length;
+  }, []);
+
   const toggleOnDevice = useCallback((bookId: string | number, targetValue?: boolean) => {
     const idKey = String(bookId);
     setState(prev => {
@@ -554,6 +568,8 @@ export function useReadingLife() {
     setBookStatus,
     setBookHistory,
     setBookRating,
+    findDuplicates,
+    mergeDuplicates,
     toggleOnDevice,
     addBook,
     removeBook,

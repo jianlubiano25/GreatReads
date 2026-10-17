@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, useSyncExternalStore, lazy, Suspense } from 'react';
 import { Book, TabType, WordItem } from './types';
 import { useReadingLife } from './hooks/useReadingLife';
-import { getCoverPick, getCoverUrl, sameWork, withKnownRating, isCoverAdminOn, subscribeCoverAdmin, tapSecret, syncSharedCovers } from './services/books';
+import { bookKey, getCoverPick, getCoverUrl, sameWork, withKnownRating, isCoverAdminOn, subscribeCoverAdmin, tapSecret, syncSharedCovers } from './services/books';
 import { milestone } from './services/books/perf';
 import { prettyDate, readingNowOrder } from './services/bookHistory';
 import { enrichInBackground } from './services/books/infoQueue';
@@ -85,6 +85,8 @@ export default function App() {
     setBookStatus,
     setBookHistory,
     setBookRating,
+    findDuplicates,
+    mergeDuplicates,
     toggleOnDevice,
     addBook,
     removeBook,
@@ -167,6 +169,7 @@ export default function App() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [libAddMenuOpen, setLibAddMenuOpen] = useState(false); // the + in the Library header: Add book / Add shelf
   const [newShelfRequest, setNewShelfRequest] = useState(0);
+  const [collectionsReload, setCollectionsReload] = useState(0); // goes up after duplicates are merged so the Library re-reads your tags and shelves
   const [showWordPracticeModal, setShowWordPracticeModal] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState<{ open: boolean; type: 'books' | 'words' }>({
     open: false,
@@ -236,7 +239,8 @@ export default function App() {
     return (b: Book): string | undefined => {
       const owned = byId.get(String(b.id)) ?? libraryBooks.find(x => sameWork(x, b, true));
       const key = String(owned ? owned.id : b.id);
-      const stars = state.ratings[key] ? `You rated it ${'★'.repeat(state.ratings[key])}` : '';
+      const mine = state.ratings[key] ?? (owned ? undefined : state.ratings[`w:${bookKey(b)}`]);
+      const stars = mine ? `You rated it ${'★'.repeat(mine)}` : '';
       if (!owned) return stars || undefined;
       const st = state.status[key];
       const total = state.totalPages[key] || owned.pageCount || 0;
@@ -494,6 +498,7 @@ export default function App() {
             setBookStatus={setBookStatus}
             confirmRemoveFromLibrary={confirmRemoveFromLibrary}
             newShelfRequest={newShelfRequest}
+            collectionsReload={collectionsReload}
           />
         )}
 
@@ -617,6 +622,8 @@ export default function App() {
         const owned = libraryBooks.find(b => b.id === selectedBookForDetail.id)
           ?? libraryBooks.find(b => sameWork(b, selectedBookForDetail, true));
         const ownKey = String(owned ? owned.id : selectedBookForDetail.id);
+        // A book not on your list yet keeps your stars under its identity, so they follow it when you add it (whichever copy you add)
+        const ratingKey = owned ? ownKey : `w:${bookKey(selectedBookForDetail)}`;
         // Search, Store and NYT copies of a book you own show YOUR copy's rating, so one book never shows two ratings
         const shownBook = withKnownRating(selectedBookForDetail, knownPool);
         return (
@@ -630,8 +637,8 @@ export default function App() {
           note={state.notes[ownKey]}
           highlightsCount={(state.highlights[ownKey] || []).length}
           history={state.history[ownKey]}
-          userRating={state.ratings[ownKey]}
-          onRate={stars => setBookRating(ownKey, stars)}
+          userRating={state.ratings[ratingKey] ?? state.ratings[ownKey]}
+          onRate={stars => { setBookRating(ratingKey, stars); if (ratingKey !== ownKey) setBookRating(ownKey, 0); }}
           onEditHistory={patch => setBookHistory(ownKey, patch)}
           onUpdateProgress={(page, total) => updateBookProgress(ownKey, page, total)}
           onClose={() => setSelectedBookForDetail(null)}
@@ -758,6 +765,8 @@ export default function App() {
           onExportBackup={exportBackup}
           onImportBackup={importBackup}
           onClearLibrary={clearLibrary}
+          onFindDuplicates={findDuplicates}
+          onMergeDuplicates={() => { const n = mergeDuplicates(); setCollectionsReload(c => c + 1); return n; }}
           onClearOnDevice={clearOnDevice}
           onResetEverything={resetEverything}
         />

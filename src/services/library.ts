@@ -1,6 +1,6 @@
 import type { Book, BookStatus, ReadingState } from '../types';
 import { DEFAULT_BOOKS } from '../data/defaultBooks';
-import { mergeBooks, sameWork } from './books';
+import { bookKey, mergeBooks, sameWork } from './books';
 import { stampStatus } from './bookHistory';
 import { dateKey } from './dates';
 
@@ -33,12 +33,22 @@ export function applyAddBook(prev: ReadingState, incoming: Book, destination: Ad
     updatedCustom = [{ ...incoming, isOnDevice: isDevice }, ...prev.customBooks];
   }
 
+  // A star rating given before the book was on your list (kept under the book's identity) moves onto your copy
+  let ratings = prev.ratings;
+  for (const pending of [`w:${bookKey(incoming)}`, String(incoming.id)]) {
+    if (ratings?.[pending] && pending !== idKey && !ratings[idKey]) {
+      const { [pending]: stars, ...rest } = ratings;
+      ratings = { ...rest, [idKey]: stars };
+    }
+  }
+
   const newStatus: BookStatus = chosen ?? (destination === 'now' || destination === 'next' ? destination : (prev.status[idKey] || 'list'));
 
   return {
     ...prev,
     // The day it joined your list (and the day you started it, if it goes straight to Reading now)
     history: { ...prev.history, [idKey]: stampStatus(prev.history?.[idKey], prev.status[idKey], newStatus, dateKey(), Date.now()) },
+    ratings,
     customBooks: updatedCustom,
     // Only write an on-device setting when the person chose "device": adding to the library must never turn a built-in book's device copy off
     onDeviceOverrides: isDevice ? { ...prev.onDeviceOverrides, [idKey]: true } : prev.onDeviceOverrides,

@@ -50,16 +50,24 @@ interface Props {
   confirmRemoveFromLibrary: (book: Book) => void;
   /** Goes up by one each time the header's "Add shelf" is chosen */
   newShelfRequest: number;
+  /** Goes up when something outside changed your saved tags and shelves (merging duplicates): read them again */
+  collectionsReload?: number;
 }
 
 type Editing = { id?: string; kind: Collection['kind']; name: string; bookIds: string[] };
 
 /** The Library tab: your reading list as shelves you scroll sideways, with tags to narrow them down. */
-export function LibraryTab({ active, libraryBooks, state, handleOpenCover, handleOpenHighlights, setBookStatus, confirmRemoveFromLibrary, newShelfRequest }: Props) {
+export function LibraryTab({ active, libraryBooks, state, handleOpenCover, handleOpenHighlights, setBookStatus, confirmRemoveFromLibrary, newShelfRequest, collectionsReload = 0 }: Props) {
   const [libFilter, setLibFilter] = useState<string>('all');
   const [collections, setCollections] = useState<Collection[]>(() => loadCollections());
   const [editing, setEditing] = useState<Editing | null>(null);
   const [query, setQuery] = useState('');
+
+  const firstReload = useRef(true);
+  useEffect(() => {
+    if (firstReload.current) { firstReload.current = false; return; }
+    setCollections(loadCollections());
+  }, [collectionsReload]);
 
   // The header's "Add shelf" opens the new-shelf dialog (each new request opens it once)
   const handledRequest = useRef(newShelfRequest);

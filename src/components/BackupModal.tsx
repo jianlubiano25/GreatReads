@@ -10,6 +10,10 @@ interface BackupModalProps {
   onExportBackup: () => string;
   onImportBackup: (jsonStr: string) => boolean;
   onClearLibrary: () => void;
+  /** Books that are in the Library more than once (changes nothing) */
+  onFindDuplicates: () => Array<{ title: string; author: string; otherIds: string[] }>;
+  /** Folds them into one book each; returns how many books were merged */
+  onMergeDuplicates: () => number;
   onClearOnDevice: () => void;
   onResetEverything: () => void;
 }
@@ -20,6 +24,8 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   onExportBackup,
   onImportBackup,
   onClearLibrary,
+  onFindDuplicates,
+  onMergeDuplicates,
   onClearOnDevice,
   onResetEverything,
 }) => {
@@ -31,6 +37,8 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   const [errorMessage, setErrorMessage] = useState('');
   const [resetNote, setResetNote] = useState('');
   const [coverNote, setCoverNote] = useState('');
+  const [dupes, setDupes] = useState<Array<{ title: string; author: string; otherIds: string[] }> | null>(null);
+  const [dupeNote, setDupeNote] = useState('');
 
   // Built once per open (not on every keystroke in the paste box).
   const currentBackup = useMemo(() => (isOpen ? onExportBackup() : ''), [isOpen, onExportBackup]);
@@ -297,6 +305,52 @@ export const BackupModal: React.FC<BackupModalProps> = ({
             {coverNote && (
               <p className="mt-2 text-xs text-emerald-800 dark:text-emerald-300" role="status">{coverNote}</p>
             )}
+          </div>
+
+          {/* Duplicate books: the same book saved more than once becomes one, keeping your status, pages, notes, quotes, dates and rating */}
+          <div className="pt-2 border-t border-[#e3d7c3] dark:border-[#382f25]">
+            <label className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] block mb-1">
+              Duplicate Books
+            </label>
+            <p className="text-xs text-[#706256] dark:text-[#a89a8a] mb-3">
+              Found the same book twice? Merge them into one. Your reading status, pages, notes, quotes, dates and rating are all kept. Download a backup first if you like.
+            </p>
+            <button
+              type="button"
+              onClick={() => { setDupeNote(''); setDupes(onFindDuplicates()); }}
+              className="w-full py-2.5 rounded-xl text-xs font-semibold border border-[#2e5934] dark:border-[#86b880] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center gap-2 active:scale-95 transition-all"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Find Duplicates</span>
+            </button>
+            {dupes && dupes.length === 0 && !dupeNote && (
+              <p className="mt-2 text-xs text-emerald-800 dark:text-emerald-300" role="status">No duplicates found. Every book is in your Library once.</p>
+            )}
+            {dupes && dupes.length > 0 && (
+              <div className="mt-3 flex flex-col gap-2">
+                <ul className="text-xs text-[#201a15] dark:text-[#f0e6d6] max-h-40 overflow-y-auto flex flex-col gap-1" aria-label="Duplicate books found">
+                  {dupes.map(d => (
+                    <li key={d.title + d.author} className="flex justify-between gap-3">
+                      <span className="truncate">{d.title} <span className="text-[#706256] dark:text-[#a89a8a]">· {d.author}</span></span>
+                      <span className="shrink-0 text-[#706256] dark:text-[#a89a8a]">{d.otherIds.length + 1} copies</span>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!window.confirm(`Merge ${dupes.length} duplicate ${dupes.length === 1 ? 'book' : 'books'} into one each? Nothing you wrote or tracked is lost.\n\nTip: download a backup first.`)) return;
+                    const n = onMergeDuplicates();
+                    setDupes(null);
+                    setDupeNote(`Merged ${n} ${n === 1 ? 'book' : 'books'}.`);
+                  }}
+                  className="w-full py-2.5 rounded-xl text-xs font-semibold bg-[#2e5934] text-white shadow active:scale-95 transition-all"
+                >
+                  Merge {dupes.length} {dupes.length === 1 ? 'book' : 'books'}
+                </button>
+              </div>
+            )}
+            {dupeNote && <p className="mt-2 text-xs text-emerald-800 dark:text-emerald-300" role="status">{dupeNote}</p>}
           </div>
 
           {/* Section 4: Reset data */}

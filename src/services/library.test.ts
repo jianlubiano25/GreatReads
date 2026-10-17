@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applyAddBook } from './library';
+import { bookKey } from './books';
 import { DEFAULT_BOOKS } from '../data/defaultBooks';
 import type { ReadingState } from '../types';
 
@@ -56,4 +57,17 @@ test('the list chosen in the Add dialog is the status, for library and device al
   assert.equal(dev.status.x1, 'next');
   assert.equal(dev.onDeviceOverrides.x1, true);
   assert.equal(applyAddBook(base(), b, 'library', 'list').status.x1, 'list'); // no choice: unchanged behaviour
+});
+
+test('a star rating given before adding follows the book onto your list, whichever copy is added', () => {
+  const incoming = fromSearch();
+  const prev = base({ ratings: { [`w:${bookKey(incoming)}`]: 4 } });
+  const next = applyAddBook(prev, incoming, 'library');
+  const owned = Object.keys(next.ratings);
+  assert.equal(owned.length, 1);
+  assert.ok(!owned[0].startsWith('w:'));
+  assert.equal(next.ratings[owned[0]], 4);
+  // a rating you already gave your copy is never overwritten
+  const rated = applyAddBook(base({ ratings: { [`w:${bookKey(incoming)}`]: 2, [String(piranesi().id)]: 5 } }), incoming, 'library');
+  assert.equal(rated.ratings[String(piranesi().id)], 5);
 });
