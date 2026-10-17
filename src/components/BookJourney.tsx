@@ -1,35 +1,86 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Check, Pencil, Star, X } from 'lucide-react';
 import type { BookHistory } from '../types';
-import { prettyDate, type HistoryPatch } from '../services/bookHistory';
+import { formatRating, prettyDate, type HistoryPatch } from '../services/bookHistory';
 import { dateKey } from '../services/dates';
 
 const LINE = 'border-[#e3d7c3] dark:border-[#382f25]';
 const MUTED = 'text-[#706256] dark:text-[#a89a8a]';
 
-/** "Rate this book": five stars; tap the one you already chose to take the rating back. */
+/**
+ * "Rate this book", centred. Tap a star for that many stars. Slide a finger (or the arrow keys) for quarter stars, like 4.25.
+ * Once rated, the title becomes "Your rating: 4.25 of 5" with an X to take the rating back.
+ */
 export function RateThisBook({ title, value, onRate }: { title: string; value?: number; onRate: (stars: number) => void }) {
+  const bar = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ x: number; moved: boolean } | null>(null);
+  const [live, setLive] = useState<number | null>(null); // the value shown while a finger is sliding
+  const shown = live ?? value ?? 0;
+
+  const at = (clientX: number, whole: boolean) => {
+    const r = bar.current?.getBoundingClientRect();
+    if (!r || r.width === 0) return 0;
+    const stars = Math.min(5, Math.max(0, ((clientX - r.left) / r.width) * 5));
+    return whole ? Math.max(1, Math.ceil(stars - 1e-9)) : Math.max(0.25, Math.ceil(stars * 4 - 1e-9) / 4);
+  };
+
   return (
-    <div className={`px-6 py-5 border-b ${LINE}`}>
-      <h4 className="font-serif-display text-lg mb-2">Rate this book</h4>
-      <div className="flex items-center gap-1" role="group" aria-label={`Your rating of ${title}`}>
-        {[1, 2, 3, 4, 5].map(n => {
-          const on = !!value && n <= value;
+    <div className={`px-6 py-5 border-b ${LINE} flex flex-col items-center text-center`}>
+      <div className="flex items-center justify-center gap-1.5 min-h-[32px] mb-1">
+        <h4 className="font-serif-display text-lg">{value ? `Your rating: ${formatRating(value)} of 5` : 'Rate this book'}</h4>
+        {value ? (
+          <button type="button" onClick={() => onRate(0)} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-black/5" aria-label="Clear your rating" title="Clear your rating">
+            <X className={`w-4 h-4 ${MUTED}`} />
+          </button>
+        ) : null}
+      </div>
+      <div
+        ref={bar}
+        role="slider"
+        tabIndex={0}
+        aria-label={`Your rating of ${title}`}
+        aria-valuemin={0}
+        aria-valuemax={5}
+        aria-valuenow={value ?? 0}
+        aria-valuetext={value ? `${formatRating(value)} of 5 stars` : 'Not rated'}
+        style={{ touchAction: 'pan-y' }}
+        className="flex items-center justify-center rounded-xl focus-visible:ring-2 focus-visible:ring-[#2e5934] focus:outline-none select-none cursor-pointer"
+        onPointerDown={e => { drag.current = { x: e.clientX, moved: false }; (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId); }}
+        onPointerMove={e => {
+          const d = drag.current;
+          if (!d) return;
+          if (!d.moved && Math.abs(e.clientX - d.x) > 6) d.moved = true;
+          if (d.moved) setLive(at(e.clientX, false));
+        }}
+        onPointerUp={e => {
+          const d = drag.current;
+          drag.current = null;
+          setLive(null);
+          if (!d) return;
+          const next = d.moved ? at(e.clientX, false) : at(e.clientX, true); // a tap is a whole star; a slide is in quarters
+          if (next) onRate(!d.moved && next === value ? 0 : next);
+        }}
+        onPointerCancel={() => { drag.current = null; setLive(null); }}
+        onKeyDown={e => {
+          const step = e.key === 'ArrowRight' || e.key === 'ArrowUp' ? 0.25 : e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? -0.25 : 0;
+          if (!step) return;
+          e.preventDefault();
+          onRate(Math.min(5, Math.max(0, (value ?? 0) + step)));
+        }}
+      >
+        {[0, 1, 2, 3, 4].map(i => {
+          const fill = Math.max(0, Math.min(1, shown - i));
           return (
-            <button
-              key={n}
-              type="button"
-              onClick={() => onRate(value === n ? 0 : n)}
-              aria-label={`${n} ${n === 1 ? 'star' : 'stars'}${value === n ? ' (tap to clear)' : ''}`}
-              aria-pressed={value === n}
-              className="w-11 h-11 flex items-center justify-center rounded-full active:scale-90 transition-transform"
-            >
-              <Star className={`w-7 h-7 ${on ? 'fill-amber-400 text-amber-400' : 'text-[#c9bba4] dark:text-[#5a4d3e]'}`} />
-            </button>
+            <span key={i} className="relative w-11 h-11 flex items-center justify-center" aria-hidden="true">
+              <Star className="w-7 h-7 text-[#c9bba4] dark:text-[#5a4d3e]" />
+              <span className="absolute inset-y-0 left-0 overflow-hidden flex items-center" style={{ width: fill > 0 ? `${8 + fill * 28}px` : 0 }}>
+                <Star className="w-7 h-7 shrink-0 fill-amber-400 text-amber-400 ml-[8px]" />
+              </span>
+            </span>
           );
         })}
-        <span className={`ml-2 text-sm ${MUTED}`}>{value ? `Your rating: ${value} of 5` : 'Tap a star'}</span>
       </div>
+      <p className={`mt-1 text-xs ${MUTED}`}>{value ? 'Slide for quarter stars' : 'Tap a star, or slide for quarter stars'}</p>
     </div>
   );
 }

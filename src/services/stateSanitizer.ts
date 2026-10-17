@@ -23,7 +23,7 @@ import { DATE_KEY_RE } from './dates';
  * instead of trusting it. Nothing in here ever throws.
  */
 
-const VALID_STATUS: BookStatus[] = ['list', 'next', 'now', 'done', 'skip'];
+const VALID_STATUS: BookStatus[] = ['list', 'next', 'now', 'done', 'skip', 'dnf'];
 const VALID_THEME = ['auto', 'light', 'dark'];
 
 const isObj = (v: unknown): v is Record<string, any> =>

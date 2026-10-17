@@ -1,22 +1,28 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pencil, Plus, Search, X } from 'lucide-react';
 import type { Book, BookStatus, ReadingState } from '../../types';
 import { BOOK_AWARDS } from '../../data/defaultBooks';
 import { bookKind } from '../../services/bookKind';
 import { readingNowOrder } from '../../services/bookHistory';
-import { booksOf, loadCollections, newCollectionId, saveCollections, type Collection } from '../../services/libraryCollections';
+import { booksOf, newCollectionId, type Collection } from '../../services/libraryCollections';
 import { LibraryCard } from '../cards';
 import { LibraryCollectionModal } from '../LibraryCollectionModal';
+import { LibraryListModal } from '../LibraryListModal';
 import { TabPane } from './TabPane';
 
 const noStatus: BookStatus = 'list';
+/** How many cards a status tab shows before "View all" */
+const PREVIEW = 4;
 
-/** The reading-status shelves, top to bottom. Finished books live in On my device, so they are not here. */
-const STATUS_SHELVES: Array<{ status: BookStatus; title: string }> = [
-  { status: 'now', title: 'Reading now' },
-  { status: 'next', title: 'Up next' },
-  { status: 'list', title: 'Master list' },
-  { status: 'skip', title: 'Skipped' },
+/** The two groups of reading-status tabs. Each shows a few cards sideways; "View all" opens the whole list. */
+const GROUP_NOW: Array<{ id: BookStatus; label: string }> = [
+  { id: 'now', label: 'Reading now' },
+  { id: 'done', label: 'Finished' },
+];
+const GROUP_NEXT: Array<{ id: BookStatus; label: string }> = [
+  { id: 'next', label: 'Up next' },
+  { id: 'dnf', label: 'Did not finish' },
+  { id: 'skip', label: 'Not for me' },
 ];
 
 const BUILT_IN_TAGS: Array<[string, string]> = [
@@ -41,8 +47,8 @@ const CHIP_OFF = 'bg-[#fbf7ee] dark:bg-[#231d17] border-[#e3d7c3] dark:border-[#
 
 interface Props {
   active: boolean;
-  /** Every library book that is not finished */
-  libraryBooks: Book[];
+  /** Every book in My Library, whatever its status (finished ones too) */
+  myBooks: Book[];
   state: Pick<ReadingState, 'status' | 'highlights' | 'currentPage' | 'totalPages' | 'history'>;
   handleOpenCover: (book: Book) => void;
   handleOpenHighlights: (book: Book) => void;
@@ -50,24 +56,51 @@ interface Props {
   confirmRemoveFromLibrary: (book: Book) => void;
   /** Goes up by one each time the header's "Add shelf" is chosen */
   newShelfRequest: number;
-  /** Goes up when something outside changed your saved tags and shelves (merging duplicates): read them again */
-  collectionsReload?: number;
+  /** Your own shelves and tags (kept by the app, shared with the Add to My Library sheet) */
+  collections: Collection[];
+  onCollectionsChange: (change: (prev: Collection[]) => Collection[]) => void;
+  /** Open the Add to My Library sheet (status, shelves, tags) for a book */
+  onOpenSheet: (book: Book) => void;
 }
 
 type Editing = { id?: string; kind: Collection['kind']; name: string; bookIds: string[] };
 
-/** The Library tab: your reading list as shelves you scroll sideways, with tags to narrow them down. */
-export function LibraryTab({ active, libraryBooks, state, handleOpenCover, handleOpenHighlights, setBookStatus, confirmRemoveFromLibrary, newShelfRequest, collectionsReload = 0 }: Props) {
+/** A row of tabs with counts that scrolls sideways when there are many. */
+function TabStrip({ label, tabs, value, onChange, trailing }: {
+  label: string;
+  tabs: Array<{ id: string; label: string; count: number }>;
+  value: string;
+  onChange: (id: string) => void;
+  trailing?: React.ReactNode;
+}) {
+  return (
+    <div role="tablist" aria-label={label} className="flex items-center gap-1 overflow-x-auto no-scrollbar border-b border-[#e3d7c3] dark:border-[#382f25]">
+      {tabs.map(t => (
+        <button
+          key={t.id}
+          type="button"
+          role="tab"
+          aria-selected={value === t.id}
+          onClick={() => onChange(t.id)}
+          className={`shrink-0 px-3 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors ${value === t.id ? 'border-[#2e5934] text-[#2e5934] dark:border-[#86b880] dark:text-[#86b880]' : 'border-transparent text-[#706256] dark:text-[#a89a8a] hover:text-[#201a15] dark:hover:text-[#f0e6d6]'}`}
+        >
+          {t.label} <span className="font-medium opacity-70">{t.count}</span>
+        </button>
+      ))}
+      {trailing}
+    </div>
+  );
+}
+
+/** My Library: what you are reading and what is next (sideways), then everything you own and your shelves (scrolling down). */
+export function LibraryTab({ active, myBooks, state, handleOpenCover, handleOpenHighlights, setBookStatus, confirmRemoveFromLibrary, newShelfRequest, collections, onCollectionsChange, onOpenSheet }: Props) {
   const [libFilter, setLibFilter] = useState<string>('all');
-  const [collections, setCollections] = useState<Collection[]>(() => loadCollections());
   const [editing, setEditing] = useState<Editing | null>(null);
   const [query, setQuery] = useState('');
-
-  const firstReload = useRef(true);
-  useEffect(() => {
-    if (firstReload.current) { firstReload.current = false; return; }
-    setCollections(loadCollections());
-  }, [collectionsReload]);
+  const [nowTab, setNowTab] = useState<string>('now');
+  const [nextTab, setNextTab] = useState<string>('next');
+  const [masterTab, setMasterTab] = useState<string>('master');
+  const [viewAll, setViewAll] = useState<{ title: string; books: Book[] } | null>(null);
 
   // The header's "Add shelf" opens the new-shelf dialog (each new request opens it once)
   const handledRequest = useRef(newShelfRequest);
@@ -99,38 +132,33 @@ export function LibraryTab({ active, libraryBooks, state, handleOpenCover, handl
 
   const needle = query.trim().toLowerCase();
   const visibleBooks = useMemo(() => {
-    const list = libraryBooks.filter(passesTag).filter(b => !needle || `${b.title} ${b.author} ${b.genre || ''}`.toLowerCase().includes(needle));
+    const list = myBooks.filter(passesTag).filter(b => !needle || `${b.title} ${b.author} ${b.genre || ''}`.toLowerCase().includes(needle));
     // "First 12" keeps its own reading order
     return libFilter === 'f' ? list.sort((a, b) => (a.first12Order || 0) - (b.first12Order || 0)) : list;
-  }, [libraryBooks, passesTag, libFilter, needle]);
+  }, [myBooks, passesTag, libFilter, needle]);
 
-  const statusRows = useMemo(() => {
-    const byStatus = new Map<BookStatus, Book[]>();
+  /** The books of each status. Reading now: latest read first. Finished: latest finished first. */
+  const byStatus = useMemo(() => {
+    const map = new Map<BookStatus, Book[]>();
     for (const b of visibleBooks) {
       const s = state.status[String(b.id)] || noStatus;
-      byStatus.set(s, [...(byStatus.get(s) || []), b]);
+      map.set(s, [...(map.get(s) || []), b]);
     }
-    return STATUS_SHELVES.map(s => {
-      const books = byStatus.get(s.status) || [];
-      // Reading now: the book you read most recently comes first
-      return { ...s, books: s.status === 'now' ? readingNowOrder(books, state.history) : books };
-    }).filter(r => r.books.length > 0);
+    map.set('now', readingNowOrder(map.get('now') || [], state.history));
+    map.set('done', (map.get('done') || []).slice().sort((a, b) => (state.history[String(b.id)]?.finished ?? '').localeCompare(state.history[String(a.id)]?.finished ?? '')));
+    return map;
   }, [visibleBooks, state.status, state.history]);
 
   const shownIds = useMemo(() => new Set(visibleBooks.map(b => String(b.id))), [visibleBooks]);
 
-  const persist = useCallback((next: Collection[]) => {
-    setCollections(next);
-    saveCollections(next);
-  }, []);
-
   const saveEditing = (v: { id?: string; kind: Collection['kind']; name: string; bookIds: string[] }) => {
     if (v.id) {
-      persist(collections.map(c => (c.id === v.id ? { ...c, name: v.name, bookIds: v.bookIds } : c)));
+      onCollectionsChange(prev => prev.map(c => (c.id === v.id ? { ...c, name: v.name, bookIds: v.bookIds } : c)));
     } else {
       const id = newCollectionId();
-      persist([...collections, { id, kind: v.kind, name: v.name, bookIds: v.bookIds }]);
+      onCollectionsChange(prev => [...prev, { id, kind: v.kind, name: v.name, bookIds: v.bookIds }]);
       if (v.kind === 'tag') setLibFilter(id); // a new tag opens straight away
+      else setMasterTab(id); // a new shelf opens straight away
     }
     setEditing(null);
   };
@@ -138,53 +166,76 @@ export function LibraryTab({ active, libraryBooks, state, handleOpenCover, handl
   const deleteEditing = () => {
     if (!editing?.id) return;
     const id = editing.id;
-    if (!confirm(`Delete "${editing.name}"? Your books stay in the Library.`)) return;
-    persist(collections.filter(c => c.id !== id));
+    if (!confirm(`Delete "${editing.name}"? Your books stay in My Library.`)) return;
+    onCollectionsChange(prev => prev.filter(c => c.id !== id));
     if (libFilter === id) setLibFilter('all');
+    if (masterTab === id) setMasterTab('master');
     setEditing(null);
   };
 
-  const renderRow = (key: string, title: string, books: Book[], onEdit?: () => void, emptyHint?: string) => (
-    <section key={key} className="flex flex-col gap-3" aria-label={title}>
-      <h3 className="font-serif-display text-xl text-[#201a15] dark:text-[#f0e6d6] flex items-center gap-2">
-        {title}
-        <span className="text-xs font-sans font-medium text-[#706256] dark:text-[#a89a8a]">{books.length}</span>
-        {onEdit && (
-          <button type="button" onClick={onEdit} className="p-1.5 rounded-lg text-[#706256] dark:text-[#a89a8a] hover:bg-black/5" aria-label={`Edit ${title}`} title="Edit shelf">
-            <Pencil className="w-3.5 h-3.5" />
-          </button>
-        )}
-      </h3>
-      {books.length === 0 ? (
-        <p className="text-sm text-[#706256] dark:text-[#a89a8a]">{emptyHint}</p>
-      ) : (
-        <div className="flex gap-4 overflow-x-auto pb-3 no-scrollbar snap-x">
-          {books.map(b => (
-            <div key={b.id} className="w-[300px] sm:w-[340px] shrink-0 snap-start flex flex-col [&>*]:flex-1">
-              <LibraryCard
-                book={b}
-                status={state.status[String(b.id)] || noStatus}
-                highlightCount={(state.highlights[String(b.id)] || []).length}
-                currentPage={state.currentPage[String(b.id)] || 0}
-                totalPages={state.totalPages[String(b.id)] || b.pageCount || 0}
-                onOpen={handleOpenCover}
-                onQuotes={handleOpenHighlights}
-                onStatus={setBookStatus}
-                onRemove={confirmRemoveFromLibrary}
-              />
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
+  const card = (b: Book) => (
+    <LibraryCard
+      book={b}
+      status={state.status[String(b.id)] || noStatus}
+      highlightCount={(state.highlights[String(b.id)] || []).length}
+      currentPage={state.currentPage[String(b.id)] || 0}
+      totalPages={state.totalPages[String(b.id)] || b.pageCount || 0}
+      onOpen={handleOpenCover}
+      onQuotes={handleOpenHighlights}
+      onStatus={setBookStatus}
+      onShelf={onOpenSheet}
+      onRemove={confirmRemoveFromLibrary}
+    />
   );
+
+  /** Two or three status tabs: a few cards sideways, "View all" for the rest */
+  const statusGroup = (name: string, defs: Array<{ id: BookStatus; label: string }>, value: string, setValue: (v: string) => void) => {
+    const tabs = defs.map(d => ({ id: d.id, label: d.label, count: (byStatus.get(d.id) || []).length }));
+    const current = defs.find(d => d.id === value) ?? defs[0];
+    const books = byStatus.get(current.id) || [];
+    return (
+      <section className="flex flex-col gap-3" aria-label={name}>
+        <TabStrip label={name} tabs={tabs} value={current.id} onChange={setValue} />
+        {books.length === 0 ? (
+          <p className="text-sm text-[#706256] dark:text-[#a89a8a]">Nothing here yet.</p>
+        ) : (
+          <>
+            <div className="flex gap-4 overflow-x-auto pb-3 no-scrollbar snap-x">
+              {books.slice(0, PREVIEW).map(b => (
+                <div key={b.id} className="w-[300px] sm:w-[340px] shrink-0 snap-start flex flex-col [&>*]:flex-1">{card(b)}</div>
+              ))}
+            </div>
+            {books.length > PREVIEW && (
+              <button
+                type="button"
+                onClick={() => setViewAll({ title: current.label, books })}
+                className="self-start min-h-[40px] px-4 rounded-full border border-[#2e5934] dark:border-[#86b880] text-xs font-semibold text-[#2e5934] dark:text-[#86b880] hover:bg-[#2e5934]/10"
+              >
+                View all {books.length}
+              </button>
+            )}
+          </>
+        )}
+      </section>
+    );
+  };
+
+  // Master list + your shelves: tabs, the open one scrolls down and shows every book at once
+  const shelfBooks = (c: Collection) => booksOf(c, myBooks).filter(b => shownIds.has(String(b.id)));
+  const masterTabs = [
+    { id: 'master', label: 'Master list', count: visibleBooks.length },
+    ...customShelves.map(c => ({ id: c.id, label: c.name, count: shelfBooks(c).length })),
+  ];
+  const openShelf = customShelves.find(c => c.id === masterTab);
+  const masterValue = openShelf ? openShelf.id : 'master';
+  const masterBooks = openShelf ? shelfBooks(openShelf) : visibleBooks;
 
   const selectedOwn = collections.find(c => c.id === libFilter && c.kind === 'tag');
 
   return (
     <TabPane active={active}>
       <div className="flex flex-col gap-6">
-        {/* Search the Library */}
+        {/* Search My Library */}
         <div className="relative">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#706256] dark:text-[#a89a8a] pointer-events-none" aria-hidden="true" />
           <input
@@ -236,33 +287,61 @@ export function LibraryTab({ active, libraryBooks, state, handleOpenCover, handl
           )}
         </div>
 
-        {statusRows.map(r => renderRow(r.status, r.title, r.books))}
-        {customShelves.map(c =>
-          renderRow(
-            c.id,
-            c.name,
-            booksOf(c, libraryBooks).filter(b => shownIds.has(String(b.id))),
-            () => setEditing({ id: c.id, kind: 'shelf', name: c.name, bookIds: c.bookIds }),
-            libFilter === 'all' && !needle ? 'No books here yet. Tap the pencil to add some.' : needle ? 'None of this shelf\u2019s books match your search.' : 'None of this shelf\u2019s books have this tag.',
-          ),
-        )}
+        {statusGroup('Reading', GROUP_NOW, nowTab, setNowTab)}
+        {statusGroup('Up next and set aside', GROUP_NEXT, nextTab, setNextTab)}
 
-        {statusRows.length === 0 && customShelves.length === 0 && (
-          <p className="text-sm text-[#706256] dark:text-[#a89a8a]">
-            {libraryBooks.length === 0 ? 'Your Library is empty. Use + at the top to add a book.' : needle ? 'No books match your search.' : 'No books have this tag yet.'}
-          </p>
-        )}
+        <section className="flex flex-col gap-3" aria-label="Master list and shelves">
+          <TabStrip
+            label="Master list and shelves"
+            tabs={masterTabs}
+            value={masterValue}
+            onChange={setMasterTab}
+            trailing={
+              <button type="button" onClick={() => setEditing({ kind: 'shelf', name: '', bookIds: [] })} className="shrink-0 p-2 rounded-lg text-[#2e5934] dark:text-[#86b880] hover:bg-black/5" aria-label="Add shelf" title="Add a shelf">
+                <Plus className="w-4 h-4" />
+              </button>
+            }
+          />
+          {openShelf && (
+            <button
+              type="button"
+              onClick={() => setEditing({ id: openShelf.id, kind: 'shelf', name: openShelf.name, bookIds: openShelf.bookIds })}
+              className="self-start flex items-center gap-1.5 text-xs font-semibold text-[#706256] dark:text-[#a89a8a] hover:text-[#201a15] dark:hover:text-[#f0e6d6]"
+            >
+              <Pencil className="w-3.5 h-3.5" /> Edit shelf
+            </button>
+          )}
+          {masterBooks.length === 0 ? (
+            <p className="text-sm text-[#706256] dark:text-[#a89a8a]">
+              {myBooks.length === 0
+                ? 'My Library is empty. Use + at the top to add a book.'
+                : needle ? 'No books match your search.'
+                : openShelf ? (libFilter === 'all' ? 'No books on this shelf yet. Tap Edit shelf to add some.' : 'None of this shelf’s books have this tag.')
+                : 'No books have this tag yet.'}
+            </p>
+          ) : (
+            // Every book is drawn at once, but the browser skips painting the ones that are off screen, so it stays light
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {masterBooks.map(b => (
+                <div key={b.id} className="flex flex-col [&>*]:flex-1" style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 200px' }}>
+                  {card(b)}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
 
       {editing && (
         <LibraryCollectionModal
           initial={editing}
-          books={libraryBooks}
+          books={myBooks}
           onSave={saveEditing}
           onDelete={editing.id ? deleteEditing : undefined}
           onClose={() => setEditing(null)}
         />
       )}
+      {viewAll && <LibraryListModal title={viewAll.title} books={viewAll.books} renderCard={card} onClose={() => setViewAll(null)} />}
     </TabPane>
   );
 }

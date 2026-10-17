@@ -14,7 +14,7 @@ export interface DuplicateGroup {
 
 const CATALOG_IDS = new Set(DEFAULT_BOOKS.map(b => String(b.id)));
 /** How far along a status is: when two copies disagree, the furthest one is kept. */
-const STATUS_RANK: Record<BookStatus, number> = { skip: 1, list: 2, next: 3, now: 4, done: 5 };
+const STATUS_RANK: Record<BookStatus, number> = { skip: 1, dnf: 2, list: 2, next: 3, now: 4, done: 5 };
 
 const visibleBooks = (s: ReadingState): Book[] =>
   [...DEFAULT_BOOKS, ...s.customBooks].filter(b => !s.hiddenBookIds[String(b.id)]);

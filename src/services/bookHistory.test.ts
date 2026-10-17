@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ReadingState } from '../types';
-import { applyHistoryEdit, applyRating, isDateKey, prettyDate, readingNowOrder, sanitizeHistory, sanitizeRatings, stampProgress, stampStatus } from './bookHistory';
+import { applyHistoryEdit, applyRating, formatRating, isDateKey, prettyDate, readingNowOrder, sanitizeHistory, sanitizeRatings, stampProgress, stampStatus } from './bookHistory';
 
 const base = (over: Partial<ReadingState> = {}): ReadingState => ({ status: {}, history: {}, ratings: {}, ...over } as ReadingState);
 
@@ -14,7 +14,7 @@ test('real dates only', () => {
 
 test('sanitize keeps good dates/ratings and drops the rest', () => {
   assert.deepEqual(sanitizeHistory({ a: { added: '2026-01-02', started: 'x', finished: '2026-13-01', lastRead: 5 }, b: 'no', c: {} }), { a: { added: '2026-01-02', lastRead: 5 } });
-  assert.deepEqual(sanitizeRatings({ a: 4, b: 0, c: 9, d: '3', e: 'x' }), { a: 4, d: 3 });
+  assert.deepEqual(sanitizeRatings({ a: 4, b: 0, c: 9, d: '3', e: 'x', f: 4.2, g: 0.1 }), { a: 4, d: 3, f: 4.25 });
   assert.deepEqual(sanitizeHistory(null), {});
 });
 
@@ -46,7 +46,10 @@ test('editing dates: finished finishes the book; clearing it reopens; bad edits 
   assert.equal(applyHistoryEdit(s, 'x', { started: 'soon' }, '2026-10-16'), s);
 });
 
-test('rating: set, change, clear', () => {
+test('rating: quarter stars, change, clear', () => {
+  assert.equal(applyRating(base(), 'x', 4.3).ratings.x, 4.25);
+  assert.equal(formatRating(4.25), '4.25');
+  assert.equal(formatRating(4), '4');
   const s = applyRating(base(), 'x', 4);
   assert.equal(s.ratings.x, 4);
   assert.equal(applyRating(s, 'x', 4), s);

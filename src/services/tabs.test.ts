@@ -32,7 +32,7 @@ test('every tab draws, and an inactive tab is mounted but hidden', () => {
   assert.match(today, /Books finished so far: <b>4<\/b>/);
   assert.ok(!/ hidden=""/.test(today));
 
-  const lib = renderToStaticMarkup(h(LibraryTab, { active: false, libraryBooks: books, state, handleOpenCover: noop, handleOpenHighlights: noop, setBookStatus: noop, confirmRemoveFromLibrary: noop, newShelfRequest: 0 }));
+  const lib = renderToStaticMarkup(h(LibraryTab, { active: false, myBooks: books, state, handleOpenCover: noop, handleOpenHighlights: noop, setBookStatus: noop, confirmRemoveFromLibrary: noop, newShelfRequest: 0, collections: [], onCollectionsChange: noop, onOpenSheet: noop }));
   assert.match(lib, /Master list/); // books with no status sit on the Master list shelf
   assert.match(lib, /Alpha Book/);
   assert.match(lib, /aria-label="Add tag"/);
@@ -73,9 +73,46 @@ test('Library: Reading now shows the book you read last first, with its page pro
     totalPages: { a: 100, b: 300 },
     history: { a: { lastRead: 1 }, b: { lastRead: 2 } },
   };
-  const html = renderToStaticMarkup(h(LibraryTab, { active: true, libraryBooks: books, state: s as any, handleOpenCover: noop, handleOpenHighlights: noop, setBookStatus: noop, confirmRemoveFromLibrary: noop, newShelfRequest: 0 }));
+  const html = renderToStaticMarkup(h(LibraryTab, { active: true, myBooks: books, state: s as any, handleOpenCover: noop, handleOpenHighlights: noop, setBookStatus: noop, confirmRemoveFromLibrary: noop, newShelfRequest: 0, collections: [], onCollectionsChange: noop, onOpenSheet: noop }));
   assert.ok(html.indexOf('Beta Book') < html.indexOf('Alpha Book'), 'latest read comes first');
   assert.match(html, /Page 120 of 300/);
   assert.match(html, /aria-label="Search your library"/);
   assert.match(html, /Reading now/);
+});
+
+
+test('My Library: status tabs with counts, a few cards sideways, View all for the rest, Master list and shelves below', () => {
+  const books = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6'].map(t => book(t.toLowerCase(), `${t} Title`));
+  const s = {
+    ...state,
+    status: { a1: 'now', a2: 'done', a3: 'done', a4: 'done', a5: 'done', a6: 'done' },
+    history: {},
+  };
+  const html = renderToStaticMarkup(h(LibraryTab, {
+    active: true, myBooks: books, state: s as any, handleOpenCover: noop, handleOpenHighlights: noop, setBookStatus: noop,
+    confirmRemoveFromLibrary: noop, newShelfRequest: 0, onCollectionsChange: noop, onOpenSheet: noop,
+    collections: [{ id: 'sh1', name: 'Cozy reads', kind: 'shelf', bookIds: ['a1', 'a2'] }],
+  }));
+  assert.match(html, /role="tablist"/);
+  assert.match(html, /Reading now <span[^>]*>1</);
+  assert.match(html, /Finished <span[^>]*>5</);
+  assert.match(html, /Up next <span[^>]*>0</);
+  assert.match(html, /Did not finish/);
+  assert.match(html, /Not for me/);
+  assert.match(html, /Master list <span[^>]*>6</);
+  assert.match(html, /Cozy reads <span[^>]*>2</);
+  assert.match(html, /aria-label="Add shelf"/);
+  assert.ok(!/View all/.test(html), 'Reading now is the open tab and has one book');
+  // every book is in the Master list at once (a1 is also the one Reading now card, so it shows twice)
+  for (const b of books) assert.match(html, new RegExp(b.title));
+});
+
+test('My Library: View all shows when a status tab holds more than four books', () => {
+  const books = ['B1', 'B2', 'B3', 'B4', 'B5'].map(t => book(t.toLowerCase(), `${t} Title`));
+  const s = { ...state, status: { b1: 'now', b2: 'now', b3: 'now', b4: 'now', b5: 'now' } };
+  const html = renderToStaticMarkup(h(LibraryTab, {
+    active: true, myBooks: books, state: s as any, handleOpenCover: noop, handleOpenHighlights: noop, setBookStatus: noop,
+    confirmRemoveFromLibrary: noop, newShelfRequest: 0, collections: [], onCollectionsChange: noop, onOpenSheet: noop,
+  }));
+  assert.match(html, /View all 5/);
 });

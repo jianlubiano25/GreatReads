@@ -1,6 +1,7 @@
 export type ShelfKey = 'heal' | 'love' | 'life' | 'joy' | 'prize' | 'world' | 'art' | 'mine';
 
-export type BookStatus = 'list' | 'next' | 'now' | 'done' | 'skip';
+/** list = on My Library with no status; skip = "Not for me"; dnf = "Did not finish" */
+export type BookStatus = 'list' | 'next' | 'now' | 'done' | 'skip' | 'dnf';
 
 export interface Book {
   id: string | number;

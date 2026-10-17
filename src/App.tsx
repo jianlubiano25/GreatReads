@@ -3,7 +3,11 @@ import { Book, TabType, WordItem } from './types';
 import { useReadingLife } from './hooks/useReadingLife';
 import { bookKey, getCoverPick, getCoverUrl, sameWork, withKnownRating, isCoverAdminOn, subscribeCoverAdmin, tapSecret, syncSharedCovers } from './services/books';
 import { milestone } from './services/books/perf';
-import { prettyDate, readingNowOrder } from './services/bookHistory';
+import { formatRating, prettyDate, readingNowOrder } from './services/bookHistory';
+import { makeCollection, setBookMembership } from './services/libraryCollections';
+import { resolveLibraryId } from './services/library';
+import { useLibraryCollections } from './hooks/useLibraryCollections';
+import { LibrarySheet } from './components/LibrarySheet';
 import { enrichInBackground } from './services/books/infoQueue';
 import { DEFAULT_BOOKS } from './data/defaultBooks';
 import { useAppUpdate, applyUpdate, dismissUpdate, restartApp } from './services/appUpdate';
@@ -68,7 +72,7 @@ const WordPracticeModal = lazyModal<typeof import('./components/WordPracticeModa
 const BulkImportModal = lazyModal<typeof import('./components/BulkImportModal').BulkImportModal>(() => import('./components/BulkImportModal'), 'BulkImportModal');
 const ShareModal = lazyModal<typeof import('./components/ShareModal').ShareModal>(() => import('./components/ShareModal'), 'ShareModal');
 
-const TAB_TITLES: Record<string, string> = { store: 'Discover', lib: 'Library', words: 'Word Garden', dev: 'On my device' };
+const TAB_TITLES: Record<string, string> = { store: 'Discover', lib: 'My Library', words: 'Word Garden', dev: 'On my device' };
 
 export default function App() {
   const {
@@ -169,7 +173,8 @@ export default function App() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [libAddMenuOpen, setLibAddMenuOpen] = useState(false); // the + in the Library header: Add book / Add shelf
   const [newShelfRequest, setNewShelfRequest] = useState(0);
-  const [collectionsReload, setCollectionsReload] = useState(0); // goes up after duplicates are merged so the Library re-reads your tags and shelves
+  const { collections, update: updateCollections, reload: reloadCollections } = useLibraryCollections(); // your own shelves and tags
+  const [sheetBook, setSheetBook] = useState<Book | null>(null); // the Add to My Library sheet (status, shelves, tags)
   const [showWordPracticeModal, setShowWordPracticeModal] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState<{ open: boolean; type: 'books' | 'words' }>({
     open: false,
@@ -235,12 +240,12 @@ export default function App() {
   // The books whose own rating wins (ratings policy, step 1). One array per library, so its index (see indexKnownRatings) is built once, not on every render.
   // Discover cards show where each book you own stands (status, pages, dates) and your own stars
   const discoverLine = useMemo(() => {
-    const byId = new Map(libraryBooks.map(b => [String(b.id), b]));
+    const byId = new Map(allBooks.map(b => [String(b.id), b]));
     return (b: Book): string | undefined => {
-      const owned = byId.get(String(b.id)) ?? libraryBooks.find(x => sameWork(x, b, true));
+      const owned = byId.get(String(b.id)) ?? allBooks.find(x => sameWork(x, b, true));
       const key = String(owned ? owned.id : b.id);
       const mine = state.ratings[key] ?? (owned ? undefined : state.ratings[`w:${bookKey(b)}`]);
-      const stars = mine ? `You rated it ${'★'.repeat(mine)}` : '';
+      const stars = mine ? `You rated it ★ ${formatRating(mine)}` : '';
       if (!owned) return stars || undefined;
       const st = state.status[key];
       const total = state.totalPages[key] || owned.pageCount || 0;
@@ -249,10 +254,11 @@ export default function App() {
         st === 'now' ? `Reading now${page ? ` · page ${page}${total ? ` of ${total}` : ''}` : ''}`
         : st === 'next' ? 'Up next'
         : st === 'done' ? `Finished${state.history[key]?.finished ? ` ${prettyDate(state.history[key]?.finished)}` : ''}`
-        : st === 'skip' ? '' : 'On your list';
+        : st === 'dnf' ? 'Did not finish'
+        : st === 'skip' ? 'Not for me' : 'In My Library';
       return [where, stars].filter(Boolean).join(' · ') || undefined;
     };
-  }, [libraryBooks, state.status, state.currentPage, state.totalPages, state.history, state.ratings]);
+  }, [allBooks, state.status, state.currentPage, state.totalPages, state.history, state.ratings]);
 
   const knownPool = useMemo(() => [...DEFAULT_BOOKS, ...libraryBooks], [libraryBooks]);
 
@@ -491,14 +497,16 @@ export default function App() {
         {visitedTabs.has('lib') && (
           <LibraryTab
             active={tab === 'lib'}
-            libraryBooks={libraryBooks}
+            myBooks={allBooks}
             state={state}
             handleOpenCover={handleOpenCover}
             handleOpenHighlights={handleOpenHighlights}
             setBookStatus={setBookStatus}
             confirmRemoveFromLibrary={confirmRemoveFromLibrary}
             newShelfRequest={newShelfRequest}
-            collectionsReload={collectionsReload}
+            collections={collections}
+            onCollectionsChange={updateCollections}
+            onOpenSheet={setSheetBook}
           />
         )}
 
@@ -619,8 +627,8 @@ export default function App() {
       {/* Modal 1: Apple Books Detail Modal (when tapping any book cover) */}
       {selectedBookForDetail && (() => {
         // The same book can sit in the library under a different record id (search vs Store vs NYT): use the one you own
-        const owned = libraryBooks.find(b => b.id === selectedBookForDetail.id)
-          ?? libraryBooks.find(b => sameWork(b, selectedBookForDetail, true));
+        const owned = allBooks.find(b => b.id === selectedBookForDetail.id)
+          ?? allBooks.find(b => sameWork(b, selectedBookForDetail, true));
         const ownKey = String(owned ? owned.id : selectedBookForDetail.id);
         // A book not on your list yet keeps your stars under its identity, so they follow it when you add it (whichever copy you add)
         const ratingKey = owned ? ownKey : `w:${bookKey(selectedBookForDetail)}`;
@@ -642,15 +650,9 @@ export default function App() {
           onEditHistory={patch => setBookHistory(ownKey, patch)}
           onUpdateProgress={(page, total) => updateBookProgress(ownKey, page, total)}
           onClose={() => setSelectedBookForDetail(null)}
-          onAddToLibrary={(b, status) => {
-            addBook(b, 'library', status);
-          }}
+          onOpenLibrarySheet={() => setSheetBook(owned ?? selectedBookForDetail)}
           onAddToDevice={(b, status) => {
             addBook(b, 'device', status);
-          }}
-          onSetStatus={(b, status) => {
-            if (owned) setBookStatus(owned.id, status);
-            else addBook(b, 'library', status); // not in the library yet: add it on the chosen list
           }}
           onOpenHighlights={() => {
             const b = owned ?? selectedBookForDetail;
@@ -658,6 +660,35 @@ export default function App() {
             setSelectedBookForHighlights(b);
           }}
         />
+        );
+      })()}
+
+      {sheetBook && (() => {
+        // The record this book is (or would be) kept under: a copy of the same book you already have, else its own id
+        const key = resolveLibraryId(state, sheetBook);
+        const isOwned = allBooks.some(b => String(b.id) === key);
+        return (
+          <LibrarySheet
+            book={sheetBook}
+            inLibrary={isOwned}
+            status={state.status[key] || 'list'}
+            shelves={collections.filter(c => c.kind === 'shelf')}
+            tags={collections.filter(c => c.kind === 'tag')}
+            checked={collections.filter(c => c.bookIds.includes(key)).map(c => c.id)}
+            onCreate={(kind, name) => {
+              const c = makeCollection(kind, name);
+              if (!c) return null;
+              updateCollections(prev => [...prev, c]);
+              return c.id;
+            }}
+            onApply={({ status, chosen }) => {
+              if (!isOwned) addBook(sheetBook, 'library', 'list');
+              if (status !== (isOwned ? state.status[key] || 'list' : 'list')) setBookStatus(key, status);
+              updateCollections(prev => setBookMembership(prev, key, new Set(chosen)));
+              setSheetBook(null);
+            }}
+            onClose={() => setSheetBook(null)}
+          />
         );
       })()}
 
@@ -763,10 +794,10 @@ export default function App() {
           isOpen
           onClose={() => setShowBackupModal(false)}
           onExportBackup={exportBackup}
-          onImportBackup={importBackup}
+          onImportBackup={json => { const ok = importBackup(json); if (ok) reloadCollections(); return ok; }}
           onClearLibrary={clearLibrary}
           onFindDuplicates={findDuplicates}
-          onMergeDuplicates={() => { const n = mergeDuplicates(); setCollectionsReload(c => c + 1); return n; }}
+          onMergeDuplicates={() => { const n = mergeDuplicates(); reloadCollections(); return n; }}
           onClearOnDevice={clearOnDevice}
           onResetEverything={resetEverything}
         />

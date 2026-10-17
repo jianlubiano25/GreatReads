@@ -11,6 +11,13 @@ export type AddStatus = 'now' | 'next' | 'list';
 /** `book` with the rating fields of `from` (the rest untouched). */
 const withRatingFrom = (from: Book, book: Book): Book => ({ ...book, ratingAverage: from.ratingAverage, ratingCount: from.ratingCount, ratingSource: from.ratingSource });
 
+/** The record id a book is (or would be) kept under: the copy you already have of the same book, else its own id. */
+export function resolveLibraryId(prev: Pick<ReadingState, 'customBooks' | 'hiddenBookIds'>, incoming: Book): string {
+  const dupe = [...DEFAULT_BOOKS, ...prev.customBooks].find(b =>
+    String(b.id) !== String(incoming.id) && !prev.hiddenBookIds[String(b.id)] && sameWork(b, incoming, true));
+  return String(dupe ? dupe.id : incoming.id);
+}
+
 /**
  * Adds a book to the library (pure, so it can be tested without React).
  * The same book arriving under a different record id (search vs Store vs NYT) is the book you already have, not a second copy.

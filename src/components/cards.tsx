@@ -4,7 +4,7 @@ import { DIFFICULTY_LABELS } from '../data/defaultBooks';
 import { BUILTIN_DICTIONARY } from '../data/defaultWords';
 import { speakWord } from '../services/dictionary';
 import { CoverFace, RatingLine, AwardBadges } from './BookMeta';
-import { Bookmark, Check, Edit2, Search, Trash2, Volume2 } from 'lucide-react';
+import { Bookmark, Check, Edit2, Library, Search, Trash2, Volume2 } from 'lucide-react';
 
 /*
  * The cards on the Today, Library, Device and Word Garden screens.
@@ -285,13 +285,15 @@ function ShelfCardTop({ book: b, onOpen }: { book: Book; onOpen: (b: Book) => vo
 const ICON_BTN = 'p-1.5 rounded-lg border border-[#e3d7c3] dark:border-[#382f25] hover:bg-black/5 text-[#706256] dark:text-[#a89a8a]';
 
 export const LibraryCard = React.memo(function LibraryCard({
-  book: b, status, highlightCount, currentPage = 0, totalPages = 0, onOpen, onQuotes, onStatus, onRemove,
+  book: b, status, highlightCount, currentPage = 0, totalPages = 0, onOpen, onQuotes, onStatus, onShelf, onRemove,
 }: ShelfCardProps & {
   status: BookStatus;
   /** Pages read so far / book length: shown as a progress line while you are reading it */
   currentPage?: number;
   totalPages?: number;
   onStatus: (id: string | number, status: BookStatus) => void;
+  /** Open the Add to My Library sheet (status, shelves, tags) */
+  onShelf?: (b: Book) => void;
   onRemove: (b: Book) => void;
 }) {
   return (
@@ -324,12 +326,19 @@ export const LibraryCard = React.memo(function LibraryCard({
           onChange={e => onStatus(b.id, e.target.value as BookStatus)}
           className="flex-1 py-1.5 px-2.5 rounded-lg text-xs bg-[#f5f0e6] dark:bg-[#181410] border border-[#e3d7c3] dark:border-[#382f25] text-[#201a15] dark:text-[#f0e6d6] font-medium focus:outline-none"
         >
-          <option value="list">Master list</option>
-          <option value="next">Next</option>
           <option value="now">Reading now</option>
+          <option value="next">Up next</option>
           <option value="done">Finished</option>
-          <option value="skip">Skipped</option>
+          <option value="dnf">Did not finish</option>
+          <option value="skip">Not for me</option>
+          <option value="list">No status</option>
         </select>
+
+        {onShelf && (
+          <button onClick={() => onShelf(b)} className={ICON_BTN} title="Shelves, tags & status" aria-label={`Shelves and tags for ${b.title}`}>
+            <Library className="w-4 h-4 text-[#2e5934] dark:text-[#86b880]" />
+          </button>
+        )}
 
         <button onClick={() => onQuotes(b)} className={ICON_BTN} title="View quotes & highlights" aria-label={`Quotes${highlightCount ? ` (${highlightCount})` : ''}`}>
           <Bookmark className="w-4 h-4 text-[#925838]" />
