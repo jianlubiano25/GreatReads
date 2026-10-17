@@ -18,6 +18,32 @@ const ALIASES: Record<string, Alias> = {
   'fast paced': { search: ['thriller', 'suspense'], fit: ['thriller', 'suspense', 'gripping', 'action', 'adventure', 'pulse', 'fastpaced', 'unputdownable'] },
   mystery: { search: [], fit: ['mystery', 'detective', 'crime', 'whodunit', 'sleuth', 'murder', 'investigation'] },
 };
+/**
+ * The genres on the Search tab: only what counts as a MATCH (`fit`), so a book filed under a related word still fits ("haunted" for horror). They ask the catalogs
+ * for nothing extra (`search` stays empty), so a typed genre word is never turned into a mood search.
+ */
+const GENRE_FIT: Record<string, string[]> = {
+  fantasy: ['magic', 'magical', 'wizard', 'dragon', 'sorcery', 'fae', 'mythical', 'quest'],
+  'science fiction': ['scifi', 'dystopian', 'space', 'alien', 'robot', 'futuristic', 'cyberpunk', 'galaxy'],
+  thriller: ['suspense', 'psychological', 'espionage', 'spy', 'gripping', 'twist', 'conspiracy'],
+  horror: ['ghost', 'haunted', 'supernatural', 'gothic', 'vampire', 'macabre', 'terrifying'],
+  romance: ['romantic', 'love', 'relationship', 'romcom'],
+  'historical fiction': ['historical', 'history', 'war', 'century', 'victorian', 'medieval'],
+  'young adult': ['ya', 'teen', 'teenage', 'juvenile', 'adolescent'],
+  'graphic novels': ['graphic', 'comic', 'comics', 'manga'],
+  'true crime': ['crime', 'murder', 'killer', 'investigation', 'trial', 'criminal'],
+  biography: ['biographical', 'autobiography', 'memoir', 'lives'],
+  memoir: ['autobiography', 'autobiographical'],
+  history: ['historical', 'century', 'war', 'civilization', 'ancient', 'empire'],
+  psychology: ['psychological', 'mind', 'behavior', 'behaviour', 'mental', 'cognitive', 'brain'],
+  philosophy: ['philosophical', 'ethics', 'stoic', 'stoicism', 'existential', 'metaphysics'],
+  business: ['management', 'leadership', 'entrepreneur', 'startup', 'investing', 'marketing', 'economics', 'finance'],
+  travel: ['travelogue', 'journey', 'adventure', 'expedition', 'hiking', 'trip'],
+  poetry: ['poem', 'poems', 'poet', 'verse'],
+  science: ['scientific', 'physics', 'biology', 'chemistry', 'astronomy', 'evolution', 'universe', 'cosmos'],
+};
+for (const [word, fit] of Object.entries(GENRE_FIT)) if (!ALIASES[word]) ALIASES[word] = { search: [], fit };
+ALIASES['graphic novel'] = ALIASES['graphic novels'];
 ALIASES.cosy = ALIASES.cozy;
 ALIASES.fastpaced = ALIASES['fast paced'];
 ALIASES['page turner'] = ALIASES['fast paced'];

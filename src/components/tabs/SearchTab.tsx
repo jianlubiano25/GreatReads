@@ -4,6 +4,7 @@ import { SEARCH_GENRES, type SearchGenre } from '../../data/searchGenres';
 import { useKnownBooks } from '../../hooks/useKnownBooks';
 import type { SearchScope } from '../../services/books';
 import { BookSearch } from '../BookSearch';
+import { GenrePicks } from '../GenrePicks';
 import { TabPane } from './TabPane';
 
 interface Props {
@@ -21,18 +22,24 @@ export function SearchTab({ active, allBooks, handleOpenCover }: Props) {
   // A genre is searched with the Keywords button on. When you leave that search the button goes back to All, so the next thing you type is an ordinary search
   // (a button you picked yourself stays as you left it, like in Discover).
   const byGenre = useRef(false);
+  const [genre, setGenre] = useState<SearchGenre | null>(null);
 
   const setQuery = useCallback((q: string) => {
     setQueryState(q);
-    if (!q.trim() && byGenre.current) { byGenre.current = false; setScopeState('all'); }
+    if (!q.trim()) { setGenre(null); if (byGenre.current) { byGenre.current = false; setScopeState('all'); } }
   }, []);
-  const setScope = useCallback((s: SearchScope) => { byGenre.current = false; setScopeState(s); }, []);
-  const pickGenre = useCallback((g: SearchGenre) => { byGenre.current = true; setScopeState('keywords'); setQueryState(g.query); }, []);
+  const setScope = useCallback((s: SearchScope) => { byGenre.current = false; setGenre(null); setScopeState(s); }, []);
+  const pickGenre = useCallback((g: SearchGenre) => { byGenre.current = true; setGenre(g); setScopeState('keywords'); setQueryState(g.query); }, []);
+  /** A sub-genre chip (or "All Fantasy") on a genre's page: another Keywords search inside the same genre */
+  const pickSub = useCallback((q: string) => { byGenre.current = true; setScopeState('keywords'); setQueryState(q); }, []);
+  // The genre's page shows while what is searched is the genre or one of its sub-genres; typing anything else leaves it
+  const onGenrePage = !!genre && scope === 'keywords' && (query === genre.query || genre.subgenres.some(s => s.query === query));
 
   return (
     <TabPane active={active}>
       <div className="flex flex-col gap-6">
-        <BookSearch active={active} known={known} query={query} setQuery={setQuery} scope={scope} setScope={setScope} handleOpenCover={handleOpenCover} backLabel="Back to Search" />
+        <BookSearch active={active} known={known} query={query} setQuery={setQuery} scope={scope} setScope={setScope} handleOpenCover={handleOpenCover} backLabel="Back to Search"
+          aboveResults={onGenrePage && genre ? <GenrePicks genre={genre} query={query} known={known} onPick={pickSub} onOpen={handleOpenCover} /> : undefined} />
 
         {!query.trim() && (
           <section className="flex flex-col gap-3" aria-label="Browse by genre">

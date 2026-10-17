@@ -35,13 +35,15 @@ interface Props {
   handleOpenCover: (book: Book) => void;
   /** Spoken name of the arrow that leaves the results ("Back to the Store") */
   backLabel: string;
+  /** Shown at the top of the results (a genre's page puts its sub-genres and hand-picked books here) */
+  aboveResults?: React.ReactNode;
 }
 
 /**
  * The book search used by Discover and by the Search tab: the box, the All / Title / Author / Keywords buttons, the filter icon and, once something is typed, the results
  * over the whole screen. Books already on the device show with each keystroke, then the list improves as each source answers (hooks/useBookSearch.ts).
  */
-export function BookSearch({ active, known, query, setQuery, scope, setScope, handleOpenCover, backLabel }: Props) {
+export function BookSearch({ active, known, query, setQuery, scope, setScope, handleOpenCover, backLabel, aboveResults }: Props) {
   const searchInput = useRef<HTMLInputElement>(null);
   const [visibleCount, setVisibleCount] = useState(SEARCH_STEP);
   const [view, setView] = useState<SearchView>(DEFAULT_SEARCH_VIEW);
@@ -208,6 +210,7 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
       {/* Search Results if query present */}
       {searching && (
         <div className="px-3 pt-3 pb-28 flex flex-col gap-3">
+          {aboveResults}
           <span className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a]">
             {searchResults.length
               ? `${filtersOn ? `${shownResults.length} of ${searchResults.length} loaded match your filters` : `Results 1–${Math.min(visibleCount, shownResults.length)} of ${Math.max(searchTotal, searchResults.length)}`}${isSearching ? ' · searching…' : ''}`
