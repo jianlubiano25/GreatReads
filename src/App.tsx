@@ -289,7 +289,9 @@ export default function App() {
       : b.isOnDevice
         ? `Remove "${b.title}" from your books? It is also on your device, and its notes and highlights will be removed too.`
         : `Remove "${b.title}" from library?`;
-    if (confirm(message)) removeBook(b.id);
+    if (!confirm(message)) return false;
+    removeBook(b.id);
+    return true;
   }, [removeBook, statusOf]);
   const editWord = useCallback((w: WordItem) => setShowLookupModal({ open: true, existingWord: w }), []);
   const lookupAgain = useCallback((word: string) => setShowLookupModal({ open: true, initialWord: word }), []);
@@ -657,6 +659,10 @@ export default function App() {
               updateCollections(prev => [...prev, c]);
               return c.id;
             }}
+            onRemove={isOwned ? () => {
+              const mine = allBooks.find(b => String(b.id) === key);
+              if (mine && confirmRemoveFromLibrary(mine)) setSheetBook(null);
+            } : undefined}
             onApply={({ status, chosen }) => {
               if (!isOwned) addBook(sheetBook, 'library', 'list');
               if (status !== (isOwned ? state.status[key] || 'list' : 'list')) setBookStatus(key, status);

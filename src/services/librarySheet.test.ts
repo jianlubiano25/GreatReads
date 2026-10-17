@@ -48,3 +48,11 @@ test('the sheet and the shelf editor keep a visible, scrollable body (a flex-bas
   assert.ok(!/basis-0/.test(sheet));
   assert.match(sheet, /overflow-y-auto/);
 });
+
+test('the sheet offers Remove only for a book that is in My Library', () => {
+  const book = makeBook({ id: 'x', title: 'Piranesi', author: 'Susanna Clarke' });
+  const base = { book, status: 'list' as const, shelves: [], tags: [], checked: [], onCreate: () => null, onApply: noop, onRemove: noop, onClose: noop };
+  assert.match(renderToStaticMarkup(h(LibrarySheet, { ...base, inLibrary: true })), /Remove Piranesi from My Library/);
+  assert.ok(!/Remove Piranesi/.test(renderToStaticMarkup(h(LibrarySheet, { ...base, inLibrary: false }))));
+  assert.ok(!/Remove Piranesi/.test(renderToStaticMarkup(h(LibrarySheet, { ...base, inLibrary: true, onRemove: undefined }))));
+});

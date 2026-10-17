@@ -158,7 +158,7 @@ test('Rate this book: where the pointer is decides the quarter star (the left ed
   assert.equal(ratingAt(10, 0), 0); // nothing measured yet
 });
 
-test('Book info: one control (Add to My Library, or your status once it is yours), no Add to Device, and Rate this book is below Honors & Awards', () => {
+test('Book info: one control (Add to My Library, or your status once it is yours), no Add to Device, and Rate this book is below the button', () => {
   const awarded = DEFAULT_BOOKS.find(b => typeof b.id === 'number' && b.id === 4)!;
   const html = renderToStaticMarkup(h(AppleBookDetailModal, {
     book: awarded, inLibrary: false, onRate: noop, onClose: noop, onOpenLibrarySheet: noop,
@@ -175,10 +175,20 @@ test('Book info: one control (Add to My Library, or your status once it is yours
   const rate = html.indexOf('Rate this book');
   const honors = html.indexOf('Honors &amp; Awards');
   assert.ok(rate > 0 && honors > 0, 'both sections are drawn');
-  assert.ok(rate > honors, 'Rate this book comes after Honors & Awards');
+  assert.ok(rate < honors, 'Rate this book comes before Honors & Awards');
+  assert.ok(html.indexOf('Add to My Library') < rate, 'and right below the Add to My Library button');
   // the same title size: both headings use the same size, weight and letter-spacing classes (Honors also lays its trophy icon out with flex)
   const heading = (name: string) => html.slice(html.lastIndexOf('<h4', html.indexOf(name)), html.indexOf(name)).match(/class="([^"]*)"/)![1];
   const SIZE = 'text-xs font-bold uppercase tracking-wider';
   assert.ok(heading('Rate this book').startsWith(SIZE));
   assert.ok(heading('Honors &amp; Awards').startsWith(SIZE));
+});
+
+test('Book info: the Add to My Library button is always the same width (the info column takes the full width on a phone)', () => {
+  const b = DEFAULT_BOOKS.find(x => typeof x.id === 'number' && x.id === 4)!;
+  for (const inLibrary of [false, true]) {
+    const html = renderToStaticMarkup(h(AppleBookDetailModal, { book: b, inLibrary, onRate: noop, onClose: noop, onOpenLibrarySheet: noop }));
+    assert.match(html, /class="w-full sm:w-auto flex-1 flex flex-col items-center sm:items-start min-w-0"/);
+    assert.match(html, /class="flex items-center gap-3 w-full max-w-md mt-2"/);
+  }
 });

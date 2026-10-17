@@ -158,7 +158,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           </div>
 
           {/* Book Header Info */}
-          <div className="flex-1 flex flex-col items-center sm:items-start min-w-0">
+          <div className="w-full sm:w-auto flex-1 flex flex-col items-center sm:items-start min-w-0">
             <h2 className="font-serif-display text-2xl sm:text-3xl leading-tight text-[#201a15] dark:text-[#f0e6d6] mb-1">
               {book.title}
             </h2>
@@ -205,6 +205,9 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
             )}
           </div>
         </div>
+
+        {/* Your own rating (every book), right below the Add to My Library button */}
+        {onRate && <RateThisBook title={book.title} value={userRating} onRate={onRate} />}
 
         {/* Quick facts: always four columns (same layout as the Gemini version).
             Missing data shows a dash instead of an invented number. */}
@@ -273,9 +276,6 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
             </div>
           </div>
         )}
-
-        {/* Your own rating (every book), right below Honors & Awards */}
-        {onRate && <RateThisBook title={book.title} value={userRating} onRate={onRate} />}
 
         {/* Synopsis / Description Section */}
         <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25]">

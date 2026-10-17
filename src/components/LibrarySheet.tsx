@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, Plus } from 'lucide-react';
+import { Check, Plus, Trash2 } from 'lucide-react';
 import type { Book, BookStatus } from '../types';
 import { useModalA11y } from '../hooks/useModalA11y';
 import type { Collection } from '../services/libraryCollections';
@@ -25,6 +25,8 @@ interface Props {
   /** Makes a new shelf or tag and returns its id (null when the name is empty) */
   onCreate: (kind: Collection['kind'], name: string) => string | null;
   onApply: (value: { status: BookStatus; chosen: string[] }) => void;
+  /** Take the book out of My Library (only offered for a book that is in it). The app asks "are you sure?" */
+  onRemove?: () => void;
   onClose: () => void;
 }
 
@@ -32,7 +34,7 @@ const LINE = 'border-[#e3d7c3] dark:border-[#382f25]';
 const MUTED = 'text-[#706256] dark:text-[#a89a8a]';
 
 /** "Add to My Library": where the book is in your reading, which shelves it is on, and its tags. */
-export function LibrarySheet({ book, inLibrary, status: initialStatus, shelves, tags, checked, onCreate, onApply, onClose }: Props) {
+export function LibrarySheet({ book, inLibrary, status: initialStatus, shelves, tags, checked, onCreate, onApply, onRemove, onClose }: Props) {
   useModalA11y(onClose);
   const [status, setStatus] = useState<BookStatus>(initialStatus);
   const [chosen, setChosen] = useState<Set<string>>(() => new Set(checked));
@@ -134,15 +136,23 @@ export function LibrarySheet({ book, inLibrary, status: initialStatus, shelves, 
           {group('tag', 'Tags', tags, 'You have no tags yet.')}
         </div>
 
-        <div className={`shrink-0 px-5 py-4 border-t ${LINE} pb-[max(1rem,env(safe-area-inset-bottom))] flex items-center justify-end gap-2`}>
-          <button type="button" onClick={onClose} className={`px-4 py-2 rounded-xl text-xs font-semibold ${MUTED}`}>Cancel</button>
-          <button
-            type="button"
-            onClick={() => onApply({ status, chosen: [...chosen] })}
-            className="px-5 py-2.5 rounded-xl text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729]"
-          >
-            {inLibrary ? 'Save' : 'Add to My Library'}
-          </button>
+        <div className={`shrink-0 px-5 py-4 border-t ${LINE} pb-[max(1rem,env(safe-area-inset-bottom))] flex items-center gap-2`}>
+          {inLibrary && onRemove && (
+            <button type="button" onClick={onRemove} className="mr-auto min-h-[40px] px-2 flex items-center gap-1.5 text-xs font-semibold text-red-600 dark:text-red-400 hover:underline" aria-label={`Remove ${book.title} from My Library`}>
+              <Trash2 className="w-4 h-4" />
+              Remove
+            </button>
+          )}
+          <div className="ml-auto flex items-center gap-2">
+            <button type="button" onClick={onClose} className={`px-4 py-2 rounded-xl text-xs font-semibold ${MUTED}`}>Cancel</button>
+            <button
+              type="button"
+              onClick={() => onApply({ status, chosen: [...chosen] })}
+              className="px-5 py-2.5 rounded-xl text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729]"
+            >
+              {inLibrary ? 'Save' : 'Add to My Library'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
