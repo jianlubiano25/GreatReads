@@ -4,10 +4,10 @@ import { DIFFICULTY_LABELS } from '../data/defaultBooks';
 import { BUILTIN_DICTIONARY } from '../data/defaultWords';
 import { speakWord } from '../services/dictionary';
 import { CoverFace, RatingLine, AwardBadges } from './BookMeta';
-import { Bookmark, Check, Edit2, Search, Trash2, Volume2 } from 'lucide-react';
+import { Bookmark, Check, Edit2, Library, Search, Trash2, Volume2 } from 'lucide-react';
 
 /*
- * The cards on the Today, Library, Device and Word Garden screens.
+ * The cards on the Today, Library and Word Garden screens.
  * Each one is memoized and only receives plain values plus stable callbacks, so changing one book's
  * note or page no longer redraws every other card on the screen.
  */
@@ -242,7 +242,7 @@ export const UpNextCard = React.memo(function UpNextCard({
   );
 });
 
-/* ---------------- Library + Device cards ---------------- */
+/* ---------------- Library card ---------------- */
 
 interface ShelfCardProps {
   book: Book;
@@ -285,10 +285,15 @@ function ShelfCardTop({ book: b, onOpen }: { book: Book; onOpen: (b: Book) => vo
 const ICON_BTN = 'p-1.5 rounded-lg border border-[#e3d7c3] dark:border-[#382f25] hover:bg-black/5 text-[#706256] dark:text-[#a89a8a]';
 
 export const LibraryCard = React.memo(function LibraryCard({
-  book: b, status, highlightCount, onOpen, onQuotes, onStatus, onRemove,
+  book: b, status, highlightCount, currentPage = 0, totalPages = 0, onOpen, onQuotes, onStatus, onShelf, onRemove,
 }: ShelfCardProps & {
   status: BookStatus;
+  /** Pages read so far / book length: shown as a progress line while you are reading it */
+  currentPage?: number;
+  totalPages?: number;
   onStatus: (id: string | number, status: BookStatus) => void;
+  /** Open the Add to My Library sheet (status, shelves, tags) */
+  onShelf?: (b: Book) => void;
   onRemove: (b: Book) => void;
 }) {
   return (
@@ -299,6 +304,21 @@ export const LibraryCard = React.memo(function LibraryCard({
         <p className="text-xs text-[#706256] dark:text-[#a89a8a] italic line-clamp-2">“{b.notes}”</p>
       )}
 
+      {(status === 'now' || currentPage > 0) && (
+        <div className="flex flex-col gap-1" aria-label={`Progress in ${b.title}`}>
+          {totalPages > 0 && (
+            <div className="w-full h-1.5 rounded-full bg-[#e3d7c3] dark:bg-[#382f25] overflow-hidden">
+              <div className="h-full bg-[#2e5934] dark:bg-[#86b880] rounded-full" style={{ width: `${Math.min(100, Math.round((currentPage / totalPages) * 100))}%` }} />
+            </div>
+          )}
+          <span className="text-[11px] text-[#706256] dark:text-[#a89a8a]">
+            {totalPages > 0
+              ? `Page ${currentPage} of ${totalPages} · ${Math.min(100, Math.round((currentPage / totalPages) * 100))}%`
+              : `Page ${currentPage}`}
+          </span>
+        </div>
+      )}
+
       <div className="flex items-center gap-2 pt-2 border-t border-[#e3d7c3] dark:border-[#382f25]">
         <select
           value={status}
@@ -306,12 +326,19 @@ export const LibraryCard = React.memo(function LibraryCard({
           onChange={e => onStatus(b.id, e.target.value as BookStatus)}
           className="flex-1 py-1.5 px-2.5 rounded-lg text-xs bg-[#f5f0e6] dark:bg-[#181410] border border-[#e3d7c3] dark:border-[#382f25] text-[#201a15] dark:text-[#f0e6d6] font-medium focus:outline-none"
         >
-          <option value="list">Master list</option>
-          <option value="next">Next</option>
           <option value="now">Reading now</option>
+          <option value="next">Up next</option>
           <option value="done">Finished</option>
-          <option value="skip">Skipped</option>
+          <option value="dnf">Did not finish</option>
+          <option value="skip">Not for me</option>
+          <option value="list">No status</option>
         </select>
+
+        {onShelf && (
+          <button onClick={() => onShelf(b)} className={ICON_BTN} title="Shelves, tags & status" aria-label={`Shelves and tags for ${b.title}`}>
+            <Library className="w-4 h-4 text-[#2e5934] dark:text-[#86b880]" />
+          </button>
+        )}
 
         <button onClick={() => onQuotes(b)} className={ICON_BTN} title="View quotes & highlights" aria-label={`Quotes${highlightCount ? ` (${highlightCount})` : ''}`}>
           <Bookmark className="w-4 h-4 text-[#925838]" />
@@ -322,52 +349,6 @@ export const LibraryCard = React.memo(function LibraryCard({
           className="p-1.5 rounded-lg text-[#706256] dark:text-[#a89a8a] hover:text-red-500"
           title="Remove book"
           aria-label={`Remove ${b.title}`}
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-      </div>
-    </div>
-  );
-});
-
-export const DeviceCard = React.memo(function DeviceCard({
-  book: b, status, finished, highlightCount, onOpen, onQuotes, onMoveToList, onRemoveFromDevice, onReadAgain,
-}: ShelfCardProps & {
-  status: BookStatus;
-  finished?: boolean;
-  onMoveToList: (id: string | number) => void;
-  onRemoveFromDevice: (b: Book) => void;
-  onReadAgain: (id: string | number) => void;
-}) {
-  const inList = status === 'next' || status === 'now';
-  return (
-    <div className={`p-4 ${CARD} flex flex-col justify-between gap-3`} style={{ borderLeftColor: b.spineColor || '#2e5934' }}>
-      <ShelfCardTop book={b} onOpen={onOpen} />
-
-      <div className="flex items-center gap-2 pt-2 border-t border-[#e3d7c3] dark:border-[#382f25]">
-        {finished ? (
-          <button onClick={() => onReadAgain(b.id)} className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] text-center">
-            Read again
-          </button>
-        ) : inList ? (
-          <span className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold text-center text-[#2e5934] dark:text-[#86b880] bg-[#2e5934]/10">
-            {status === 'now' ? 'Reading now' : 'In your reading list'}
-          </span>
-        ) : (
-          <button onClick={() => onMoveToList(b.id)} className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] text-center">
-            Add to reading list
-          </button>
-        )}
-
-        <button onClick={() => onQuotes(b)} className={ICON_BTN} title="View quotes & highlights" aria-label={`Quotes${highlightCount ? ` (${highlightCount})` : ''}`}>
-          <Bookmark className="w-4 h-4 text-[#925838]" />
-        </button>
-
-        <button
-          onClick={() => onRemoveFromDevice(b)}
-          className="p-1.5 rounded-lg text-[#706256] dark:text-[#a89a8a] hover:text-red-500"
-          title={finished ? 'Remove from my books' : 'Remove from device (stays in Library)'}
-          aria-label={finished ? `Remove ${b.title} from my books` : `Remove ${b.title} from device`}
         >
           <Trash2 className="w-4 h-4" />
         </button>

@@ -34,6 +34,8 @@ interface Props {
   known?: Book[];
   /** One of the first shelves on the page: its first covers load at once. Every other shelf's covers load as they come near the screen. */
   priority?: boolean;
+  /** What you have done with a book ("Reading · page 120 of 300", "Finished Oct 3, 2026", your own stars); nothing for books you have not touched */
+  mine?: (b: Book) => string | undefined;
   onOpen: (b: Book) => void;
 }
 
@@ -58,7 +60,7 @@ function ShelfSkeleton({ pulse }: { pulse: boolean }) {
 }
 
 /** One horizontally scrolling store shelf, fed by a ShelfSource. */
-export const StoreShelf = React.memo(function StoreShelf({ id, title, source, books: fixedBooks, ranked, lazy, hideIfUnavailable, known, priority, onOpen }: Props) {
+export const StoreShelf = React.memo(function StoreShelf({ id, title, source, books: fixedBooks, ranked, lazy, hideIfUnavailable, known, priority, mine, onOpen }: Props) {
   const [loaded, setLoaded] = useState<Book[] | null>(() => (fixedBooks || !source || lazy ? null : source.cached()));
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0); // "Try again" reloads the shelf
@@ -154,6 +156,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
               </h4>
               <p className="text-[11px] text-[#706256] dark:text-[#a89a8a] truncate">{b.author}</p>
               <RatingLine book={b} compact />
+              {mine?.(b) && <p className="text-[11px] font-medium text-[#2e5934] dark:text-[#86b880] line-clamp-2">{mine(b)}</p>}
               <AwardBadges book={b} />
             </div>
           ))}

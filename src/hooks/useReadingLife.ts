@@ -5,10 +5,13 @@ import { INITIAL_WORDS } from '../data/defaultWords';
 import { normalizeV2, normalizeLegacy, parseBackup } from '../services/stateSanitizer';
 import { computeSnapshot, currentStreakFor, evaluateGarden, markCelebrated, movePlant as movePlantIn, pendingCelebrations, seedGarden } from '../services/garden';
 import { dateKey } from '../services/dates';
+import { applyHistoryEdit, applyRating, stampProgress, stampStatus, type HistoryPatch } from '../services/bookHistory';
 import { applyAddBook, type AddDestination, type AddStatus } from '../services/library';
 import { clearableCacheKeys } from '../services/books/cache';
 import { exportCoverPicks, restoreCoverPicksFromBackup } from '../services/books/coverPicks';
 import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
+import { applyMerge, findDuplicateGroups, idMapOf, remapCollections } from '../services/mergeDuplicates';
+import { exportCollections, loadCollections, restoreCollectionsFromBackup, saveCollections } from '../services/libraryCollections';
 
 // Small helper lists that are not persistentCache instances but can be rebuilt (never user data)
 export const EXTRA_CLEARABLE = ['readlife.preload', 'readlife.loaded', 'readlife.phoneticTried'];
@@ -41,6 +44,8 @@ function buildDefaultState(): ReadingState {
     words: [...INITIAL_WORDS],
     // Starter plants are owned from the first launch (no celebration prompt for them).
     garden: seedGarden({ dailyLog: {}, goal: 10, status: {}, todayKey: getTodayKey() }),
+    history: {},
+    ratings: {},
   };
 }
 
@@ -276,6 +281,8 @@ export function useReadingLife() {
           ...prev.dailyLog,
           [todayK]: Math.max(0, (prev.dailyLog[todayK] || 0) + diff),
         } : prev.dailyLog,
+        // Reading pages starts the book and makes it the latest one you read
+        history: diff > 0 ? { ...prev.history, [idKey]: stampProgress(prev.history[idKey], todayK, Date.now()) } : prev.history,
       };
     });
   }, []);
@@ -288,7 +295,30 @@ export function useReadingLife() {
         ...prev.status,
         [idKey]: status,
       },
+      history: { ...prev.history, [idKey]: stampStatus(prev.history[idKey], prev.status[idKey], status, getTodayKey(), Date.now()) },
     }));
+  }, []);
+
+  /** Edit when a book was added, started or finished (null clears a date). */
+  const setBookHistory = useCallback((bookId: string | number, patch: HistoryPatch) => {
+    setState(prev => applyHistoryEdit(prev, bookId, patch, getTodayKey()));
+  }, []);
+
+  /** Your own star rating of a book (0 takes it back). */
+  const setBookRating = useCallback((bookId: string | number, stars: number) => {
+    setState(prev => applyRating(prev, bookId, stars));
+  }, []);
+
+  /** Books that are in the Library more than once (changes nothing). */
+  const findDuplicates = useCallback(() => findDuplicateGroups(latestState.current), []);
+
+  /** Folds every duplicate into one book, keeping status, pages, notes, quotes, dates and rating. Returns how many books were merged. */
+  const mergeDuplicates = useCallback((): number => {
+    const groups = findDuplicateGroups(latestState.current);
+    if (!groups.length) return 0;
+    setState(prev => applyMerge(prev, findDuplicateGroups(prev)));
+    saveCollections(remapCollections(loadCollections(), idMapOf(groups))); // your own tags and shelves follow the kept copy
+    return groups.length;
   }, []);
 
   const toggleOnDevice = useCallback((bookId: string | number, targetValue?: boolean) => {
@@ -335,6 +365,8 @@ export function useReadingLife() {
         totalPages: without(prev.totalPages),
         notes: without(prev.notes),
         highlights: without(prev.highlights),
+        history: without(prev.history),
+        ratings: without(prev.ratings),
         onDeviceOverrides: without(prev.onDeviceOverrides),
       };
     });
@@ -467,6 +499,8 @@ export function useReadingLife() {
       totalPages: {},
       notes: {},
       highlights: {},
+      history: {},
+      ratings: {},
       onDeviceOverrides: {},
     }));
   }, []);
@@ -501,7 +535,8 @@ export function useReadingLife() {
     // Covers you picked (the star in the cover viewer) travel with the backup; a backup without picks looks exactly as before
     const coverPicks = exportCoverPicks();
     const nookLook = exportNookLook(); // vine look, clock colours and nook decorations; absent when they are all default
-    return JSON.stringify({ ...state, ...(Object.keys(coverPicks).length ? { coverPicks } : {}), ...(nookLook ? { nookLook } : {}) }, null, 2);
+    const libraryCollections = exportCollections(); // your own shelves and tags; absent when you have none
+    return JSON.stringify({ ...state, ...(Object.keys(coverPicks).length ? { coverPicks } : {}), ...(nookLook ? { nookLook } : {}), ...(libraryCollections ? { libraryCollections } : {}) }, null, 2);
   }, [state]);
 
   const importBackup = useCallback((jsonStr: string) => {
@@ -509,6 +544,7 @@ export function useReadingLife() {
     if (!restored) return false;
     restoreCoverPicksFromBackup(jsonStr); // a backup made before picks existed leaves the current picks alone
     restoreNookLook(jsonStr); // likewise for a backup made before the nook look was saved
+    restoreCollectionsFromBackup(jsonStr); // and for one made before shelves and tags were saved
     // A restore never shows "new plant" prompts: bring the garden up to date silently and mark everything as seen.
     const snap = computeSnapshot({
       dailyLog: restored.dailyLog, goal: restored.goal, status: restored.status, todayKey: getTodayKey(),
@@ -532,6 +568,10 @@ export function useReadingLife() {
     setDayPages,
     updateBookProgress,
     setBookStatus,
+    setBookHistory,
+    setBookRating,
+    findDuplicates,
+    mergeDuplicates,
     toggleOnDevice,
     addBook,
     removeBook,

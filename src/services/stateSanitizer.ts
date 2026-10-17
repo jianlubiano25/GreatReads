@@ -11,6 +11,7 @@ import type {
   UserProfile,
   WordItem,
 } from '../types';
+import { sanitizeHistory, sanitizeRatings } from './bookHistory';
 import { MILESTONE_BY_ID } from '../data/gardenCatalog';
 import { emptyGarden, seedGarden, todayKeyNow } from './garden';
 import { DATE_KEY_RE } from './dates';
@@ -22,7 +23,7 @@ import { DATE_KEY_RE } from './dates';
  * instead of trusting it. Nothing in here ever throws.
  */
 
-const VALID_STATUS: BookStatus[] = ['list', 'next', 'now', 'done', 'skip'];
+const VALID_STATUS: BookStatus[] = ['list', 'next', 'now', 'done', 'skip', 'dnf'];
 const VALID_THEME = ['auto', 'light', 'dark'];
 
 const isObj = (v: unknown): v is Record<string, any> =>
@@ -374,6 +375,9 @@ export function normalizeV2(parsed: Record<string, any>, base: ReadingState): Re
     hiddenBookIds: has('hiddenBookIds') ? sanitizeBoolRecord(parsed.hiddenBookIds) : base.hiddenBookIds,
     words: has('words') ? sanitizeWords(parsed.words) : base.words,
     garden: base.garden,
+    // Saves and backups made before book history / your own ratings existed simply have none
+    history: has('history') ? sanitizeHistory(parsed.history) : base.history,
+    ratings: has('ratings') ? sanitizeRatings(parsed.ratings) : base.ratings,
   };
   // Saves and backups made before the garden existed have no `garden`: build it from their reading history.
   out.garden = gardenFor(parsed.garden, out);

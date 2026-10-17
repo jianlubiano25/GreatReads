@@ -1,6 +1,7 @@
 export type ShelfKey = 'heal' | 'love' | 'life' | 'joy' | 'prize' | 'world' | 'art' | 'mine';
 
-export type BookStatus = 'list' | 'next' | 'now' | 'done' | 'skip';
+/** list = on My Library with no status; skip = "Not for me"; dnf = "Did not finish" */
+export type BookStatus = 'list' | 'next' | 'now' | 'done' | 'skip' | 'dnf';
 
 export interface Book {
   id: string | number;
@@ -111,6 +112,14 @@ export interface GardenState {
   vine: number; // 0..1 window vine growth, high-water mark
 }
 
+/** When things happened to one book. Dates are local "YYYY-MM-DD"; you can edit them in Book Info. */
+export interface BookHistory {
+  added?: string;    // put on your list
+  started?: string;  // started reading
+  finished?: string; // finished
+  lastRead?: number; // when you last read or moved it to Reading now (time stamp; decides which Reading now book comes first)
+}
+
 export interface ReadingState {
   status: Record<string, BookStatus>;
   currentPage: Record<string, number>;
@@ -126,6 +135,8 @@ export interface ReadingState {
   hiddenBookIds: Record<string, boolean>;
   words: WordItem[];
   garden: GardenState;
+  history: Record<string, BookHistory>; // bookId -> dates
+  ratings: Record<string, number>; // bookId -> your own rating, 0.25 to 5 in quarter stars
 }
 
-export type TabType = 'today' | 'store' | 'lib' | 'words' | 'dev';
+export type TabType = 'today' | 'store' | 'lib' | 'words' | 'search';
