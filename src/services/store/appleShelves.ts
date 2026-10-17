@@ -1,7 +1,7 @@
 import type { Book } from '../../types';
 import { filterEligible, rememberExcluded } from '../books/eligibility';
 import { isBlocked } from '../books/quality';
-import { loadAppleChart, peekAppleChart, type AppleChartEntry } from '../books/sources/appleCharts';
+import { appleFeedOf, loadAppleChart, peekAppleChart, type AppleChartEntry } from '../books/sources/appleCharts';
 import { appleEntryToBook } from './collate';
 import type { RefreshResult, ShelfSource } from './shelves';
 
@@ -15,7 +15,12 @@ export interface AppleShelf { id: string; chart: AppleChartEntry['chart']; title
 export const APPLE_SHELVES: AppleShelf[] = [
   { id: 'apple-top-free', chart: 'top-free', title: 'Apple Books · Top Free', limit: 15 },
   { id: 'apple-top-paid', chart: 'top-paid', title: 'Apple Books · Top Paid', limit: 15 },
+  { id: 'apple-audio-top-free', chart: 'audio-top-free', title: 'Apple Books · Top Free Audiobooks', limit: 15 },
+  { id: 'apple-audio-top-paid', chart: 'audio-top-paid', title: 'Apple Books · Top Paid Audiobooks', limit: 15 },
 ];
+
+/** Every Apple chart is off by default except Top Paid; turn the others on in Customize Shelves. */
+export const APPLE_SHELVES_ON_BY_DEFAULT = new Set(['apple-top-paid']);
 
 export function chartBooks(entries: AppleChartEntry[], limit: number): Book[] {
   const out: Book[] = [];
@@ -42,7 +47,7 @@ export function appleShelfSource(shelf: AppleShelf): ShelfSource {
         schedule: 'Apple updates its charts daily · checked every 30 minutes when opened',
         source: 'Apple Books charts (official)',
         kind: 'official',
-        handle: `apple-books/${shelf.chart}`,
+        handle: `apple-books/${appleFeedOf(shelf.chart).media}/${appleFeedOf(shelf.chart).kind}`,
       };
     },
     refresh: async (): Promise<RefreshResult> => {

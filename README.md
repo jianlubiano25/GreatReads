@@ -51,7 +51,10 @@ Nothing generated is presented as an official ranking.
 | Romance, Mystery, Sci-fi, Self-help, Fantasy, Memoir, Historical | Open Library: recent (last 5 years), widely read, one book per author, explicit / study guides left out; 4 hand-picked staples stay at the end | monthly |
 | Service95 | the club's own Book Club page via `/api/service95` (official); Wikipedia's list, labelled, if that page can't be read | weekly |
 | Reese's Book Club | Wikipedia's picks table (a stand-in, not Reese's own list) | weekly |
-| Inklings (both), Top Fiction / Non-fiction, Classics | hand-picked: no reliable public machine-readable source has been found or verified (Classics are evergreen); covers and ratings still re-resolve | edit `storeSeeds.json` |
+| Original Inklings (Tolkien & Lewis), Classics, Goodreads Choice | hand-picked (the Inklings and Classics are evergreen; Goodreads has no public list that can be read reliably); covers and ratings still re-resolve | edit `storeSeeds.json` |
+| Inklings Book Club (Jack Edwards) | appends from the club's podcast feed `feeds.megaphone.fm/inklings` via `/api/inklings` (episodes titled "Author: Book" that say they are the pick) | automatic, weekly |
+| Nobel | appends: laureate from Wikipedia's table, their most-wanted book from Open Library (GreatReads' choice) | automatic, weekly |
+| Top Fiction / Top Non-fiction | GreatReads discovery from Open Library (recent, most-wanted), four hand-picked staples kept; not a chart | automatic, every 14 days |
 
 ### Shared book covers (owner only)
 The cover you star in a book's cover viewer can be published so every user sees it. The tools are hidden: tap your name in the Today greeting
@@ -77,20 +80,20 @@ entry for the same book, or dropped (`isSaneAuthor`).
   list of Monthly Reads, then each book's own page for its title and author (one request each, cached at the edge: 12 hours for the list,
   a week per book), and the app refreshes the shelf weekly (a new pick appears at the start of a month, so weekly keeps it at most days
   late). If the official page cannot be read (the function is not deployed, the site is down, or its layout changed so fewer than 4 books
-  can be found) the shelf falls back to Wikipedia's Service95 list and Customize Store says so; with neither, the saved list stays.
+  can be found) the shelf falls back to Wikipedia's Service95 list and Customize Shelves says so; with neither, the saved list stays.
   The page structure was read on 7 Oct 2026 from a text rendering, not raw HTML, so run `npm run check:service95` after deploying to
   confirm it against the live site. `robots.txt` was not checked.
   A book page has **no author line** (Dua's quote on it can contain "<other book> by <someone>"), so the author is read from the page
   title ("Dua's Monthly Read: Night People by Mark Ronson"), then its description, and only then from a "By ..." line that is a line of
   its own; anything that is not a name is rejected (`looksLikeAuthor`). The hand-picked list is the club's whole archive (about 40 reads).
 - **Oprah**: Oprah Daily's complete list (`functions/api/oprah.js`, entries like `112. “Title,” Author`, newest first) (entries are a number followed by a "Title, by Author" link) finds the newest picks; they sit on top with no date until
-  Wikipedia's 2.0 table, which supplies the dates, has them. If neither can be read nothing changes and Customize Store says why. **Not verified against the live page**: it blocks automated readers where this was
+  Wikipedia's 2.0 table, which supplies the dates, has them. If neither can be read nothing changes and Customize Shelves says why. **Not verified against the live page**: it blocks automated readers where this was
   written, so the parser follows the quoted entry format. Run `npm run check:oprah` after deploying; a changed layout makes the function answer 502
   and nothing breaks.
-- **Reese's**: dynamic from Wikipedia's picks table (a stand-in, not Reese's own list). **Inklings (Jack Edwards, and the Inklings Book
-  Club)**: hand-picked. No official feed or structured public source has been verified for either, and scraping a page without being able to check its
-  markup would risk replacing good data with junk. If you find a source, add an entry to `DYNAMIC_SPECS` (it needs a `fetch`,
-  `refreshMs`, `minSeeds`, `kind`) and everything else (caching, refresh, Customize Store) works without further changes.
+- **Reese's**: dynamic from Wikipedia's picks table (a stand-in, not Reese's own list). **Inklings Book Club (Jack Edwards)**: appends from the club's podcast feed (`functions/api/inklings.js`); an episode counts only when
+  it is titled "Author: Book" and is tagged or says it is the pick / book of the month. The original Inklings (Tolkien & Lewis) stay hand-picked.
+  **Not verified against the live feed** (not reachable where this was written): run `npm run check:shelves` after deploying. If you find a source, add an entry to `DYNAMIC_SPECS` (it needs a `fetch`,
+  `refreshMs`, `minSeeds`, `kind`) and everything else (caching, refresh, Customize Shelves) works without further changes.
 - **Honors & Awards**: a book club label stays under the cover on its own shelf. When a book's info is opened, Honors & Awards lists
   every label any shelf has given that book (prizes first, then shortlists, then club picks), so a club pick that also won a prize shows
   both. Only labels shelves actually carried are used (`services/store/honors.ts`); nothing is looked up or guessed.
@@ -112,13 +115,13 @@ from a live `names.json` call: run `NYT_API_KEY=... npm run check:nyt` to confir
 - **NYT limits**: the NYT allows only a few requests a minute for the whole site. Lists load two at a time and a rate-limited one is
   waited out and retried (8 s, then 20 s). `functions/api/nyt.js` keeps the last good list per list (up to 10 days) and serves it when the
   NYT answers 429 or fails (never for 401/403/503, which are setup mistakes and stay visible). A shelf that is not loading says why in
-  Customize Store.
+  Customize Shelves.
 - **Location**: the saved position (rounded to about 1 km), the weather and a refusal are kept in localStorage, not sessionStorage (which
   phones and installed apps empty on every launch, so each launch looked like a first visit). The device is asked only when asking can
   work (`locationPlan` in `services/weather.ts`). Turn "Match weather to my location" off and on to forget the position and ask again.
 
-## Customize Store
-The sliders icon opens Customize Store. It is in the footer (Store tab only, next to Backup and Refresh) and also below the Store search box.
+## Customize Shelves
+The sliders icon opens Customize Shelves. It is in the footer (Store tab only, next to Backup and Refresh) and also below the Store search box.
 - Drag the grip (or focus it and use the arrow keys) to reorder shelves; the eye hides or shows a shelf; **Done** exits. Hidden shelves
   stay in the list and load nothing. **Reset layout** restores the default order.
 - Layout is saved on the device in `readlife.storeprefs1` (`{ order, hidden }`, `services/store/prefs.ts`). It is separate from shelf
@@ -131,4 +134,4 @@ The sliders icon opens Customize Store. It is in the footer (Store tab only, nex
   during a refresh share it. On failure the saved list stays.
 - **Refresh all shelves** goes through the shelves that are showing (hidden ones are skipped), strictly one at a time, each through that
   same rate-limited `manualRefresh`, so a shelf checked in the last few minutes is skipped. It ends with a count of what updated, was
-  already current, was checked recently, or could not update. Leaving Customize Store stops it.
+  already current, was checked recently, or could not update. Leaving Customize Shelves stops it.

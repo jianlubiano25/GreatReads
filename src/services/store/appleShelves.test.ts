@@ -11,5 +11,5 @@ test('Apple chart shelves keep Apple\'s order, skip books the app keeps out of e
   const books = chartBooks(entries, 3);
   assert.deepEqual(books.map(b => b.title), ['The Quiet Garden', 'River Songs', 'Paper Moons']);
   assert.ok(books.every(b => b.source === 'apple'));
-  assert.deepEqual(APPLE_SHELVES.map(s => s.chart), ['top-free', 'top-paid']);
+  assert.deepEqual(APPLE_SHELVES.map(s => s.chart), ['top-free', 'top-paid', 'audio-top-free', 'audio-top-paid']);
 });

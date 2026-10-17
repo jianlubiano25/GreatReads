@@ -10,7 +10,7 @@ import type { Hit } from '../books/sources/types';
 import { READER_CAPS, recencyValue } from './collate';
 import { curatedSource } from './curated';
 import type { RefreshResult, ShelfInfo, ShelfSource } from './shelves';
-import { cleanAuthorName, cleanTitle, fetchWikiPicks, isSaneAuthor, splitPairedTitle, type ColumnRule } from './wikiLists';
+import { cleanAuthorName, cleanTitle, fetchWikiPicks, fetchWikitext, isSaneAuthor, parseWikiTables, splitPairedTitle, type ColumnRule } from './wikiLists';
 
 /**
  * Curated shelves whose book list refreshes itself.
@@ -449,6 +449,78 @@ const olSpec = (d: Discovery): DynamicSpec => ({
 const recent = (years: number) => (y: number) => `language:eng AND first_publish_year:[${y - years} TO ${y}]`;
 const genre = (subjects: string, keep = 4): DynamicSpec => olSpec({ query: y => `(${subjects}) AND ${recent(4)(y)}`, keep });
 
+/* ------------------------------ source: the Inklings Book Club podcast feed ------------------------------ */
+
+/**
+ * Jack Edwards' Inklings Book Club has no list of its own; its podcast has one episode a month about the pick, titled "Author: Book".
+ * /api/inklings (functions/api/inklings.js) reads the feed and keeps only the episodes that say they are the pick. New picks go in
+ * front; the picks already on the shelf keep their place and label.
+ */
+const inklingsSpec = (): DynamicSpec => ({
+  source: 'the Inklings Book Club podcast feed (feeds.megaphone.fm/inklings)',
+  handle: 'feeds.megaphone.fm/inklings',
+  kind: 'official',
+  refreshMs: 7 * DAY,
+  minSeeds: 5,
+  cap: 60,
+  keepExisting: true,
+  fetch: async (_shelf, signal) => {
+    const j = await getJson('/api/inklings', { timeout: 20000, signal });
+    const seeds = (Array.isArray(j?.books) ? j.books : [])
+      .filter((b: any) => b && typeof b.title === 'string' && b.title.trim() && typeof b.author === 'string' && b.author.trim() && typeof b.when === 'string')
+      .map((b: any) => [b.title.trim(), b.author.trim(), `Inklings Pick · ${b.when}`] as Seed);
+    return seeds.length >= 5 ? { seeds, official: true } : null;
+  },
+});
+
+/* ------------------------------ source: Nobel laureates (Wikipedia) + their best-known book (Open Library) ------------------------------ */
+
+/** The laureates in Wikipedia's table, newest first: [{ year, name }]. Columns are found by header ("Year", "Laureate"). */
+export function nobelLaureates(tables: ReturnType<typeof parseWikiTables>): { year: number; name: string }[] {
+  const out: { year: number; name: string }[] = [];
+  for (const t of tables) {
+    const iYear = t.headers.findIndex(h => /^year/i.test(h.trim()));
+    const iName = t.headers.findIndex(h => /^laureate/i.test(h.trim()));
+    if (iYear < 0 || iName < 0 || t.rows.length < 20) continue;
+    for (const r of t.rows) {
+      const year = Number((r[iYear] || '').match(/\b(19|20)\d{2}\b/)?.[0]);
+      const name = cleanAuthorName((r[iName] || '').split('\u2063')[0]); // a shared year lists several laureates: the first
+      if (year && name && isSaneAuthor(name)) out.push({ year, name });
+    }
+  }
+  return out.sort((a, b) => b.year - a.year);
+}
+
+/**
+ * The Nobel shelf: one book per laureate. A year the shelf does not have yet is added in front: the laureate comes from Wikipedia's
+ * table, the book is the laureate's most-wanted book on Open Library (GreatReads' choice: the Nobel names an author, not a book, so
+ * this is said on the shelf's info). A year already on the shelf is never looked at again, so a book is not swapped later.
+ */
+const nobelSpec = (): DynamicSpec => ({
+  source: 'Wikipedia: List of Nobel laureates in Literature (the laureate) + Open Library (their most-wanted book, GreatReads\' choice)',
+  handle: 'wikipedia: List of Nobel laureates in Literature',
+  kind: 'fallback',
+  refreshMs: 7 * DAY,
+  minSeeds: 5,
+  cap: 60,
+  keepExisting: true,
+  fetch: async (shelf, signal) => {
+    const text = await fetchWikitext('List of Nobel laureates in Literature', signal);
+    if (!text) return null;
+    const laureates = nobelLaureates(parseWikiTables(text));
+    if (laureates.length < 20) return null;
+    const have = new Set([...shelf.seeds, ...(saved.get(shelf.id)?.seeds ?? [])].map(s => Number(String(s[2] ?? '').match(/(\d{4})\s*$/)?.[1])));
+    const todo = laureates.filter(l => !have.has(l.year) && l.year <= new Date().getFullYear()).slice(0, 4);
+    const added: Seed[] = [];
+    for (const l of todo) {
+      const hits = await searchOpenLibrary({ q: `author:"${l.name}"` , sort: 'want_to_read' }, 20, { retries: 1 }).catch(() => [] as Hit[]);
+      const pick = hits.find(h => (h.book.coverId || h.book.coverUrl) && authorsCompatible(h.book.author, l.name) && !JUNK.test(h.book.title) && !isBlocked(h.book.title, h.flags));
+      if (pick) added.push([pick.book.title, l.name, `Nobel Prize in Literature ${l.year}`]);
+    }
+    return { seeds: [...added, ...shelf.seeds] }; // the hand-picked list rides along so a week with nothing new is "unchanged", not a failure
+  },
+});
+
 /* ------------------------------ the registry ------------------------------ */
 
 const prize = (): Pick<ColumnRule, 'title' | 'author' | 'when'> => ({ title: /^(title|novel|book|work|winning (book|work))/i, author: /^(author|writer|winner)/i, when: /^(year|date)/i });
@@ -515,6 +587,14 @@ export const DYNAMIC_SPECS: Record<string, DynamicSpec> = {
     'Wikipedia: Nebula Award for Best Novel (winners)',
   )),
 
+  // The Nobel: laureate from Wikipedia, their most-wanted book from Open Library (see nobelSpec)
+  nobel: history(nobelSpec()),
+
+  // Top Fiction / Top Non-fiction: recent, widely wanted books from Open Library reader data (GreatReads discovery, not a chart),
+  // the shelf's first four hand-picked staples kept at the end. The NYT lists at the top of the Store are the official charts.
+  topfiction: { ...genre('subject:fiction', 4), source: 'Open Library search (most-wanted recent fiction)', refreshMs: 14 * DAY },
+  topnonfiction: { ...genre('subject:nonfiction OR subject:"non-fiction"', 4), source: 'Open Library search (most-wanted recent non-fiction)', refreshMs: 14 * DAY },
+
   // Book clubs with a published list of every monthly pick (Wikipedia keeps these tables current)
   reeses: history(wikiSpec(
     ["Reese's Book Club"],
@@ -527,6 +607,8 @@ export const DYNAMIC_SPECS: Record<string, DynamicSpec> = {
   // Service95 publishes its own list: the Book Club page is read server-side by /api/service95 (functions/api/service95.js).
   // Wikipedia's list stays as the fallback, used (and labelled as such) only when the official page can't be read.
   service95: history(serviceSpec()),
+  // The Inklings Book Club (Jack Edwards): its podcast has one episode a month about the pick (see inklingsSpec)
+  inklingsclub: history(inklingsSpec()),
 
   // Recent, widely read books in the genre (Open Library), with the shelf's first four hand-picked staples kept at the end
   romance: genre('subject:romance'),

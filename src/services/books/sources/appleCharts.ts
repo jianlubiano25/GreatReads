@@ -12,7 +12,8 @@ import type { CallOpts } from './types';
 export interface AppleChartEntry {
   rank: number; // 1 = top of that chart
   total: number; // entries in that chart
-  chart: 'top-free' | 'top-paid';
+  /** 'audio-top-free' / 'audio-top-paid' are Apple's audiobook charts (a separate feed: audio-books) */
+  chart: 'top-free' | 'top-paid' | 'audio-top-free' | 'audio-top-paid';
   id: string;
   title: string;
   author: string;
@@ -21,9 +22,14 @@ export interface AppleChartEntry {
 }
 
 const TTL = 30 * 60 * 1000;
-const cache = persistentCache<AppleChartEntry[]>('readlife.appleCharts1', { ttl: TTL, max: 4, keepStale: 24 * 60 * 60 * 1000 });
+const cache = persistentCache<AppleChartEntry[]>('readlife.appleCharts1', { ttl: TTL, max: 8, keepStale: 24 * 60 * 60 * 1000 });
 const inflight = new Map<string, Promise<AppleChartEntry[] | null>>();
-const FEEDS = ['top-free', 'top-paid'] as const;
+const FEEDS = ['top-free', 'top-paid'] as const; // the BOOK charts only: they feed the collated Top 15; the audiobook charts are shelves of their own
+
+/** Apple's feed name for a chart: books or audio-books, and top-free or top-paid. */
+export const appleFeedOf = (chart: AppleChartEntry['chart']) => chart.startsWith('audio-')
+  ? { media: 'audio-books', kind: chart.slice('audio-'.length) }
+  : { media: 'books', kind: chart };
 
 export function parseAppleChart(data: any, chart: AppleChartEntry['chart']): AppleChartEntry[] {
   const rows: any[] = data?.feed?.results || [];
@@ -45,7 +51,8 @@ async function loadOne(chart: AppleChartEntry['chart'], opts: CallOpts & { force
   const fresh = opts.force ? undefined : cache.get(chart);
   if (fresh) return fresh;
   return dedupeInflight(inflight, chart, async () => {
-    const urls = [`/api/apple-charts?feed=${chart}&limit=100`, `https://rss.marketingtools.apple.com/api/v2/us/books/${chart}/100/books.json`, `https://rss.applemarketingtools.com/api/v2/us/books/${chart}/100/books.json`];
+    const { media, kind } = appleFeedOf(chart);
+    const urls = [`/api/apple-charts?feed=${chart}&limit=100`, `https://rss.marketingtools.apple.com/api/v2/us/${media}/${kind}/100/${media}.json`, `https://rss.applemarketingtools.com/api/v2/us/${media}/${kind}/100/${media}.json`];
     for (const url of urls) {
       const r = await getJsonDetailed(url, { timeout: 7000, signal: opts.signal });
       const entries = r.data ? parseAppleChart(r.data, chart) : [];
@@ -59,7 +66,7 @@ async function loadOne(chart: AppleChartEntry['chart'], opts: CallOpts & { force
   });
 }
 
-/** One chart (Top Free or Top Paid). `force` = a manual refresh: ask Apple again now, and null when it cannot be reached. */
+/** One chart (Top Free or Top Paid, books or audiobooks). `force` = a manual refresh: ask Apple again now, and null when it cannot be reached. */
 export const loadAppleChart = (chart: AppleChartEntry['chart'], opts: CallOpts & { force?: boolean } = {}) => loadOne(chart, opts);
 /** What is saved for a chart (up to a day old) and how old it is, without asking Apple. */
 export const peekAppleChart = (chart: AppleChartEntry['chart']) => cache.peek(chart);

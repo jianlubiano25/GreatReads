@@ -81,7 +81,10 @@ test('Reese\'s, Oprah and the prizes are dynamic, append, and say they are a Wik
   assert.ok(op.source.startsWith('oprahdaily.com') && op.fallbackSource?.includes('2.0') && op.keepExisting === true);
   assert.equal(dynamicInfo(CURATED_SHELVES.find(s => s.id === 'oprah')!, op).kind, 'official'); // (a list saved before Oprah Daily was the only source is reset to the default list)
   assert.equal(DYNAMIC_SPECS.reeses.refreshMs, 7 * 24 * 3600_000);
-  assert.equal(DYNAMIC_SPECS.inklingsclub, undefined, 'no reliable public source for the Inklings Book Club: it stays hand-picked');
+  // the Inklings Book Club has no list of its own: its podcast feed (one "Author: Book" episode a month) is the source; the original Inklings stay hand-picked
+  assert.equal(DYNAMIC_SPECS.inklingsclub.merge, 'append');
+  assert.equal(DYNAMIC_SPECS.inklingsclub.keepExisting, true);
+  assert.equal(DYNAMIC_SPECS.inklings, undefined);
 });
 
 // Shaped like the live Wikipedia article (columns, the two tables, an empty "no selection" month, a shared June/July row)
