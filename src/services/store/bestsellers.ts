@@ -116,7 +116,7 @@ export function bestsellerSource(shelf: NytShelf): ShelfSource {
       const why = failed && (!s || s.mode !== 'nyt') ? ` · not loading right now: ${NYT_FAILURE_TEXT[failed]}` : '';
       return {
         updatedAt: s?.at,
-        schedule: 'NYT publishes weekly · checked every 6 hours when opened',
+        schedule: `NYT publishes ${shelf.monthly ? 'monthly' : 'weekly'} · checked every 6 hours when opened`,
         source: (m === 'collated' ? 'GreatReads fallback (the NYT list could not be loaded), not an official list' : 'The New York Times Books API (official)') + why,
         kind: m === 'collated' ? 'generated' : 'official',
       };

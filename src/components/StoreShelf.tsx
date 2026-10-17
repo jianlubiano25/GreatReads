@@ -118,7 +118,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
   if (failed && hideIfUnavailable) return null;
 
   return (
-    <div ref={holder} className="rl-shelf flex flex-col gap-3">
+    <div ref={holder} data-shelf-id={id} className="rl-shelf flex flex-col gap-3 scroll-mt-16">
       <h3 className="font-serif-display text-xl text-[#201a15] dark:text-[#f0e6d6] flex items-center gap-2">{source?.label?.() ?? title}</h3>
       {failed ? (
         <div className="flex items-center gap-3 flex-wrap text-sm text-[#706256] dark:text-[#a89a8a]">

@@ -948,5 +948,335 @@
     "Charles Dickens"
    ]
   ]
+ },
+ {
+  "id": "booker",
+  "title": "Booker Prize",
+  "emoji": "📚",
+  "genre": "Prize winner",
+  "seeds": [
+   [
+    "Flesh",
+    "David Szalay",
+    "Booker Prize 2025"
+   ],
+   [
+    "Orbital",
+    "Samantha Harvey",
+    "Booker Prize 2024"
+   ],
+   [
+    "Prophet Song",
+    "Paul Lynch",
+    "Booker Prize 2023"
+   ],
+   [
+    "The Seven Moons of Maali Almeida",
+    "Shehan Karunatilaka",
+    "Booker Prize 2022"
+   ],
+   [
+    "The Promise",
+    "Damon Galgut",
+    "Booker Prize 2021"
+   ],
+   [
+    "Shuggie Bain",
+    "Douglas Stuart",
+    "Booker Prize 2020"
+   ],
+   [
+    "Girl, Woman, Other",
+    "Bernardine Evaristo",
+    "Booker Prize 2019"
+   ],
+   [
+    "Milkman",
+    "Anna Burns",
+    "Booker Prize 2018"
+   ],
+   [
+    "Lincoln in the Bardo",
+    "George Saunders",
+    "Booker Prize 2017"
+   ],
+   [
+    "The Sellout",
+    "Paul Beatty",
+    "Booker Prize 2016"
+   ],
+   [
+    "A Brief History of Seven Killings",
+    "Marlon James",
+    "Booker Prize 2015"
+   ],
+   [
+    "The Narrow Road to the Deep North",
+    "Richard Flanagan",
+    "Booker Prize 2014"
+   ]
+  ]
+ },
+ {
+  "id": "pulitzer",
+  "title": "Pulitzer Prize for Fiction",
+  "emoji": "🏅",
+  "genre": "Prize winner",
+  "seeds": [
+   [
+    "Angel Down",
+    "Daniel Kraus",
+    "Pulitzer Prize 2026"
+   ],
+   [
+    "James",
+    "Percival Everett",
+    "Pulitzer Prize 2025"
+   ],
+   [
+    "Night Watch",
+    "Jayne Anne Phillips",
+    "Pulitzer Prize 2024"
+   ],
+   [
+    "Trust",
+    "Hernan Diaz",
+    "Pulitzer Prize 2023"
+   ],
+   [
+    "Demon Copperhead",
+    "Barbara Kingsolver",
+    "Pulitzer Prize 2023"
+   ],
+   [
+    "The Netanyahus",
+    "Joshua Cohen",
+    "Pulitzer Prize 2022"
+   ],
+   [
+    "The Night Watchman",
+    "Louise Erdrich",
+    "Pulitzer Prize 2021"
+   ],
+   [
+    "The Nickel Boys",
+    "Colson Whitehead",
+    "Pulitzer Prize 2020"
+   ],
+   [
+    "The Overstory",
+    "Richard Powers",
+    "Pulitzer Prize 2019"
+   ],
+   [
+    "Less",
+    "Andrew Sean Greer",
+    "Pulitzer Prize 2018"
+   ],
+   [
+    "The Underground Railroad",
+    "Colson Whitehead",
+    "Pulitzer Prize 2017"
+   ],
+   [
+    "The Sympathizer",
+    "Viet Thanh Nguyen",
+    "Pulitzer Prize 2016"
+   ]
+  ]
+ },
+ {
+  "id": "nba",
+  "title": "National Book Award for Fiction",
+  "emoji": "🏆",
+  "genre": "Prize winner",
+  "seeds": [
+   [
+    "The True True Story of Raja the Gullible (and His Mother)",
+    "Rabih Alameddine",
+    "National Book Award 2025"
+   ],
+   [
+    "The Heaven & Earth Grocery Store",
+    "James McBride",
+    "National Book Award 2024"
+   ],
+   [
+    "Blackouts",
+    "Justin Torres",
+    "National Book Award 2023"
+   ],
+   [
+    "The Rabbit Hutch",
+    "Tess Gunty",
+    "National Book Award 2022"
+   ],
+   [
+    "Hell of a Book",
+    "Jason Mott",
+    "National Book Award 2021"
+   ],
+   [
+    "Interior Chinatown",
+    "Charles Yu",
+    "National Book Award 2020"
+   ],
+   [
+    "Trust Exercise",
+    "Susan Choi",
+    "National Book Award 2019"
+   ],
+   [
+    "The Friend",
+    "Sigrid Nunez",
+    "National Book Award 2018"
+   ],
+   [
+    "Sing, Unburied, Sing",
+    "Jesmyn Ward",
+    "National Book Award 2017"
+   ],
+   [
+    "The Underground Railroad",
+    "Colson Whitehead",
+    "National Book Award 2016"
+   ],
+   [
+    "Fortune Smiles",
+    "Adam Johnson",
+    "National Book Award 2015"
+   ],
+   [
+    "Redeployment",
+    "Phil Klay",
+    "National Book Award 2014"
+   ]
+  ]
+ },
+ {
+  "id": "goodreadschoice",
+  "title": "Goodreads Choice Awards 2025",
+  "emoji": "⭐",
+  "genre": "Reader favourite",
+  "seeds": [
+   [
+    "My Friends",
+    "Fredrik Backman",
+    "Goodreads Choice 2025 · Fiction"
+   ],
+   [
+    "Atmosphere",
+    "Taylor Jenkins Reid",
+    "Goodreads Choice 2025 · Historical Fiction"
+   ],
+   [
+    "Not Quite Dead Yet",
+    "Holly Jackson",
+    "Goodreads Choice 2025 · Mystery & Thriller"
+   ],
+   [
+    "Great Big Beautiful Life",
+    "Emily Henry",
+    "Goodreads Choice 2025 · Romance"
+   ],
+   [
+    "Onyx Storm",
+    "Rebecca Yarros",
+    "Goodreads Choice 2025 · Romantasy"
+   ],
+   [
+    "Bury Our Bones in the Midnight Soil",
+    "V. E. Schwab",
+    "Goodreads Choice 2025 · Fantasy"
+   ],
+   [
+    "The Compound",
+    "Aisling Rawle",
+    "Goodreads Choice 2025 · Science Fiction"
+   ],
+   [
+    "Witchcraft for Wayward Girls",
+    "Grady Hendrix",
+    "Goodreads Choice 2025 · Horror"
+   ],
+   [
+    "Sunrise on the Reaping",
+    "Suzanne Collins",
+    "Goodreads Choice 2025 · YA Fantasy & Sci-Fi"
+   ],
+   [
+    "Fake Skating",
+    "Lynn Painter",
+    "Goodreads Choice 2025 · YA Fiction"
+   ]
+  ]
+ },
+ {
+  "id": "hugo",
+  "title": "Hugo Award for Best Novel",
+  "emoji": "🚀",
+  "genre": "Prize winner",
+  "seeds": [
+   [
+    "The Everlasting",
+    "Alix E. Harrow",
+    "Hugo Award 2026"
+   ],
+   [
+    "The Tainted Cup",
+    "Robert Jackson Bennett",
+    "Hugo Award 2025"
+   ],
+   [
+    "Some Desperate Glory",
+    "Emily Tesh",
+    "Hugo Award 2024"
+   ],
+   [
+    "Nettle & Bone",
+    "T. Kingfisher",
+    "Hugo Award 2023"
+   ],
+   [
+    "A Desolation Called Peace",
+    "Arkady Martine",
+    "Hugo Award 2022"
+   ],
+   [
+    "Network Effect",
+    "Martha Wells",
+    "Hugo Award 2021"
+   ],
+   [
+    "A Memory Called Empire",
+    "Arkady Martine",
+    "Hugo Award 2020"
+   ],
+   [
+    "The Calculating Stars",
+    "Mary Robinette Kowal",
+    "Hugo Award 2019"
+   ],
+   [
+    "The Stone Sky",
+    "N. K. Jemisin",
+    "Hugo Award 2018"
+   ],
+   [
+    "The Obelisk Gate",
+    "N. K. Jemisin",
+    "Hugo Award 2017"
+   ],
+   [
+    "The Fifth Season",
+    "N. K. Jemisin",
+    "Hugo Award 2016"
+   ],
+   [
+    "The Three-Body Problem",
+    "Cixin Liu",
+    "Hugo Award 2015"
+   ]
+  ]
  }
 ]

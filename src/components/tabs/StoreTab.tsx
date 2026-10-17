@@ -10,6 +10,7 @@ import type { SearchScope } from '../../services/books';
 import { BookSearch } from '../BookSearch';
 import { StoreShelf } from '../StoreShelf';
 import { StoreCustomize } from '../StoreCustomize';
+import { StoreNav } from '../StoreNav';
 import { TabPane } from './TabPane';
 
 interface Props {
@@ -71,6 +72,9 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
         ) : (
           <>
           <BookSearch active={active} known={known} query={query} setQuery={setQuery} scope={scope} setScope={setScope} handleOpenCover={handleOpenCover} backLabel="Back to the Store" />
+
+          {/* Sticky icon bar (not while searching: results take over the page, and BookSearch has its own sticky header) */}
+          {!query.trim() && <StoreNav active={active} order={shelfOrder} />}
 
           {/* Shelves, in the reader's own order (Customize Store). Hidden shelves are not drawn, so they also load nothing. */}
           {shelfOrder.filter(id => !hiddenShelves.includes(id)).map((id, position) => {

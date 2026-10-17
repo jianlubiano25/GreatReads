@@ -212,7 +212,7 @@ test('registry: one entry per shelf, unique ids, every source can describe itsel
   }
   for (const s of [...NYT_SHELVES, ...NYT_EXTRA_SHELVES]) assert.ok(STORE_SHELVES.some(d => d.id === s.id && d.source?.refresh), s.id);
   assert.ok(STORE_SHELVES.find(d => d.id === 'trending')?.source?.refresh);
-  assert.deepEqual(DEFAULT_SHELF_ORDER.slice(0, 3), ['nyt-fiction', 'nyt-nonfiction', 'trending']); // the Store's existing order is the default
+  assert.deepEqual(DEFAULT_SHELF_ORDER.slice(0, 3), ['nyt-fiction', 'nyt-nonfiction', 'nyt-hardcover-nonfiction']); // Top comes first
 });
 
 test('refreshing or reordering never changes the other: layout lives apart from shelf data', async () => {
@@ -256,26 +256,26 @@ const fakeDevice = () => {
   return store;
 };
 
-test('NYT Young Adult is hidden by default, and it is the only shelf that is', () => {
+test('NYT Young Adult and the monthly Paperback Non-Fiction are hidden by default, and they are the only shelves that are', () => {
   assert.equal(SHELF_BY_ID['nyt-ya'].defaultHidden, true);
-  assert.deepEqual(hiddenShelfIds(NO_PREFS), ['nyt-ya']);
+  assert.deepEqual(hiddenShelfIds(NO_PREFS), ['nyt-paperback-nonfiction', 'nyt-ya']);
   // still in the Customize list (so it can be turned on), in its normal place, with a refresh button
   assert.ok(DEFAULT_SHELF_ORDER.includes('nyt-ya'));
   assert.ok(SHELF_BY_ID['nyt-ya'].source?.refresh && SHELF_BY_ID['nyt-ya'].source?.info);
   // the other NYT lists are not affected
-  for (const id of ['nyt-fiction', 'nyt-nonfiction', 'nyt-paperback-fiction', 'nyt-paperback-nonfiction', 'nyt-advice', 'trending']) assert.ok(!hiddenShelfIds(NO_PREFS).includes(id), id);
+  for (const id of ['nyt-fiction', 'nyt-nonfiction', 'nyt-paperback-fiction', 'nyt-hardcover-nonfiction', 'nyt-advice', 'trending']) assert.ok(!hiddenShelfIds(NO_PREFS).includes(id), id);
 });
 
 test('Customize Store can turn Young Adult on (and off again); only the reader\'s own choice is recorded', () => {
   const on = toggleShelf(NO_PREFS, 'nyt-ya', true);
   assert.deepEqual(on, { order: [], hidden: [], shown: ['nyt-ya'] });
-  assert.deepEqual(hiddenShelfIds(on), []);
+  assert.deepEqual(hiddenShelfIds(on), ['nyt-paperback-nonfiction']);
   const off = toggleShelf(on, 'nyt-ya', true);
   assert.deepEqual(off, NO_PREFS); // back to the default: nothing stored
-  assert.deepEqual(hiddenShelfIds(off), ['nyt-ya']);
+  assert.deepEqual(hiddenShelfIds(off), ['nyt-paperback-nonfiction', 'nyt-ya']);
   // an ordinary shelf: hide, then show
   const hid = toggleShelf(NO_PREFS, 'romance', false);
-  assert.deepEqual(hiddenShelfIds(hid).sort(), ['nyt-ya', 'romance']);
+  assert.deepEqual(hiddenShelfIds(hid).sort(), ['nyt-paperback-nonfiction', 'nyt-ya', 'romance']);
   assert.deepEqual(toggleShelf(hid, 'romance', false), NO_PREFS);
   // the reader's choice beats the default, whichever way the default later points
   assert.equal(isShelfHidden('nyt-ya', false, { hidden: [], shown: ['nyt-ya'] }), false);
@@ -295,7 +295,7 @@ test('saved order and visibility survive a restart (read back from the device, w
     const back = loadStorePrefs();
     assert.deepEqual(back, prefs);
     assert.equal(orderShelves(DEFAULT_SHELF_ORDER, back.order)[0], 'fantasy');
-    assert.deepEqual(hiddenShelfIds(back), ['romance']);
+    assert.deepEqual(hiddenShelfIds(back), ['nyt-paperback-nonfiction', 'romance']);
 
     // a later app version adds a shelf: the reader's order is kept and the newcomer takes its default place
     const later = [...DEFAULT_SHELF_ORDER.slice(0, 4), 'brand-new', ...DEFAULT_SHELF_ORDER.slice(4)];
@@ -320,11 +320,11 @@ test('refreshing shelves (manual, including a hidden one and a failing one) neve
     const rows = Array.from({ length: 12 }, (_, i) => [`Teen Book ${i}`, `Author ${i}`, `97803064061${String(i).padStart(2, '0')}`.slice(0, 13)] as [string, string, string]);
     const nyt = (body: unknown, status = 200) => [(u: URL) => (u.pathname === '/api/nyt' ? { status, body } : undefined)];
 
-    forgetNytList(NYT_EXTRA_SHELVES[0].list);
+    forgetNytList('young-adult-hardcover');
     routeFetch(nyt(nytList(rows)));
     assert.equal(await manualRefresh({ id: 'nyt-ya', refresh: ya.refresh }, Date.now() + 3 * COOLDOWN_OK_MS), 'updated'); // refreshed while hidden
     assert.equal(store.get(STORE_PREFS_KEY), saved, 'a successful refresh leaves the saved layout byte-for-byte alone');
-    assert.deepEqual(hiddenShelfIds(loadStorePrefs()), ['nyt-ya', 'romance'].sort((a, b) => DEFAULT_SHELF_ORDER.indexOf(a) - DEFAULT_SHELF_ORDER.indexOf(b)));
+    assert.deepEqual(hiddenShelfIds(loadStorePrefs()), ['nyt-paperback-nonfiction', 'nyt-ya', 'romance'].sort((a, b) => DEFAULT_SHELF_ORDER.indexOf(a) - DEFAULT_SHELF_ORDER.indexOf(b)));
 
     routeFetch(nyt({ error: 'rate_limited' }, 429));
     assert.equal(await ya.refresh?.(), 'failed');
@@ -334,7 +334,7 @@ test('refreshing shelves (manual, including a hidden one and a failing one) neve
     // enable Young Adult: it is then drawn, its refreshed list is still there, and the order did not move
     const shown = toggleShelf(loadStorePrefs(), 'nyt-ya', true);
     saveStorePrefs(shown);
-    assert.deepEqual(hiddenShelfIds(loadStorePrefs()), ['romance']);
+    assert.deepEqual(hiddenShelfIds(loadStorePrefs()), ['nyt-paperback-nonfiction', 'romance']);
     assert.equal(ya.cached()?.[0].title, 'Teen Book 0');
     assert.deepEqual(loadStorePrefs().order, order);
   } finally {
@@ -347,4 +347,20 @@ test('NYT list names are the API\'s encoded names (from list_name), not the disp
   assert.ok(lists.includes('trade-fiction-paperback'));
   assert.ok(!lists.includes('paperback-trade-fiction'), 'that is the display name; the API would not know it');
   for (const l of lists) assert.match(l, /^[a-z0-9]+(-[a-z0-9]+)*$/, l);
+});
+
+test('Store sections run top, new, trending, book clubs, awards, genres; the new award shelves are in; monthly paperback is hidden by default', async () => {
+  const { SECTION_ORDER } = await import('./registry');
+  const rank = (id: string) => SECTION_ORDER.indexOf(SHELF_BY_ID[id].section);
+  const ranks = STORE_SHELVES.map(d => SECTION_ORDER.indexOf(d.section));
+  assert.deepEqual(ranks, [...ranks].sort((a, b) => a - b), 'shelves are grouped by section, in section order');
+  assert.ok(rank('new2026') > rank('nyt-fiction') && rank('trending') > rank('new2026') && rank('oprah') > rank('trending'));
+  assert.ok(rank('womens') > rank('reeses') && rank('romance') > rank('hugo'));
+  for (const id of ['booker', 'pulitzer', 'nba', 'goodreadschoice', 'hugo', 'womens', 'intbooker']) assert.equal(SHELF_BY_ID[id].section, 'awards', id);
+  for (const id of ['service95', 'inklingsclub', 'inklings', 'oprah', 'reeses']) assert.equal(SHELF_BY_ID[id].section, 'clubs', id);
+  assert.ok(hiddenShelfIds(NO_PREFS).includes('nyt-paperback-nonfiction'));
+  assert.ok(!hiddenShelfIds(NO_PREFS).includes('nyt-hardcover-nonfiction'));
+  assert.equal(NYT_EXTRA_SHELVES.find(s => s.id === 'nyt-hardcover-nonfiction')?.list, 'hardcover-nonfiction');
+  assert.equal(NYT_EXTRA_SHELVES.find(s => s.id === 'nyt-paperback-nonfiction')?.list, 'paperback-nonfiction-monthly');
+  assert.match(SHELF_BY_ID['nyt-paperback-nonfiction'].source!.info!().schedule, /monthly/);
 });

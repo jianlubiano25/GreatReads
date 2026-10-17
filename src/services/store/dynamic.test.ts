@@ -284,11 +284,11 @@ test('extra NYT lists are official-or-nothing, show 10, and do not duplicate the
   assert.ok(NYT_EXTRA_SHELVES.length >= 3);
   for (const s of NYT_EXTRA_SHELVES) {
     assert.equal(s.fallback, false);
-    assert.ok(!main.has(s.list) && !/^(hardcover|combined)/.test(s.list), s.list); // hardcover/combined lists repeat the two main shelves
+    assert.ok(!main.has(s.list) && (s.list === 'hardcover-nonfiction' || !/^(hardcover|combined)/.test(s.list)), s.list); // combined lists repeat the two main shelves (Hardcover Non-Fiction is wanted on purpose: it is the weekly replacement for the retired weekly paperback list)
   }
   assert.equal(new Set(NYT_EXTRA_SHELVES.map(s => s.list)).size, NYT_EXTRA_SHELVES.length);
 
-  const ya = NYT_EXTRA_SHELVES[0];
+  const ya = NYT_EXTRA_SHELVES.find(s => s.id === 'nyt-ya')!;
   forgetNytList(ya.list);
   routeFetch([u => (u.pathname === '/api/nyt' ? { status: 503, body: { error: 'not_configured' } } : undefined)]);
   await assert.rejects(() => bestsellerSource(ya).load(() => {})); // no GreatReads-made stand-in for a niche list
