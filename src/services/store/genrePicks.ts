@@ -1,6 +1,8 @@
 import { SEARCH_GENRES, type SearchGenre } from '../../data/searchGenres';
 import type { CuratedShelf } from '../../data/storeCatalog';
 import { curatedSource } from './curated';
+import { bestsellerSource } from './bestsellers';
+import { NYT_EXTRA_SHELVES, NYT_GENRE_SHELVES } from './lists';
 import { SHELF_BY_ID } from './registry';
 import type { ShelfSource } from './shelves';
 
@@ -31,3 +33,18 @@ export function genrePicks(g: SearchGenre): { id: string; source: ShelfSource } 
 }
 
 export const genreByLabel = (label: string): SearchGenre | undefined => SEARCH_GENRES.find(g => g.label === label);
+
+const popular = new Map<string, { id: string; source: ShelfSource } | null>();
+
+/**
+ * The "Popular now" row of a genre page: the official NYT list for the genre, when there is one (`popular` in the genre list). Official only: the shelf
+ * hides itself when the NYT can't be reached, and a genre with no list has no row. One source object per genre, like genrePicks.
+ */
+export function genrePopular(g: SearchGenre): { id: string; source: ShelfSource } | null {
+  if (!g.popular) return null;
+  if (popular.has(g.label)) return popular.get(g.label)!;
+  const shelf = [...NYT_GENRE_SHELVES, ...NYT_EXTRA_SHELVES].find(s => s.id === g.popular);
+  const hit = shelf ? { id: shelf.id, source: bestsellerSource(shelf) } : null;
+  popular.set(g.label, hit);
+  return hit;
+}

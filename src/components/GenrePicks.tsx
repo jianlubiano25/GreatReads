@@ -1,6 +1,6 @@
 import type { Book } from '../types';
 import type { SearchGenre } from '../data/searchGenres';
-import { genrePicks } from '../services/store/genrePicks';
+import { genrePicks, genrePopular } from '../services/store/genrePicks';
 import { StoreShelf } from './StoreShelf';
 
 interface Props {
@@ -16,9 +16,11 @@ const CHIP = 'shrink-0 px-3.5 py-1.5 rounded-full border text-xs font-semibold w
 const CHIP_ON = 'bg-[#2e5934] text-white border-[#2e5934]';
 const CHIP_OFF = 'bg-[#fbf7ee] dark:bg-[#231d17] border-[#e3d7c3] dark:border-[#382f25] text-[#706256] dark:text-[#a89a8a] hover:text-[#201a15]';
 
-/** The top of a genre's page: its name, chips for its sub-genres, and (on the genre itself) a row of hand-picked books. The ranked search results follow below. */
+/** The top of a genre's page: its name, chips for its sub-genres, and (on the genre itself) a row for the genre's official NYT list, where there is one) and a row of hand-picked books. The ranked search results follow below. */
 export function GenrePicks({ genre, query, known, onPick, onOpen }: Props) {
-  const picks = query === genre.query ? genrePicks(genre) : null;
+  const onGenre = query === genre.query;
+  const picks = onGenre ? genrePicks(genre) : null;
+  const popular = onGenre ? genrePopular(genre) : null;
   return (
     <div className="flex flex-col gap-4">
       <h2 className="font-serif-display text-2xl text-[#201a15] dark:text-[#f0e6d6] flex items-center gap-2">
@@ -37,6 +39,7 @@ export function GenrePicks({ genre, query, known, onPick, onOpen }: Props) {
         ))}
       </div>
 
+      {popular && <StoreShelf key={popular.id} id={popular.id} title="Popular now" source={popular.source} ranked lazy hideIfUnavailable known={known} onOpen={onOpen} />}
       {picks && <StoreShelf key={picks.id} id={picks.id} title="Hand-picked" source={picks.source} known={known} onOpen={onOpen} />}
     </div>
   );

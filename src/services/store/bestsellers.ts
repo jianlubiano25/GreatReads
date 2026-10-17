@@ -30,7 +30,7 @@ interface Saved { mode: Mode; books: Book[]; at: number; /** content-filter vers
 export const FRESH_MS: Record<Mode, number> = { nyt: 6 * 60 * 60 * 1000, collated: 20 * 60 * 1000 };
 /** How old a saved list may be and still be drawn at once while a fresh one is requested. The NYT publishes weekly; the collated fallback changes faster. */
 export const SHOW_STALE_MS: Record<Mode, number> = { nyt: 10 * 24 * 60 * 60 * 1000, collated: 3 * 24 * 60 * 60 * 1000 };
-const saved = persistentCache<Saved>('readlife.top15', { ttl: 14 * 24 * 60 * 60 * 1000, max: 10 });
+const saved = persistentCache<Saved>('readlife.top15', { ttl: 14 * 24 * 60 * 60 * 1000, max: 20 });
 
 /** The heading for a shelf: the official title, or marked as GreatReads' own when it is the collated fallback. */
 export const shelfHeading = (shelf: Pick<NytShelf, 'title'>, mode: Mode | null) => (mode === 'collated' ? `GreatReads · ${shelf.title}` : shelf.title);

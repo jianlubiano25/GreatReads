@@ -49,3 +49,17 @@ export const NYT_EXTRA_SHELVES: NytShelf[] = [
   { id: 'nyt-advice', list: 'advice-how-to-and-miscellaneous', title: 'NYT Best Sellers · Advice & How-To', genre: 'Self-help', kind: 'nonfiction', fallback: false, limit: 10 },
   { id: 'nyt-ya', list: 'young-adult-hardcover', title: 'NYT Best Sellers · Young Adult', genre: 'Young adult', kind: 'fiction', fallback: false, limit: 10 },
 ];
+
+/**
+ * NYT lists used ONLY by the "Popular now" row of a genre page on the Search tab (never a Store shelf, so Customize Store does not list them).
+ * Official list or nothing: a genre whose list the NYT does not publish (or that cannot be loaded) simply shows no "Popular now" row.
+ * List names are the NYT API's list_name_encoded; `npm run check:nyt` reports which of them the NYT really publishes.
+ */
+export const NYT_GENRE_SHELVES: NytShelf[] = [
+  { id: 'nyt-genre-graphic', list: 'graphic-books-and-manga', title: 'NYT Best Sellers · Graphic Books & Manga', genre: 'Graphic novels', kind: 'fiction', fallback: false, limit: 10 },
+  { id: 'nyt-genre-business', list: 'business-books', title: 'NYT Best Sellers · Business', genre: 'Business', kind: 'nonfiction', fallback: false, limit: 10 },
+  { id: 'nyt-genre-science', list: 'science', title: 'NYT Best Sellers · Science', genre: 'Science', kind: 'nonfiction', fallback: false, limit: 10 },
+  { id: 'nyt-genre-crime', list: 'crime-and-punishment', title: 'NYT Best Sellers · Crime & Punishment', genre: 'True crime', kind: 'nonfiction', fallback: false, limit: 10 },
+  { id: 'nyt-genre-travel', list: 'travel', title: 'NYT Best Sellers · Travel', genre: 'Travel', kind: 'nonfiction', fallback: false, limit: 10 },
+  { id: 'nyt-genre-history', list: 'politics-and-american-history', title: 'NYT Best Sellers · Politics & American History', genre: 'History', kind: 'nonfiction', fallback: false, limit: 10 },
+];
