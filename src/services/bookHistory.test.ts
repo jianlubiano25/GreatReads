@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ReadingState } from '../types';
-import { applyHistoryEdit, applyRating, formatRating, isDateKey, prettyDate, readingNowOrder, sanitizeHistory, sanitizeRatings, stampProgress, stampStatus } from './bookHistory';
+import { applyHistoryEdit, applyRating, formatRating, isDateKey, prettyDate, readingNowOrder, sanitizeHistory, sanitizeRatings, snapRating, stampProgress, stampStatus } from './bookHistory';
 
 const base = (over: Partial<ReadingState> = {}): ReadingState => ({ status: {}, history: {}, ratings: {}, ...over } as ReadingState);
 
@@ -14,7 +14,7 @@ test('real dates only', () => {
 
 test('sanitize keeps good dates/ratings and drops the rest', () => {
   assert.deepEqual(sanitizeHistory({ a: { added: '2026-01-02', started: 'x', finished: '2026-13-01', lastRead: 5 }, b: 'no', c: {} }), { a: { added: '2026-01-02', lastRead: 5 } });
-  assert.deepEqual(sanitizeRatings({ a: 4, b: 0, c: 9, d: '3', e: 'x', f: 4.2, g: 0.1 }), { a: 4, d: 3, f: 4.25 });
+  assert.deepEqual(sanitizeRatings({ a: 4, b: 0, c: 9, d: '3', e: 'x' }), { a: 4, d: 3 });
   assert.deepEqual(sanitizeHistory(null), {});
 });
 
@@ -46,14 +46,36 @@ test('editing dates: finished finishes the book; clearing it reopens; bad edits 
   assert.equal(applyHistoryEdit(s, 'x', { started: 'soon' }, '2026-10-16'), s);
 });
 
-test('rating: quarter stars, change, clear', () => {
-  assert.equal(applyRating(base(), 'x', 4.3).ratings.x, 4.25);
-  assert.equal(formatRating(4.25), '4.25');
-  assert.equal(formatRating(4), '4');
+test('rating: set, change, clear', () => {
   const s = applyRating(base(), 'x', 4);
   assert.equal(s.ratings.x, 4);
   assert.equal(applyRating(s, 'x', 4), s);
   assert.deepEqual(applyRating(s, 'x', 0).ratings, {});
+});
+
+test('rating: quarter stars are kept as they are, anything between is snapped to the nearest quarter', () => {
+  assert.equal(applyRating(base(), 'x', 3.75).ratings.x, 3.75);
+  assert.equal(applyRating(base(), 'x', 0.25).ratings.x, 0.25);
+  assert.equal(applyRating(base(), 'x', 2.6).ratings.x, 2.5);
+  assert.equal(applyRating(base(), 'x', 4.9).ratings.x, 5);
+  assert.equal(snapRating(1.1), 1);
+  assert.equal(snapRating(1.13), 1.25);
+});
+
+test('rating: nothing, zero, below a quarter star or above five stars means no rating', () => {
+  assert.equal(snapRating(0), 0);
+  assert.equal(snapRating(0.1), 0);
+  assert.equal(snapRating(5.4), 0);
+  assert.equal(snapRating(NaN), 0);
+  const s = applyRating(base(), 'x', 4.25);
+  assert.deepEqual(applyRating(s, 'x', 0.05).ratings, {}); // takes the rating back, like 0 does
+  assert.deepEqual(applyRating(s, 'x', 0).ratings, {});
+  assert.equal(applyRating(base(), 'x', 0.05).ratings.x, undefined); // and does not invent one
+  assert.equal(applyRating(s, 'x', 4.3), s); // snaps to the 4.25 already saved: nothing changes
+});
+
+test('sanitize keeps quarter-star ratings (saved ones and older whole-number ones) and repairs odd values', () => {
+  assert.deepEqual(sanitizeRatings({ a: 3.75, b: 4, c: '2.5', d: 4.6, e: 0.1, f: 5.5 }), { a: 3.75, b: 4, c: 2.5, d: 4.5 });
 });
 
 test('Reading now: latest read first, then latest started, otherwise unchanged order', () => {
@@ -65,4 +87,10 @@ test('Reading now: latest read first, then latest started, otherwise unchanged o
 test('prettyDate', () => {
   assert.equal(prettyDate('2026-10-03'), 'Oct 3, 2026');
   assert.equal(prettyDate('nope'), '');
+});
+
+test('a rating is written the way you read it', () => {
+  assert.equal(formatRating(4.25), '4.25');
+  assert.equal(formatRating(4), '4');
+  assert.equal(formatRating(3.5), '3.5');
 });

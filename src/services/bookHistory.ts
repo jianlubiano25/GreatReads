@@ -24,11 +24,14 @@ export function sanitizeHistory(raw: unknown): Record<string, BookHistory> {
   return out;
 }
 
-/** A rating snapped to quarter stars (4.2 -> 4.25), or 0 when it is not a rating between a quarter star and 5. */
-export const toRating = (n: unknown): number => {
-  const v = Math.round(Number(n) * 4) / 4;
-  return Number.isFinite(v) && v >= 0.25 && v <= 5 ? v : 0;
-};
+/** Your own star ratings move in quarter stars: 0.25, 0.5 ... 5. (Ratings saved before this are whole numbers, which fit.) */
+export const RATING_STEP = 0.25;
+
+/** The nearest quarter star from 0.25 to 5, or 0 for "no rating" (0, nothing, or a number outside the range). */
+export function snapRating(n: number): number {
+  const v = Math.round(Number(n) / RATING_STEP) * RATING_STEP;
+  return v >= RATING_STEP && v <= 5 ? v : 0;
+}
 
 /** "4", "4.5", "4.25": a rating written the way you read it. */
 export const formatRating = (n: number): string => String(Math.round(n * 100) / 100);
@@ -38,7 +41,7 @@ export function sanitizeRatings(raw: unknown): Record<string, number> {
   const out: Record<string, number> = {};
   if (!isObj(raw)) return out;
   for (const id of Object.keys(raw)) {
-    const n = toRating(raw[id]);
+    const n = snapRating(Number(raw[id]));
     if (n) out[id] = n;
   }
   return out;
@@ -93,10 +96,10 @@ export function applyHistoryEdit(prev: ReadingState, id: string | number, patch:
   return { ...prev, status, history: { ...prev.history, [key]: h } };
 }
 
-/** Your own rating of a book, in quarter stars; 0 takes it back. */
+/** Your own rating of a book, in quarter stars (see snapRating); 0 takes it back. */
 export function applyRating(prev: ReadingState, id: string | number, stars: number): ReadingState {
   const key = String(id);
-  const n = toRating(stars);
+  const n = snapRating(stars);
   if (!n) {
     if (!(key in prev.ratings)) return prev;
     const { [key]: _gone, ...rest } = prev.ratings;

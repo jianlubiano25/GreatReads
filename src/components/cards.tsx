@@ -7,7 +7,7 @@ import { CoverFace, RatingLine, AwardBadges } from './BookMeta';
 import { Bookmark, Check, Edit2, Library, Search, Trash2, Volume2 } from 'lucide-react';
 
 /*
- * The cards on the Today, Library, Device and Word Garden screens.
+ * The cards on the Today, Library and Word Garden screens.
  * Each one is memoized and only receives plain values plus stable callbacks, so changing one book's
  * note or page no longer redraws every other card on the screen.
  */
@@ -242,7 +242,7 @@ export const UpNextCard = React.memo(function UpNextCard({
   );
 });
 
-/* ---------------- Library + Device cards ---------------- */
+/* ---------------- Library card ---------------- */
 
 interface ShelfCardProps {
   book: Book;
@@ -349,52 +349,6 @@ export const LibraryCard = React.memo(function LibraryCard({
           className="p-1.5 rounded-lg text-[#706256] dark:text-[#a89a8a] hover:text-red-500"
           title="Remove book"
           aria-label={`Remove ${b.title}`}
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-      </div>
-    </div>
-  );
-});
-
-export const DeviceCard = React.memo(function DeviceCard({
-  book: b, status, finished, highlightCount, onOpen, onQuotes, onMoveToList, onRemoveFromDevice, onReadAgain,
-}: ShelfCardProps & {
-  status: BookStatus;
-  finished?: boolean;
-  onMoveToList: (id: string | number) => void;
-  onRemoveFromDevice: (b: Book) => void;
-  onReadAgain: (id: string | number) => void;
-}) {
-  const inList = status === 'next' || status === 'now';
-  return (
-    <div className={`p-4 ${CARD} flex flex-col justify-between gap-3`} style={{ borderLeftColor: b.spineColor || '#2e5934' }}>
-      <ShelfCardTop book={b} onOpen={onOpen} />
-
-      <div className="flex items-center gap-2 pt-2 border-t border-[#e3d7c3] dark:border-[#382f25]">
-        {finished ? (
-          <button onClick={() => onReadAgain(b.id)} className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] text-center">
-            Read again
-          </button>
-        ) : inList ? (
-          <span className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold text-center text-[#2e5934] dark:text-[#86b880] bg-[#2e5934]/10">
-            {status === 'now' ? 'Reading now' : 'In your reading list'}
-          </span>
-        ) : (
-          <button onClick={() => onMoveToList(b.id)} className="flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] text-center">
-            Add to reading list
-          </button>
-        )}
-
-        <button onClick={() => onQuotes(b)} className={ICON_BTN} title="View quotes & highlights" aria-label={`Quotes${highlightCount ? ` (${highlightCount})` : ''}`}>
-          <Bookmark className="w-4 h-4 text-[#925838]" />
-        </button>
-
-        <button
-          onClick={() => onRemoveFromDevice(b)}
-          className="p-1.5 rounded-lg text-[#706256] dark:text-[#a89a8a] hover:text-red-500"
-          title={finished ? 'Remove from my books' : 'Remove from device (stays in Library)'}
-          aria-label={finished ? `Remove ${b.title} from my books` : `Remove ${b.title} from device`}
         >
           <Trash2 className="w-4 h-4" />
         </button>

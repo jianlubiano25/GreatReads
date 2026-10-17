@@ -136,7 +136,7 @@ export interface ReadingState {
   words: WordItem[];
   garden: GardenState;
   history: Record<string, BookHistory>; // bookId -> dates
-  ratings: Record<string, number>; // bookId -> your own rating, 1 to 5
+  ratings: Record<string, number>; // bookId -> your own rating, 0.25 to 5 in quarter stars
 }
 
-export type TabType = 'today' | 'store' | 'lib' | 'words' | 'dev';
+export type TabType = 'today' | 'store' | 'lib' | 'words' | 'search';
