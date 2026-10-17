@@ -43,6 +43,8 @@ export interface DynamicSpec {
   /** A fresh list shorter than this is rejected as a failed refresh */
   minSeeds: number;
   fetch: (shelf: CuratedShelf, signal?: AbortSignal) => Promise<Fresh | null>;
+  /** The list's handle at its source (Wikipedia page name, club page...), shown in Customize Shelves */
+  handle?: string;
   /** The heading, when it depends on the date */
   title?: (now: Date) => string;
   /** What kind of data this is, for Customize Store: a public record standing in for an official list, or GreatReads' own discovery */
@@ -217,6 +219,7 @@ export const dynamicInfo = (base: CuratedShelf, spec: DynamicSpec): ShelfInfo =>
     schedule: `Refreshes ${everyLabel(spec.refreshMs)}`,
     source: source + (spec.merge === 'append' ? ' · new picks are added to the top, earlier ones stay' : '') + note,
     kind,
+    handle: spec.handle,
   };
 };
 
@@ -278,6 +281,7 @@ export function dynamicCuratedSource(base: CuratedShelf, spec: DynamicSpec): She
 
 const wikiSpec = (pages: string[], rule: ColumnRule, label: (when: string) => string, refreshMs: number, source: string, limit = 12): DynamicSpec => ({
   source,
+  handle: `wikipedia: ${pages[0]}`,
   kind: 'fallback',
   refreshMs,
   minSeeds: 8,
@@ -309,6 +313,7 @@ const serviceSpec = (): DynamicSpec => {
   );
   return {
     source: 'service95.com/book-club',
+    handle: 'service95.com/book-club',
     kind: 'official',
     fallbackSource: wiki.source,
     refreshMs: 7 * DAY, // a new pick appears at the start of a month; weekly means it is on the shelf within days, not up to a month late
@@ -356,6 +361,7 @@ export function oprahSeeds(official: { title: string; author: string }[], dated:
 
 const oprahSpec = (): DynamicSpec => ({
   source: 'oprahdaily.com (the complete Oprah\'s Book Club list)',
+  handle: 'oprahdaily.com + wikipedia: Oprah\'s Book Club 2.0',
   kind: 'official',
   fallbackSource: "Wikipedia: Oprah's Book Club 2.0 (the picks table)",
   refreshMs: 3 * DAY,
@@ -469,6 +475,44 @@ export const DYNAMIC_SPECS: Record<string, DynamicSpec> = {
     when => `International Booker ${when}`,
     7 * DAY,
     'Wikipedia: International Booker Prize (winners)',
+  )),
+
+  // More prizes, same method: Wikipedia's winners tables (the winner is the first row of each year), new winners added on top.
+  // A table that cannot be read leaves the saved list alone, so the worst case is today's behaviour.
+  booker: history(wikiSpec(
+    ['List of winners and shortlisted authors of the Booker Prize', 'Booker Prize'],
+    { ...prize(), result: /^(result|status|outcome)/i, winner: /winner/i, onePerYear: true },
+    when => `Booker Prize ${when}`,
+    7 * DAY,
+    'Wikipedia: Booker Prize (winners)',
+  )),
+  pulitzer: history(wikiSpec(
+    ['Pulitzer Prize for Fiction'],
+    { ...prize(), result: /^(result|status|outcome)/i, winner: /winner/i, onePerYear: true },
+    when => `Pulitzer Prize ${when}`,
+    7 * DAY,
+    'Wikipedia: Pulitzer Prize for Fiction (winners)',
+  )),
+  nba: history(wikiSpec(
+    ['National Book Award for Fiction'],
+    { ...prize(), result: /^(result|status|outcome)/i, winner: /winner/i, onePerYear: true },
+    when => `National Book Award ${when}`,
+    7 * DAY,
+    'Wikipedia: National Book Award for Fiction (winners)',
+  )),
+  hugo: history(wikiSpec(
+    ['Hugo Award for Best Novel'],
+    { ...prize(), result: /^(result|status|outcome)/i, winner: /winner/i, onePerYear: true },
+    when => `Hugo Award ${when}`,
+    7 * DAY,
+    'Wikipedia: Hugo Award for Best Novel (winners)',
+  )),
+  nebula: history(wikiSpec(
+    ['Nebula Award for Best Novel'],
+    { ...prize(), result: /^(result|status|outcome)/i, winner: /winner/i, onePerYear: true },
+    when => `Nebula Award ${when}`,
+    7 * DAY,
+    'Wikipedia: Nebula Award for Best Novel (winners)',
   )),
 
   // Book clubs with a published list of every monthly pick (Wikipedia keeps these tables current)

@@ -42,6 +42,7 @@ export function appleShelfSource(shelf: AppleShelf): ShelfSource {
         schedule: 'Apple updates its charts daily · checked every 30 minutes when opened',
         source: 'Apple Books charts (official)',
         kind: 'official',
+        handle: `apple-books/${shelf.chart}`,
       };
     },
     refresh: async (): Promise<RefreshResult> => {

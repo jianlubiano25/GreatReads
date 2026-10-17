@@ -17,7 +17,7 @@ interface Props {
   active: boolean;
   /** Every book in the library: the "prize winners" and "easy to start" shelves are built from it */
   allBooks: Book[];
-  /** Customize Store is toggled from the page header and footer, so App owns this flag */
+  /** Customize Shelves is toggled from the page header and footer, so App owns this flag */
   customizing: boolean;
   setCustomizing: (on: boolean) => void;
   handleOpenCover: (book: Book) => void;
@@ -32,7 +32,7 @@ const PRIZE_TITLE = (
   </>
 );
 
-/** The Discover tab (the Store): search, the shelves in the reader's own order, and Customize Store. */
+/** The Discover tab (the Store): search, the shelves in the reader's own order, and Customize Shelves. */
 export function StoreTab({ active, allBooks, customizing, setCustomizing, handleOpenCover, mine }: Props) {
   // Store layout: the reader's own shelf order and hidden shelves (prefs only; shelf data is never touched, see services/store/prefs.ts)
   const [storePrefs, setStorePrefs] = useState<StorePrefs>(loadStorePrefs);
@@ -76,7 +76,7 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
           {/* Sticky icon bar (not while searching: results take over the page, and BookSearch has its own sticky header) */}
           {!query.trim() && <StoreNav active={active} order={shelfOrder} />}
 
-          {/* Shelves, in the reader's own order (Customize Store). Hidden shelves are not drawn, so they also load nothing. */}
+          {/* Shelves, in the reader's own order (Customize Shelves). Hidden shelves are not drawn, so they also load nothing. */}
           {shelfOrder.filter(id => !hiddenShelves.includes(id)).map((id, position) => {
             const def = SHELF_BY_ID[id];
             const priority = position < 2; // the first two shelves load their covers at once; the rest as they come near the screen

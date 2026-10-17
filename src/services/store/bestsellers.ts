@@ -119,6 +119,7 @@ export function bestsellerSource(shelf: NytShelf): ShelfSource {
         schedule: shelf.schedule ?? 'NYT publishes weekly · checked every 6 hours when opened',
         source: (m === 'collated' ? 'GreatReads fallback (the NYT list could not be loaded), not an official list' : 'The New York Times Books API (official)') + why,
         kind: m === 'collated' ? 'generated' : 'official',
+        handle: shelf.list,
       };
     },
     // Manual refresh: ask the NYT again now (the saved list stays as the fallback). Only the official list counts as a success.

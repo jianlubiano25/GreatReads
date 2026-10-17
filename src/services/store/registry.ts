@@ -44,7 +44,7 @@ const SECTION_OF: Record<string, StoreSection> = {
 /** Top section, in order: the two combined NYT lists, Apple's charts, the paperback lists, the hardcover lists, then the rest. */
 const TOP_ORDER = ['nyt-fiction', 'nyt-nonfiction', 'apple-top-free', 'apple-top-paid', 'nyt-paperback-fiction', 'nyt-paperback-nonfiction', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction', 'nyt-advice', 'topfiction', 'topnonfiction', 'nyt-ya'];
 const TOP_IDS = new Set<string>([...NYT_SHELVES.map(s => s.id), ...NYT_EXTRA_SHELVES.map(s => s.id), ...APPLE_SHELVES.map(s => s.id), ...TOP_ORDER]);
-const SHELVES_OFF_BY_DEFAULT = new Set(['nyt-ya', 'nyt-paperback-nonfiction', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction']);
+const SHELVES_OFF_BY_DEFAULT = new Set(['nyt-ya', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction']);
 const sectionOf = (id: string): StoreSection => SECTION_OF[id] ?? (TOP_IDS.has(id) ? 'top' : 'genres');
 
 const ALL_SHELVES: Omit<StoreShelfDef, 'section'>[] = [
@@ -52,10 +52,10 @@ const ALL_SHELVES: Omit<StoreShelfDef, 'section'>[] = [
   ...NYT_SHELVES.map(shelf => ({ id: shelf.id, title: shelf.title, source: bestsellerSource(shelf), ranked: true })),
   { id: 'trending', title: '🔥 Trending Today', source: trendingSource, ranked: true },
   // More NYT lists (official only: a shelf hides itself when its list can't be loaded)
-  // Young Adult, Paperback Non-Fiction and the two Hardcover lists are off by default; everything else is on.
+  // Young Adult and the two Hardcover lists are off by default; everything else is on.
   ...NYT_EXTRA_SHELVES.map(shelf => ({ id: shelf.id, title: shelf.title, source: bestsellerSource(shelf), ranked: true, lazy: true, hideIfUnavailable: true, defaultHidden: SHELVES_OFF_BY_DEFAULT.has(shelf.id) })),
-  // Apple Books' own charts (official only: a shelf hides itself when its chart can't be loaded)
-  ...APPLE_SHELVES.map(shelf => ({ id: shelf.id, title: shelf.title, source: appleShelfSource(shelf), ranked: true, lazy: true, hideIfUnavailable: true })),
+  // Apple Books' own charts. Not hidden when the chart can't load: the shelf says so (with Try again) instead of silently vanishing
+  ...APPLE_SHELVES.map(shelf => ({ id: shelf.id, title: shelf.title, source: appleShelfSource(shelf), ranked: true, lazy: true })),
   { id: 'prize-catalog', title: '🏆 Prize winners from your lists', library: 'prize' },
   { id: 'easy-catalog', title: '🟢 Easy to start', library: 'easy' },
   // Self-refreshing where a shelf has a public source (see dynamic.ts), hand-picked otherwise

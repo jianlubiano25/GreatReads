@@ -45,7 +45,7 @@ async function loadOne(chart: AppleChartEntry['chart'], opts: CallOpts & { force
   const fresh = opts.force ? undefined : cache.get(chart);
   if (fresh) return fresh;
   return dedupeInflight(inflight, chart, async () => {
-    const urls = [`/api/apple-charts?feed=${chart}&limit=100`, `https://rss.applemarketingtools.com/api/v2/us/books/${chart}/100/books.json`];
+    const urls = [`/api/apple-charts?feed=${chart}&limit=100`, `https://rss.marketingtools.apple.com/api/v2/us/books/${chart}/100/books.json`, `https://rss.applemarketingtools.com/api/v2/us/books/${chart}/100/books.json`];
     for (const url of urls) {
       const r = await getJsonDetailed(url, { timeout: 7000, signal: opts.signal });
       const entries = r.data ? parseAppleChart(r.data, chart) : [];

@@ -11,6 +11,8 @@ export interface ShelfInfo {
   source: string;
   /** official = the publisher's own list; fallback = a public record standing in for one; generated = GreatReads / discovery; curated = hand-picked */
   kind: 'official' | 'fallback' | 'generated' | 'curated';
+  /** The list's handle at its source (the NYT list name, the Apple chart, the Wikipedia page...), shown in Customize Shelves so you can tell exactly which list a shelf follows */
+  handle?: string;
 }
 
 /** How a manual refresh ended. 'updated' and 'unchanged' are both successes (the timestamp moves); 'failed' keeps the old data. */

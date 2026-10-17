@@ -60,9 +60,9 @@ test('every tab draws, and an inactive tab is mounted but hidden', () => {
   assert.match(store, /Top 15 this week/); // the shelves are drawn in the saved/default order
 });
 
-test('Store tab: Customize Store replaces the search and shelves', () => {
+test('Store tab: Customize Shelves replaces the search and shelves', () => {
   const store = renderToStaticMarkup(h(StoreTab, { active: true, allBooks: [], customizing: true, setCustomizing: noop, handleOpenCover: noop }));
-  assert.match(store, /Customize Store/);
+  assert.match(store, /Customize Shelves/);
   assert.ok(!/Title, Author, ISBN, or Keywords/.test(store));
 });
 

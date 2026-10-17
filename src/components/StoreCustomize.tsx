@@ -26,7 +26,7 @@ const MESSAGE: Record<ManualResult, string> = {
 
 const iconBtn = 'w-9 h-9 shrink-0 rounded-full flex items-center justify-center border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] active:scale-95 transition-all disabled:opacity-40';
 
-/** Customize Store: reorder shelves, hide or show them, and see / refresh each shelf's data. Edits the layout only, never the shelves' books. */
+/** Customize Shelves: reorder shelves, hide or show them, and see / refresh each shelf's data. Edits the layout only, never the shelves' books. */
 export function StoreCustomize({ order, hidden, onReorder, onToggle, onDone, onResetLayout }: Props) {
   const list = useRef<HTMLUListElement>(null);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -59,7 +59,7 @@ export function StoreCustomize({ order, hidden, onReorder, onToggle, onDone, onR
     };
   }, [dragging, order, onReorder]);
 
-  const alive = useRef(true); // leaving Customize Store stops a Refresh all that is still working through the shelves
+  const alive = useRef(true); // leaving Customize Shelves stops a Refresh all that is still working through the shelves
   useEffect(() => () => { alive.current = false; }, []);
 
   const refresh = async (id: string): Promise<ManualResult> => {
@@ -112,10 +112,10 @@ export function StoreCustomize({ order, hidden, onReorder, onToggle, onDone, onR
   };
 
   return (
-    <section className="flex flex-col gap-4" aria-label="Customize Store">
+    <section className="flex flex-col gap-4" aria-label="Customize Shelves">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="font-serif-display text-xl text-[#201a15] dark:text-[#f0e6d6]">Customize Store</h3>
+          <h3 className="font-serif-display text-xl text-[#201a15] dark:text-[#f0e6d6]">Customize Shelves</h3>
           <p className="text-xs text-[#706256] dark:text-[#a89a8a] mt-1">
             Drag ☰ to reorder (or use the arrow keys). The eye hides a shelf without deleting it. Refresh updates one shelf.
           </p>
@@ -174,6 +174,7 @@ export function StoreCustomize({ order, hidden, onReorder, onToggle, onDone, onR
                   {info && info.kind !== 'curated' && <span>· {info.schedule}</span>}
                 </div>
                 {info && <div className="text-[10px] text-[#706256]/80 dark:text-[#a89a8a]/80 leading-snug">{info.source}</div>}
+                {info?.handle && <div className="text-[10px] text-[#706256]/80 dark:text-[#a89a8a]/80 leading-snug">handle: <code className="font-mono">{info.handle}</code></div>}
                 {notes[id] && <div className="text-[11px] text-[#2e5934] dark:text-[#86b880]" role="status">{notes[id]}</div>}
               </div>
 
@@ -199,13 +200,16 @@ export function StoreCustomize({ order, hidden, onReorder, onToggle, onDone, onR
         })}
       </ul>
 
-      <div className="flex items-center justify-between gap-3 text-[11px] text-[#706256] dark:text-[#a89a8a]">
+      <div className="flex flex-col gap-3 text-[11px] text-[#706256] dark:text-[#a89a8a]">
         <span>
           <span className="inline-block w-2 h-2 rounded-full bg-emerald-600 mr-1" />official
           <span className="inline-block w-2 h-2 rounded-full bg-amber-500 ml-3 mr-1" />public-record stand-in
           <span className="inline-block w-2 h-2 rounded-full bg-sky-500 ml-3 mr-1" />GreatReads discovery
           <span className="inline-block w-2 h-2 rounded-full bg-stone-400 ml-3 mr-1" />hand-picked
         </span>
+      </div>
+
+      <div className="flex items-center gap-3 text-[11px] text-[#706256] dark:text-[#a89a8a]">
         {confirmReset ? (
           <span className="flex items-center gap-2 shrink-0" role="alertdialog" aria-label="Reset layout?">
             <span className="text-[#201a15] dark:text-[#f0e6d6] font-medium">Reset order and hidden shelves?</span>

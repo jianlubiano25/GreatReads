@@ -177,7 +177,7 @@ export default function App() {
     type: 'books',
   });
 
-  // Customize Store is switched on from the page header and footer, so the flag lives here (the layout itself is kept by StoreTab)
+  // Customize Shelves is switched on from the page header and footer, so the flag lives here (the layout itself is kept by StoreTab)
   const [customizing, setCustomizing] = useState(false);
 
   // New-version detection (prompts only when the code really changed)
@@ -343,8 +343,8 @@ export default function App() {
               <button
                 onClick={() => setCustomizing(c => !c)}
                 className={`w-10 h-10 aspect-square rounded-full border bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880] ${customizing ? 'border-[#2e5934] dark:border-[#86b880] ring-2 ring-[#2e5934]/30' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}
-                title="Customize Store: reorder, hide and refresh shelves"
-                aria-label="Customize Store"
+                title="Customize Shelves: reorder, hide and refresh shelves"
+                aria-label="Customize Shelves"
                 aria-pressed={customizing}
               >
                 <SlidersHorizontal className="w-4 h-4 text-[#2e5934] dark:text-[#86b880]" />
@@ -540,8 +540,8 @@ export default function App() {
               <button
                 onClick={() => setCustomizing(c => !c)}
                 className={`w-10 h-10 aspect-square rounded-full border bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center shrink-0 shadow-xs active:scale-95 transition-all hover:border-[#2e5934] dark:hover:border-[#86b880] ${customizing ? 'border-[#2e5934] dark:border-[#86b880] ring-2 ring-[#2e5934]/30' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}
-                title="Customize Store: reorder, hide and refresh shelves"
-                aria-label="Customize Store"
+                title="Customize Shelves: reorder, hide and refresh shelves"
+                aria-label="Customize Shelves"
                 aria-pressed={customizing}
               >
                 <SlidersHorizontal className="w-4 h-4 text-[#2e5934] dark:text-[#86b880]" />
