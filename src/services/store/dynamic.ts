@@ -627,6 +627,14 @@ export const DYNAMIC_SPECS: Record<string, DynamicSpec> = {
   // the shelf's first four hand-picked staples kept at the end. The NYT lists at the top of the Store are the official charts.
   topfiction: { ...genre('subject:fiction', 4), source: 'Open Library search (most-wanted recent fiction)', refreshMs: 14 * DAY },
   topnonfiction: { ...genre('subject:nonfiction OR subject:"non-fiction"', 4), source: 'Open Library search (most-wanted recent non-fiction)', refreshMs: 14 * DAY },
+  // More genres from Goodreads' genre list: the same discovery as the other genre shelves (recent, widely wanted), four hand-picked staples kept
+  horror: genre('subject:horror'),
+  ya: genre('subject:\"young adult fiction\" OR subject:\"young adult\"'),
+  biography: genre('subject:biography OR subject:autobiography'),
+  crime: genre('subject:\"crime fiction\" OR subject:crime'),
+  contemporary: genre('subject:\"contemporary fiction\" OR subject:\"contemporary women\"'),
+  cookbooks: genre('subject:cookbooks OR subject:cooking'),
+  humor: genre('subject:humor OR subject:comedy'),
 
   // Book clubs with a published list of every monthly pick (Wikipedia keeps these tables current)
   reeses: history(wikiSpec(

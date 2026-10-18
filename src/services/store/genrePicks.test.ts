@@ -40,7 +40,9 @@ test('a genre page shows its name, sub-genre chips and (on the genre itself) the
 
 test('the Search tab still lists every genre to browse', () => {
   const html = renderToStaticMarkup(h(SearchTab, { active: true, allBooks: [], handleOpenCover: noop }));
-  for (const g of SEARCH_GENRES) assert.match(html, new RegExp(g.label.replace(/[&]/g, '&amp;')));
+  // the page is HTML: "Humor & Comedy" is written with &amp; and "Children's" with &#x27;
+  const html_ = (s: string) => s.replace(/&/g, '&amp;').replace(/'/g, '&#x27;');
+  for (const g of SEARCH_GENRES) assert.ok(html.includes(html_(g.label)), `${g.label} is listed`);
 });
 
 test('a genre with an official NYT list gets a "Popular now" row from it; one without gets none', () => {

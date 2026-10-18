@@ -56,20 +56,39 @@ export function RatingLine({ book, className = '', compact = false }: { book: Bo
   );
 }
 
-/** Prize / shortlist chips, e.g. 🏆 Women's Prize 2021 */
-export function AwardBadges({ book, max }: { book: Book; /** show only this many chips, then "+N" (Store shelves: a book with many honors must not make its shelf taller than the others) */ max?: number }) {
-  const all = awardsFor(book);
-  if (!all.length) return null;
-  const a = max && all.length > max ? all.slice(0, max) : all;
-  const more = all.length - a.length;
+/**
+ * The ONE honor a book wears on a Store shelf: the label its own shelf gave it (the Booker shelf's "Booker Prize 2025"), otherwise its best
+ * honor (a prize win, then a shortlist, then a club pick). The book info (Honors & Awards) lists every one; library cards list all too.
+ */
+export const primaryAward = (b: Book): { type: AwardKind; label: string } | undefined => {
+  if (b.awardLabel?.trim()) return { type: honorKind(b.awardLabel), label: b.awardLabel };
+  const rank: Record<AwardKind, number> = { w: 0, s: 1, c: 2 };
+  return awardsFor(b).map((x, i) => ({ x, i })).sort((p, q) => rank[p.x.type] - rank[q.x.type] || p.i - q.i)[0]?.x;
+};
+
+const chipIcon = (t: AwardKind) => (t === 'c' ? '\u{1F4D6}' : t === 'w' ? '\u{1F3C6}' : '\u{1F396}\uFE0F');
+const chipClass = (t: AwardKind) => `rl-bdg ${t === 'w' ? 'rl-bdg-w' : t === 'c' ? 'rl-bdg-c' : ''}`;
+
+/** Prize / shortlist chips, e.g. 🏆 Women's Prize 2021. `primary`: just the one main honor, on one line (Store shelves: every shelf stays the same height). */
+export function AwardBadges({ book, primary }: { book: Book; primary?: boolean }) {
+  if (primary) {
+    const x = primaryAward(book);
+    if (!x) return null;
+    return (
+      <div className="rl-bdgs">
+        <span className={`${chipClass(x.type)} block max-w-full truncate whitespace-nowrap`} title={x.label}>{chipIcon(x.type)} {x.label}</span>
+      </div>
+    );
+  }
+  const a = awardsFor(book);
+  if (!a.length) return null;
   return (
     <div className="rl-bdgs">
       {a.map((x, i) => (
-        <span key={i} className={`rl-bdg ${x.type === 'w' ? 'rl-bdg-w' : x.type === 'c' ? 'rl-bdg-c' : ''}`}>
-          {x.type === 'c' ? '📖' : x.type === 'w' ? '🏆' : '🎖️'} {x.label}
+        <span key={i} className={chipClass(x.type)}>
+          {chipIcon(x.type)} {x.label}
         </span>
       ))}
-      {more > 0 && <span className="rl-bdg" title={`${more} more honor${more === 1 ? '' : 's'}`}>+{more}</span>}
     </div>
   );
 }

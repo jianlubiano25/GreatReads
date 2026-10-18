@@ -121,7 +121,7 @@ test('My Library: View all shows when a status tab holds more than four books', 
 
 test('Search tab: every genre is a button, and each one has a search word of its own', () => {
   const html = renderToStaticMarkup(h(SearchTab, { active: true, allBooks: [], handleOpenCover: noop }));
-  for (const g of SEARCH_GENRES) assert.ok(html.includes(g.label), `${g.label} is listed`);
+  for (const g of SEARCH_GENRES) assert.ok(html.includes(g.label.replace(/&/g, '&amp;').replace(/'/g, '&#x27;')), `${g.label} is listed`);
   assert.equal((html.match(/<button type="button" class="min-h-\[56px\]/g) || []).length, SEARCH_GENRES.length);
   assert.equal(new Set(SEARCH_GENRES.map(g => g.query)).size, SEARCH_GENRES.length);
   assert.ok(SEARCH_GENRES.every(g => g.label && g.query && g.query === g.query.toLowerCase()));

@@ -131,3 +131,24 @@ test('the Goodreads shelf replaces the old year with the newest one (not an appe
   assert.equal(sp.kind, 'official');
   assert.match(sp.handle!, /goodreads\.com\/award/);
 });
+
+/* ------------------------------ one primary honor on a Store cover; every shelf the same height ------------------------------ */
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { primaryAward, AwardBadges } from '../../components/BookMeta';
+
+const bk = (o: any) => ({ id: 'x', title: 'T', author: 'A', ...o });
+
+test('a Store cover wears ONE honor: its own shelf\'s label first, else the best one (a win beats a shortlist beats a club pick)', () => {
+  assert.equal(primaryAward(bk({ awardLabel: 'Booker Prize 2025' }))!.label, 'Booker Prize 2025');
+  assert.equal(primaryAward(bk({}))?.label, undefined, 'no honor, no chip');
+  const html = renderToStaticMarkup(React.createElement(AwardBadges, { book: bk({ awardLabel: 'Booker Prize 2025' }), primary: true } as any));
+  assert.equal((html.match(/rl-bdg /g) || []).length, 1);
+  assert.match(html, /truncate/, 'one line, so every shelf keeps the same height');
+  assert.equal(renderToStaticMarkup(React.createElement(AwardBadges, { book: bk({}), primary: true } as any)), '');
+});
+
+test('the library cards and book info still list every honor (primary is only for the Store covers)', () => {
+  const html = renderToStaticMarkup(React.createElement(AwardBadges, { book: bk({ awardLabel: 'Pulitzer Prize 2024' }) } as any));
+  assert.match(html, /Pulitzer Prize 2024/);
+});

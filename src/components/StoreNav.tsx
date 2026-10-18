@@ -19,18 +19,18 @@ export function jumpTo(key: string): boolean {
   const item = NAV_ITEMS.find(n => n.key === key);
   const el = item && shelfEls().find(e => item.sections.includes(SHELF_BY_ID[e.dataset.shelfId || '']?.section));
   if (!el) return false;
-  const still = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  el.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
-  // Shelves below the screen are drawn at an estimated height until they come near it, so the page can grow or shrink while the smooth
-  // scroll runs and it ends a little off. Check where the shelf landed a few times and put it exactly under the bar if it is off.
+  // An instant jump: a smooth scroll runs past every shelf in between, and each one that comes near the screen draws its covers as it
+  // passes (that was the flicker). Shelves below the screen are drawn at an estimated height until they come near it, so once the page
+  // has settled the shelf is checked and put exactly under the bar if it is off.
+  el.scrollIntoView({ behavior: 'auto', block: 'start' });
   const margin = parseFloat(getComputedStyle(el).scrollMarginTop) || 0;
   let tries = 0;
   const settle = () => {
     if (!el.isConnected) return;
-    if (Math.abs(el.getBoundingClientRect().top - margin) > 3) el.scrollIntoView({ behavior: 'auto', block: 'start' });
-    if (++tries < 4) setTimeout(settle, 450);
+    if (Math.abs(el.getBoundingClientRect().top - margin) > 2) el.scrollIntoView({ behavior: 'auto', block: 'start' });
+    if (++tries < 3) setTimeout(settle, 250);
   };
-  setTimeout(settle, 450);
+  requestAnimationFrame(() => setTimeout(settle, 120));
   return true;
 }
 

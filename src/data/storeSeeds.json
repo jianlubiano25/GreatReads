@@ -1409,5 +1409,145 @@
     "Nebula Award 2014"
    ]
   ]
+ },
+ {
+  "id": "horror",
+  "title": "Horror",
+  "emoji": "🦇",
+  "genre": "horror",
+  "seeds": [
+   ["The Shining", "Stephen King"],
+   ["Dracula", "Bram Stoker"],
+   ["Frankenstein", "Mary Shelley"],
+   ["The Haunting of Hill House", "Shirley Jackson"],
+   ["Pet Sematary", "Stephen King"],
+   ["Bird Box", "Josh Malerman"],
+   ["Mexican Gothic", "Silvia Moreno-Garcia"],
+   ["The Exorcist", "William Peter Blatty"],
+   ["Rosemary's Baby", "Ira Levin"],
+   ["The Cabin at the End of the World", "Paul Tremblay"],
+   ["House of Leaves", "Mark Z. Danielewski"],
+   ["Interview with the Vampire", "Anne Rice"]
+  ]
+ },
+ {
+  "id": "ya",
+  "title": "Young Adult",
+  "emoji": "🎒",
+  "genre": "young adult",
+  "seeds": [
+   ["The Hunger Games", "Suzanne Collins"],
+   ["Harry Potter and the Sorcerer's Stone", "J. K. Rowling"],
+   ["The Fault in Our Stars", "John Green"],
+   ["Divergent", "Veronica Roth"],
+   ["The Hate U Give", "Angie Thomas"],
+   ["Six of Crows", "Leigh Bardugo"],
+   ["The Lightning Thief", "Rick Riordan"],
+   ["The Perks of Being a Wallflower", "Stephen Chbosky"],
+   ["Eleanor & Park", "Rainbow Rowell"],
+   ["Speak", "Laurie Halse Anderson"],
+   ["Legendborn", "Tracy Deonn"],
+   ["The Giver", "Lois Lowry"]
+  ]
+ },
+ {
+  "id": "biography",
+  "title": "Biography",
+  "emoji": "🧑",
+  "genre": "biography",
+  "seeds": [
+   ["Steve Jobs", "Walter Isaacson"],
+   ["Alexander Hamilton", "Ron Chernow"],
+   ["Becoming", "Michelle Obama"],
+   ["Long Walk to Freedom", "Nelson Mandela"],
+   ["The Diary of a Young Girl", "Anne Frank"],
+   ["Einstein: His Life and Universe", "Walter Isaacson"],
+   ["Born a Crime", "Trevor Noah"],
+   ["Educated", "Tara Westover"],
+   ["The Immortal Life of Henrietta Lacks", "Rebecca Skloot"],
+   ["Unbroken", "Laura Hillenbrand"],
+   ["Leonardo da Vinci", "Walter Isaacson"],
+   ["Elon Musk", "Walter Isaacson"]
+  ]
+ },
+ {
+  "id": "crime",
+  "title": "Crime",
+  "emoji": "🚔",
+  "genre": "crime",
+  "seeds": [
+   ["And Then There Were None", "Agatha Christie"],
+   ["The Big Sleep", "Raymond Chandler"],
+   ["The Maltese Falcon", "Dashiell Hammett"],
+   ["In the Woods", "Tana French"],
+   ["Mystic River", "Dennis Lehane"],
+   ["The Snowman", "Jo Nesbø"],
+   ["Sharp Objects", "Gillian Flynn"],
+   ["Big Little Lies", "Liane Moriarty"],
+   ["The Cuckoo's Calling", "Robert Galbraith"],
+   ["The Hound of the Baskervilles", "Arthur Conan Doyle"],
+   ["Presumed Innocent", "Scott Turow"],
+   ["The Long Goodbye", "Raymond Chandler"]
+  ]
+ },
+ {
+  "id": "contemporary",
+  "title": "Contemporary",
+  "emoji": "🏙️",
+  "genre": "contemporary",
+  "seeds": [
+   ["Where the Crawdads Sing", "Delia Owens"],
+   ["Little Fires Everywhere", "Celeste Ng"],
+   ["Normal People", "Sally Rooney"],
+   ["The Midnight Library", "Matt Haig"],
+   ["Beach Read", "Emily Henry"],
+   ["Fleishman Is in Trouble", "Taffy Brodesser-Akner"],
+   ["Conversations with Friends", "Sally Rooney"],
+   ["Such a Fun Age", "Kiley Reid"],
+   ["Lessons in Chemistry", "Bonnie Garmus"],
+   ["The Seven Husbands of Evelyn Hugo", "Taylor Jenkins Reid"],
+   ["Daisy Jones & The Six", "Taylor Jenkins Reid"],
+   ["Eleanor Oliphant Is Completely Fine", "Gail Honeyman"]
+  ]
+ },
+ {
+  "id": "cookbooks",
+  "title": "Cookbooks",
+  "emoji": "🍳",
+  "genre": "cookbooks",
+  "seeds": [
+   ["Salt, Fat, Acid, Heat", "Samin Nosrat"],
+   ["Mastering the Art of French Cooking", "Julia Child"],
+   ["Joy of Cooking", "Irma S. Rombauer"],
+   ["Plenty", "Yotam Ottolenghi"],
+   ["Jerusalem", "Yotam Ottolenghi"],
+   ["How to Cook Everything", "Mark Bittman"],
+   ["The Food Lab", "J. Kenji López-Alt"],
+   ["Essentials of Classic Italian Cooking", "Marcella Hazan"],
+   ["Tartine Bread", "Chad Robertson"],
+   ["The Flavor Bible", "Karen Page"],
+   ["Six Seasons", "Joshua McFadden"],
+   ["Ottolenghi Simple", "Yotam Ottolenghi"]
+  ]
+ },
+ {
+  "id": "humor",
+  "title": "Humor & Comedy",
+  "emoji": "😂",
+  "genre": "humor",
+  "seeds": [
+   ["Bossypants", "Tina Fey"],
+   ["Me Talk Pretty One Day", "David Sedaris"],
+   ["Yes Please", "Amy Poehler"],
+   ["The Hitchhiker's Guide to the Galaxy", "Douglas Adams"],
+   ["Good Omens", "Terry Pratchett"],
+   ["Is Everyone Hanging Out Without Me?", "Mindy Kaling"],
+   ["Hyperbole and a Half", "Allie Brosh"],
+   ["The Princess Bride", "William Goldman"],
+   ["Catch-22", "Joseph Heller"],
+   ["Three Men in a Boat", "Jerome K. Jerome"],
+   ["Naked", "David Sedaris"],
+   ["Calypso", "David Sedaris"]
+  ]
  }
 ]
