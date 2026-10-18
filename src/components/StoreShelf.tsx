@@ -149,7 +149,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
                   <CoverFace book={b} size="md" eager={!!priority && i < 4} />
                 </button>
               </div>
-              {/* Every line of a card has a fixed height (two lines of title, author, rating, one honor), so every shelf is exactly as tall as the next, whatever its books carry */}
+              {/* Title, author and rating lines have a fixed height so cards line up; the honors below are shown in full (never cut off) */}
               <h4 className="font-serif-display text-xs sm:text-sm font-semibold leading-tight line-clamp-2 min-h-[2.5em]">
                 <button type="button" onClick={() => onOpen(b)} className="text-left hover:underline focus-visible:underline focus:outline-none">
                   {b.title}
@@ -158,7 +158,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
               <p className="text-[11px] leading-4 h-4 text-[#706256] dark:text-[#a89a8a] truncate">{b.author}</p>
               <div className="h-4"><RatingLine book={b} compact /></div>
               {mine?.(b) && <p className="text-[11px] font-medium text-[#2e5934] dark:text-[#86b880] line-clamp-2">{mine(b)}</p>}
-              <div className="h-[26px] overflow-hidden"><AwardBadges book={b} primary /></div>
+              <AwardBadges book={b} />
             </div>
           ))}
         </div>

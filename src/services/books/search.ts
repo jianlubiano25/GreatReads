@@ -190,6 +190,19 @@ function keywordFit(b: Book, q: ParsedQuery): number {
   return (60 * hits) / groups.length;
 }
 
+/**
+ * A genre search favors what readers actually read: a book near the top of the most-read list (up to +30, fading to nothing by place 40), and a small push for
+ * books from the last 25 years (up to +6), so a page is not all old books.
+ */
+export const POPULAR_BONUS = 30;
+export const RECENT_BONUS = 6;
+export function popularityBonus(b: Partial<Pick<Book, 'popularRank' | 'year'>>, thisYear = new Date().getFullYear()): number {
+  const place = b.popularRank === undefined ? 0 : Math.max(0, POPULAR_BONUS - b.popularRank * (POPULAR_BONUS / 40));
+  const y = parseInt(String(b.year ?? ''), 10);
+  const recent = Number.isFinite(y) && y > 1900 && y <= thisYear + 1 ? Math.max(0, Math.min(RECENT_BONUS, ((y - (thisYear - 25)) / 25) * RECENT_BONUS + RECENT_BONUS * 0)) : 0;
+  return place + recent;
+}
+
 /** `skip`: books an earlier page already showed (a later page never repeats them). */
 export function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly Book[] = [], skip: readonly Book[] = []): Book[] {
   // A broad search (ONE word, no author, no ISBN: "chess") ranks the widely read books ahead of obscure ones that merely contain the word.
@@ -205,7 +218,7 @@ export function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly
       order,
       // "Death by Water" was split into a title and an author: the better of the two readings counts
       score: Math.max(searchRelevance(book, q.text, q.author, q.partial, q.scope === 'title' || q.scope === 'keywords', popular, byKeywords), q.full ? searchRelevance(book, q.full, '', q.partial, q.scope === 'title') : -Infinity)
-        + (byKeywords ? keywordFit(book, q) + thinRecord(book) + kindAdjust(book, wantKind) : 0)
+        + (byKeywords ? keywordFit(book, q) + thinRecord(book) + kindAdjust(book, wantKind) + popularityBonus(book) : 0)
         - (titleLooksForeign(book.title) && !titleLooksForeign(q.text) && !titleLooksForeign(q.full) ? FOREIGN_TITLE_PENALTY : 0) // English editions first, unless a foreign title was typed
         + (own.length && own.some(o => o === book || sameWork(o, book)) ? OWN_BONUS : 0),
     }))
@@ -224,7 +237,7 @@ type Task = { name: string; run: (candidates: number, signal?: AbortSignal) => P
  * until the last word was complete. The plain query is used instead (title, author and keywords all count), and Open Library also gets the last
  * word as a wildcard ("harry pot*"). Two requests while typing; a submitted search adds one more (a titles-only Open Library search).
  */
-function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
+export function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
   // `report`: whether this request's own count is the number shown as "of N" (the main requests only, never the narrower extra ones)
   const ol = (params: Record<string, string>, n: number, signal?: AbortSignal, report = true) =>
     searchOpenLibrary(io.page > 1 ? { ...params, page: String(io.page) } : params, n, { signal, onTotal: report ? t => io.onTotal('ol', t) : undefined });
@@ -245,6 +258,9 @@ function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
     const [, more] = keywordPhrases(q.tokens);
     const tasks: Task[] = [
       { name: 'ol', run: (n, signal) => ol({ subject: text }, n, signal) },
+      // The same subject, most-read first (Open Library's reading log, the closest thing it has to Goodreads' "popular"): the plain subject search is
+      // sorted by relevance, which fills a genre with old and obscure books. Each book keeps its place in this list (popularRank) for the ranking.
+      { name: 'ol-popular', run: async (n, signal) => (await ol({ subject: text, sort: 'readinglog' }, n, signal, false)).map((h, i) => ({ ...h, book: { ...h.book, popularRank: i } })) },
       { name: 'google', run: (n, signal) => google(`subject:${text.includes(' ') ? `"${text}"` : text}`, n, signal) },
       { name: 'ol-keyword', run: (n, signal) => ol({ q: wild }, n, signal, false) },
       { name: 'google-keyword', run: (n, signal) => google(text, n, signal, false) },

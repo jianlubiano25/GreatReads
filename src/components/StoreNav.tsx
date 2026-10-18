@@ -14,23 +14,50 @@ export const NAV_ITEMS: { key: string; label: string; icon: LucideIcon; sections
 const shelfEls = (): HTMLElement[] => Array.from(document.querySelectorAll<HTMLElement>('[data-shelf-id]'));
 const itemOf = (shelfId: string) => NAV_ITEMS.find(n => n.sections.includes(SHELF_BY_ID[shelfId]?.section))?.key;
 
+let jumpToken = 0;
+
+/** Calls `done` once the page has stopped scrolling (the smooth scroll arrived, or the reader took over), and at the latest after `maxMs`. */
+function whenScrollStops(done: () => void, maxMs = 3000): void {
+  const start = performance.now();
+  let last = window.scrollY;
+  let still = 0;
+  const tick = () => {
+    const y = window.scrollY;
+    still = Math.abs(y - last) < 0.5 ? still + 1 : 0;
+    last = y;
+    if (still >= 8 || performance.now() - start > maxMs) done();
+    else requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
 /** Jump to the first shelf (as the Store is arranged now, and not hidden) of an icon's sections. Returns false when there is none. */
 export function jumpTo(key: string): boolean {
   const item = NAV_ITEMS.find(n => n.key === key);
   const el = item && shelfEls().find(e => item.sections.includes(SHELF_BY_ID[e.dataset.shelfId || '']?.section));
   if (!el) return false;
-  // An instant jump: a smooth scroll runs past every shelf in between, and each one that comes near the screen draws its covers as it
-  // passes (that was the flicker). Shelves below the screen are drawn at an estimated height until they come near it, so once the page
-  // has settled the shelf is checked and put exactly under the bar if it is off.
-  el.scrollIntoView({ behavior: 'auto', block: 'start' });
+  const still = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const root = document.documentElement;
+  // The flicker of a smooth scroll came from shelves drawing themselves (and changing height) as they passed under the screen. While the page
+  // scrolls, every shelf is laid out at its real size (CSS: .rl-jumping .rl-shelf), so nothing above or below changes height under the scroll.
+  jumpToken += 1;
+  const mine = jumpToken;
+  root.classList.add('rl-jumping');
+  el.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
   const margin = parseFloat(getComputedStyle(el).scrollMarginTop) || 0;
-  let tries = 0;
-  const settle = () => {
-    if (!el.isConnected) return;
-    if (Math.abs(el.getBoundingClientRect().top - margin) > 2) el.scrollIntoView({ behavior: 'auto', block: 'start' });
-    if (++tries < 3) setTimeout(settle, 250);
+  const finish = () => {
+    if (mine !== jumpToken) return; // a newer jump took over
+    root.classList.remove('rl-jumping');
+    // The shelf may have landed a little off (shelves below the screen were drawn at an estimate): put it exactly under the bar
+    let tries = 0;
+    const settle = () => {
+      if (!el.isConnected || mine !== jumpToken) return;
+      if (Math.abs(el.getBoundingClientRect().top - margin) > 2) el.scrollIntoView({ behavior: 'auto', block: 'start' });
+      if (++tries < 3) setTimeout(settle, 250);
+    };
+    requestAnimationFrame(() => setTimeout(settle, 60));
   };
-  requestAnimationFrame(() => setTimeout(settle, 120));
+  whenScrollStops(finish);
   return true;
 }
 

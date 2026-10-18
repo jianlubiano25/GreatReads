@@ -89,6 +89,8 @@
    scroller, so nothing visible is clipped. */
 .rl-shelf { content-visibility: auto; contain-intrinsic-size: auto 344px; /* = the real height of a shelf (see StoreShelf: title + cover + four fixed lines), 369px from 640px up, so an unseen shelf holds the same room as a drawn one */ /* a jump from the icon bar stops just under the sticky bar: its height is the top padding (the phone's notch, or 0.25rem) + 44px icons + 6px + 1px border, then a 12px gap */ scroll-margin-top: calc(max(env(safe-area-inset-top, 0px), 0.25rem) + 63px); }
 
+.rl-jumping .rl-shelf { content-visibility: visible; } /* while the icon bar scrolls the page: every shelf at its real size, so nothing changes height under the scroll */
+
 .book-cover-modal-3d {
   position: relative;
   border-radius: 4px 12px 12px 4px;

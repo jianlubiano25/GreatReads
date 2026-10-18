@@ -13,6 +13,7 @@ export function mergeBooks(a: Book, b: Book): Book {
   if (coverQuality(b) > coverQuality(out)) { out.coverUrl = b.coverUrl; out.coverId = b.coverUrl ? undefined : b.coverId; }
   if (!out.pageCount && b.pageCount) { out.pageCount = b.pageCount; out.difficulty = b.difficulty; }
   if (!out.year && b.year) out.year = b.year;
+  if (b.popularRank !== undefined && (out.popularRank === undefined || b.popularRank < out.popularRank)) out.popularRank = b.popularRank;
   // A rating is an average + count from ONE audience: `a` keeps its pair; `b`'s pair is taken whole only when `a` has none, or when both are
   // attributed outside-site pairs and `b`'s site ranks higher (Apple -> Open Library -> Google, ratings.ts): a record that was merged first
   // must not hide a better-ranked provider's pair. Never add the counts or mix one record's average with the other's count.

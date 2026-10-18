@@ -95,7 +95,8 @@ test('a mood is also asked as its mapped phrase (one extra phrase, subject searc
   await searchBooksLive('cozy', { local: false });
   const subjects = seen.map(u => u.searchParams.get('subject')).filter(Boolean);
   assert.ok(subjects.includes('cozy') && subjects.includes('cozy mystery'), `asked for: ${subjects.join(', ')}`);
-  assert.equal(seen.length, 6);
+  assert.equal(seen.length, 7); // + the subject asked most-read first
+  assert.ok(seen.some(u => u.searchParams.get('subject') === 'cozy' && u.searchParams.get('sort') === 'readinglog'), 'the most-read list is asked for too');
 });
 
 test('"classics mystery" in Keywords lists classic mysteries first, then either one alone', async () => {

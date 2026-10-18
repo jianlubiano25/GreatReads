@@ -51,3 +51,42 @@ test('typing a genre word in a plain (All) search is not turned into a mood sear
   const { isMoodQuery } = await import('./keywords');
   for (const w of ['thriller', 'horror', 'romance', 'history', 'fantasy', 'psychology', 'business']) assert.equal(isMoodQuery([w]), false, w);
 });
+
+import { popularityBonus, POPULAR_BONUS, RECENT_BONUS, tasksFor } from './search';
+
+test('the most-read book of a genre gets the full bonus, fading to nothing by place 40; a book not in that list gets none', () => {
+  assert.equal(popularityBonus({ popularRank: 0 }, 2026), POPULAR_BONUS);
+  assert.equal(popularityBonus({ popularRank: 40 }, 2026), 0);
+  assert.ok(popularityBonus({ popularRank: 10 }, 2026) < popularityBonus({ popularRank: 2 }, 2026));
+  assert.equal(popularityBonus({}, 2026), 0);
+});
+
+test('a recent book gets a small push (at most +6); an old one gets none', () => {
+  assert.equal(popularityBonus({ year: '2026' }, 2026), RECENT_BONUS);
+  assert.equal(popularityBonus({ year: '1937' }, 2026), 0);
+  assert.ok(popularityBonus({ year: '2015' }, 2026) > 0 && popularityBonus({ year: '2015' }, 2026) < RECENT_BONUS);
+});
+
+test('a widely read fantasy outranks an obscure old one with the same fit', () => {
+  reset();
+  const old = book({ title: 'Obscure Old Tale', author: 'Al Old', year: '1890', ratingCount: 3, ratingAverage: 3.5 });
+  const loved = book({ title: 'Beloved Saga', author: 'Bea New', year: '2018', ratingCount: 3, ratingAverage: 3.5, popularRank: 1 });
+  const out = genreRank([old, loved], 'fantasy');
+  assert.equal(out[0], 'Beloved Saga', out.join(' | '));
+});
+
+test('a genre search also asks Open Library for the subject most-read first', async () => {
+  reset();
+  const urls: string[] = [];
+  const realFetch = (globalThis as any).fetch;
+  (globalThis as any).fetch = async (u: any) => { urls.push(String(u)); return { ok: true, status: 200, json: async () => ({ docs: [], numFound: 0 }), text: async () => '{}' }; };
+  try {
+    const tasks = tasksFor(parseQuery('fantasy', '', false, 'keywords'), true, { page: 1, onTotal: () => {} });
+    const popular = tasks.find(t => t.name === 'ol-popular');
+    assert.ok(popular, 'an ol-popular task');
+    await popular.run(20);
+    assert.ok(urls.some(u => /subject=fantasy/.test(u) && /sort=readinglog/.test(u)), urls.join('\n'));
+  } finally {
+    (globalThis as any).fetch = realFetch;
+  }
+});

@@ -22,6 +22,8 @@ export interface Book {
   coverUrl?: string;
   ratingAverage?: number;
   ratingCount?: number;
+  /** Place in a popularity-sorted catalog list (0 = most read): set by a genre search, never saved with your data */
+  popularRank?: number;
   /** Which site ratingAverage + ratingCount came from (the two always come from the same one). Older saved books have none; it is then worked out when needed. */
   ratingSource?: 'openlibrary' | 'google' | 'apple' | 'library';
   spineColor?: string;
