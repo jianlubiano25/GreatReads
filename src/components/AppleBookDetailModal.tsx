@@ -300,8 +300,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           )}
         </div>
 
-        {/* Your own rating (every book), then more books like this one: both sit right below the About section */}
-        {onRate && <RateThisBook title={book.title} value={userRating} onRate={onRate} />}
+        {/* More books like this one sits right below the About section, then your own rating */}
         {onMoreLikeThis && moreLikeThis(book) && (
           <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25] flex justify-center">
             <button type="button" onClick={onMoreLikeThis} className="min-h-[44px] px-5 py-2 rounded-full border border-[#2e5934] dark:border-[#86b880] text-sm font-semibold text-[#2e5934] dark:text-[#86b880] hover:bg-[#e8efe7] dark:hover:bg-[#243422]">
@@ -309,6 +308,8 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
             </button>
           </div>
         )}
+
+        {onRate && <RateThisBook title={book.title} value={userRating} onRate={onRate} />}
 
         {/* Ratings: the main rating (one site's average + count) and, beside it, what the other sites say */}
         {main || otherSites.length ? (

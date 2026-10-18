@@ -434,12 +434,14 @@ const olSpec = (d: Discovery): DynamicSpec => ({
   kind: 'generated',
   refreshMs: 30 * DAY,
   minSeeds: 8,
-  fetch: async base => {
+  fetch: async (base, signal) => {
     const year = new Date().getFullYear();
     const q = d.query(year);
-    // OL's reader-activity sort; if it is ever refused, the default order still gives a usable pool
-    let hits = await searchOpenLibrary({ q, sort: 'want_to_read' }, 60, { retries: 1 });
-    if (!hits.length) hits = await searchOpenLibrary({ q }, 60, { retries: 1 });
+    // A discovery search is heavy for Open Library (a subject + year range, sorted by readers): the default 6.5 s wait was too short and every
+    // genre shelf said "Could not update". It waits up to 25 s, asks for 40 books (enough to rank 12), and falls back to the unsorted search.
+    const slow = { retries: 1, timeout: 25000, signal };
+    let hits = await searchOpenLibrary({ q, sort: 'want_to_read' }, 40, slow);
+    if (!hits.length && !signal?.aborted) hits = await searchOpenLibrary({ q }, 40, slow);
     const keep = d.keep ?? 0;
     const found = rankDiscovery(hits, { year, limit: 12 - keep });
     return found.length ? { seeds: keep ? withStaples(found, base, keep) : found } : null;

@@ -11,6 +11,8 @@ export interface CallOpts {
   signal?: AbortSignal;
   /** Extra attempts after a timeout, a 429 or a 5xx (default 0) */
   retries?: number;
+  /** Milliseconds to wait for one attempt (default 6500): the Store's discovery searches are heavy and need longer */
+  timeout?: number;
   /** Search only: the 1-based page of results (Open Library) */
   page?: number;
   /** Google Books search only: index of the first result (paging) */

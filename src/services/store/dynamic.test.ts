@@ -346,3 +346,14 @@ test('International Booker table: the book column is "Work", the year is in each
   // and the shelf's own spec uses this rule
   assert.ok(DYNAMIC_SPECS.intbooker && DYNAMIC_SPECS.womens);
 });
+
+test('Open Library discovery shelves (genres, Top Fiction, New) ask for 40 books, sorted by readers first, then fall back to the unsorted search', async () => {
+  const all = routeFetch([u => (u.pathname === '/search.json' ? { body: { numFound: 0, docs: [] } } : undefined)]);
+  const result = await DYNAMIC_SPECS.romance.fetch(CURATED_SHELVES.find(s => s.id === 'romance')!, undefined as any);
+  assert.equal(result, null, 'nothing found: the shelf keeps what it has');
+  const calls = all.filter(u => decodeURIComponent(u).includes('subject:romance')); // (other tests' background lookups may share the scripted fetch)
+  assert.equal(calls.length, 2, 'the sorted search, then the unsorted one when it finds nothing');
+  assert.match(calls[0], /sort=want_to_read/);
+  assert.ok(!/sort=/.test(calls[1]));
+  assert.ok(calls.every(u => /limit=40(&|$)/.test(u)));
+});

@@ -158,7 +158,7 @@ test('Rate this book: where the pointer is decides the quarter star (the left ed
   assert.equal(ratingAt(10, 0), 0); // nothing measured yet
 });
 
-test('Book info: one control (Add to My Library, or your status once it is yours), no Add to Device, and Rate this book and More like this are below About this book', () => {
+test('Book info: one control (Add to My Library, or your status once it is yours), no Add to Device, and More like this and Rate this book are below About this book (More like this first)', () => {
   const awarded = DEFAULT_BOOKS.find(b => typeof b.id === 'number' && b.id === 4)!;
   const html = renderToStaticMarkup(h(AppleBookDetailModal, {
     book: awarded, inLibrary: false, onRate: noop, onClose: noop, onOpenLibrarySheet: noop,
@@ -179,7 +179,7 @@ test('Book info: one control (Add to My Library, or your status once it is yours
   assert.ok(about < rate, 'Rate this book comes right below About this book');
   assert.ok(html.indexOf('Add to My Library') < about, 'and the Add to My Library button stays above it');
   const withMore = renderToStaticMarkup(h(AppleBookDetailModal, { book: awarded, inLibrary: false, onRate: noop, onMoreLikeThis: noop, onClose: noop, onOpenLibrarySheet: noop }));
-  assert.ok(withMore.indexOf('About this book') < withMore.indexOf('Rate this book') && withMore.indexOf('Rate this book') < withMore.indexOf('More like this'), 'About, then Rate this book, then More like this');
+  assert.ok(withMore.indexOf('About this book') < withMore.indexOf('More like this') && withMore.indexOf('More like this') < withMore.indexOf('Rate this book'), 'About, then More like this, then Rate this book');
   // the same title size: both headings use the same size, weight and letter-spacing classes (Honors also lays its trophy icon out with flex)
   const heading = (name: string) => html.slice(html.lastIndexOf('<h4', html.indexOf(name)), html.indexOf(name)).match(/class="([^"]*)"/)![1];
   const SIZE = 'text-xs font-bold uppercase tracking-wider';

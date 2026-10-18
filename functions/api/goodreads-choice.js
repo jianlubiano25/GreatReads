@@ -51,21 +51,33 @@ export function parseChoiceWinners(html) {
   return out;
 }
 
-const get = url => fetch(url, { headers: { accept: 'text/html', 'accept-language': 'en-US,en;q=0.9' }, cf: { cacheEverything: true, cacheTtlByStatus: { '200-299': 3600, '400-599': -1 } } });
+const get = url => fetch(url, { headers: { accept: 'text/html,application/xhtml+xml', 'accept-language': 'en-US,en;q=0.9', 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15' }, cf: { cacheEverything: true, cacheTtlByStatus: { '200-299': 3600, '400-599': -1 } } });
 
-export async function onRequestGet() {
+/** The newest year the awards page links to; when that page can't be read, this year and the two before it are tried directly. */
+async function candidateYears() {
   try {
     const award = await get(`${ORIGIN}/award`);
-    if (!award.ok) return json({ error: 'upstream_error', upstream: award.status }, 502);
-    const newest = newestYear(await award.text());
-    if (!newest) return json({ error: 'no_year_found' }, 502);
-    for (const year of [newest, newest - 1]) {
+    if (award.ok) {
+      const newest = newestYear(await award.text());
+      if (newest) return { years: [newest, newest - 1], status: 200 };
+    }
+    var status = award.status;
+  } catch {}
+  const now = new Date().getUTCFullYear();
+  return { years: [now, now - 1, now - 2], status };
+}
+
+export async function onRequestGet() {
+  let seen = 0;
+  try {
+    const { years, status } = await candidateYears();
+    for (const year of years) {
       const page = await get(`${ORIGIN}/choiceawards/best-books-${year}`);
-      if (!page.ok) continue;
+      if (!page.ok) { seen = seen || page.status; continue; }
       const books = parseChoiceWinners(await page.text());
       if (books.length >= MIN_WINNERS) return json({ source: `${ORIGIN}/choiceawards/best-books-${year}`, year, books }, 200, 'public, max-age=1800');
     }
-    return json({ error: 'no_winners_found' }, 502);
+    return json({ error: seen || status ? 'upstream_error' : 'no_winners_found', upstream: seen || status || undefined }, 502);
   } catch {
     return json({ error: 'upstream_error' }, 502);
   }
