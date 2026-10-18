@@ -77,7 +77,7 @@ export function titleSizeCqw(title: string): number {
   // the longest word decides the largest size that still fits on one line of a ~80%-wide text block
   const longest = t.split(/\s+/).reduce((m, w) => Math.max(m, w.length), 1);
   const byLength = (t.length <= 10 ? 23 : t.length <= 20 ? 18 : t.length <= 32 ? 15 : t.length <= 50 ? 12.5 : t.length <= 80 ? 10 : 8.5) * TITLE_SCALE;
-  const byWord = 78 / (longest * 0.62); // an average bold capital-and-lowercase letter is about 0.62em wide
+  const byWord = 78 / (longest * 0.7); // a wide bold letter (Android/desktop fallback fonts included) is about 0.7em: the longest word must never be broken mid-word
   let size = Math.max(6.5, Math.min(byLength, byWord));
   while (size > 6.5 && titleLines(t, size) * size * LINE_HEIGHT > TITLE_BLOCK_H) size -= 0.25;
   return Math.max(6.5, size);

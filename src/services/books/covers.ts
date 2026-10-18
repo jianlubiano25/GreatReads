@@ -107,12 +107,36 @@ const ownLinkOf = (b: { coverId?: number; coverUrl?: string }): string => b.cove
  * the book has its own cover. Nothing is deleted here; a stale entry is simply not used and is replaced if a new repair is needed.
  */
 export const getCoverFix = (book: CoverLinks): string => {
-  const f = fixes[coverKey(book)];
+  const key = coverKey(book);
+  const f = fixes[key];
   if (!f?.url) return '';
   const own = ownLinkOf(book);
   if (!own) return f.url;
-  return f.own === own && Date.now() - f.t < FIX_TTL ? f.url : '';
+  const fresh = Date.now() - f.t < FIX_TTL;
+  // Dead for good: an old repair that never recorded the link it replaced (this book now has its own cover), or one past its 30 days. Forgotten a moment later, off the drawing path.
+  // (A repair recorded for a DIFFERENT own link is left alone: another copy of the same title may still be using it.)
+  if (f.own === undefined || !fresh) scheduleFixPrune(key);
+  return f.own === own && fresh ? f.url : '';
 };
+
+const stalePrune = new Set<string>();
+let prunePending = false;
+function scheduleFixPrune(key: string) {
+  stalePrune.add(key);
+  if (prunePending) return;
+  prunePending = true;
+  setTimeout(() => {
+    prunePending = false;
+    let changed = false;
+    for (const k of stalePrune) {
+      const f = fixes[k];
+      // Re-check: a new repair may have replaced it in the meantime
+      if (f && (f.own === undefined || Date.now() - f.t >= FIX_TTL)) { delete fixes[k]; changed = true; }
+    }
+    stalePrune.clear();
+    if (changed) write(FIX_KEY, fixes); // no redraw needed: a stale entry already answered ''
+  }, 0);
+}
 
 const saveFix = (key: string, url: string, own: string) => {
   fixes[key] = { url, t: Date.now(), own };

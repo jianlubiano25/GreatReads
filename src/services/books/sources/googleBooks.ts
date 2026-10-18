@@ -34,7 +34,7 @@ const nodeKey = (): string => {
 };
 /**
  * Developer mode: a key pasted into Profile is kept on THIS device only (localStorage; never in a backup, never sent to this site's server) and the app
- * then calls Google directly with it. Without one, the browser uses the proxy. A key Google refuses is dropped for the session and the proxy takes over.
+ * then calls Google directly with it. Without one, the browser uses the proxy. A key Google refuses is set aside for 15 minutes and the proxy takes over.
  */
 const OWN_KEY = 'readlife.googleKey1';
 const ownKey = (): string => { try { return localStorage.getItem(OWN_KEY) || ''; } catch { return ''; } };
@@ -46,16 +46,22 @@ export function setOwnGoogleKey(k: string): boolean {
   const key = k.trim();
   if (key && !looksLikeGoogleKey(key)) return false;
   try { key ? localStorage.setItem(OWN_KEY, key) : localStorage.removeItem(OWN_KEY); } catch { return false; }
-  keyRejected = false;
+  keyRejectedAt = 0;
   proxyNotConfigured = false;
   return true;
 }
 
 const apiKey = (): string => (inNode() ? nodeKey() || devKey() : ownKey() || devKey());
-const mode = (): Mode => modeForTests ?? (inNode() || (apiKey() && !keyRejected) ? 'direct' : 'proxy');
+const mode = (): Mode => modeForTests ?? (inNode() || (apiKey() && !keyRejected()) ? 'direct' : 'proxy');
 
-let keyRejected = false;
-const withKey = (url: string) => (apiKey() && !keyRejected ? `${url}${url.includes('?') ? '&' : '?'}key=${encodeURIComponent(apiKey())}` : url);
+/**
+ * A refused key is set aside for 15 minutes, not for the whole session: a 403 can be a passing quota / rate-limit answer, and a fixed key (restrictions changed in Google
+ * Cloud) is picked up without closing the app. A key that is really wrong costs one extra request per 15 minutes (the same "does it work without the key" check as before).
+ */
+const KEY_RETRY_MS = 15 * 60 * 1000;
+let keyRejectedAt = 0;
+const keyRejected = (): boolean => keyRejectedAt > 0 && Date.now() - keyRejectedAt < KEY_RETRY_MS;
+const withKey = (url: string) => (apiKey() && !keyRejected() ? `${url}${url.includes('?') ? '&' : '?'}key=${encodeURIComponent(apiKey())}` : url);
 
 interface GbParams { volumeId?: string; q?: string; maxResults?: number; startIndex?: number; langRestrict?: string; printType?: string; fields: string }
 /** The request URL for the current mode. Same parameters either way; only the host and the key differ. */
@@ -80,7 +86,7 @@ let proxyNotConfigured = false;
  * (`__rlPerf()` shows `google.proxyNotConfigured`), so "the secret is not set" can be told apart from "Google has no rating" and the failing call is not repeated per book.
  * Direct mode: a key that Google rejects (HTTP 400 "API key not valid", or 403 because the key is restricted to other sites or APIs) fails EVERY request, which
  * looked exactly like "Google has no ratings". So a rejected key is noticed once (counters only, never the key itself), and the request is repeated without it
- * (Google's shared anonymous quota), for the rest of this session. `__rlPerf()` shows `google.keyConfigured` and `google.keyRejected`.
+ * (Google's shared anonymous quota), for the next 15 minutes. `__rlPerf()` shows `google.keyConfigured` and `google.keyRejected`.
  */
 async function googleJson(url: string, opts: GetOpts): Promise<JsonResult> {
   if (mode() === 'proxy') {
@@ -96,17 +102,17 @@ async function googleJson(url: string, opts: GetOpts): Promise<JsonResult> {
   }
   bump(apiKey() ? 'google.keyConfigured' : 'google.keyMissing');
   const r = await getJsonDetailed(withKey(url), opts);
-  if (r.data || !apiKey() || keyRejected || (r.status !== 400 && r.status !== 403)) return r;
+  if (r.data || !apiKey() || keyRejected() || (r.status !== 400 && r.status !== 403)) return r;
   // 400 / 403 can also be one odd query, so the key is blamed only when the same request WORKS without it
   const again = await getJsonDetailed(url, opts);
   if (!again.data) return r;
-  keyRejected = true;
+  keyRejectedAt = Date.now();
   bump('google.keyRejected');
-  try { console.warn(`[GreatReads] Google Books refused the configured API key (HTTP ${r.status}) but answers without it, so requests go without it (in the browser, through /api/google-books from now on). Check the key's website and API restrictions in Google Cloud.`); } catch {}
+  try { console.warn(`[GreatReads] Google Books refused the configured API key (HTTP ${r.status}) but answers without it, so requests go without it for the next 15 minutes (in the browser, through /api/google-books). Check the key's website and API restrictions in Google Cloud.`); } catch {}
   return again;
 }
 /** Tests only: forget that the key was refused. */
-export const resetGoogleKeyForTests = () => { keyRejected = false; proxyNotConfigured = false; };
+export const resetGoogleKeyForTests = () => { keyRejectedAt = 0; proxyNotConfigured = false; };
 
 /**
  * Developer mode "Test": ask Google (through whichever route the app is using now) for one volume and say what happened, in words.

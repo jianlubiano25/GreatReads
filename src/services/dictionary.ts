@@ -191,11 +191,37 @@ function stemCandidates(w: string): string[] {
   return c;
 }
 
+/**
+ * The root a derived-form definition points at: "The state of being queasy." -> "queasy", "In a quick manner" is left alone.
+ * Only the "state / quality / condition / act of being X" and "being X" shapes count, and X must be a plain word that differs from the word itself.
+ */
+export function rootFromDefinition(word: string, definition: string): string {
+  const m = definition.match(/^\s*(?:the\s+)?(?:(?:state|quality|condition|fact|act)\s+of\s+)?being\s+([a-z][a-z-]{2,})\s*\.?\s*$|^\s*(?:the\s+)?(?:state|quality|condition)\s+of\s+([a-z][a-z-]{2,})\s*\.?\s*$/i);
+  const root = (m?.[1] || m?.[2] || '').toLowerCase();
+  return root && root !== word.toLowerCase() ? root : '';
+}
+
+/** "queasiness": "The state of being queasy." alone says nothing about what queasy means, so the root's own meaning follows it. */
+async function addRootMeaning(r: LookupResult): Promise<LookupResult> {
+  try {
+    const root = rootFromDefinition(r.word, r.definition);
+    if (!root) return r;
+    const base = await fetchEntry(root);
+    const rootDef = base?.definition;
+    if (!rootDef || rootDef === 'Definition unavailable.') return r;
+    const first = r.definition.replace(/\s+$/, '');
+    const joined = `${/[.!?]$/.test(first) ? first : first + '.'} ${root[0].toUpperCase() + root.slice(1)}: ${rootDef}`;
+    return { ...r, definition: joined, definitions: [joined, ...r.definitions.slice(1)] };
+  } catch {
+    return r;
+  }
+}
+
 export async function lookupWord(rawWord: string): Promise<LookupResult> {
   const word = cleanWord(rawWord);
   if (!word) throw new Error('Please enter a word to look up');
   const direct = await fetchEntry(word);
-  if (direct) return direct;
+  if (direct) return addRootMeaning(direct);
   for (const stem of stemCandidates(word)) {
     const r = await fetchEntry(stem);
     if (r) return r;

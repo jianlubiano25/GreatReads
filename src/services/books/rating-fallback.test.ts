@@ -96,7 +96,7 @@ test('a Google rating displays with even one rating; SUFFICIENT_RATINGS only dec
   assert.deepEqual(chooseRating({ google: { average: 4.2, count: 1 } }), { average: 4.2, count: 1 });
   assert.deepEqual(mainPair(mainRating(book({ id: 'g' }), [{ source: 'google', average: 4.2, count: 1 }])), [4.2, 1, 'google']);
   const html = renderToStaticMarkup(React.createElement(RatingLine, { book: book({ ratingAverage: 4.2, ratingCount: 1, ratingSource: 'google' }) }));
-  assert.ok(html.includes('4.2') && html.includes('1 ratings'));
+  assert.ok(html.includes('4.2') && html.includes('4.2 · 1<') && !html.includes('ratings'));
   // a thin preferred source still yields to a solid lower one (unchanged), but a lone thin pair is never hidden
   assert.deepEqual(chooseRating({ apple: { average: 5, count: 3 }, ol: { average: 4, count: 500 } }), { average: 4, count: 500 });
   assert.deepEqual(chooseRating({ apple: { average: 5, count: 3 } }), { average: 5, count: 3 });

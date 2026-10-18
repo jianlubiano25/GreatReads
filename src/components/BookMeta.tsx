@@ -36,7 +36,12 @@ export function StarRating({ value, className = '' }: { value: number; className
   );
 }
 
-export const compactCount = (n?: number) => (!n ? '' : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+export const compactCount = (n?: number) => {
+  if (!n) return '';
+  if (n < 1000) return String(n);
+  const k = Math.round(n / 100) / 10; // 163204 -> 163.2
+  return k >= 1000 ? `${Math.round(n / 100000) / 10}M` : `${k.toFixed(1)}k`; // 1,250,000 -> 1.3M, never "1250.0k"
+};
 
 /**
  * Stars + average + count (renders nothing without a rating). The stars are the same fractional StarRating the book info uses, so 4.3 and 3.7
@@ -53,11 +58,11 @@ export function RatingLine({ book, className = '', compact = false }: { book: Bo
   if (!r) return null;
   // One line, always: the stars never shrink or wrap, the number text never breaks (even 162.4k fits a 125px shelf card: compact = smaller stars and text)
   return (
-    <div className={`flex flex-nowrap items-center whitespace-nowrap text-[#706256] dark:text-[#a89a8a] ${compact ? 'gap-0.5 text-[11px] max-w-full overflow-hidden' : 'gap-1 text-xs'} ${className}`}>
-      <StarRating value={r.average} className={`shrink-0 ${compact ? 'text-[9px]' : ''}`} />
+    <div className={`flex flex-nowrap items-center whitespace-nowrap text-[#706256] dark:text-[#a89a8a] ${compact ? 'gap-0.5 text-[10px] max-w-full' : 'gap-1 text-xs'} ${className}`}>
+      <StarRating value={r.average} className={`shrink-0 ${compact ? 'text-[8px]' : ''}`} />
       <span className="whitespace-nowrap tabular-nums">
         {r.average.toFixed(1)}
-        {r.count ? (compact ? `\u2009·\u2009${compactCount(r.count)}` : ` · ${compactCount(r.count)} ratings`) : ''}
+        {r.count ? (compact ? `\u2009·\u2009${compactCount(r.count)}` : ` · ${compactCount(r.count)}`) : ''}
       </span>
     </div>
   );
@@ -113,14 +118,15 @@ function PlaceholderCover({ book, size }: { book: Book; size: keyof typeof AUTHO
   const showAuthor = author > 0 && !!book.author && !/^unknown/i.test(book.author);
   return (
     <div
-      className="absolute inset-0 z-10 flex flex-col justify-between pointer-events-none select-none overflow-hidden"
+      className="absolute inset-0 z-10 pointer-events-none select-none overflow-hidden"
       style={{
         containerType: 'size',
         background: `linear-gradient(180deg, ${st.bg} 0%, ${st.bg} 55%, ${st.shade} 100%)`,
-        padding: '9cqw 9cqw 8cqw',
       }}
       aria-hidden="true"
     >
+      {/* The padding sits on this inner box: a container query unit on the container itself would measure the screen, not the cover (a huge gap on every stand-in cover) */}
+      <div className="absolute inset-0 flex flex-col justify-between" style={{ padding: '9cqw 9cqw 8cqw' }}>
       <b
         style={{
           fontFamily: '"SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif',
@@ -151,6 +157,7 @@ function PlaceholderCover({ book, size }: { book: Book; size: keyof typeof AUTHO
           {book.author}
         </span>
       ) : <span />}
+      </div>
     </div>
   );
 }
@@ -205,13 +212,8 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
 
   // Retry twice (cache-busted), then look for the same book's cover on Apple / Google Books
   const src = cur.alt || (cur.tries > 0 && baseUrl ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}r=${cur.tries}` : baseUrl);
-  const [imgLoaded, setImgLoaded] = useState(() => (src ? loadedCovers.has(src) : false));
-
-  useEffect(() => {
-    if (src && loadedCovers.has(src)) {
-      setImgLoaded(true);
-    }
-  }, [src]);
+  // Starts false even for a cover seen before: until the picture really is in hand the stand-in cover shows (never the bare book colour); the effect below flips it at once for a cached one
+  const [imgLoaded, setImgLoaded] = useState(false);
 
   // A cover the browser already has (HTTP cache) is complete the moment the <img> exists: show it straight away instead of
   // flashing the title placeholder first. (onLoad can fire before React attaches it, or not at all for cached images.)
@@ -279,7 +281,7 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
   const won = awardsFor(book).some(a => a.type === 'w');
   const isEager = eager || size === 'lg' || size === 'xl';
   const wasKnown = url ? loadedCovers.has(url) : false; // seen before on this device: appears with no fade
-  const isReady = wasKnown || imgLoaded;
+  const isReady = imgLoaded; // only a picture that really loaded replaces the stand-in (a remembered URL can still be slow or gone)
 
   return (
     <>

@@ -96,8 +96,8 @@ export const NowReadingCard = React.memo(function NowReadingCard({
   const pct = known ? Math.min(100, Math.round((currentP / totalP) * 100)) : 0;
   const clamp = (n: number) => (known ? Math.min(totalP, Math.max(0, n)) : Math.max(0, n));
 
-  // The book's own colour tints the card and fills its progress bar
-  const accent = b.spineColor || '#2e5934';
+  // The app's theme green tints the card and fills its progress bar (the same for every book); the cover keeps the book's own colour behind it
+  const accent = '#2e5934';
   const left = known ? Math.max(0, totalP - currentP) : 0;
   const chip = 'px-2 py-0.5 rounded-full text-[11px] font-medium bg-black/5 dark:bg-white/10 text-[#706256] dark:text-[#a89a8a]';
   const act = 'flex flex-col items-center justify-center gap-0.5 min-h-[48px] px-1 py-1.5 rounded-xl border border-[#e3d7c3] dark:border-[#382f25] text-[11px] font-semibold leading-tight text-[#706256] dark:text-[#a89a8a] hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition';
@@ -112,14 +112,14 @@ export const NowReadingCard = React.memo(function NowReadingCard({
           type="button"
           onClick={() => onOpen(b)}
           className="book-cover-3d w-[124px] h-[186px] sm:w-[150px] sm:h-[225px] shrink-0 text-left p-3 flex flex-col justify-between text-white overflow-hidden shadow-lg"
-          style={{ backgroundColor: accent }}
+          style={{ backgroundColor: b.spineColor || accent }}
           title="Tap to see author, year, pages & info"
           aria-label={`${b.title}: details`}
         >
           <CoverFace book={b} size="lg" eager />
         </button>
 
-        <div className="min-w-0 flex flex-col gap-1 text-left">
+        <div className="min-w-0 max-w-[15rem] sm:max-w-[20rem] flex flex-col gap-1 text-left">
           <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#2e5934] dark:text-[#86b880]">Reading now</span>
           <h3 className="font-serif-display text-lg sm:text-2xl leading-tight text-[#201a15] dark:text-[#f0e6d6] line-clamp-4">
             <button type="button" onClick={() => onOpen(b)} className={LINK_BTN}>{b.title}</button>
@@ -184,7 +184,7 @@ export const NowReadingCard = React.memo(function NowReadingCard({
           ) : null}
         </div>
         <div className="w-full h-2 rounded-full bg-[#e3d7c3] dark:bg-[#382f25] overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`Progress in ${b.title}`}>
-          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: accent }} />
+          <div className="h-full rounded-full transition-all duration-500 bg-[#2e5934] dark:bg-[#86b880]" style={{ width: `${pct}%` }} />
         </div>
         <div className="flex items-center justify-between gap-2">
           <span className="text-[11px] text-[#706256] dark:text-[#a89a8a]">{known ? (left > 0 ? `${left} pages to go` : 'You reached the last page') : ''}</span>
@@ -293,7 +293,7 @@ function ShelfCardTop({ book: b, onOpen }: { book: Book; onOpen: (b: Book) => vo
           <div className="text-[11px] text-[#706256] dark:text-[#a89a8a] mt-1">
             {b.year ? `${b.year} · ` : ''}{b.pageCount ? `${b.pageCount} p. · ` : ''}{b.genre}
           </div>
-          <RatingLine book={b} className="mt-0.5" />
+          <RatingLine book={b} compact className="mt-0.5" />
         </div>
       </div>
       <AwardBadges book={b} />
@@ -301,7 +301,7 @@ function ShelfCardTop({ book: b, onOpen }: { book: Book; onOpen: (b: Book) => vo
   );
 }
 
-const ICON_BTN = 'p-1.5 rounded-lg border border-[#e3d7c3] dark:border-[#382f25] hover:bg-black/5 text-[#706256] dark:text-[#a89a8a]';
+const ICON_BTN = 'shrink-0 p-1.5 rounded-lg border border-[#e3d7c3] dark:border-[#382f25] hover:bg-black/5 text-[#706256] dark:text-[#a89a8a]';
 
 export const LibraryCard = React.memo(function LibraryCard({
   book: b, status, highlightCount, currentPage = 0, totalPages = 0, onOpen, onQuotes, onStatus, onShelf, onRemove,
@@ -343,7 +343,7 @@ export const LibraryCard = React.memo(function LibraryCard({
           value={status}
           aria-label={`Reading status of ${b.title}`}
           onChange={e => onStatus(b.id, e.target.value as BookStatus)}
-          className="flex-1 py-1.5 px-2.5 rounded-lg text-xs bg-[#f5f0e6] dark:bg-[#181410] border border-[#e3d7c3] dark:border-[#382f25] text-[#201a15] dark:text-[#f0e6d6] font-medium focus:outline-none"
+          className="flex-1 min-w-0 py-1.5 px-2.5 rounded-lg text-xs bg-[#f5f0e6] dark:bg-[#181410] border border-[#e3d7c3] dark:border-[#382f25] text-[#201a15] dark:text-[#f0e6d6] font-medium focus:outline-none"
         >
           <option value="now">Reading now</option>
           <option value="next">Up next</option>
@@ -365,7 +365,7 @@ export const LibraryCard = React.memo(function LibraryCard({
 
         <button
           onClick={() => onRemove(b)}
-          className="p-1.5 rounded-lg text-[#706256] dark:text-[#a89a8a] hover:text-red-500"
+          className="shrink-0 p-1.5 rounded-lg text-[#706256] dark:text-[#a89a8a] hover:text-red-500"
           title="Remove book"
           aria-label={`Remove ${b.title}`}
         >

@@ -425,7 +425,7 @@ export default function App() {
           <div role="alert" className="flex items-start gap-2.5 p-3 rounded-xl border border-red-300 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-xs text-red-800 dark:text-red-300">
             <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
             <span>
-              Your changes could not be saved on this device (storage is full or blocked). Open Backup and copy your data now so nothing is lost.
+              Your latest changes could not be saved on this device: its storage is full or blocked, even after the app cleared its temporary cache. They are still on screen, but closing the app now would lose them. Open Backup and download or copy your data now.
             </span>
           </div>
         )}
