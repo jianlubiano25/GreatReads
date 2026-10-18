@@ -35,3 +35,17 @@ test('front covers pass; spreads, box sets and wide photos do not', () => {
   assert.equal(isFrontCoverShape(500, 500), false); // square photo of a book
   assert.equal(isFrontCoverShape(0, 0), true); // unknown
 });
+
+test('title type is about 20% larger than before in each length band, and the whole title still fits above the author', async () => {
+  const { titleLines, TITLE_SCALE } = await import('./placeholderCover');
+  assert.equal(TITLE_SCALE, 1.2);
+  assert.equal(titleSizeCqw('Dune'), 23 * 1.2 > 78 / (4 * 0.62) ? 78 / (4 * 0.62) : 23 * 1.2); // short title: the larger band size, unless one line cannot hold it
+  const titles = ['Dune', 'It', 'The Girl with the Dragon Tattoo', 'A Brief History of Time: From the Big Bang to Black Holes', 'Harry Potter and the Chamber of Secrets', 'x '.repeat(60).trim(), 'Incomprehensibilities and other disquieting words'];
+  for (const t of titles) {
+    const size = titleSizeCqw(t);
+    assert.ok(size >= 6.5, t);
+    // 150 (cover height) - 17 (padding) - 27 (author reserve), in % of the width
+    assert.ok(titleLines(t, size) * size * 1.08 <= 106 || size === 6.5, `"${t}" at ${size} takes ${titleLines(t, size)} lines`);
+  }
+  assert.ok(titleSizeCqw('The Girl with the Dragon Tattoo') >= 15, 'a mid-length title is not smaller than before');
+});

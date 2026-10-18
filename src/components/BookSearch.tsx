@@ -4,6 +4,9 @@ import type { Book } from '../types';
 import { useBookSearch } from '../hooks/useBookSearch';
 import { lockBodyScroll } from '../hooks/bodyScrollLock';
 import { activeFilterCount, applySearchView, DEFAULT_SEARCH_VIEW, genreOptions, getCoverPick, getCoverUrl, isDefaultView, SEARCH_PUBLISHED_LABEL, SEARCH_SORT_LABEL, type SearchScope, type SearchSort, type SearchView } from '../services/books';
+import { sameWork } from '../services/books/identity';
+import { didYouMean, suggestionVocab } from '../services/books/suggest';
+import { SEARCH_KIND_LABEL, SEARCH_LENGTH_LABEL } from '../services/books/searchView';
 import { ClearButton } from './ClearButton';
 import { ViewMoreBar } from './ViewMoreBar';
 import { CoverFace } from './BookMeta';
@@ -35,13 +38,17 @@ interface Props {
   handleOpenCover: (book: Book) => void;
   /** Spoken name of the arrow that leaves the results ("Back to the Store") */
   backLabel: string;
+  /** Shown at the top of the results (a genre's page puts its sub-genres and hand-picked books here) */
+  aboveResults?: React.ReactNode;
+  /** A search the reader used (Enter pressed, or a result opened): the tab keeps it for its list of recent searches */
+  recordSearch?: (q: string) => void;
 }
 
 /**
  * The book search used by Discover and by the Search tab: the box, the All / Title / Author / Keywords buttons, the filter icon and, once something is typed, the results
  * over the whole screen. Books already on the device show with each keystroke, then the list improves as each source answers (hooks/useBookSearch.ts).
  */
-export function BookSearch({ active, known, query, setQuery, scope, setScope, handleOpenCover, backLabel }: Props) {
+export function BookSearch({ active, known, query, setQuery, scope, setScope, handleOpenCover, backLabel, aboveResults, recordSearch }: Props) {
   const searchInput = useRef<HTMLInputElement>(null);
   const [visibleCount, setVisibleCount] = useState(SEARCH_STEP);
   const [view, setView] = useState<SearchView>(DEFAULT_SEARCH_VIEW);
@@ -79,6 +86,16 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
   const genres = useMemo(() => genreOptions(searchResults), [searchResults]);
   const shownResults = useMemo(() => applySearchView(searchResults, view), [searchResults, view]);
   const filtersOn = !isDefaultView(view);
+  // "Did you mean": only once the search has finished with next to nothing, and only from words we know (genres, hand-picked books, your own books)
+  const suggestion = useMemo(() => (searching && !isSearching && searchResults.length < 3 ? didYouMean(query, suggestionVocab(known)) : null), [searching, isSearching, searchResults.length, query, known]);
+  // Results you already own are marked, so you do not add a book twice
+  const owned = useMemo(() => {
+    const own = new Set<string | number>();
+    if (!searching) return own;
+    for (const b of shownResults.slice(0, visibleCount)) if (known.some(k => k === b || sameWork(k, b))) own.add(b.id);
+    return own;
+  }, [searching, shownResults, visibleCount, known]);
+  const openResult = useCallback((b: Book) => { recordSearch?.(query); handleOpenCover(b); }, [recordSearch, query, handleOpenCover]);
   // Covers are drawn at once (not lazily) and the next batch is fetched into the browser's cache before "View more" is tapped
   const coverSize = typeof window !== 'undefined' && window.innerWidth >= 768 ? 'L' : 'M';
   useEffect(() => {
@@ -110,7 +127,7 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
               type="search"
               value={query}
               onChange={e => setQuery(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { setFilterOpen(false); searchNow(); } else if (e.key === 'Escape') { if (filterOpen) setFilterOpen(false); else { clearSearch(); searchInput.current?.blur(); } } }}
+              onKeyDown={e => { if (e.key === 'Enter') { setFilterOpen(false); searchNow(); recordSearch?.(query); } else if (e.key === 'Escape') { if (filterOpen) setFilterOpen(false); else { clearSearch(); searchInput.current?.blur(); } } }}
               placeholder={SEARCH_PLACEHOLDER}
               className="rl-search w-full pl-10 pr-10 py-3 rounded-xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-sm focus:outline-none focus:ring-2 focus:ring-[#2e5934]"
             />
@@ -171,6 +188,26 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
                   {Object.entries(SEARCH_PUBLISHED_LABEL).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
                 </select>
               </label>
+              <label className="flex flex-col gap-1 font-semibold text-[#706256] dark:text-[#a89a8a]">
+                Type
+                <select
+                  value={view.kind}
+                  onChange={e => { setView({ ...view, kind: e.target.value as SearchView['kind'] }); setVisibleCount(SEARCH_STEP); }}
+                  className="px-2.5 py-2 rounded-lg bg-[#f5f0e6] dark:bg-[#181410] border border-[#e3d7c3] dark:border-[#382f25] text-[#201a15] dark:text-[#f0e6d6] font-normal"
+                >
+                  {Object.entries(SEARCH_KIND_LABEL).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 font-semibold text-[#706256] dark:text-[#a89a8a]">
+                Length
+                <select
+                  value={view.length}
+                  onChange={e => { setView({ ...view, length: e.target.value as SearchView['length'] }); setVisibleCount(SEARCH_STEP); }}
+                  className="px-2.5 py-2 rounded-lg bg-[#f5f0e6] dark:bg-[#181410] border border-[#e3d7c3] dark:border-[#382f25] text-[#201a15] dark:text-[#f0e6d6] font-normal"
+                >
+                  {Object.entries(SEARCH_LENGTH_LABEL).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+                </select>
+              </label>
               {genres.length > 1 && (
                 <label className="flex flex-col gap-1 font-semibold text-[#706256] dark:text-[#a89a8a] col-span-2">
                   Genre
@@ -208,6 +245,13 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
       {/* Search Results if query present */}
       {searching && (
         <div className="px-3 pt-3 pb-28 flex flex-col gap-3">
+          {aboveResults}
+          {suggestion && (
+            <p className="text-sm text-[#706256] dark:text-[#a89a8a]">
+              Did you mean{' '}
+              <button type="button" onClick={() => setQuery(suggestion)} className="font-semibold text-[#2e5934] dark:text-[#9ed0a6] underline">{suggestion}</button>?
+            </p>
+          )}
           <span className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a]">
             {searchResults.length
               ? `${filtersOn ? `${shownResults.length} of ${searchResults.length} loaded match your filters` : `Results 1–${Math.min(visibleCount, shownResults.length)} of ${Math.max(searchTotal, searchResults.length)}`}${isSearching ? ' · searching…' : ''}`
@@ -230,21 +274,22 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
                   <div key={b.id} className="flex flex-col gap-1.5 min-w-0">
                     <button
                       type="button"
-                      onClick={() => handleOpenCover(b)}
+                      onClick={() => openResult(b)}
                       className="book-cover-3d w-full aspect-[2/3] rounded-md text-left p-2 flex flex-col justify-between text-white overflow-hidden"
                       style={{ backgroundColor: b.spineColor || '#2e5934' }}
                     >
                       <CoverFace book={b} size="md" imgSize={coverSize} eager />
                     </button>
                     <h4
-                      onClick={() => handleOpenCover(b)}
+                      onClick={() => openResult(b)}
                       className="font-serif-display text-xs sm:text-sm leading-tight text-[#201a15] dark:text-[#f0e6d6] line-clamp-2 hover:underline cursor-pointer"
                     >
                       {b.title}
                     </h4>
                     <div className="text-[11px] sm:text-xs text-[#706256] dark:text-[#a89a8a] truncate">{b.author}</div>
+                    {owned.has(b.id) && <div className="text-[11px] font-semibold text-[#2e5934] dark:text-[#86b880]">✓ In your library</div>}
                     <button
-                      onClick={() => handleOpenCover(b)}
+                      onClick={() => openResult(b)}
                       className="mt-0.5 py-1.5 px-2 rounded-lg text-[11px] sm:text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] text-center"
                     >
                       View Details

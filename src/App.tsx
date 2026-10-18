@@ -135,6 +135,7 @@ export default function App() {
 
   // Modals state
   const [selectedBookForDetail, setSelectedBookForDetail] = useState<Book | null>(null);
+  const [moreLike, setMoreLike] = useState<{ book: Book } | null>(null);
   const [selectedBookForHighlights, setSelectedBookForHighlights] = useState<Book | null>(null);
   const [showAddBookModal, setShowAddBookModal] = useState(false);
   const [showLookupModal, setShowLookupModal] = useState<{
@@ -524,6 +525,7 @@ export default function App() {
             active={tab === 'search'}
             allBooks={allBooks}
             handleOpenCover={handleOpenCover}
+            moreLike={moreLike}
           />
         )}
 
@@ -631,6 +633,7 @@ export default function App() {
           onEditHistory={patch => setBookHistory(ownKey, patch)}
           onUpdateProgress={(page, total) => updateBookProgress(ownKey, page, total)}
           onClose={() => setSelectedBookForDetail(null)}
+          onMoreLikeThis={() => { setMoreLike({ book: selectedBookForDetail }); setSelectedBookForDetail(null); goTab('search'); }}
           onOpenLibrarySheet={() => setSheetBook(owned ?? selectedBookForDetail)}
           onOpenHighlights={() => {
             const b = owned ?? selectedBookForDetail;

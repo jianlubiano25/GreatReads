@@ -40,17 +40,47 @@ export function placeholderStyleFor(book: { title?: string; author?: string }): 
   return PLACEHOLDER_STYLES[hash(key) % PLACEHOLDER_STYLES.length];
 }
 
+/** How much larger the type is than the first version (about 20% at every size band) */
+export const TITLE_SCALE = 1.2;
+
+/**
+ * The cover is 1.5 times as tall as it is wide (units below are % of the cover's width). The title block is the cover minus its padding (9 + 8 on top and
+ * bottom, 9 on each side) and minus a reserve at the bottom for the author line (up to two lines of the larger author type).
+ */
+const TITLE_BLOCK_W = 82;
+const TITLE_BLOCK_H = 150 - 17 - 27;
+const AVG_CHAR_EM = 0.58; // an average bold letter (capitals and lowercase) is about this wide, in em
+const LINE_HEIGHT = 1.08;
+
+/** How many lines the title takes at this size (greedy word wrap; a word wider than a line is broken, as `overflowWrap: anywhere` does). */
+export function titleLines(title: string, size: number): number {
+  const perLine = Math.max(1, Math.floor(TITLE_BLOCK_W / (size * AVG_CHAR_EM)));
+  let lines = 1;
+  let used = 0;
+  for (const word of (title || '').trim().split(/\s+/).filter(Boolean)) {
+    let len = word.length;
+    if (used && used + 1 + len <= perLine) { used += 1 + len; continue; }
+    if (used) { lines++; used = 0; }
+    while (len > perLine) { lines++; len -= perLine; }
+    used = len;
+  }
+  return lines;
+}
+
 /**
  * Title size as a percentage of the cover's WIDTH (used with container query units, so the same rule fits a nook spine and a
- * full-size detail cover). Long titles get smaller type so the whole title still fits instead of being cut off.
+ * full-size detail cover). Each length band is about 20% larger than before; a long title still gets smaller type, and the size is lowered
+ * until the WHOLE title fits in the space above the author (never cut off, never over the author line).
  */
 export function titleSizeCqw(title: string): number {
   const t = (title || '').trim();
   // the longest word decides the largest size that still fits on one line of a ~80%-wide text block
   const longest = t.split(/\s+/).reduce((m, w) => Math.max(m, w.length), 1);
-  const byLength = t.length <= 10 ? 23 : t.length <= 20 ? 18 : t.length <= 32 ? 15 : t.length <= 50 ? 12.5 : t.length <= 80 ? 10 : 8.5;
+  const byLength = (t.length <= 10 ? 23 : t.length <= 20 ? 18 : t.length <= 32 ? 15 : t.length <= 50 ? 12.5 : t.length <= 80 ? 10 : 8.5) * TITLE_SCALE;
   const byWord = 78 / (longest * 0.62); // an average bold capital-and-lowercase letter is about 0.62em wide
-  return Math.max(6.5, Math.min(byLength, byWord));
+  let size = Math.max(6.5, Math.min(byLength, byWord));
+  while (size > 6.5 && titleLines(t, size) * size * LINE_HEIGHT > TITLE_BLOCK_H) size -= 0.25;
+  return Math.max(6.5, size);
 }
 
 /**

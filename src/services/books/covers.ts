@@ -7,6 +7,7 @@ import { findGoogle, googleVolume } from './sources/googleBooks';
 import { olCoverById, olCoverByIsbn, searchOpenLibrary } from './sources/openLibrary';
 import { isFrontCoverShape } from './placeholderCover';
 import { inspectCover } from './coverFlatness';
+import { isWeakCover } from './coverQuality';
 
 /**
  * Covers: ONE system for Store, Search, Trending, Library and the nook.
@@ -249,13 +250,21 @@ export function resolveCover(b: MissingBook, opts: { force?: boolean } = {}): Pr
  * After search results are already on screen, quietly look for covers the search did not return and hand back the updated
  * list as they arrive. Never blocks the search. The cover is stored on the result, so a book added from it keeps its cover.
  */
-export function fillMissingCovers(books: Book[], onUpdate: (books: Book[]) => void, signal?: AbortSignal): void {
+export function fillMissingCovers(books: Book[], onUpdate: (books: Book[]) => void, signal?: AbortSignal, opts: { upgradeWeak?: number; resolve?: typeof resolveCover } = {}): void {
   const out = [...books];
+  const resolve = opts.resolve ?? resolveCover;
+  let weakLeft = opts.upgradeWeak ?? 0;
   books.forEach((b, i) => {
-    if (b.coverId || b.coverUrl || !b.title) return;
-    void resolveCover(b).then(url => {
+    if (!b.title) return;
+    const missing = !b.coverId && !b.coverUrl;
+    // A cover that is there but weak (an Open Library cover: often the work's oldest edition, or a scan of the whole wrap or an inside page; the NYT's marketing render)
+    // gets a look for a modern flat front too, for the first few results only (the lookup is shared, remembered, and never makes the result worse: it only answers with a flat, front-shaped picture)
+    if (!missing && !(weakLeft > 0 && isWeakCover(b))) return;
+    if (!missing) weakLeft--;
+    void resolve(b).then(url => {
       if (!url || signal?.aborted) return;
-      out[i] = { ...out[i], coverUrl: url };
+      if (!missing && url === getCoverUrl(out[i].coverId, 'M', out[i].coverUrl)) return; // the same picture
+      out[i] = { ...out[i], coverUrl: url, ...(missing ? {} : { coverId: undefined }) };
       onUpdate([...out]);
     });
   });

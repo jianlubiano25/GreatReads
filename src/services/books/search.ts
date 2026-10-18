@@ -11,6 +11,8 @@ import { rememberExcluded } from './eligibility';
 import { localMatches, rememberSeen } from './localIndex';
 import { contentTokens, normQ, parseQuery, tokenHits, type ParsedQuery, type SearchScope } from './query';
 import { keywordGroups, keywordPhrases, stem } from './keywords';
+import { coverBonus } from './coverQuality';
+import { diversify, kindAdjust, kindOfQuery, thinRecord } from './genreRank';
 
 /** Editions that are about a book, not the book ("Study Guide", "Summary of ...", boxed sets): ranked far down unless that is what was asked for. */
 const NOT_THE_BOOK = /\b(study guide|summary of|summary and analysis|sparknotes|cliffsnotes|workbook|analysis of|box(?:ed)? set|trivia|conversation starters|lesson plans?|teacher'?s? guide|readers? guide|large print|annotated|omnibus|graphic novel adaptation|import and export market|world forecasts?|market (?:research|report|forecast)s?|industry report|(?:19|20)\d\d (?:import|world|global|forecast))\b/i;
@@ -38,8 +40,6 @@ const EXACT_TITLE_KEY = 125; // the same title once a subtitle / edition note is
 const AUTHOR_FULL_NAME = 170;
 /** One word of an author's name: only counts when the title did not already match, otherwise a title that merely CONTAINS the word and an author who has it stack up above the exact title. */
 const AUTHOR_PARTIAL = 60;
-/** Having a cover: a tiebreaker among books of the same relevance, never enough to lift a weaker title match over a better one. */
-const COVER_BONUS = 8;
 
 /**
  * How well a result fits what was typed, in this order of importance:
@@ -49,7 +49,7 @@ const COVER_BONUS = 8;
  *
  * `partial` says the last word typed may be only a beginning ("harry pot"): it then matches the start of a word, a little below a whole word.
  */
-export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial = false, titleOnly = false, popular = false): number {
+export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial = false, titleOnly = false, popular = false, topic = false): number {
   const q = normQ(qTitle);
   const t = normQ(b.title || '');
   const a = normQ(b.author || '');
@@ -76,7 +76,8 @@ export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial =
     if (titleKey(b.title) === titleKey(qTitle)) tier = Math.max(tier, EXACT_TITLE_KEY);
     // A broad one-word search (no author): a title match counts for less when almost nobody has rated the book, so the widely read
     // books about the subject are not buried under a shelf of obscure titles that merely contain the word.
-    const titleWeight = popular ? 0.45 + 0.55 * established(b) : 1;
+    // A topic / genre search ("fantasy", "psychology") asks what a book is ABOUT: a title that merely contains the word ("The Psychology of Fantasy") counts for much less
+    const titleWeight = (popular ? 0.45 + 0.55 * established(b) : 1) * (topic ? 0.35 : 1);
     if (tier >= 0) score += tier * titleWeight;
     else {
       const hits = need.reduce((n, w) => n + tokenHits(w, tWords, partial && w === lastNeed), 0);
@@ -120,7 +121,7 @@ export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial =
   if (isKnownGenre(b.genre)) meta += 1;
   if (!isUnknownAuthor(b.author)) meta += 1;
   score += meta; // up to 6
-  if (b.coverId || b.coverUrl) score += COVER_BONUS;
+  score += coverBonus(b); // having a cover, and a good flat front (Apple, Google) more than an old scan: a tiebreaker among books of the same relevance, never enough to lift a weaker title match over a better one
   const year = Number(b.year);
   const thisYear = new Date().getFullYear();
   if (year && year >= thisYear - 1) score += 2; // a small nudge for brand-new releases
@@ -190,25 +191,28 @@ function keywordFit(b: Book, q: ParsedQuery): number {
 }
 
 /** `skip`: books an earlier page already showed (a later page never repeats them). */
-function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly Book[] = [], skip: readonly Book[] = []): Book[] {
+export function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly Book[] = [], skip: readonly Book[] = []): Book[] {
   // A broad search (ONE word, no author, no ISBN: "chess") ranks the widely read books ahead of obscure ones that merely contain the word.
   // Two words are usually a title or an author's name ("jane austen"), where the title / author tiers must stay in charge.
   const byKeywords = q.scope === 'keywords' || q.mood;
   const popular = q.scope !== 'author' && !q.author && !q.isbn && !q.full && q.tokens.length > 0 && (q.tokens.length === 1 || byKeywords); // keyword / mood searches are broad by nature, whatever their length
-  return dedupeBooks(books)
+  // A genre search (the Search tab's genres, and their sub-genres) knows what kind of book it wants: fiction or non-fiction
+  const wantKind = byKeywords ? kindOfQuery(q.text) : undefined;
+  const sorted = dedupeBooks(books)
     .filter(b => inScope(b, q) && !(skip.length && skip.some(x => x === b || sameWork(x, b))))
     .map((book, order) => ({
       book,
       order,
       // "Death by Water" was split into a title and an author: the better of the two readings counts
-      score: Math.max(searchRelevance(book, q.text, q.author, q.partial, q.scope === 'title' || q.scope === 'keywords', popular), q.full ? searchRelevance(book, q.full, '', q.partial, q.scope === 'title') : -Infinity)
-        + (byKeywords ? keywordFit(book, q) : 0)
+      score: Math.max(searchRelevance(book, q.text, q.author, q.partial, q.scope === 'title' || q.scope === 'keywords', popular, byKeywords), q.full ? searchRelevance(book, q.full, '', q.partial, q.scope === 'title') : -Infinity)
+        + (byKeywords ? keywordFit(book, q) + thinRecord(book) + kindAdjust(book, wantKind) : 0)
         - (titleLooksForeign(book.title) && !titleLooksForeign(q.text) && !titleLooksForeign(q.full) ? FOREIGN_TITLE_PENALTY : 0) // English editions first, unless a foreign title was typed
         + (own.length && own.some(o => o === book || sameWork(o, book)) ? OWN_BONUS : 0),
     }))
     .sort((x, y) => y.score - x.score || x.order - y.order)
-    .slice(0, limit)
     .map(x => x.book);
+  // A broad topic search: one author (a whole series) does not fill the first places
+  return (byKeywords ? diversify(sorted) : sorted).slice(0, limit);
 }
 
 /* ------------------------------ what is asked of each source ------------------------------ */
