@@ -21,6 +21,16 @@ export function jumpTo(key: string): boolean {
   if (!el) return false;
   const still = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   el.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
+  // Shelves below the screen are drawn at an estimated height until they come near it, so the page can grow or shrink while the smooth
+  // scroll runs and it ends a little off. Check where the shelf landed a few times and put it exactly under the bar if it is off.
+  const margin = parseFloat(getComputedStyle(el).scrollMarginTop) || 0;
+  let tries = 0;
+  const settle = () => {
+    if (!el.isConnected) return;
+    if (Math.abs(el.getBoundingClientRect().top - margin) > 3) el.scrollIntoView({ behavior: 'auto', block: 'start' });
+    if (++tries < 4) setTimeout(settle, 450);
+  };
+  setTimeout(settle, 450);
   return true;
 }
 

@@ -57,9 +57,11 @@ export function RatingLine({ book, className = '', compact = false }: { book: Bo
 }
 
 /** Prize / shortlist chips, e.g. 🏆 Women's Prize 2021 */
-export function AwardBadges({ book }: { book: Book }) {
-  const a = awardsFor(book);
-  if (!a.length) return null;
+export function AwardBadges({ book, max }: { book: Book; /** show only this many chips, then "+N" (Store shelves: a book with many honors must not make its shelf taller than the others) */ max?: number }) {
+  const all = awardsFor(book);
+  if (!all.length) return null;
+  const a = max && all.length > max ? all.slice(0, max) : all;
+  const more = all.length - a.length;
   return (
     <div className="rl-bdgs">
       {a.map((x, i) => (
@@ -67,6 +69,7 @@ export function AwardBadges({ book }: { book: Book }) {
           {x.type === 'c' ? '📖' : x.type === 'w' ? '🏆' : '🎖️'} {x.label}
         </span>
       ))}
+      {more > 0 && <span className="rl-bdg" title={`${more} more honor${more === 1 ? '' : 's'}`}>+{more}</span>}
     </div>
   );
 }

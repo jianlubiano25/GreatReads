@@ -42,7 +42,7 @@ const SECTION_OF: Record<string, StoreSection> = {
   'easy-catalog': 'genres', romance: 'genres', selfhelp: 'genres', fantasy: 'genres', memoir: 'genres', historical: 'genres', mystery: 'genres', scifi: 'genres', classics: 'genres',
 };
 /** Top section, in order: the two combined NYT lists, Apple's charts, the paperback lists, the hardcover lists, then the rest. */
-const TOP_ORDER = ['nyt-fiction', 'nyt-nonfiction', 'apple-top-free', 'apple-top-paid', 'apple-audio-top-free', 'apple-audio-top-paid', 'nyt-paperback-fiction', 'nyt-paperback-nonfiction', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction', 'nyt-advice', 'topfiction', 'topnonfiction', 'nyt-ya'];
+const TOP_ORDER = ['nyt-fiction', 'nyt-nonfiction', 'apple-top-free', 'apple-top-paid', 'apple-audio-top', 'nyt-paperback-fiction', 'nyt-paperback-nonfiction', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction', 'nyt-advice', 'topfiction', 'topnonfiction', 'nyt-ya'];
 const TOP_IDS = new Set<string>([...NYT_SHELVES.map(s => s.id), ...NYT_EXTRA_SHELVES.map(s => s.id), ...APPLE_SHELVES.map(s => s.id), ...TOP_ORDER]);
 const SHELVES_OFF_BY_DEFAULT = new Set(['nyt-ya', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction']);
 const sectionOf = (id: string): StoreSection => SECTION_OF[id] ?? (TOP_IDS.has(id) ? 'top' : 'genres');

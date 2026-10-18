@@ -15,8 +15,7 @@ export interface AppleShelf { id: string; chart: AppleChartEntry['chart']; title
 export const APPLE_SHELVES: AppleShelf[] = [
   { id: 'apple-top-free', chart: 'top-free', title: 'Apple Books · Top Free', limit: 15 },
   { id: 'apple-top-paid', chart: 'top-paid', title: 'Apple Books · Top Paid', limit: 15 },
-  { id: 'apple-audio-top-free', chart: 'audio-top-free', title: 'Apple Books · Top Free Audiobooks', limit: 15 },
-  { id: 'apple-audio-top-paid', chart: 'audio-top-paid', title: 'Apple Books · Top Paid Audiobooks', limit: 15 },
+  { id: 'apple-audio-top', chart: 'audio-top', title: 'Apple Books · Top Audiobooks', limit: 15 },
 ];
 
 /** Every Apple chart is off by default except Top Paid; turn the others on in Customize Shelves. */

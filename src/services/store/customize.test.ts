@@ -258,7 +258,7 @@ const fakeDevice = () => {
 
 test('NYT Young Adult, the two Hardcover lists and every Apple chart except Top Paid are hidden by default, and they are the only shelves that are', () => {
   assert.equal(SHELF_BY_ID['nyt-ya'].defaultHidden, true);
-  assert.deepEqual(hiddenShelfIds(NO_PREFS), ['apple-top-free', 'apple-audio-top-free', 'apple-audio-top-paid', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction', 'nyt-ya']);
+  assert.deepEqual(hiddenShelfIds(NO_PREFS), ['apple-top-free', 'apple-audio-top', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction', 'nyt-ya']);
   // still in the Customize list (so it can be turned on), in its normal place, with a refresh button
   assert.ok(DEFAULT_SHELF_ORDER.includes('nyt-ya'));
   assert.ok(SHELF_BY_ID['nyt-ya'].source?.refresh && SHELF_BY_ID['nyt-ya'].source?.info);
@@ -269,13 +269,13 @@ test('NYT Young Adult, the two Hardcover lists and every Apple chart except Top 
 test('Customize Store can turn Young Adult on (and off again); only the reader\'s own choice is recorded', () => {
   const on = toggleShelf(NO_PREFS, 'nyt-ya', true);
   assert.deepEqual(on, { order: [], hidden: [], shown: ['nyt-ya'] });
-  assert.deepEqual(hiddenShelfIds(on), ['apple-top-free', 'apple-audio-top-free', 'apple-audio-top-paid', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction']);
+  assert.deepEqual(hiddenShelfIds(on), ['apple-top-free', 'apple-audio-top', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction']);
   const off = toggleShelf(on, 'nyt-ya', true);
   assert.deepEqual(off, NO_PREFS); // back to the default: nothing stored
-  assert.deepEqual(hiddenShelfIds(off), ['apple-top-free', 'apple-audio-top-free', 'apple-audio-top-paid', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction', 'nyt-ya']);
+  assert.deepEqual(hiddenShelfIds(off), ['apple-top-free', 'apple-audio-top', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction', 'nyt-ya']);
   // an ordinary shelf: hide, then show
   const hid = toggleShelf(NO_PREFS, 'romance', false);
-  assert.deepEqual(hiddenShelfIds(hid).sort(), [...['apple-top-free', 'apple-audio-top-free', 'apple-audio-top-paid', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction', 'nyt-ya'], 'romance'].sort());
+  assert.deepEqual(hiddenShelfIds(hid).sort(), [...['apple-top-free', 'apple-audio-top', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction', 'nyt-ya'], 'romance'].sort());
   assert.deepEqual(toggleShelf(hid, 'romance', false), NO_PREFS);
   // the reader's choice beats the default, whichever way the default later points
   assert.equal(isShelfHidden('nyt-ya', false, { hidden: [], shown: ['nyt-ya'] }), false);
@@ -295,7 +295,7 @@ test('saved order and visibility survive a restart (read back from the device, w
     const back = loadStorePrefs();
     assert.deepEqual(back, prefs);
     assert.equal(orderShelves(DEFAULT_SHELF_ORDER, back.order)[0], 'fantasy');
-    assert.deepEqual(hiddenShelfIds(back), [...['apple-top-free', 'apple-audio-top-free', 'apple-audio-top-paid', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction'], 'romance']);
+    assert.deepEqual(hiddenShelfIds(back), [...['apple-top-free', 'apple-audio-top', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction'], 'romance']);
 
     // a later app version adds a shelf: the reader's order is kept and the newcomer takes its default place
     const later = [...DEFAULT_SHELF_ORDER.slice(0, 4), 'brand-new', ...DEFAULT_SHELF_ORDER.slice(4)];
@@ -324,7 +324,7 @@ test('refreshing shelves (manual, including a hidden one and a failing one) neve
     routeFetch(nyt(nytList(rows)));
     assert.equal(await manualRefresh({ id: 'nyt-ya', refresh: ya.refresh }, Date.now() + 3 * COOLDOWN_OK_MS), 'updated'); // refreshed while hidden
     assert.equal(store.get(STORE_PREFS_KEY), saved, 'a successful refresh leaves the saved layout byte-for-byte alone');
-    assert.deepEqual(hiddenShelfIds(loadStorePrefs()), [...['apple-top-free', 'apple-audio-top-free', 'apple-audio-top-paid', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction', 'nyt-ya'], 'romance'].sort((a, b) => DEFAULT_SHELF_ORDER.indexOf(a) - DEFAULT_SHELF_ORDER.indexOf(b)));
+    assert.deepEqual(hiddenShelfIds(loadStorePrefs()), [...['apple-top-free', 'apple-audio-top', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction', 'nyt-ya'], 'romance'].sort((a, b) => DEFAULT_SHELF_ORDER.indexOf(a) - DEFAULT_SHELF_ORDER.indexOf(b)));
 
     routeFetch(nyt({ error: 'rate_limited' }, 429));
     assert.equal(await ya.refresh?.(), 'failed');
@@ -334,7 +334,7 @@ test('refreshing shelves (manual, including a hidden one and a failing one) neve
     // enable Young Adult: it is then drawn, its refreshed list is still there, and the order did not move
     const shown = toggleShelf(loadStorePrefs(), 'nyt-ya', true);
     saveStorePrefs(shown);
-    assert.deepEqual(hiddenShelfIds(loadStorePrefs()), [...['apple-top-free', 'apple-audio-top-free', 'apple-audio-top-paid', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction'], 'romance']);
+    assert.deepEqual(hiddenShelfIds(loadStorePrefs()), [...['apple-top-free', 'apple-audio-top', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction'], 'romance']);
     assert.equal(ya.cached()?.[0].title, 'Teen Book 0');
     assert.deepEqual(loadStorePrefs().order, order);
   } finally {
@@ -360,11 +360,11 @@ test('Store sections run top, new, trending, book clubs, awards, genres; award s
   for (const id of ['service95', 'inklingsclub', 'inklings', 'oprah', 'reeses']) assert.equal(SHELF_BY_ID[id].section, 'clubs', id);
   // Top: combined NYT, Apple charts, paperback fiction + non-fiction side by side, then the hardcover lists (fiction first)
   const top = DEFAULT_SHELF_ORDER.filter(id => SHELF_BY_ID[id].section === 'top');
-  assert.deepEqual(top.slice(0, 10), ['nyt-fiction', 'nyt-nonfiction', 'apple-top-free', 'apple-top-paid', 'apple-audio-top-free', 'apple-audio-top-paid', 'nyt-paperback-fiction', 'nyt-paperback-nonfiction', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction']);
+  assert.deepEqual(top.slice(0, 9), ['nyt-fiction', 'nyt-nonfiction', 'apple-top-free', 'apple-top-paid', 'apple-audio-top', 'nyt-paperback-fiction', 'nyt-paperback-nonfiction', 'nyt-hardcover-fiction', 'nyt-hardcover-nonfiction']);
   for (const id of ['nyt-hardcover-fiction', 'nyt-hardcover-nonfiction']) assert.ok(hiddenShelfIds(NO_PREFS).includes(id), id);
-  for (const id of ['apple-top-free', 'apple-top-paid', 'apple-audio-top-free', 'apple-audio-top-paid']) assert.ok(SHELF_BY_ID[id].source?.refresh && SHELF_BY_ID[id].source?.info, id);
+  for (const id of ['apple-top-free', 'apple-top-paid', 'apple-audio-top']) assert.ok(SHELF_BY_ID[id].source?.refresh && SHELF_BY_ID[id].source?.info, id);
   assert.ok(!hiddenShelfIds(NO_PREFS).includes('apple-top-paid'), 'Apple Top Paid is the one Apple chart that is on by default');
-  for (const id of ['apple-top-free', 'apple-audio-top-free', 'apple-audio-top-paid']) assert.ok(hiddenShelfIds(NO_PREFS).includes(id), id);
+  for (const id of ['apple-top-free', 'apple-audio-top']) assert.ok(hiddenShelfIds(NO_PREFS).includes(id), id);
   assert.equal(NYT_EXTRA_SHELVES.find(s => s.id === 'nyt-hardcover-fiction')?.list, 'hardcover-fiction');
   assert.equal(NYT_EXTRA_SHELVES.find(s => s.id === 'nyt-hardcover-nonfiction')?.list, 'hardcover-nonfiction');
   const pb = NYT_EXTRA_SHELVES.find(s => s.id === 'nyt-paperback-nonfiction')!;

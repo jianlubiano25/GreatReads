@@ -12,8 +12,8 @@ import type { CallOpts } from './types';
 export interface AppleChartEntry {
   rank: number; // 1 = top of that chart
   total: number; // entries in that chart
-  /** 'audio-top-free' / 'audio-top-paid' are Apple's audiobook charts (a separate feed: audio-books) */
-  chart: 'top-free' | 'top-paid' | 'audio-top-free' | 'audio-top-paid';
+  /** 'audio-top' is Apple's audiobook chart (a separate feed, audio-books, whose chart name is not documented: see appleFeedKinds) */
+  chart: 'top-free' | 'top-paid' | 'audio-top';
   id: string;
   title: string;
   author: string;
@@ -27,9 +27,12 @@ const inflight = new Map<string, Promise<AppleChartEntry[] | null>>();
 const FEEDS = ['top-free', 'top-paid'] as const; // the BOOK charts only: they feed the collated Top 15; the audiobook charts are shelves of their own
 
 /** Apple's feed name for a chart: books or audio-books, and top-free or top-paid. */
-export const appleFeedOf = (chart: AppleChartEntry['chart']) => chart.startsWith('audio-')
-  ? { media: 'audio-books', kind: chart.slice('audio-'.length) }
+export const appleFeedOf = (chart: AppleChartEntry['chart']) => chart === 'audio-top'
+  ? { media: 'audio-books', kind: 'top' }
   : { media: 'books', kind: chart };
+
+/** The chart names to try, in order: Apple documents top-free / top-paid for books only; the audiobook feed is tried as top, then top-free, then top-paid. */
+export const appleFeedKinds = (chart: AppleChartEntry['chart']): string[] => chart === 'audio-top' ? ['top', 'top-free', 'top-paid'] : [chart];
 
 export function parseAppleChart(data: any, chart: AppleChartEntry['chart']): AppleChartEntry[] {
   const rows: any[] = data?.feed?.results || [];
@@ -51,8 +54,11 @@ async function loadOne(chart: AppleChartEntry['chart'], opts: CallOpts & { force
   const fresh = opts.force ? undefined : cache.get(chart);
   if (fresh) return fresh;
   return dedupeInflight(inflight, chart, async () => {
-    const { media, kind } = appleFeedOf(chart);
-    const urls = [`/api/apple-charts?feed=${chart}&limit=100`, `https://rss.marketingtools.apple.com/api/v2/us/${media}/${kind}/100/${media}.json`, `https://rss.applemarketingtools.com/api/v2/us/${media}/${kind}/100/${media}.json`];
+    const { media } = appleFeedOf(chart);
+    const urls = [
+      `/api/apple-charts?feed=${chart}&limit=100`,
+      ...appleFeedKinds(chart).flatMap(kind => [`https://rss.marketingtools.apple.com/api/v2/us/${media}/${kind}/100/${media}.json`, `https://rss.applemarketingtools.com/api/v2/us/${media}/${kind}/100/${media}.json`]),
+    ];
     for (const url of urls) {
       const r = await getJsonDetailed(url, { timeout: 7000, signal: opts.signal });
       const entries = r.data ? parseAppleChart(r.data, chart) : [];

@@ -75,3 +75,59 @@ test('Nobel, Top Fiction and Top Non-fiction now refresh themselves; Nobel says 
   assert.equal(DYNAMIC_SPECS.topnonfiction.kind, 'generated');
   for (const id of ['nobel', 'topfiction', 'topnonfiction']) assert.ok(CURATED_SHELVES.some(s => s.id === id), id);
 });
+
+/* ------------------------------ Nobel (official API + Wikipedia) and Goodreads Choice ------------------------------ */
+// @ts-ignore plain JS modules with no type declarations
+import { parseNobel } from '../../../functions/api/nobel.js';
+// @ts-ignore
+import { newestYear, parseChoiceWinners } from '../../../functions/api/goodreads-choice.js';
+
+test('the Nobel Foundation API answer gives the literature laureates, newest first (other prizes and org names ignored)', () => {
+  const l = parseNobel({ laureates: [
+    { knownName: { en: 'Han Kang' }, nobelPrizes: [{ awardYear: '2024', category: { en: 'Literature' } }] },
+    { knownName: { en: 'Anne Carson' }, nobelPrizes: [{ awardYear: '2026', category: { en: 'Literature' } }] },
+    { knownName: { en: 'Marie Curie' }, nobelPrizes: [{ awardYear: '1903', category: { en: 'Physics' } }, { awardYear: '1911', category: { en: 'Chemistry' } }] },
+    { fullName: { en: 'Louise Glück' }, nobelPrizes: [{ awardYear: '2020', category: { en: 'Literature' } }] },
+  ] });
+  assert.deepEqual(l, [{ year: 2026, name: 'Anne Carson' }, { year: 2024, name: 'Han Kang' }, { year: 2020, name: 'Louise Glück' }]);
+  assert.deepEqual(parseNobel({}), []);
+});
+
+// Wikipedia heads TWO columns "Laureate" (a picture, then the name): the first one is empty, which is why the table was read as empty
+const NOBEL_2ROW = `{| class="wikitable"
+! rowspan=2 | Year !! colspan=2 | Laureate !! rowspan=2 | Country & Language !! rowspan=2 | Citation
+|-
+! Image !! Name
+${Array.from({ length: 25 }, (_, i) => `|-\n| ${2025 - i} || [[File:x.jpg|100px]] || [[Writer ${i}]] (1950–) || Somewhere (English) || "for something"`).join('\n')}
+|}`;
+
+test('Wikipedia\'s two-row Laureate header: the name column is the right one, not the picture column', () => {
+  const l = nobelLaureates(parseWikiTables(NOBEL_2ROW));
+  assert.equal(l.length, 25);
+  assert.deepEqual(l[0], { year: 2025, name: 'Writer 0' });
+});
+
+const AWARD_PAGE = `<a href="/choiceawards/best-books-2025">See all</a> <a href="/choiceawards/best-books-2024">2024 winners</a> <a href="/choiceawards/best-books-2023">2023</a>`;
+const winner = (cat: string, alt: string) => `<div class="category clearFix"><a href="/x"><h4 class="category__copy">${cat}</h4><img alt="${alt}" class="category__winnerImage" src="x.jpg"></a></div>`;
+const CHOICE_PAGE = ['Best Fiction|My Friends by Fredrik Backman', 'Best Historical Fiction|Atmosphere by Taylor Jenkins Reid', 'Best Romantasy|Onyx Storm by Rebecca Yarros', 'Best Nonfiction|Everything Is Tuberculosis by John Green']
+  .map(x => { const [c, a] = x.split('|'); return winner(c, a); }).join('\n');
+
+test('Goodreads: the newest year the awards page links to, and the winners with their category', () => {
+  assert.equal(newestYear(AWARD_PAGE), 2025);
+  assert.equal(newestYear(AWARD_PAGE + '<a href="/choiceawards/best-books-2026">2026</a>'), 2026, 'a new year is picked up by itself');
+  assert.equal(newestYear('nothing'), 0);
+  assert.deepEqual(parseChoiceWinners(CHOICE_PAGE), [
+    { title: 'My Friends', author: 'Fredrik Backman', category: 'Fiction' },
+    { title: 'Atmosphere', author: 'Taylor Jenkins Reid', category: 'Historical Fiction' },
+    { title: 'Onyx Storm', author: 'Rebecca Yarros', category: 'Romantasy' },
+    { title: 'Everything Is Tuberculosis', author: 'John Green', category: 'Nonfiction' },
+  ]);
+  assert.deepEqual(parseChoiceWinners('<html>blocked</html>'), []);
+});
+
+test('the Goodreads shelf replaces the old year with the newest one (not an append) and says where it reads from', () => {
+  const sp = DYNAMIC_SPECS.goodreadschoice;
+  assert.equal(sp.merge, undefined);
+  assert.equal(sp.kind, 'official');
+  assert.match(sp.handle!, /goodreads\.com\/award/);
+});

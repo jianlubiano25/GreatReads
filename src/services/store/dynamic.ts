@@ -480,7 +480,8 @@ export function nobelLaureates(tables: ReturnType<typeof parseWikiTables>): { ye
   const out: { year: number; name: string }[] = [];
   for (const t of tables) {
     const iYear = t.headers.findIndex(h => /^year/i.test(h.trim()));
-    const iName = t.headers.findIndex(h => /^laureate/i.test(h.trim()));
+    // Wikipedia heads two columns "Laureate" (a picture, then the name): the name is the last one
+    const iName = t.headers.map(h => /^laureate/i.test(h.trim())).lastIndexOf(true);
     if (iYear < 0 || iName < 0 || t.rows.length < 20) continue;
     for (const r of t.rows) {
       const year = Number((r[iYear] || '').match(/\b(19|20)\d{2}\b/)?.[0]);
@@ -497,17 +498,23 @@ export function nobelLaureates(tables: ReturnType<typeof parseWikiTables>): { ye
  * this is said on the shelf's info). A year already on the shelf is never looked at again, so a book is not swapped later.
  */
 const nobelSpec = (): DynamicSpec => ({
-  source: 'Wikipedia: List of Nobel laureates in Literature (the laureate) + Open Library (their most-wanted book, GreatReads\' choice)',
-  handle: 'wikipedia: List of Nobel laureates in Literature',
+  source: 'nobelprize.org (the laureate; Wikipedia as backup) + Open Library (their most-wanted book, GreatReads\' choice)',
+  handle: 'api.nobelprize.org/2.1/laureates?nobelPrizeCategory=lit (backup: wikipedia: List of Nobel laureates in Literature)',
   kind: 'fallback',
   refreshMs: 7 * DAY,
   minSeeds: 5,
   cap: 60,
   keepExisting: true,
   fetch: async (shelf, signal) => {
-    const text = await fetchWikitext('List of Nobel laureates in Literature', signal);
-    if (!text) return null;
-    const laureates = nobelLaureates(parseWikiTables(text));
+    // The Nobel Foundation's own list first (up to date the day the prize is announced), Wikipedia's table (which lags) as the backup
+    const official = await getJson('/api/nobel', { timeout: 20000, signal }).catch(() => null);
+    let laureates: { year: number; name: string }[] = (Array.isArray(official?.laureates) ? official.laureates : [])
+      .filter((l: any) => l && Number.isInteger(l.year) && typeof l.name === 'string' && isSaneAuthor(cleanAuthorName(l.name)))
+      .map((l: any) => ({ year: l.year as number, name: cleanAuthorName(l.name) }));
+    if (laureates.length < 20) {
+      const text = await fetchWikitext('List of Nobel laureates in Literature', signal);
+      laureates = text ? nobelLaureates(parseWikiTables(text)) : [];
+    }
     if (laureates.length < 20) return null;
     const have = new Set([...shelf.seeds, ...(saved.get(shelf.id)?.seeds ?? [])].map(s => Number(String(s[2] ?? '').match(/(\d{4})\s*$/)?.[1])));
     const todo = laureates.filter(l => !have.has(l.year) && l.year <= new Date().getFullYear()).slice(0, 4);
@@ -518,6 +525,29 @@ const nobelSpec = (): DynamicSpec => ({
       if (pick) added.push([pick.book.title, l.name, `Nobel Prize in Literature ${l.year}`]);
     }
     return { seeds: [...added, ...shelf.seeds] }; // the hand-picked list rides along so a week with nothing new is "unchanged", not a failure
+  },
+});
+
+/* ------------------------------ source: the newest Goodreads Choice Awards ------------------------------ */
+
+/**
+ * goodreads.com/award links each year's winners page; /api/goodreads-choice (functions/api/goodreads-choice.js) follows the newest one,
+ * so once Goodreads publishes the 2026 winners the shelf becomes "Goodreads Choice Awards 2026" with the new winners (it REPLACES the
+ * old year, it does not pile up). A page that cannot be read leaves the saved winners alone.
+ */
+const goodreadsSpec = (): DynamicSpec => ({
+  source: 'goodreads.com/award (the newest Goodreads Choice Awards winners)',
+  handle: 'goodreads.com/award → choiceawards/best-books-YYYY (newest year)',
+  kind: 'official',
+  refreshMs: 3 * DAY,
+  minSeeds: 8,
+  fetch: async (_shelf, signal) => {
+    const j = await getJson('/api/goodreads-choice', { timeout: 25000, signal });
+    const year = Number(j?.year);
+    const seeds = (Array.isArray(j?.books) ? j.books : [])
+      .filter((b: any) => b && typeof b.title === 'string' && b.title.trim() && typeof b.author === 'string' && b.author.trim() && typeof b.category === 'string')
+      .map((b: any) => [b.title.trim(), b.author.trim(), `Goodreads Choice ${year} · ${b.category.trim()}`] as Seed);
+    return Number.isInteger(year) && year > 2010 && seeds.length >= 8 ? { seeds, title: `Goodreads Choice Awards ${year}`, official: true } : null;
   },
 });
 
@@ -587,7 +617,10 @@ export const DYNAMIC_SPECS: Record<string, DynamicSpec> = {
     'Wikipedia: Nebula Award for Best Novel (winners)',
   )),
 
-  // The Nobel: laureate from Wikipedia, their most-wanted book from Open Library (see nobelSpec)
+  // Goodreads Choice Awards: the newest year's winners, replacing the old year's (see goodreadsSpec)
+  goodreadschoice: goodreadsSpec(),
+
+  // The Nobel: laureate from nobelprize.org (Wikipedia as backup), their most-wanted book from Open Library (see nobelSpec)
   nobel: history(nobelSpec()),
 
   // Top Fiction / Top Non-fiction: recent, widely wanted books from Open Library reader data (GreatReads discovery, not a chart),

@@ -274,7 +274,7 @@ test('the registry only names shelves that exist, and every dynamic shelf has a 
   }
   assert.equal(DYNAMIC_SPECS.new2026.title?.(new Date(2027, 0, 5)), 'New in 2027');
   // hand-picked on purpose: no reliable public source (Reese's and Service95 now have one: Wikipedia's tables of every pick)
-  for (const id of ['inklings', 'classics', 'goodreadschoice']) assert.equal(DYNAMIC_SPECS[id], undefined, id);
+  for (const id of ['inklings', 'classics']) assert.equal(DYNAMIC_SPECS[id], undefined, id);
 });
 
 /* ------------------------------ extra NYT lists ------------------------------ */

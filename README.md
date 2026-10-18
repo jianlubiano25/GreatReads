@@ -51,9 +51,10 @@ Nothing generated is presented as an official ranking.
 | Romance, Mystery, Sci-fi, Self-help, Fantasy, Memoir, Historical | Open Library: recent (last 5 years), widely read, one book per author, explicit / study guides left out; 4 hand-picked staples stay at the end | monthly |
 | Service95 | the club's own Book Club page via `/api/service95` (official); Wikipedia's list, labelled, if that page can't be read | weekly |
 | Reese's Book Club | Wikipedia's picks table (a stand-in, not Reese's own list) | weekly |
-| Original Inklings (Tolkien & Lewis), Classics, Goodreads Choice | hand-picked (the Inklings and Classics are evergreen; Goodreads has no public list that can be read reliably); covers and ratings still re-resolve | edit `storeSeeds.json` |
+| Original Inklings (Tolkien & Lewis), Classics | hand-picked (evergreen); covers and ratings still re-resolve | edit `storeSeeds.json` |
+| Goodreads Choice Awards | the newest year's winners, read from `goodreads.com/award` via `/api/goodreads-choice`; when a newer year is linked there, the shelf becomes that year's winners (replaces, does not append). If Goodreads refuses the request or changes its markup, the saved winners stay | automatic, every 3 days |
 | Inklings Book Club (Jack Edwards) | appends from the club's podcast feed `feeds.megaphone.fm/inklings` via `/api/inklings` (episodes titled "Author: Book" that say they are the pick) | automatic, weekly |
-| Nobel | appends: laureate from Wikipedia's table, their most-wanted book from Open Library (GreatReads' choice) | automatic, weekly |
+| Nobel | appends: laureate from the Nobel Foundation API (`/api/nobel`; Wikipedia's table is the backup), their most-wanted book from Open Library (GreatReads' choice) | automatic, weekly |
 | Top Fiction / Top Non-fiction | GreatReads discovery from Open Library (recent, most-wanted), four hand-picked staples kept; not a chart | automatic, every 14 days |
 
 ### Shared book covers (owner only)

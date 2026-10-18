@@ -1,23 +1,26 @@
-// Cloudflare Pages Function: GET /api/apple-charts?feed=top-free  (or top-paid, audio-top-free, audio-top-paid)
+// Cloudflare Pages Function: GET /api/apple-charts?feed=top-free  (or top-paid; audio-top for the audiobook chart)
 // Apple's public Books charts, fetched server-side so the browser never has to deal with cross-origin rules. No key needed.
 // Successful answers are cached for 30 minutes; errors are never cached.
 export async function onRequestGet({ request }) {
   const url = new URL(request.url);
   const asked = url.searchParams.get('feed') || '';
-  const media = asked.startsWith('audio-') ? 'audio-books' : 'books'; // Apple's audiobook charts are their own feed
-  const feed = asked.endsWith('top-paid') ? 'top-paid' : 'top-free';
+  const audio = asked === 'audio-top'; // Apple's audiobook chart is its own feed (audio-books); its chart name is not documented, so three are tried
+  const media = audio ? 'audio-books' : 'books';
+  const kinds = audio ? ['top', 'top-free', 'top-paid'] : [asked === 'top-paid' ? 'top-paid' : 'top-free'];
   const limit = Math.min(100, Math.max(10, Number(url.searchParams.get('limit')) || 50));
   try {
     // Apple moved its charts feed to rss.marketingtools.apple.com; the old host is tried second
     let status = 0;
-    for (const host of ['rss.marketingtools.apple.com', 'rss.applemarketingtools.com']) {
-      const res = await fetch(`https://${host}/api/v2/us/${media}/${feed}/${limit}/${media}.json`, {
-        cf: { cacheEverything: true, cacheTtlByStatus: { '200-299': 1800, '400-599': -1 } },
-      }).catch(() => null);
-      if (res?.ok) return new Response(res.body, { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=900' } });
-      status = res?.status || status;
+    for (const feed of kinds) {
+      for (const host of ['rss.marketingtools.apple.com', 'rss.applemarketingtools.com']) {
+        const res = await fetch(`https://${host}/api/v2/us/${media}/${feed}/${limit}/${media}.json`, {
+          cf: { cacheEverything: true, cacheTtlByStatus: { '200-299': 1800, '400-599': -1 } },
+        }).catch(() => null);
+        if (res?.ok) return new Response(res.body, { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=900' } });
+        status = res?.status || status;
+      }
     }
-    return new Response(JSON.stringify({ error: 'upstream_error', upstream: status }), { status: 502, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+    return new Response(JSON.stringify({ error: 'upstream_error', upstream: status, tried: kinds.map(k => `${media}/${k}`) }), { status: 502, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
   } catch {
     return new Response(JSON.stringify({ error: 'upstream_error' }), { status: 502, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
   }
