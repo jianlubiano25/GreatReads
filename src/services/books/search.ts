@@ -147,7 +147,9 @@ function withoutBlocked(hits: Hit[], q?: ParsedQuery): Book[] {
   const blocked = hits.filter(h => isBlocked(h.book.title, h.flags) && !askedFor(h)).map(h => h.book);
   blocked.forEach(rememberExcluded);
   if (!blocked.length) return hits.map(h => h.book);
-  return hits.map(h => h.book).filter(b => !blocked.some(x => x === b || sameWork(x, b)));
+  // Another copy of a blocked book goes too (the copy from the other source may carry no categories), but only when BOTH authors are known:
+  // a blocked "The Stranger" with no author listed must not take Camus's "The Stranger" down with it (an unknown author fits anybody).
+  return hits.map(h => h.book).filter(b => !blocked.some(x => x === b || sameWork(x, b, true)));
 }
 
 /* ------------------------------ ranking ------------------------------ */
