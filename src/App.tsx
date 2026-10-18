@@ -146,14 +146,14 @@ export default function App() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showCoverPublish, setShowCoverPublish] = useState(false);
 
-  // The owner's hidden cover tools: five taps on the greeting switch them on (or off). Everyone else never sees them.
+  // Developer mode (the owner's hidden tools): five taps on the greeting switch it on or off. Everyone else never sees it.
   const coverTools = useSyncExternalStore(subscribeCoverAdmin, isCoverAdminOn, isCoverAdminOn);
   const [toolsNote, setToolsNote] = useState('');
   const seenTools = useRef(coverTools);
   useEffect(() => {
     if (seenTools.current === coverTools) return;
     seenTools.current = coverTools;
-    setToolsNote(coverTools ? 'Cover tools on' : 'Cover tools hidden');
+    setToolsNote(coverTools ? 'Developer mode on' : 'Developer mode off');
     const t = setTimeout(() => setToolsNote(''), 2200);
     return () => clearTimeout(t);
   }, [coverTools]);

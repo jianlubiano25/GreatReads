@@ -196,7 +196,7 @@ export function CoverPublishModal({ onClose }: { onClose: () => void }) {
             </button>
             <div className="flex items-center justify-between text-[11px] text-[#706256] dark:text-[#a89a8a]">
               {getCoverToken() ? <button type="button" onClick={() => { setCoverToken(''); setToken(''); setMessage(null); }} className="underline">Forget token on this device</button> : <span />}
-              <button type="button" onClick={() => { setCoverAdmin(false); onClose(); }} className="underline">Hide cover tools</button>
+              <button type="button" onClick={() => { setCoverAdmin(false); onClose(); }} className="underline">Turn developer mode off</button>
             </div>
           </div>
         </div>

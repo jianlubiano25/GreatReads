@@ -94,40 +94,47 @@ export const NowReadingCard = React.memo(function NowReadingCard({
   const pct = known ? Math.min(100, Math.round((currentP / totalP) * 100)) : 0;
   const clamp = (n: number) => (known ? Math.min(totalP, Math.max(0, n)) : Math.max(0, n));
 
+  const accent = b.spineColor || '#2e5934';
+  const left = known ? Math.max(0, totalP - currentP) : 0;
+  const chip = 'px-2 py-0.5 rounded-full text-[11px] font-medium bg-black/5 dark:bg-white/10 text-[#706256] dark:text-[#a89a8a]';
+
   return (
-    <div className={`p-5 ${CARD} flex flex-col gap-4`} style={{ borderLeftColor: b.spineColor || '#2e5934' }}>
-      <div className="flex items-start gap-4">
+    <div
+      className={`relative overflow-hidden p-5 ${CARD} flex flex-col gap-4`}
+      style={{ borderLeftColor: accent, backgroundImage: `linear-gradient(160deg, color-mix(in srgb, ${accent} 13%, transparent) 0%, transparent 55%)` }}
+    >
+      <div className="flex items-start gap-4 sm:gap-5">
         <button
           type="button"
           onClick={() => onOpen(b)}
-          className="book-cover-3d w-[92px] h-[135px] sm:w-[105px] sm:h-[152px] shrink-0 text-left p-3 flex flex-col justify-between text-white overflow-hidden shadow-md"
-          style={{ backgroundColor: b.spineColor || '#2e5934' }}
+          className="book-cover-3d w-[104px] h-[156px] sm:w-[124px] sm:h-[186px] shrink-0 text-left p-3 flex flex-col justify-between text-white overflow-hidden shadow-lg"
+          style={{ backgroundColor: accent }}
           title="Tap to see author, year, pages & info"
           aria-label={`${b.title}: details`}
         >
           <CoverFace book={b} size="lg" eager />
         </button>
 
-        <div className="flex-1 min-w-0">
-          <h3 className="font-serif-display text-lg sm:text-xl text-[#201a15] dark:text-[#f0e6d6] line-clamp-2">
+        <div className="flex-1 min-w-0 flex flex-col gap-1">
+          <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#2e5934] dark:text-[#86b880]">Reading now</span>
+          <h3 className="font-serif-display text-xl sm:text-2xl leading-tight text-[#201a15] dark:text-[#f0e6d6] line-clamp-3">
             <button type="button" onClick={() => onOpen(b)} className={LINK_BTN}>{b.title}</button>
           </h3>
-          <div className="text-xs text-[#2e5934] dark:text-[#86b880] font-medium mb-1">{b.author}</div>
-          <div className="text-xs text-[#706256] dark:text-[#a89a8a]">
-            {b.year ? `${b.year} · ` : ''}{b.genre} · {DIFFICULTY_LABELS[b.difficulty]}
+          <div className="text-sm text-[#706256] dark:text-[#a89a8a] truncate">{b.author}</div>
+          <div className="flex flex-wrap gap-1.5 mt-1">
+            {b.year ? <span className={chip}>{b.year}</span> : null}
+            {b.genre && b.genre !== 'Book' ? <span className={chip}>{b.genre}</span> : null}
+            {b.difficulty ? <span className={chip}>{DIFFICULTY_LABELS[b.difficulty]}</span> : null}
           </div>
-          <RatingLine book={b} className="mt-0.5" />
+          <RatingLine book={b} className="mt-1" />
         </div>
       </div>
       <AwardBadges book={b} />
 
-      {/* Progress */}
-      <div className="flex flex-col gap-1.5">
-        <div className="w-full h-2 rounded-full bg-[#e3d7c3] dark:bg-[#382f25] overflow-hidden">
-          <div className="h-full bg-[#2e5934] dark:bg-[#86b880] rounded-full transition-all duration-300" style={{ width: `${pct}%` }} />
-        </div>
-        <div className="flex items-center justify-between text-xs text-[#706256] dark:text-[#a89a8a]">
-          <div className="flex items-center gap-1.5">
+      {/* Progress: the big number, the bar, and what is left */}
+      <div className="flex flex-col gap-2 p-3.5 rounded-xl bg-white/60 dark:bg-black/20 border border-[#e3d7c3]/70 dark:border-[#382f25]">
+        <div className="flex items-end justify-between gap-3">
+          <div className="flex items-center gap-1.5 text-xs text-[#706256] dark:text-[#a89a8a]">
             <span>Page</span>
             <input
               type="number"
@@ -142,7 +149,7 @@ export const NowReadingCard = React.memo(function NowReadingCard({
                 if (v !== currentP) onProgress(b.id, v, totalP || undefined);
               }}
               onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-              className="w-20 px-2 py-1 rounded border border-[#e3d7c3] dark:border-[#382f25] bg-transparent text-center font-bold text-[#201a15] dark:text-[#f0e6d6]"
+              className="w-20 px-2 py-1 rounded-lg border border-[#e3d7c3] dark:border-[#382f25] bg-transparent text-center text-sm font-bold text-[#201a15] dark:text-[#f0e6d6]"
             />
             {known ? (
               <span>of {totalP}</span>
@@ -160,41 +167,51 @@ export const NowReadingCard = React.memo(function NowReadingCard({
                     if (n > 0) onProgress(b.id, currentP, n);
                   }}
                   onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                  className="w-20 px-2 py-1 rounded border border-[#e3d7c3] dark:border-[#382f25] bg-transparent text-center text-[#201a15] dark:text-[#f0e6d6]"
+                  className="w-20 px-2 py-1 rounded-lg border border-[#e3d7c3] dark:border-[#382f25] bg-transparent text-center text-sm text-[#201a15] dark:text-[#f0e6d6]"
                 />
               </label>
             )}
           </div>
-          <span className="font-bold">{known ? `${pct}%` : ''}</span>
+          {known ? (
+            <div className="text-right leading-none">
+              <span className="font-serif-display text-3xl text-[#201a15] dark:text-[#f0e6d6]">{pct}</span>
+              <span className="text-sm text-[#706256] dark:text-[#a89a8a]">%</span>
+            </div>
+          ) : null}
         </div>
+        <div className="w-full h-2.5 rounded-full bg-[#e3d7c3] dark:bg-[#382f25] overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`Progress in ${b.title}`}>
+          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: accent }} />
+        </div>
+        {known ? <div className="text-xs text-[#706256] dark:text-[#a89a8a]">{left > 0 ? `${left} pages to go` : 'You reached the last page'}</div> : null}
       </div>
 
-      {/* Actions */}
-      <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-[#e3d7c3] dark:border-[#382f25]">
+      {/* Actions: one clear primary, the rest quieter */}
+      <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={() => onProgress(b.id, clamp(currentP + 10), totalP || undefined)}
-          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#2e5934] text-white hover:bg-[#244729] shadow-sm"
+          className="px-4 py-2 rounded-full text-sm font-semibold bg-[#2e5934] text-white hover:bg-[#244729] active:scale-95 transition shadow-sm"
         >
           +10 pages
         </button>
         <button
           onClick={() => onStatus(b.id, 'done')}
-          className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-[#2e5934] text-[#2e5934] dark:text-[#86b880] hover:bg-[#2e5934]/10"
+          className="px-3.5 py-2 rounded-full text-sm font-semibold border border-[#2e5934] text-[#2e5934] dark:text-[#86b880] hover:bg-[#2e5934]/10 active:scale-95 transition flex items-center gap-1.5"
         >
+          <Check className="w-3.5 h-3.5" aria-hidden="true" />
           I finished it
         </button>
         <button
-          onClick={() => onStatus(b.id, 'skip')}
-          className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-[#e3d7c3] dark:border-[#382f25] text-[#706256] dark:text-[#a89a8a] hover:bg-black/5"
-        >
-          Not for me
-        </button>
-        <button
           onClick={() => onQuotes(b)}
-          className="ml-auto px-3 py-1.5 rounded-lg text-xs font-semibold border border-[#e3d7c3] dark:border-[#382f25] text-[#706256] dark:text-[#a89a8a] flex items-center gap-1.5 hover:bg-black/5"
+          className="ml-auto px-3 py-2 rounded-full text-xs font-semibold text-[#706256] dark:text-[#a89a8a] flex items-center gap-1.5 hover:bg-black/5 dark:hover:bg-white/10"
         >
           <Bookmark className="w-3.5 h-3.5 text-[#925838]" />
           <span>Quotes {hlCount > 0 ? `(${hlCount})` : ''}</span>
+        </button>
+        <button
+          onClick={() => onStatus(b.id, 'skip')}
+          className="px-3 py-2 rounded-full text-xs font-semibold text-[#706256] dark:text-[#a89a8a] hover:bg-black/5 dark:hover:bg-white/10"
+        >
+          Not for me
         </button>
       </div>
 
@@ -203,7 +220,7 @@ export const NowReadingCard = React.memo(function NowReadingCard({
         onCommit={t => onNote(b.id, t)}
         placeholder="A line or thought worth keeping…"
         ariaLabel={`Notes on ${b.title}`}
-        className="w-full p-2.5 rounded-xl bg-[#f5f0e6]/70 dark:bg-[#181410]/70 border border-[#e3d7c3] dark:border-[#382f25] text-xs italic text-[#201a15] dark:text-[#f0e6d6] focus:outline-none"
+        className="w-full p-3 rounded-xl bg-[#f5f0e6]/70 dark:bg-[#181410]/70 border border-[#e3d7c3] dark:border-[#382f25] text-sm italic text-[#201a15] dark:text-[#f0e6d6] focus:outline-none"
       />
     </div>
   );

@@ -125,7 +125,7 @@ export function TodayTab({
 
           {/* Right Column: Currently Reading Books */}
           <div className="md:col-span-7 flex flex-col gap-4">
-            <h2 className="font-serif-display text-2xl text-[#201a15] dark:text-[#f0e6d6]">
+            <h2 className={nowReadingBooks.length ? 'sr-only' : 'font-serif-display text-2xl text-[#201a15] dark:text-[#f0e6d6]'}>
               Reading now
             </h2>
 

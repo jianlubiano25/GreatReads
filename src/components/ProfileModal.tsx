@@ -25,7 +25,7 @@ interface ProfileModalProps {
   onExportBackup: () => string;
   onImportBackup: (jsonStr: string) => boolean;
   onOpenBackupModal?: () => void;
-  /** Only given while the owner's cover tools are switched on */
+  /** Only given while developer mode is on */
   onOpenCoverPublish?: () => void;
 }
 
@@ -299,7 +299,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             </div>
             {devMode && (
               <div className="mt-3 p-3 rounded-xl border border-dashed border-[#e3d7c3] dark:border-[#382f25] space-y-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] block">Fonts · developer</span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] block">Fonts · developer mode</span>
                 {([['Title font', 'title', TITLE_FONTS], ['Text font', 'text', TEXT_FONTS]] as const).map(([label, key, list]) => (
                   <div key={key}>
                     <label className="text-xs font-semibold text-[#706256] dark:text-[#a89a8a] block mb-1" htmlFor={`font-${key}`}>{label}</label>
