@@ -3,6 +3,7 @@ import type { SearchGenre } from '../../data/searchGenres';
 import { persistentCache } from '../books/cache';
 import { searchBooksLive } from '../books/search';
 import { shrunkRating } from '../books/model';
+import { fillMissingCovers } from '../books/covers';
 import { kindAdjust } from '../books/genreRank';
 import type { ShelfSource } from './shelves';
 
@@ -76,9 +77,10 @@ export function genreRowSource(g: SearchGenre, row: Row): ShelfSource {
   src = {
     id: `genre-${row}-${g.label}`,
     cached: () => { const hit = pools.peek(g.query)?.value; const books = hit ? cut(hit) : []; return books.length >= MIN_ROW ? books : null; },
-    load: async () => {
+    load: async onUpdate => {
       const books = cut(await genrePool(g));
       if (books.length < MIN_ROW) throw new Error('too few books for this row');
+      fillMissingCovers(books, onUpdate, undefined, { upgradeWeak: ROW_SIZE }); // a modern flat front in place of an old scan, as the covers are found
       return books;
     },
   };

@@ -31,7 +31,9 @@ test('NYT shelf: resolved data fills in details but never changes the NYT title,
   const out = combineWithNyt(prov, resolved);
   assert.equal(out.title, 'It Ends With Us');
   assert.equal(out.author, 'Colleen Hoover');
-  assert.equal(out.coverUrl, 'https://img/1.jpg');
+  assert.equal(out.coverUrl, undefined, 'the resolver found an Open Library cover: it beats the NYT marketing image');
+  assert.equal(out.coverId, 77);
+  assert.equal(combineWithNyt(prov, { ...resolved, coverId: undefined }).coverUrl, 'https://img/1.jpg', 'with no other cover the NYT image stands in');
   assert.equal(out.pageCount, 376);
   assert.equal(out.id, 'ol__works_OL1W');
   assert.deepEqual(identityOf(out), { olWork: 'OL1W', isbn13: '9781501110368', isbn10: '1501110365' });

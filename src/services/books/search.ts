@@ -11,6 +11,7 @@ import { rememberExcluded } from './eligibility';
 import { localMatches, rememberSeen } from './localIndex';
 import { contentTokens, normQ, parseQuery, tokenHits, type ParsedQuery, type SearchScope } from './query';
 import { keywordGroups, keywordPhrases, stem } from './keywords';
+import { coverBonus } from './coverQuality';
 import { diversify, kindAdjust, kindOfQuery, thinRecord } from './genreRank';
 
 /** Editions that are about a book, not the book ("Study Guide", "Summary of ...", boxed sets): ranked far down unless that is what was asked for. */
@@ -39,8 +40,6 @@ const EXACT_TITLE_KEY = 125; // the same title once a subtitle / edition note is
 const AUTHOR_FULL_NAME = 170;
 /** One word of an author's name: only counts when the title did not already match, otherwise a title that merely CONTAINS the word and an author who has it stack up above the exact title. */
 const AUTHOR_PARTIAL = 60;
-/** Having a cover: a tiebreaker among books of the same relevance, never enough to lift a weaker title match over a better one. */
-const COVER_BONUS = 8;
 
 /**
  * How well a result fits what was typed, in this order of importance:
@@ -122,7 +121,7 @@ export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial =
   if (isKnownGenre(b.genre)) meta += 1;
   if (!isUnknownAuthor(b.author)) meta += 1;
   score += meta; // up to 6
-  if (b.coverId || b.coverUrl) score += COVER_BONUS;
+  score += coverBonus(b); // having a cover, and a good flat front (Apple, Google) more than an old scan: a tiebreaker among books of the same relevance, never enough to lift a weaker title match over a better one
   const year = Number(b.year);
   const thisYear = new Date().getFullYear();
   if (year && year >= thisYear - 1) score += 2; // a small nudge for brand-new releases

@@ -10,6 +10,8 @@ export const hasRealSummary = (t?: string) => !!t && t.length >= 60 && !/^(A dis
 export const isKnownGenre = (g?: string) => !!g && !/^(book|general)$/i.test(g);
 
 /** Is this an Apple Books artwork address? Apple's art is flat, front-facing and clean, so it is the preferred jacket wherever it exists. */
+/** The NYT's own book image: the publisher's marketing shot, often a tilted 3D render with the spine showing (special editions). */
+export const isNytCoverUrl = (url?: string): boolean => !!url && /storage\.googleapis\.com\/du-prd\/books\/images\//i.test(url);
 export const isAppleCoverUrl = (url?: string): boolean => !!url && /(^|\.)mzstatic\.com\//i.test(url.replace(/^https?:\/\//i, ''));
 
 export const plainText = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();

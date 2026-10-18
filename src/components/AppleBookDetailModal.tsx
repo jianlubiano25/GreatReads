@@ -202,21 +202,12 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
                 )}
               </button>
             </div>
-            {onMoreLikeThis && moreLikeThis(book) && (
-              <button type="button" onClick={onMoreLikeThis} className="mt-2 text-sm font-semibold text-[#2e5934] dark:text-[#86b880] underline underline-offset-2">
-                More like this
-              </button>
-            )}
-
             {/* Pages read so far (the status itself is the button above) */}
             {inLibrary && currentPage > 0 && (
               <div className="mt-3 text-xs text-[#706256] dark:text-[#a89a8a]">Page {currentPage} of {displayPages}</div>
             )}
           </div>
         </div>
-
-        {/* Your own rating (every book), right below the Add to My Library button */}
-        {onRate && <RateThisBook title={book.title} value={userRating} onRate={onRate} />}
 
         {/* Quick facts: always four columns (same layout as the Gemini version).
             Missing data shows a dash instead of an invented number. */}
@@ -308,6 +299,16 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
             </button>
           )}
         </div>
+
+        {/* Your own rating (every book), then more books like this one: both sit right below the About section */}
+        {onRate && <RateThisBook title={book.title} value={userRating} onRate={onRate} />}
+        {onMoreLikeThis && moreLikeThis(book) && (
+          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25] flex justify-center">
+            <button type="button" onClick={onMoreLikeThis} className="min-h-[44px] px-5 py-2 rounded-full border border-[#2e5934] dark:border-[#86b880] text-sm font-semibold text-[#2e5934] dark:text-[#86b880] hover:bg-[#e8efe7] dark:hover:bg-[#243422]">
+              More like this
+            </button>
+          </div>
+        )}
 
         {/* Ratings: the main rating (one site's average + count) and, beside it, what the other sites say */}
         {main || otherSites.length ? (

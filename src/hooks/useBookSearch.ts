@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Book } from '../types';
-import { fillMissingCovers, getCoverPick, resolveCover, searchBooksLive, searchLocal, type SearchScope } from '../services/books';
+import { fillMissingCovers, getCoverPick, isWeakCover, resolveCover, searchBooksLive, searchLocal, type SearchScope } from '../services/books';
 
 /** Wait this long after the last keystroke before asking the network (books already on the device are shown with no wait at all). */
 const TYPING_DELAY_MS = 150;
@@ -106,7 +106,7 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
             if (books.length) live(books);
             if (!earlyCovers && books.length && !controller.signal.aborted) { // covers for the first screen start now; the lookups are shared and remembered, so the list is not held up
               earlyCovers = true;
-              withPicks(books.slice(0, EARLY_COVERS)).filter(b => b.title && !b.coverId && !b.coverUrl).forEach(b => { void resolveCover(b); });
+              withPicks(books.slice(0, EARLY_COVERS)).filter(b => b.title && ((!b.coverId && !b.coverUrl) || isWeakCover(b))).forEach(b => { void resolveCover(b); });
             }
             if (p.done) setLoading(false);
           },
@@ -117,7 +117,7 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
         setStale(false);
         setEmpty(finalList.length === 0);
         if (finalList.length === 0) { setResults([]); latest.current = []; }
-        else fillMissingCovers(finalList, r => { if (!controller.signal.aborted) { setResults(r); latest.current = r; } }, controller.signal);
+        else fillMissingCovers(finalList, r => { if (!controller.signal.aborted) { setResults(r); latest.current = r; } }, controller.signal, { upgradeWeak: EARLY_COVERS });
       } catch {
         if (!controller.signal.aborted) { setLoading(false); setStale(false); setEmpty(true); }
       }

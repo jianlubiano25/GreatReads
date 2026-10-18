@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react'
 import { Book } from '../types';
 import { BOOK_AWARDS } from '../data/defaultBooks';
 import { honorKind, mergeHonors } from '../services/store/honors';
-import { externalRating, ratingOf, starFills } from '../services/books';
+import { externalRating, isNytCoverUrl, ratingOf, starFills } from '../services/books';
 import { placeholderStyleFor, titleSizeCqw, isFrontCoverShape } from '../services/books/placeholderCover';
 import { inspectCover } from '../services/books/coverFlatness';
 import { coverKey, getCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, reportMissingCover, clearMissingCover, getCoverPickInfo, pickSizedUrl, markCoverPickFailed } from '../services/books';
@@ -72,7 +72,7 @@ export function AwardBadges({ book }: { book: Book }) {
 }
 
 /** Author line size per cover size (title size is set from the cover's own width, see PlaceholderCover). */
-const AUTHOR_CQW: Record<string, number> = { xs: 9.5, nook: 0, md: 9, lg: 8.5, xl: 8 };
+const AUTHOR_CQW: Record<string, number> = { xs: 11.5, nook: 0, md: 10.8, lg: 10.2, xl: 9.6 }; // about 20% larger than before
 
 /**
  * The stand-in cover: flat colour, the whole title in bold white, the author in black (Apple Books style). Sizes use container
@@ -209,10 +209,13 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
     if (pick || cur.alt || !u || vetted.current.has(u)) return;
     vetted.current.add(u);
     void inspectCover(u).then(async v => {
-      if (v !== 'render' || liveSrc.current !== u) return;
-      // Swap only for a replacement that is itself NOT a render: with none, the cover stays (a render is still better than a placeholder)
+      if (liveSrc.current !== u) return;
+      // A 3D render always looks for a flat front. So does the NYT's marketing image when its pixels cannot be read ('unknown'): it is a render far more often than not.
+      if (v !== 'render' && !(v === 'unknown' && isNytCoverUrl(book.coverUrl))) return;
+      // The first flat front the lookup finds (Apple, Google, then Open Library) replaces it, even though the book already has a cover link: the lookup itself only
+      // answers with a picture that loads, is front-shaped and is not a render. With none, the cover stays (a render is still better than a placeholder)
       const alt = await resolveCover(book).catch(() => '');
-      if (alt && alt !== u && liveSrc.current === u && (await inspectCover(alt)) !== 'render') setSt({ ...cur, alt });
+      if (alt && alt !== u && liveSrc.current === u) setSt({ ...cur, alt });
     });
   };
   useEffect(() => {

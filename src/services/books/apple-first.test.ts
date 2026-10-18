@@ -22,9 +22,17 @@ test('Apple art is recognised, and beats an NYT render or any other copy in a me
   assert.equal(combineWithNyt(nyt, resolved).coverUrl, APPLE); // the Discover shelf
   assert.equal(mergeBooks(nyt, resolved).coverUrl, APPLE); // the collated shelf merges the NYT book first
   assert.equal(mergeBooks(makeBook({ id: 'a', title: 'T', author: 'A B', coverId: 5 }), resolved).coverId, undefined);
-  // no Apple art: the NYT jacket still stands in, and an existing cover is not replaced
-  assert.equal(combineWithNyt(nyt, makeBook({ id: 'x', title: 'The Witch', author: 'Freida McFadden', coverId: 9 })).coverUrl, NYT);
-  assert.equal(mergeBooks(makeBook({ id: 'a', title: 'T', author: 'A B', coverUrl: NYT }), makeBook({ id: 'b', title: 'T', author: 'A B', coverUrl: 'https://g/x.jpg' })).coverUrl, NYT);
+  // no Apple art: ANY flat front from another source beats the NYT's marketing image (an Open Library cover, a Google Books front); the NYT image stands in only when there is nothing else
+  const GOOGLE = 'https://books.google.com/books/content?id=abc&printsec=frontcover&img=1&zoom=1';
+  assert.equal(combineWithNyt(nyt, makeBook({ id: 'x', title: 'The Witch', author: 'Freida McFadden', coverId: 9 })).coverUrl, undefined);
+  assert.equal(combineWithNyt(nyt, makeBook({ id: 'x', title: 'The Witch', author: 'Freida McFadden', coverId: 9 })).coverId, 9);
+  assert.equal(combineWithNyt(nyt, makeBook({ id: 'x', title: 'Threshing Day', author: 'Rebecca Yarros', coverUrl: GOOGLE })).coverUrl, GOOGLE);
+  assert.equal(combineWithNyt(nyt, makeBook({ id: 'x', title: 'The Witch', author: 'Freida McFadden' })).coverUrl, NYT);
+  // and in a merge: a real cover replaces the NYT image, while an existing ordinary cover is not replaced by another ordinary one
+  assert.equal(mergeBooks(makeBook({ id: 'a', title: 'T', author: 'A B', coverUrl: NYT }), makeBook({ id: 'b', title: 'T', author: 'A B', coverUrl: 'https://g/x.jpg' })).coverUrl, 'https://g/x.jpg');
+  assert.equal(mergeBooks(makeBook({ id: 'a', title: 'T', author: 'A B', coverUrl: NYT }), makeBook({ id: 'b', title: 'T', author: 'A B', coverId: 4 })).coverId, 4);
+  assert.equal(mergeBooks(makeBook({ id: 'a', title: 'T', author: 'A B', coverUrl: 'https://first/x.jpg' }), makeBook({ id: 'b', title: 'T', author: 'A B', coverUrl: 'https://g/x.jpg' })).coverUrl, 'https://first/x.jpg');
+  assert.equal(mergeBooks(makeBook({ id: 'a', title: 'T', author: 'A B', coverUrl: 'https://g/x.jpg' }), makeBook({ id: 'b', title: 'T', author: 'A B', coverUrl: NYT })).coverUrl, 'https://g/x.jpg');
 });
 
 test('lookupSummary falls back to Apple Books’ English description when Open Library and Google have none', async () => {

@@ -1,7 +1,7 @@
 /** Public face of the book system. Components import from here and never need to know which API a book came from. */
 import { dropLegacyBookCaches } from './cache';
 export * from './identity';
-export { makeBook, genreFromSubjects, shrunkRating, hasRealSummary, isKnownGenre } from './model';
+export { makeBook, genreFromSubjects, shrunkRating, hasRealSummary, isKnownGenre, isNytCoverUrl, isAppleCoverUrl } from './model';
 export { mergeBooks, dedupeBooks } from './merge';
 export { searchBooks, searchBooksLive, searchLocal, searchRelevance, type SearchProgress, type LiveSearchOptions } from './search';
 export { type SearchScope } from './query';
@@ -10,6 +10,7 @@ export { resolveBook, type ResolveQuery, type Resolved } from './resolve';
 export { enrichBookDetails, fetchBookMeta, fetchRatingSources } from './details';
 export { chooseRating, externalRating, mainRating, knownRating, withKnownRating, ratingOf, setRating, inferRatingSource, otherRatings, starFills, RATING_SOURCE_LABEL, SUFFICIENT_RATINGS, type RatingPair, type SourceRating, type RatingSourceId } from './ratings';
 export * from './covers';
+export { coverQuality, isWeakCover, coverBonus, type CoverQuality } from './coverQuality';
 export * from './coverPicks';
 export { getSharedPick, sharedCoverPicks, sharedCoversVersion, syncSharedCovers, applySharedCovers } from './sharedCovers';
 export { isCoverAdminOn, subscribeCoverAdmin, setCoverAdmin, tapSecret, getCoverToken, setCoverToken } from './coverAdmin';
