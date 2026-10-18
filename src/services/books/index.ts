@@ -13,6 +13,7 @@ export * from './covers';
 export { coverQuality, isWeakCover, coverBonus, type CoverQuality } from './coverQuality';
 export * from './coverPicks';
 export { getSharedPick, sharedCoverPicks, sharedCoversVersion, syncSharedCovers, applySharedCovers } from './sharedCovers';
+export { hasOwnGoogleKey, setOwnGoogleKey, looksLikeGoogleKey, checkGoogleBooks } from './sources/googleBooks';
 export { isCoverAdminOn, subscribeCoverAdmin, setCoverAdmin, tapSecret, getCoverToken, setCoverToken } from './coverAdmin';
 export * from './coverCandidates';
 export * from './quality';

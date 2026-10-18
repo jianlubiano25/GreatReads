@@ -9,6 +9,7 @@ import { useAppUpdate, checkForUpdate, applyUpdate, restartApp, APP_BUILD } from
 import { AchievementsModal } from './garden/AchievementsModal';
 import { MILESTONES } from '../data/gardenCatalog';
 import { isCoverAdminOn, subscribeCoverAdmin } from '../services/books';
+import { GoogleKeyPanel } from './GoogleKeyPanel';
 import { THEME_COLORS, getThemeColor, setThemeColor, normalizeHex } from '../services/themeColor';
 import { TITLE_FONTS, TEXT_FONTS, getFontPrefs, setFontPrefs, loadFontPreviews } from '../services/fontPrefs';
 
@@ -446,6 +447,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               </button>
             </div>
           )}
+
+          {devMode && <GoogleKeyPanel />}
 
           {/* Backup & Netlify / Multi-device Sync */}
           <div className="pt-3 border-t border-[#e3d7c3] dark:border-[#382f25]">

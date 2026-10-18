@@ -11,7 +11,7 @@ const FIELDS = 'id,volumeInfo(title,authors,publisher,description,categories,pag
 
 /**
  * How Google Books is reached.
- *  - "proxy" (the browser, deployed or `npm run dev` without a key): this site's own /api/google-books function (functions/api/google-books.js),
+ *  - "proxy" (the browser, deployed or `npm run dev`, unless a key was pasted in developer mode): this site's own /api/google-books function (functions/api/google-books.js),
  *    which holds the key as the Cloudflare secret GOOGLE_BOOKS_API_KEY. NO key ships in the app.
  *  - "direct" (Node: `npm run prefetch:store`, the check scripts, the tests): googleapis.com, with GOOGLE_BOOKS_API_KEY (or VITE_GOOGLE_BOOKS_API_KEY)
  *    from the environment. `npm run dev` may also use VITE_GOOGLE_BOOKS_API_KEY from .env.local, because Vite's dev server does not run Pages Functions;
@@ -21,7 +21,10 @@ type Mode = 'proxy' | 'direct';
 let modeForTests: Mode | null = null;
 /** Tests only: force proxy / direct mode (null = decide from where the code runs). */
 export const setGoogleModeForTests = (m: Mode | null) => { modeForTests = m; proxyNotConfigured = false; };
-const inNode = (): boolean => { try { return !!(globalThis as any).process?.versions?.node; } catch { return false; } };
+let browserForTests: boolean | null = null;
+/** Tests only: pretend the code runs in a browser (true) or in Node (false); null = detect. */
+export const setBrowserForTests = (b: boolean | null) => { browserForTests = b; };
+const inNode = (): boolean => { if (browserForTests !== null) return !browserForTests; try { return !!(globalThis as any).process?.versions?.node; } catch { return false; } };
 const devKey = (): string => {
   try { if ((import.meta as any).env?.DEV) return String((import.meta as any).env?.VITE_GOOGLE_BOOKS_API_KEY || ''); } catch {}
   return '';
@@ -29,8 +32,27 @@ const devKey = (): string => {
 const nodeKey = (): string => {
   try { return String((globalThis as any).process?.env?.GOOGLE_BOOKS_API_KEY || (globalThis as any).process?.env?.VITE_GOOGLE_BOOKS_API_KEY || ''); } catch { return ''; }
 };
-const apiKey = (): string => (inNode() ? nodeKey() || devKey() : devKey());
-const mode = (): Mode => modeForTests ?? (inNode() || devKey() ? 'direct' : 'proxy');
+/**
+ * Developer mode: a key pasted into Profile is kept on THIS device only (localStorage; never in a backup, never sent to this site's server) and the app
+ * then calls Google directly with it. Without one, the browser uses the proxy. A key Google refuses is dropped for the session and the proxy takes over.
+ */
+const OWN_KEY = 'readlife.googleKey1';
+const ownKey = (): string => { try { return localStorage.getItem(OWN_KEY) || ''; } catch { return ''; } };
+export const hasOwnGoogleKey = (): boolean => !!ownKey();
+/** Plausible shape of a Google API key (letters, digits, - and _), so a stray paste is refused. */
+export const looksLikeGoogleKey = (k: string): boolean => /^[A-Za-z0-9_-]{20,100}$/.test(k.trim());
+/** Save (or, with an empty string, remove) the key. Returns false when the text does not look like a key. A change clears what this session learned about the old key / the proxy. */
+export function setOwnGoogleKey(k: string): boolean {
+  const key = k.trim();
+  if (key && !looksLikeGoogleKey(key)) return false;
+  try { key ? localStorage.setItem(OWN_KEY, key) : localStorage.removeItem(OWN_KEY); } catch { return false; }
+  keyRejected = false;
+  proxyNotConfigured = false;
+  return true;
+}
+
+const apiKey = (): string => (inNode() ? nodeKey() || devKey() : ownKey() || devKey());
+const mode = (): Mode => modeForTests ?? (inNode() || (apiKey() && !keyRejected) ? 'direct' : 'proxy');
 
 let keyRejected = false;
 const withKey = (url: string) => (apiKey() && !keyRejected ? `${url}${url.includes('?') ? '&' : '?'}key=${encodeURIComponent(apiKey())}` : url);
@@ -80,11 +102,40 @@ async function googleJson(url: string, opts: GetOpts): Promise<JsonResult> {
   if (!again.data) return r;
   keyRejected = true;
   bump('google.keyRejected');
-  try { console.warn(`[GreatReads] Google Books refused the configured API key (HTTP ${r.status}) but answers without it, so requests go without it. Check the key's website and API restrictions in Google Cloud.`); } catch {}
+  try { console.warn(`[GreatReads] Google Books refused the configured API key (HTTP ${r.status}) but answers without it, so requests go without it (in the browser, through /api/google-books from now on). Check the key's website and API restrictions in Google Cloud.`); } catch {}
   return again;
 }
 /** Tests only: forget that the key was refused. */
 export const resetGoogleKeyForTests = () => { keyRejected = false; proxyNotConfigured = false; };
+
+/**
+ * Developer mode "Test": ask Google (through whichever route the app is using now) for one volume and say what happened, in words.
+ * Never includes the key. `route` is "own key" (direct) or "server" (/api/google-books).
+ */
+export async function checkGoogleBooks(): Promise<{ route: 'own key' | 'server'; ok: boolean; status: number; message: string }> {
+  const route = mode() === 'direct' ? 'own key' : 'server';
+  // A random (valid) startIndex makes every test a request nobody has made before: the service worker keeps Google answers for 12 hours and serves
+  // the old copy when Google errors, which would let a key that stopped working still pass the test.
+  const base = gbUrl({ q: 'intitle:"Dune" inauthor:"Frank Herbert"', maxResults: 3, startIndex: 1 + Math.floor(Math.random() * 30), fields: 'totalItems' });
+  let res: Response;
+  try { res = await fetch(route === 'own key' ? withKey(base) : base); } catch { return { route, ok: false, status: 0, message: 'Could not reach the network.' }; }
+  let body: any = null;
+  try { body = await res.json(); } catch {}
+  if (res.ok) return { route, ok: true, status: res.status, message: 'Works: Google answered.' };
+  const reason: string = typeof body?.reason === 'string' ? body.reason : body?.error?.errors?.[0]?.reason || '';
+  const code = reason || (typeof body?.error === 'string' ? body.error : '');
+  const known: Record<string, string> = {
+    not_configured: 'The server has no GOOGLE_BOOKS_API_KEY secret for this deployment (add it in Cloudflare for Production and Preview, then redeploy).',
+    rate_limited: 'Google says the quota is used up for now.',
+    rateLimitExceeded: 'Google says the quota is used up for now.',
+    dailyLimitExceeded: 'Google says the daily quota is used up.',
+    quotaExceeded: 'Google says the quota is used up for now.',
+    ipRefererBlocked: 'The key is restricted to certain websites: restrict it by API (Books API) only.',
+    keyInvalid: 'Google does not accept this key.',
+    accessNotConfigured: "The Books API is not enabled for this key's project.",
+  };
+  return { route, ok: false, status: res.status, message: `${known[code] || 'Google refused the request.'} (HTTP ${res.status}${code ? `, ${String(code).replace(/[^A-Za-z_]/g, '')}` : ''})` };
+}
 
 const cleanThumb = (raw: string) => raw.replace(/^http:\/\//i, 'https://').replace('&edge=curl', '');
 
