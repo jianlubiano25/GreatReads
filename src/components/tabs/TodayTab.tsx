@@ -83,10 +83,10 @@ export function TodayTab({
           {/* Left Column: Progress Ring & Daily Goal & Intention */}
           <div className="md:col-span-5 flex flex-col gap-4">
             {/* Daily Goal Card */}
-            <div className="p-4 rounded-2xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] border-l-4 border-l-[color:var(--rl-accent,#2e5934)] shadow-sm flex flex-col gap-3">
+            <div className="p-4 rounded-2xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] border-l-4 border-l-[#2e5934] shadow-sm flex flex-col gap-3">
               <div className="flex items-center gap-4">
                 <div>
-                  <span className="font-serif-display text-4xl leading-none text-[color:var(--rl-accent,#2e5934)] dark:text-[color:var(--rl-accent-light,#86b880)]">
+                  <span className="font-serif-display text-4xl leading-none text-[#2e5934] dark:text-[#86b880]">
                     {todayPages}
                   </span>
                   <span className="text-[11px] text-[#706256] dark:text-[#a89a8a] block mt-1">pages today</span>
@@ -95,7 +95,7 @@ export function TodayTab({
                 <div className="flex-1 flex flex-col gap-2">
                   <div className="w-full h-2.5 rounded-full bg-[#e3d7c3] dark:bg-[#382f25] overflow-hidden">
                     <div
-                      className="h-full bg-[color:var(--rl-accent,#2e5934)] dark:bg-[color:var(--rl-accent-light,#86b880)] transition-all duration-500 rounded-full"
+                      className="h-full bg-[#2e5934] dark:bg-[#86b880] transition-all duration-500 rounded-full"
                       style={{ width: `${Math.min(100, (todayPages * 100) / state.goal)}%` }}
                     />
                   </div>

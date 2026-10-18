@@ -96,8 +96,8 @@ export const NowReadingCard = React.memo(function NowReadingCard({
   const pct = known ? Math.min(100, Math.round((currentP / totalP) * 100)) : 0;
   const clamp = (n: number) => (known ? Math.min(totalP, Math.max(0, n)) : Math.max(0, n));
 
-  // The theme colour (Profile > Appearance) tints the card and fills its progress and main button
-  const accent = 'var(--rl-accent, #2e5934)';
+  // The book's own colour tints the card and fills its progress bar
+  const accent = b.spineColor || '#2e5934';
   const left = known ? Math.max(0, totalP - currentP) : 0;
   const chip = 'px-2 py-0.5 rounded-full text-[11px] font-medium bg-black/5 dark:bg-white/10 text-[#706256] dark:text-[#a89a8a]';
   const act = 'flex flex-col items-center justify-center gap-0.5 min-h-[48px] px-1 py-1.5 rounded-xl border border-[#e3d7c3] dark:border-[#382f25] text-[11px] font-semibold leading-tight text-[#706256] dark:text-[#a89a8a] hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition';
@@ -107,20 +107,20 @@ export const NowReadingCard = React.memo(function NowReadingCard({
       className={`relative overflow-hidden p-4 sm:p-5 ${CARD} flex flex-col gap-3.5`}
       style={{ borderLeftColor: accent, backgroundImage: `linear-gradient(160deg, color-mix(in srgb, ${accent} 14%, transparent) 0%, transparent 55%)` }}
     >
-      <div className="flex items-start gap-3.5 sm:gap-5">
+      <div className="flex items-center justify-center gap-3.5 sm:gap-5">
         <button
           type="button"
           onClick={() => onOpen(b)}
           className="book-cover-3d w-[124px] h-[186px] sm:w-[150px] sm:h-[225px] shrink-0 text-left p-3 flex flex-col justify-between text-white overflow-hidden shadow-lg"
-          style={{ backgroundColor: b.spineColor || '#2e5934' }}
+          style={{ backgroundColor: accent }}
           title="Tap to see author, year, pages & info"
           aria-label={`${b.title}: details`}
         >
           <CoverFace book={b} size="lg" eager />
         </button>
 
-        <div className="flex-1 min-w-0 flex flex-col gap-1">
-          <span className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: accent }}>Reading now</span>
+        <div className="min-w-0 flex flex-col gap-1 text-left">
+          <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#2e5934] dark:text-[#86b880]">Reading now</span>
           <h3 className="font-serif-display text-lg sm:text-2xl leading-tight text-[#201a15] dark:text-[#f0e6d6] line-clamp-4">
             <button type="button" onClick={() => onOpen(b)} className={LINK_BTN}>{b.title}</button>
           </h3>
@@ -136,7 +136,7 @@ export const NowReadingCard = React.memo(function NowReadingCard({
       </div>
 
       {/* Progress: compact, with the main button inside it */}
-      <div className="flex flex-col gap-1.5 p-2.5 rounded-xl bg-white/60 dark:bg-black/20 border border-[#e3d7c3]/70 dark:border-[#382f25]">
+      <div className="flex flex-col gap-1.5 p-2.5 rounded-xl border border-[#e3d7c3]/70 dark:border-[#382f25]">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-xs text-[#706256] dark:text-[#a89a8a]">
             <span>Page</span>
@@ -190,8 +190,7 @@ export const NowReadingCard = React.memo(function NowReadingCard({
           <span className="text-[11px] text-[#706256] dark:text-[#a89a8a]">{known ? (left > 0 ? `${left} pages to go` : 'You reached the last page') : ''}</span>
           <button
             onClick={() => onProgress(b.id, clamp(currentP + 10), totalP || undefined)}
-            className="px-3 py-1 rounded-full text-xs font-semibold text-white active:scale-95 transition shadow-sm"
-            style={{ backgroundColor: accent }}
+            className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#2e5934] text-white hover:bg-[#244729] active:scale-95 transition shadow-sm"
           >
             +10 pages
           </button>
@@ -201,7 +200,7 @@ export const NowReadingCard = React.memo(function NowReadingCard({
       {/* The rest, in one line (iPhone too): icon over a short label */}
       <div className="grid grid-cols-4 gap-1.5">
         <button onClick={() => onStatus(b.id, 'done')} className={act} aria-label={`I finished ${b.title}`}>
-          <Check className="w-4 h-4" style={{ color: accent }} aria-hidden="true" />
+          <Check className="w-4 h-4 text-[#2e5934] dark:text-[#86b880]" aria-hidden="true" />
           <span>Finished</span>
         </button>
         <button onClick={() => onStatus(b.id, 'skip')} className={act} aria-label={`${b.title} is not for me`}>
@@ -213,7 +212,7 @@ export const NowReadingCard = React.memo(function NowReadingCard({
           <span>Quotes{hlCount > 0 ? ` (${hlCount})` : ''}</span>
         </button>
         <button onClick={() => (onShelf ?? onOpen)(b)} className={act} aria-label={`Shelves, tags and status for ${b.title}`}>
-          <Library className="w-4 h-4" style={{ color: accent }} aria-hidden="true" />
+          <Library className="w-4 h-4 text-[#2e5934] dark:text-[#86b880]" aria-hidden="true" />
           <span>Library</span>
         </button>
       </div>

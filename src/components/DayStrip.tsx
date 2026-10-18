@@ -11,20 +11,20 @@ export function DayStrip({ days, onSetPages }: Props) {
   const fmt = (k: string) => new Date(`${k}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
 
   return (
-    <div className="pt-2.5 border-t border-[#e3d7c3] dark:border-[#382f25]">
+    <div className="pt-3 border-t border-[#e3d7c3] dark:border-[#382f25]">
       <div className="flex justify-between items-start">
         {days.map(d => (
           <button key={d.key} type="button" onClick={() => { setSel(d); setVal(String(d.pages)); }} className="day flex flex-col items-center gap-1" aria-label={`${fmt(d.key)}: ${d.pages} pages${d.isGoalMet ? ', goal met' : ''}`}>
             <span
-              className={`day-dot w-8 h-8 rounded-full border-2 text-xs font-bold flex items-center justify-center ${
-                d.isGoalMet ? 'bg-[color:var(--rl-accent,#2e5934)] border-[color:var(--rl-accent,#2e5934)] text-white shadow'
-                : d.pages > 0 ? 'border-[color:var(--rl-accent,#2e5934)] text-[color:var(--rl-accent,#2e5934)] dark:text-[color:var(--rl-accent-light,#86b880)] dark:border-[color:var(--rl-accent-light,#86b880)]'
+              className={`day-dot w-10 h-10 rounded-full border-2 text-sm font-bold flex items-center justify-center ${
+                d.isGoalMet ? 'bg-[#2e5934] border-[#2e5934] text-white shadow'
+                : d.pages > 0 ? 'border-[#2e5934] text-[#2e5934] dark:text-[#86b880] dark:border-[#86b880]'
                 : 'border-[#e3d7c3] dark:border-[#382f25] text-[#706256] dark:text-[#a89a8a]'
               } ${d.isToday ? 'day-today' : ''}`}
             >
               {d.letter}
             </span>
-            <span className={`text-[11px] font-semibold whitespace-nowrap ${d.isGoalMet ? 'text-[color:var(--rl-accent,#2e5934)] dark:text-[color:var(--rl-accent-light,#86b880)]' : 'text-[#706256] dark:text-[#a89a8a]'}`}>
+            <span className={`text-xs font-semibold whitespace-nowrap ${d.isGoalMet ? 'text-[#2e5934] dark:text-[#86b880]' : 'text-[#706256] dark:text-[#a89a8a]'}`}>
               {d.isGoalMet ? '✓ ' : ''}{d.pages}
             </span>
           </button>
