@@ -67,6 +67,16 @@ One-time setup in Cloudflare Pages:
 3. Redeploy. Without these the app works as before and Publish says the store is not set up.
 Hiding the buttons is only tidiness: the token is what stops anyone else from publishing.
 
+### Google Books ratings (Cloudflare proxy)
+In the browser the app never calls Google directly: it calls this site's own `/api/google-books` (`functions/api/google-books.js`), which adds the key on the server.
+Setup in Cloudflare Pages:
+1. Google Cloud console: create / open an API key, enable the **Books API**. Restrict the key by **API (Books API)** only. Do NOT use an "HTTP referrer" restriction: the calls come from Cloudflare's servers, not from a web page, so Google would refuse them (403).
+2. Pages project > Settings > Variables and Secrets: add a **Secret** named **`GOOGLE_BOOKS_API_KEY`** (not a `VITE_` variable and not a build variable) for **Production AND Preview**.
+3. **Redeploy** (secrets only apply to new deployments).
+4. Check it: open `/api/google-books?q=intitle:%22Dune%22&maxResults=2` on the deployed site. JSON with `items` = working. `{"error":"not_configured"}` = the secret is missing for that environment (or no redeploy yet). `{"error":"upstream_error","upstream":403,"reason":"..."}` = Google refused the key; the reason code (e.g. `ipRefererBlocked`, `accessNotConfigured`, `keyInvalid`) says why. `{"error":"rate_limited"}` = Google's daily quota is spent.
+Good answers are cached for 6 h at Cloudflare's edge and 1 h in the browser; errors are never cached. In the app, `__rlPerf()` shows `google.viaProxy` (requests) and `google.proxyNotConfigured` (the secret is missing).
+Local scripts (`npm run prefetch:store`, `npm run check:google`) and `npm test` run in Node and call Google directly with `GOOGLE_BOOKS_API_KEY` (or `VITE_GOOGLE_BOOKS_API_KEY`) from the environment. `npm run dev` does not run Pages Functions, so for ratings in the dev server put `VITE_GOOGLE_BOOKS_API_KEY` in `.env.local`; it is only read by the dev server and is left out of production builds.
+
 NYT quota: lists are cached 6 h in the browser and at Cloudflare's edge (`functions/api/nyt.js`), and extra lists only load when scrolled into view.
 Wikipedia lists are cached 12 h by the service worker (`public/sw.js`). To change a source or schedule, edit its entry in `DYNAMIC_SPECS`.
 
