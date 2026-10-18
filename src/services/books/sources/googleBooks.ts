@@ -6,27 +6,72 @@ import { externalRating } from '../ratings';
 import type { CallOpts, Hit } from './types';
 
 const GB = 'https://www.googleapis.com/books/v1';
+const PROXY = '/api/google-books';
 const FIELDS = 'id,volumeInfo(title,authors,publisher,description,categories,pageCount,publishedDate,averageRating,ratingsCount,maturityRating,imageLinks,industryIdentifiers,language)';
 
 /**
- * Optional API key (higher quota). It ships inside the app, so restrict it to this site's address in the Google Cloud console.
- * Set VITE_GOOGLE_BOOKS_API_KEY in .env.local (local) or in the Cloudflare Pages build variables (deployed).
+ * How Google Books is reached.
+ *  - "proxy" (the browser, deployed or `npm run dev` without a key): this site's own /api/google-books function (functions/api/google-books.js),
+ *    which holds the key as the Cloudflare secret GOOGLE_BOOKS_API_KEY. NO key ships in the app.
+ *  - "direct" (Node: `npm run prefetch:store`, the check scripts, the tests): googleapis.com, with GOOGLE_BOOKS_API_KEY (or VITE_GOOGLE_BOOKS_API_KEY)
+ *    from the environment. `npm run dev` may also use VITE_GOOGLE_BOOKS_API_KEY from .env.local, because Vite's dev server does not run Pages Functions;
+ *    that read is guarded by import.meta.env.DEV, which a production build replaces with `false`, so the key never reaches the deployed bundle.
  */
-const apiKey = (): string => {
-  try { const k = (import.meta as any).env?.VITE_GOOGLE_BOOKS_API_KEY; if (k) return String(k); } catch {}
-  // `npm run prefetch:store` runs this same module in Node, where the key comes from the environment
-  try { return String((globalThis as any).process?.env?.VITE_GOOGLE_BOOKS_API_KEY || (globalThis as any).process?.env?.GOOGLE_BOOKS_API_KEY || ''); } catch { return ''; }
+type Mode = 'proxy' | 'direct';
+let modeForTests: Mode | null = null;
+/** Tests only: force proxy / direct mode (null = decide from where the code runs). */
+export const setGoogleModeForTests = (m: Mode | null) => { modeForTests = m; proxyNotConfigured = false; };
+const inNode = (): boolean => { try { return !!(globalThis as any).process?.versions?.node; } catch { return false; } };
+const devKey = (): string => {
+  try { if ((import.meta as any).env?.DEV) return String((import.meta as any).env?.VITE_GOOGLE_BOOKS_API_KEY || ''); } catch {}
+  return '';
 };
+const nodeKey = (): string => {
+  try { return String((globalThis as any).process?.env?.GOOGLE_BOOKS_API_KEY || (globalThis as any).process?.env?.VITE_GOOGLE_BOOKS_API_KEY || ''); } catch { return ''; }
+};
+const apiKey = (): string => (inNode() ? nodeKey() || devKey() : devKey());
+const mode = (): Mode => modeForTests ?? (inNode() || devKey() ? 'direct' : 'proxy');
+
 let keyRejected = false;
 const withKey = (url: string) => (apiKey() && !keyRejected ? `${url}${url.includes('?') ? '&' : '?'}key=${encodeURIComponent(apiKey())}` : url);
 
+interface GbParams { volumeId?: string; q?: string; maxResults?: number; startIndex?: number; langRestrict?: string; printType?: string; fields: string }
+/** The request URL for the current mode. Same parameters either way; only the host and the key differ. */
+function gbUrl(p: GbParams): string {
+  const parts: string[] = [];
+  if (p.q !== undefined) parts.push(`q=${encodeURIComponent(p.q)}`);
+  if (p.maxResults) parts.push(`maxResults=${p.maxResults}`);
+  if (p.startIndex) parts.push(`startIndex=${p.startIndex}`);
+  if (p.langRestrict) parts.push(`langRestrict=${p.langRestrict}`);
+  if (p.printType) parts.push(`printType=${p.printType}`);
+  parts.push(`fields=${encodeURIComponent(p.fields)}`);
+  if (mode() === 'proxy') return `${PROXY}?${p.volumeId ? `volumeId=${encodeURIComponent(p.volumeId)}&` : ''}${parts.join('&')}`;
+  return p.volumeId ? `${GB}/volumes/${encodeURIComponent(p.volumeId)}?${parts.join('&')}` : `${GB}/volumes?${parts.join('&')}`;
+}
+
+/** The proxy said its secret is missing: not asked again this session (every ask would fail the same way, and be retried). */
+let proxyNotConfigured = false;
+
 /**
- * Every Google Books request goes through here. A key that Google rejects (HTTP 400 "API key not valid", or 403 because the key is restricted to other sites
- * or APIs) fails EVERY request, which looked exactly like "Google has no ratings". So a rejected key is noticed once (counters only, never the key itself),
- * and the request is repeated without it (Google's shared anonymous quota), for the rest of this session. `__rlPerf()` shows `google.keyConfigured`
- * and `google.keyRejected`, so a deployment whose key is missing from the build or refused by Google can be told apart from a book Google has not rated.
+ * Every Google Books request goes through here.
+ * Proxy mode: no key is involved. A "not_configured" answer (503: the Cloudflare secret is missing for this deployment) is noticed once and counted
+ * (`__rlPerf()` shows `google.proxyNotConfigured`), so "the secret is not set" can be told apart from "Google has no rating" and the failing call is not repeated per book.
+ * Direct mode: a key that Google rejects (HTTP 400 "API key not valid", or 403 because the key is restricted to other sites or APIs) fails EVERY request, which
+ * looked exactly like "Google has no ratings". So a rejected key is noticed once (counters only, never the key itself), and the request is repeated without it
+ * (Google's shared anonymous quota), for the rest of this session. `__rlPerf()` shows `google.keyConfigured` and `google.keyRejected`.
  */
 async function googleJson(url: string, opts: GetOpts): Promise<JsonResult> {
+  if (mode() === 'proxy') {
+    if (proxyNotConfigured) return { data: null, status: 503, failure: 'http' };
+    bump('google.viaProxy');
+    const r = await getJsonDetailed(url, opts);
+    if (!r.data && r.status === 503 && r.body?.error === 'not_configured') {
+      proxyNotConfigured = true;
+      bump('google.proxyNotConfigured');
+      try { console.warn('[GreatReads] /api/google-books answered "not_configured": set the Cloudflare Pages secret GOOGLE_BOOKS_API_KEY (Production and Preview) and redeploy.'); } catch {}
+    }
+    return r;
+  }
   bump(apiKey() ? 'google.keyConfigured' : 'google.keyMissing');
   const r = await getJsonDetailed(withKey(url), opts);
   if (r.data || !apiKey() || keyRejected || (r.status !== 400 && r.status !== 403)) return r;
@@ -39,7 +84,7 @@ async function googleJson(url: string, opts: GetOpts): Promise<JsonResult> {
   return again;
 }
 /** Tests only: forget that the key was refused. */
-export const resetGoogleKeyForTests = () => { keyRejected = false; };
+export const resetGoogleKeyForTests = () => { keyRejected = false; proxyNotConfigured = false; };
 
 const cleanThumb = (raw: string) => raw.replace(/^http:\/\//i, 'https://').replace('&edge=curl', '');
 
@@ -70,7 +115,8 @@ export function gbItemToHit(item: any, fallbackTitle = ''): Hit {
 }
 
 /** English volumes only (`langRestrict=en`): English titles, covers and blurbs are preferred. An exact ISBN / volume lookup is the one edition asked for, so it is not restricted. */
-const searchUrl = (q: string, max: number, start = 0, anyLanguage = false) => `${GB}/volumes?q=${encodeURIComponent(q)}&maxResults=${Math.min(40, max)}${start > 0 ? `&startIndex=${start}` : ''}${anyLanguage ? '' : '&langRestrict=en'}&printType=books&fields=${encodeURIComponent(`totalItems,items(${FIELDS})`)}`;
+const searchUrl = (q: string, max: number, start = 0, anyLanguage = false) =>
+  gbUrl({ q, maxResults: Math.min(40, max), startIndex: start, langRestrict: anyLanguage ? undefined : 'en', printType: 'books', fields: `totalItems,items(${FIELDS})` });
 
 export async function searchGoogle(q: string, max: number, opts: CallOpts & { anyLanguage?: boolean } = {}): Promise<Hit[]> {
   const data = (await googleJson(searchUrl(q, max, opts.start, opts.anyLanguage), { signal: opts.signal })).data;
@@ -86,7 +132,7 @@ export async function googleByIsbn(isbn: string, opts: CallOpts = {}): Promise<H
 }
 
 export async function googleVolume(id: string, opts: CallOpts = {}): Promise<Hit | null> {
-  const item = (await googleJson(`${GB}/volumes/${encodeURIComponent(id)}?fields=${encodeURIComponent(FIELDS)}`, { signal: opts.signal })).data;
+  const item = (await googleJson(gbUrl({ volumeId: id, fields: FIELDS }), { signal: opts.signal })).data;
   return item ? gbItemToHit(item) : null;
 }
 
