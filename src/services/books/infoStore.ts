@@ -3,9 +3,9 @@ import { dedupeInflight, transientFailureCount } from './http';
 import { persistentCache } from './cache';
 import { authorKey, isUnknownAuthor, titleKey } from './identity';
 import { difficultyFor } from './model';
-import { chooseRating, externalRating, setRating, type SourceRating } from './ratings';
+import { chooseRating, externalRating, mainRating, setRating, type RatingPair, type SourceRating } from './ratings';
 import { prefetchedSourceRatings } from './prefetchIndex';
-import { RATING_SITES, legacyBookInfo, lookupAuthorBio, lookupMeta, lookupRatingSources, lookupSummary, weak, weakBio } from './details';
+import { RATING_SITES, forgetLookups, legacyBookInfo, lookupAuthorBio, lookupMeta, lookupRatingSources, lookupSummary, weak, weakBio } from './details';
 
 /**
  * Book Info's own memory: everything found about a book, kept per FIELD, so a screen can draw it at once and only the missing parts are fetched.
@@ -211,6 +211,26 @@ function saveRatings(book: Book, ratings: SourceRating[]) {
   });
 }
 
+/**
+ * Manual refresh (Book Info): lift the wait / failure on these fields so the next ensureBookInfo asks again at once. A rating or fact that is
+ * already saved stays on screen and is only marked old, so it is re-fetched and replaced when the answer arrives (never blanked meanwhile).
+ */
+export function resetInfoWaits(book: Book, fields: InfoField[]): void {
+  if (!fields.length) return;
+  forgetLookups(book); // the shared lookup caches would otherwise hand back the same old answer
+  update(book, e => {
+    const miss = { ...e.miss };
+    const at = { ...e.at };
+    const ratings = { ...e.ratings };
+    for (const f of fields) {
+      delete miss[f];
+      if (f.startsWith('rating:')) { const r = ratings[f.slice(7) as RatingSite]; if (r) ratings[f.slice(7) as RatingSite] = { ...r, at: 0 }; }
+      else if (f in at) (at as Record<string, number>)[f] = 0;
+    }
+    return { ...e, miss, at, ratings };
+  });
+}
+
 // ---- running lookups ----
 const inflightNow = new Map<string, Promise<void>>();
 const loading = new Map<string, Set<InfoGroup>>();
@@ -299,6 +319,15 @@ export async function ensureBookInfo(book: Book, only?: InfoGroup[]): Promise<In
 /** Valid ratings, one per site, in the order Open Library, Google, Apple. */
 export const siteRatingsOf = (e: InfoEntry): SourceRating[] =>
   RATING_SITES.flatMap(s => { const r = e.ratings[s]; return r && externalRating({ ratingAverage: r.average, ratingCount: r.count }) ? [{ source: s, average: r.average, count: r.count } as SourceRating] : []; });
+
+/**
+ * The rating a CARD shows (Discover, shelves): the same main rating Book Info shows at its top. When any site's rating is saved for the book,
+ * that is mainRating(book, those ratings); with none saved the card keeps the pair it already carries (undefined here: the caller falls back).
+ */
+export function shownRating(book: Book, e: InfoEntry = getInfo(book)): RatingPair | undefined {
+  const sites = siteRatingsOf(e);
+  return sites.length ? mainRating(applyInfo(book, e), sites) : undefined;
+}
 
 /**
  * The book with everything saved filled in. Only GAPS are filled: what the book already shows (the card's rating, a curated genre, a year, pages

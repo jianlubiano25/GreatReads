@@ -6,7 +6,7 @@ import { externalRating, type SourceRating } from './ratings';
 import { difficultyFor, genreFromSubjects, hasRealSummary, isKnownGenre, plainText } from './model';
 import { looksEnglish } from './language';
 import { prefetchedSourceRatings } from './prefetchIndex';
-import { resolveBook } from './resolve';
+import { forgetResolved, resolveBook } from './resolve';
 import { lookupApple } from './sources/appleBooks';
 import { findGoogle, findGoogleRating } from './sources/googleBooks';
 import type { CallOpts } from './sources/types';
@@ -205,6 +205,14 @@ export async function lookupRatingSources(book: Book, opts: CallOpts & { only?: 
   // soon (one cheap request) rather than remembered as "no rating": the safe side of not knowing whose error it was
   if (want('openlibrary') && !ol && !checked.has('openlibrary') && transientFailureCount() > troubleBefore) failed.push('openlibrary');
   return { ratings, failed };
+}
+
+/** Manual refresh (Book Info): forget every saved lookup answer for this book so the next lookup really asks the sites, not a cache. */
+export function forgetLookups(book: Book): void {
+  const key = bookKey(book);
+  sourcesCache.delete(key); metaCache.delete(key); partialRetry.delete(key); metaRetry.delete(key);
+  const id = identityOf(book);
+  forgetResolved({ title: book.title, author: isUnknownAuthor(book.author) ? '' : primaryAuthor(book.author), isbn: id.isbn13 || id.isbn10 });
 }
 
 /** What the older caches (readlife.meta6, readlife.ratingsrc3) already hold for a book. Read-only: Book Info's own cache starts from it so nothing already loaded is fetched again. */

@@ -8,7 +8,8 @@ import { DIFFICULTY_LABELS, SHELF_LABELS } from '../data/defaultBooks';
 import { useBookInfo } from '../hooks/useBookInfo';
 import { mainRating, otherRatings, RATING_SOURCE_LABEL, isCoverAdminOn, subscribeCoverAdmin, type SourceRating } from '../services/books';
 import { CoverFace, StarRating, compactCount, honorsListFor } from './BookMeta';
-import { X, BookOpen, Star, Award, ChevronDown, Check, Bookmark, Image as ImageIcon } from 'lucide-react';
+import { X, BookOpen, Star, Award, ChevronDown, Check, Bookmark, Image as ImageIcon, RefreshCw } from 'lucide-react';
+import { ensureBookInfo, resetInfoWaits, type InfoField } from '../services/books/infoStore';
 
 // The cover viewer is only fetched the first time someone opens it
 const CoverPickerModal = lazy(() => import('./CoverPickerModal').then(m => ({ default: m.CoverPickerModal })));
@@ -63,6 +64,35 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [showCovers, setShowCovers] = useState(false);
   const coverTools = useSyncExternalStore(subscribeCoverAdmin, isCoverAdminOn, isCoverAdminOn); // the cover button is hidden until the owner switches it on
+
+  // Manual refresh: lift the wait on these fields and ask again. What is already shown stays until the new answer replaces it.
+  const [busy, setBusy] = useState<null | 'facts' | 'ratings' | 'all'>(null);
+  const FACT_FIELDS: InfoField[] = ['year', 'pageCount', 'genre'];
+  const RATING_FIELDS: InfoField[] = ['rating:openlibrary', 'rating:google', 'rating:apple'];
+  const refresh = async (kind: 'facts' | 'ratings' | 'all') => {
+    if (busy) return;
+    setBusy(kind);
+    try {
+      resetInfoWaits(initialBook, kind === 'facts' ? FACT_FIELDS : kind === 'ratings' ? RATING_FIELDS : [...FACT_FIELDS, ...RATING_FIELDS]);
+      await ensureBookInfo(initialBook, kind === 'all' ? undefined : ['lookup']);
+    } finally {
+      setBusy(null);
+    }
+  };
+  const factsBusy = busy === 'facts' || busy === 'all';
+  const ratingsBusy = busy === 'ratings' || busy === 'all';
+  /** The "—" of an empty fact cell: tap to look it up */
+  const dash = (what: string) => (
+    <button
+      type="button"
+      onClick={() => refresh('facts')}
+      disabled={!!busy}
+      aria-label={factsBusy ? `Looking up ${what}` : `Look up ${what}`}
+      className="min-w-[28px] min-h-[28px] px-2 inline-flex items-center justify-center rounded-md text-[#706256] dark:text-[#a89a8a] hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition"
+    >
+      {factsBusy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" aria-hidden="true" /> : '—'}
+    </button>
+  );
 
   const main = mainRating(book, siteRatings); // Library -> Apple -> Open Library -> Google; the other sites are listed beside it
   const mainSource = main?.source;
@@ -232,7 +262,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           <div className="flex flex-col items-center justify-center p-1 sm:px-3 sm:flex-1 border-r border-[#e3d7c3]/60 dark:border-[#382f25]">
             <span className="text-[10px] sm:text-[11px] uppercase font-bold tracking-wider text-[#706256] dark:text-[#a89a8a]">Genre</span>
             <span className="font-bold text-sm sm:text-base text-[#201a15] dark:text-[#f0e6d6] truncate max-w-[85px] sm:max-w-none my-0.5">
-              {book.genre && book.genre !== 'Book' ? book.genre : book.shelf === 'mine' ? '—' : shelfInfo.label}
+              {book.genre && book.genre !== 'Book' ? book.genre : book.shelf === 'mine' ? dash('genre') : shelfInfo.label}
             </span>
             <span className="text-[10px] sm:text-[11px] text-[#706256] dark:text-[#a89a8a] truncate max-w-[80px] sm:max-w-none">
               {shelfSubLabel}
@@ -242,7 +272,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           <div className="flex flex-col items-center justify-center p-1 sm:px-3 sm:flex-1 border-r border-[#e3d7c3]/60 dark:border-[#382f25]">
             <span className="text-[10px] sm:text-[11px] uppercase font-bold tracking-wider text-[#706256] dark:text-[#a89a8a]">Released</span>
             <span className="font-bold text-base sm:text-lg text-[#201a15] dark:text-[#f0e6d6] my-0.5">
-              {book.year && book.year !== 'N/A' ? book.year : <span className="text-[#706256] dark:text-[#a89a8a]">—</span>}
+              {book.year && book.year !== 'N/A' ? book.year : dash('release year')}
             </span>
             <span className="text-[10px] sm:text-[11px] text-[#706256] dark:text-[#a89a8a]">Year</span>
           </div>
@@ -250,7 +280,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           <div className="flex flex-col items-center justify-center p-1 sm:px-3 sm:flex-1">
             <span className="text-[10px] sm:text-[11px] uppercase font-bold tracking-wider text-[#706256] dark:text-[#a89a8a]">Length</span>
             <span className="font-bold text-base sm:text-lg text-[#201a15] dark:text-[#f0e6d6] my-0.5">
-              {displayPages ? displayPages : <span className="text-[#706256] dark:text-[#a89a8a]">—</span>}
+              {displayPages ? displayPages : dash('page count')}
             </span>
             <span className="text-[10px] sm:text-[11px] text-[#706256] dark:text-[#a89a8a]">Pages</span>
           </div>
@@ -312,11 +342,24 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
         {onRate && <RateThisBook title={book.title} value={userRating} onRate={onRate} />}
 
         {/* Ratings: the main rating (one site's average + count) and, beside it, what the other sites say */}
-        {main || otherSites.length ? (
+        {main || otherSites.length || !loading.ratings ? (
           <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25]">
-            <h4 className="font-serif-display text-lg mb-2">
-              Ratings{main && mainSource ? <span className="font-sans text-sm font-normal text-[#706256] dark:text-[#a89a8a]"> · {RATING_SOURCE_LABEL[mainSource]}</span> : null}
-            </h4>
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="font-serif-display text-lg">
+                Ratings{main && mainSource ? <span className="font-sans text-sm font-normal text-[#706256] dark:text-[#a89a8a]"> · {RATING_SOURCE_LABEL[mainSource]}</span> : null}
+              </h4>
+              <button
+                type="button"
+                onClick={() => refresh('ratings')}
+                disabled={!!busy}
+                aria-label={ratingsBusy ? 'Refreshing ratings' : 'Refresh ratings'}
+                title="Refresh ratings"
+                className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-[#706256] dark:text-[#a89a8a] hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition disabled:opacity-60"
+              >
+                <RefreshCw className={`w-4 h-4 ${ratingsBusy ? 'animate-spin' : ''}`} aria-hidden="true" />
+              </button>
+            </div>
+            {!main && !otherSites.length ? <p className="text-sm text-[#706256] dark:text-[#a89a8a]">No ratings found yet.</p> : null}
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
               {main ? (
                 <div className="flex items-center gap-4">
@@ -398,6 +441,16 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
             >
               <Bookmark className="w-3.5 h-3.5 text-[#925838] dark:text-[#d89e70]" />
               <span>Quotes &amp; Highlights {highlightsCount > 0 ? `(${highlightsCount})` : ''}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => refresh('all')}
+              disabled={!!busy}
+              className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-[#e3d7c3] dark:border-[#382f25] hover:bg-[#fbf7ee] dark:hover:bg-[#231d17] transition-colors disabled:opacity-60"
+              aria-label={busy === 'all' ? 'Refreshing details' : 'Refresh details'}
+              title="Refresh details"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-[#706256] dark:text-[#a89a8a] ${busy === 'all' ? 'animate-spin' : ''}`} aria-hidden="true" />
             </button>
             {coverTools && <button
               onClick={() => setShowCovers(true)}

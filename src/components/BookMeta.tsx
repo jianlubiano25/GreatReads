@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef, useSyncExternalStore } from 'react';
+import React, { useCallback, useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import { Book } from '../types';
 import { BOOK_AWARDS } from '../data/defaultBooks';
 import { honorKind, mergeHonors } from '../services/store/honors';
 import { externalRating, isNytCoverUrl, ratingOf, starFills } from '../services/books';
+import { infoKey, infoVersion, shownRating, subscribeInfo } from '../services/books/infoStore';
 import { placeholderStyleFor, titleSizeCqw, isFrontCoverShape } from '../services/books/placeholderCover';
 import { inspectCover } from '../services/books/coverFlatness';
 import { coverKey, getCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, reportMissingCover, clearMissingCover, getCoverPickInfo, pickSizedUrl, markCoverPickFailed } from '../services/books';
@@ -43,7 +44,12 @@ export const compactCount = (n?: number) => (!n ? '' : n >= 1000 ? `${(n / 1000)
  * count); the library's own ratings (no source) only need an average.
  */
 export function RatingLine({ book, className = '', compact = false }: { book: Book; className?: string; compact?: boolean }) {
-  const r = book.ratingSource && book.ratingSource !== 'library' ? externalRating(book) : ratingOf(book);
+  // The same main rating Book Info shows: once any site's rating is known for this book (saved by a lookup, or shipped with the app), the
+  // card follows mainRating (Library -> Apple -> Open Library -> Google) instead of the pair frozen on the card. Re-draws when that entry changes.
+  const key = infoKey(book);
+  const subscribe = useCallback((fn: () => void) => subscribeInfo(book, fn), [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  useSyncExternalStore(subscribe, () => infoVersion(book), () => 0);
+  const r = shownRating(book) ?? (book.ratingSource && book.ratingSource !== 'library' ? externalRating(book) : ratingOf(book));
   if (!r) return null;
   // One line, always: the stars never shrink or wrap, the number text never breaks (even 162.4k fits a 125px shelf card: compact = smaller stars and text)
   return (

@@ -77,6 +77,11 @@ export const resolveKey = (q: Pick<ResolveQuery, 'title' | 'author' | 'isbn' | '
 };
 const keyOf = resolveKey;
 
+/** Manual refresh: forget the saved answer (and any short "not found" memory) for this book, so the next lookup asks the sites again. */
+export function forgetResolved(q: Pick<ResolveQuery, 'title' | 'author' | 'isbn'>): void {
+  for (const apple of [true, false]) { const k = keyOf({ ...q, apple }); cache.delete(k); misses.delete(k); }
+}
+
 export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resolved | null> {
   bump('resolve.calls');
   const key = keyOf(q);
