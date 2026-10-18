@@ -9,6 +9,7 @@ import { useAppUpdate, checkForUpdate, applyUpdate, restartApp, APP_BUILD } from
 import { AchievementsModal } from './garden/AchievementsModal';
 import { MILESTONES } from '../data/gardenCatalog';
 import { isCoverAdminOn, subscribeCoverAdmin } from '../services/books';
+import { THEME_COLORS, getThemeColor, setThemeColor, normalizeHex } from '../services/themeColor';
 import { TITLE_FONTS, TEXT_FONTS, getFontPrefs, setFontPrefs, loadFontPreviews } from '../services/fontPrefs';
 
 interface ProfileModalProps {
@@ -60,6 +61,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   // Developer mode (five taps on the name in Today): Google Fonts picker under Appearance
   const devMode = useSyncExternalStore(subscribeCoverAdmin, isCoverAdminOn, isCoverAdminOn);
   const [fonts, setFonts] = useState(getFontPrefs);
+  const [accent, setAccent] = useState(getThemeColor);
+  const pickAccent = (hex: string) => setAccent(setThemeColor(hex));
   useEffect(() => { if (devMode) loadFontPreviews(); }, [devMode]);
   const plantsEarned = MILESTONES.filter(m => garden.achievements[m.id]).length;
 
@@ -296,6 +299,38 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 <Moon className="w-3.5 h-3.5" />
                 <span>Night</span>
               </button>
+            </div>
+            {/* Theme colour: ready-made colours, or any colour */}
+            <div className="mt-3">
+              <span className="text-xs font-semibold text-[#706256] dark:text-[#a89a8a] block mb-1.5">Theme color</span>
+              <div className="flex flex-wrap items-center gap-2.5">
+                {THEME_COLORS.map(c => (
+                  <button
+                    key={c.hex}
+                    type="button"
+                    onClick={() => pickAccent(c.hex)}
+                    aria-label={`${c.name} theme color`}
+                    aria-pressed={accent === c.hex}
+                    title={c.name}
+                    className={`w-8 h-8 rounded-full border-2 transition-transform active:scale-90 ${accent === c.hex ? 'border-[#201a15] dark:border-[#f0e6d6] scale-110' : 'border-transparent'}`}
+                    style={{ backgroundColor: c.hex }}
+                  />
+                ))}
+                <label
+                  className={`relative w-8 h-8 rounded-full border-2 overflow-hidden cursor-pointer flex items-center justify-center text-[10px] font-bold text-white ${THEME_COLORS.some(c => c.hex === accent) ? 'border-dashed border-[#a89a8a]' : 'border-[#201a15] dark:border-[#f0e6d6] scale-110'}`}
+                  style={{ background: THEME_COLORS.some(c => c.hex === accent) ? 'conic-gradient(#e0554b, #e8b84a, #5aa05a, #3b8fc4, #8a5ab8, #e0554b)' : accent }}
+                  title="Custom color"
+                >
+                  <span className="sr-only">Custom theme color</span>
+                  <input
+                    type="color"
+                    value={normalizeHex(accent) ?? '#2e5934'}
+                    onChange={e => pickAccent(e.target.value)}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    aria-label="Custom theme color"
+                  />
+                </label>
+              </div>
             </div>
             {devMode && (
               <div className="mt-3 p-3 rounded-xl border border-dashed border-[#e3d7c3] dark:border-[#382f25] space-y-2">

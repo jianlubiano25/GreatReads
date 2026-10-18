@@ -454,6 +454,7 @@ export default function App() {
         {visitedTabs.has('today') && (
           <TodayTab
             active={tab === 'today'}
+            onOpenSheet={setSheetBook}
             state={state}
             todayKey={todayKey}
             todayPages={todayPages}

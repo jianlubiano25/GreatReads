@@ -18,6 +18,8 @@ interface Props {
   upNextBooks: Book[];
   finishedCount: number;
   handleOpenCover: (book: Book) => void;
+  /** Open the Add to My Library sheet (status, shelves, tags) for a book */
+  onOpenSheet?: (book: Book) => void;
   handleOpenHighlights: (book: Book) => void;
   startReading: (id: string | number) => void;
   setDayPages: (dateKey: string, pages: number) => void;
@@ -30,7 +32,7 @@ interface Props {
 /** The Today tab: the reading nook, today's goal, what you are reading now and up next. */
 export function TodayTab({
   active, state, todayKey, todayPages, currentStreak, sceneBooks, nowReadingBooks, upNextBooks, finishedCount,
-  handleOpenCover, handleOpenHighlights, startReading, setDayPages, updateIntention, updateBookProgress, setBookStatus, updateBookNote,
+  handleOpenCover, onOpenSheet, handleOpenHighlights, startReading, setDayPages, updateIntention, updateBookProgress, setBookStatus, updateBookNote,
 }: Props) {
   // 7-day dots for streak
   const last7Days = useMemo(() => {
@@ -72,7 +74,7 @@ export function TodayTab({
 
       <TabPane active={active}>
       <div className="flex flex-col gap-6">
-        <p className="text-sm text-[#706256] dark:text-[#a89a8a] ">
+        <p className="text-xs text-[#706256] dark:text-[#a89a8a] ">
           {state.goal} pages a day is the whole goal. Keep going if you're enjoying it, stop if you're not.
         </p>
 
@@ -81,23 +83,23 @@ export function TodayTab({
           {/* Left Column: Progress Ring & Daily Goal & Intention */}
           <div className="md:col-span-5 flex flex-col gap-4">
             {/* Daily Goal Card */}
-            <div className="p-6 rounded-2xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] border-l-4 border-l-[#2e5934] shadow-sm flex flex-col gap-4">
-              <div className="flex items-center gap-5">
+            <div className="p-4 rounded-2xl bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] border-l-4 border-l-[color:var(--rl-accent,#2e5934)] shadow-sm flex flex-col gap-3">
+              <div className="flex items-center gap-4">
                 <div>
-                  <span className="font-serif-display text-5xl leading-none text-[#2e5934] dark:text-[#86b880]">
+                  <span className="font-serif-display text-4xl leading-none text-[color:var(--rl-accent,#2e5934)] dark:text-[color:var(--rl-accent-light,#86b880)]">
                     {todayPages}
                   </span>
-                  <span className="text-xs text-[#706256] dark:text-[#a89a8a] block mt-1">pages today</span>
+                  <span className="text-[11px] text-[#706256] dark:text-[#a89a8a] block mt-1">pages today</span>
                 </div>
 
                 <div className="flex-1 flex flex-col gap-2">
-                  <div className="w-full h-3 rounded-full bg-[#e3d7c3] dark:bg-[#382f25] overflow-hidden">
+                  <div className="w-full h-2.5 rounded-full bg-[#e3d7c3] dark:bg-[#382f25] overflow-hidden">
                     <div
-                      className="h-full bg-[#2e5934] dark:bg-[#86b880] transition-all duration-500 rounded-full"
+                      className="h-full bg-[color:var(--rl-accent,#2e5934)] dark:bg-[color:var(--rl-accent-light,#86b880)] transition-all duration-500 rounded-full"
                       style={{ width: `${Math.min(100, (todayPages * 100) / state.goal)}%` }}
                     />
                   </div>
-                  <div className="text-xs text-[#706256] dark:text-[#a89a8a]">
+                  <div className="text-[11px] text-[#706256] dark:text-[#a89a8a]">
                     {todayPages >= state.goal
                       ? 'Goal reached. Anything more is a bonus.'
                       : `${state.goal - todayPages} more to hit today's goal`} · {currentStreak}-day streak
@@ -143,6 +145,7 @@ export function TodayTab({
                   highlightCount={(state.highlights[String(b.id)] || []).length}
                   note={state.notes[String(b.id)] || ''}
                   onOpen={handleOpenCover}
+                  onShelf={onOpenSheet}
                   onProgress={updateBookProgress}
                   onStatus={setBookStatus}
                   onQuotes={handleOpenHighlights}

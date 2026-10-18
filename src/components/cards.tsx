@@ -4,7 +4,7 @@ import { DIFFICULTY_LABELS } from '../data/defaultBooks';
 import { BUILTIN_DICTIONARY } from '../data/defaultWords';
 import { speakWord } from '../services/dictionary';
 import { CoverFace, RatingLine, AwardBadges } from './BookMeta';
-import { Bookmark, Check, Edit2, Library, Search, Trash2, Volume2 } from 'lucide-react';
+import { Ban, Bookmark, Check, Edit2, Library, Search, Trash2, Volume2 } from 'lucide-react';
 
 /*
  * The cards on the Today, Library and Word Garden screens.
@@ -81,6 +81,8 @@ interface NowProps {
   highlightCount: number;
   note: string;
   onOpen: (b: Book) => void;
+  /** Open the Add to My Library sheet (status, shelves, tags) */
+  onShelf?: (b: Book) => void;
   onProgress: (id: string | number, page: number, total?: number) => void;
   onStatus: (id: string | number, status: BookStatus) => void;
   onQuotes: (b: Book) => void;
@@ -88,27 +90,29 @@ interface NowProps {
 }
 
 export const NowReadingCard = React.memo(function NowReadingCard({
-  book: b, currentPage: currentP, totalPages: totalP, highlightCount: hlCount, note, onOpen, onProgress, onStatus, onQuotes, onNote,
+  book: b, currentPage: currentP, totalPages: totalP, highlightCount: hlCount, note, onOpen, onShelf, onProgress, onStatus, onQuotes, onNote,
 }: NowProps) {
   const known = totalP > 0;
   const pct = known ? Math.min(100, Math.round((currentP / totalP) * 100)) : 0;
   const clamp = (n: number) => (known ? Math.min(totalP, Math.max(0, n)) : Math.max(0, n));
 
-  const accent = b.spineColor || '#2e5934';
+  // The theme colour (Profile > Appearance) tints the card and fills its progress and main button
+  const accent = 'var(--rl-accent, #2e5934)';
   const left = known ? Math.max(0, totalP - currentP) : 0;
   const chip = 'px-2 py-0.5 rounded-full text-[11px] font-medium bg-black/5 dark:bg-white/10 text-[#706256] dark:text-[#a89a8a]';
+  const act = 'flex flex-col items-center justify-center gap-0.5 min-h-[48px] px-1 py-1.5 rounded-xl border border-[#e3d7c3] dark:border-[#382f25] text-[11px] font-semibold leading-tight text-[#706256] dark:text-[#a89a8a] hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition';
 
   return (
     <div
-      className={`relative overflow-hidden p-5 ${CARD} flex flex-col gap-4`}
-      style={{ borderLeftColor: accent, backgroundImage: `linear-gradient(160deg, color-mix(in srgb, ${accent} 13%, transparent) 0%, transparent 55%)` }}
+      className={`relative overflow-hidden p-4 sm:p-5 ${CARD} flex flex-col gap-3.5`}
+      style={{ borderLeftColor: accent, backgroundImage: `linear-gradient(160deg, color-mix(in srgb, ${accent} 14%, transparent) 0%, transparent 55%)` }}
     >
-      <div className="flex items-start gap-4 sm:gap-5">
+      <div className="flex items-start gap-3.5 sm:gap-5">
         <button
           type="button"
           onClick={() => onOpen(b)}
-          className="book-cover-3d w-[104px] h-[156px] sm:w-[124px] sm:h-[186px] shrink-0 text-left p-3 flex flex-col justify-between text-white overflow-hidden shadow-lg"
-          style={{ backgroundColor: accent }}
+          className="book-cover-3d w-[124px] h-[186px] sm:w-[150px] sm:h-[225px] shrink-0 text-left p-3 flex flex-col justify-between text-white overflow-hidden shadow-lg"
+          style={{ backgroundColor: b.spineColor || '#2e5934' }}
           title="Tap to see author, year, pages & info"
           aria-label={`${b.title}: details`}
         >
@@ -116,24 +120,24 @@ export const NowReadingCard = React.memo(function NowReadingCard({
         </button>
 
         <div className="flex-1 min-w-0 flex flex-col gap-1">
-          <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#2e5934] dark:text-[#86b880]">Reading now</span>
-          <h3 className="font-serif-display text-xl sm:text-2xl leading-tight text-[#201a15] dark:text-[#f0e6d6] line-clamp-3">
+          <span className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: accent }}>Reading now</span>
+          <h3 className="font-serif-display text-lg sm:text-2xl leading-tight text-[#201a15] dark:text-[#f0e6d6] line-clamp-4">
             <button type="button" onClick={() => onOpen(b)} className={LINK_BTN}>{b.title}</button>
           </h3>
-          <div className="text-sm text-[#706256] dark:text-[#a89a8a] truncate">{b.author}</div>
-          <div className="flex flex-wrap gap-1.5 mt-1">
+          <div className="text-sm text-[#706256] dark:text-[#a89a8a] line-clamp-2">{b.author}</div>
+          <div className="flex flex-wrap gap-1.5 mt-0.5">
             {b.year ? <span className={chip}>{b.year}</span> : null}
             {b.genre && b.genre !== 'Book' ? <span className={chip}>{b.genre}</span> : null}
             {b.difficulty ? <span className={chip}>{DIFFICULTY_LABELS[b.difficulty]}</span> : null}
           </div>
-          <RatingLine book={b} className="mt-1" />
+          <RatingLine book={b} className="mt-0.5" />
+          <AwardBadges book={b} />
         </div>
       </div>
-      <AwardBadges book={b} />
 
-      {/* Progress: the big number, the bar, and what is left */}
-      <div className="flex flex-col gap-2 p-3.5 rounded-xl bg-white/60 dark:bg-black/20 border border-[#e3d7c3]/70 dark:border-[#382f25]">
-        <div className="flex items-end justify-between gap-3">
+      {/* Progress: compact, with the main button inside it */}
+      <div className="flex flex-col gap-1.5 p-2.5 rounded-xl bg-white/60 dark:bg-black/20 border border-[#e3d7c3]/70 dark:border-[#382f25]">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-xs text-[#706256] dark:text-[#a89a8a]">
             <span>Page</span>
             <input
@@ -149,7 +153,7 @@ export const NowReadingCard = React.memo(function NowReadingCard({
                 if (v !== currentP) onProgress(b.id, v, totalP || undefined);
               }}
               onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-              className="w-20 px-2 py-1 rounded-lg border border-[#e3d7c3] dark:border-[#382f25] bg-transparent text-center text-sm font-bold text-[#201a15] dark:text-[#f0e6d6]"
+              className="w-16 px-1.5 py-0.5 rounded-lg border border-[#e3d7c3] dark:border-[#382f25] bg-transparent text-center text-sm font-bold text-[#201a15] dark:text-[#f0e6d6]"
             />
             {known ? (
               <span>of {totalP}</span>
@@ -167,51 +171,50 @@ export const NowReadingCard = React.memo(function NowReadingCard({
                     if (n > 0) onProgress(b.id, currentP, n);
                   }}
                   onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                  className="w-20 px-2 py-1 rounded-lg border border-[#e3d7c3] dark:border-[#382f25] bg-transparent text-center text-sm text-[#201a15] dark:text-[#f0e6d6]"
+                  className="w-16 px-1.5 py-0.5 rounded-lg border border-[#e3d7c3] dark:border-[#382f25] bg-transparent text-center text-sm text-[#201a15] dark:text-[#f0e6d6]"
                 />
               </label>
             )}
           </div>
           {known ? (
-            <div className="text-right leading-none">
-              <span className="font-serif-display text-3xl text-[#201a15] dark:text-[#f0e6d6]">{pct}</span>
-              <span className="text-sm text-[#706256] dark:text-[#a89a8a]">%</span>
+            <div className="leading-none">
+              <span className="font-serif-display text-xl text-[#201a15] dark:text-[#f0e6d6]">{pct}</span>
+              <span className="text-xs text-[#706256] dark:text-[#a89a8a]">%</span>
             </div>
           ) : null}
         </div>
-        <div className="w-full h-2.5 rounded-full bg-[#e3d7c3] dark:bg-[#382f25] overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`Progress in ${b.title}`}>
+        <div className="w-full h-2 rounded-full bg-[#e3d7c3] dark:bg-[#382f25] overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`Progress in ${b.title}`}>
           <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: accent }} />
         </div>
-        {known ? <div className="text-xs text-[#706256] dark:text-[#a89a8a]">{left > 0 ? `${left} pages to go` : 'You reached the last page'}</div> : null}
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] text-[#706256] dark:text-[#a89a8a]">{known ? (left > 0 ? `${left} pages to go` : 'You reached the last page') : ''}</span>
+          <button
+            onClick={() => onProgress(b.id, clamp(currentP + 10), totalP || undefined)}
+            className="px-3 py-1 rounded-full text-xs font-semibold text-white active:scale-95 transition shadow-sm"
+            style={{ backgroundColor: accent }}
+          >
+            +10 pages
+          </button>
+        </div>
       </div>
 
-      {/* Actions: one clear primary, the rest quieter */}
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          onClick={() => onProgress(b.id, clamp(currentP + 10), totalP || undefined)}
-          className="px-4 py-2 rounded-full text-sm font-semibold bg-[#2e5934] text-white hover:bg-[#244729] active:scale-95 transition shadow-sm"
-        >
-          +10 pages
+      {/* The rest, in one line (iPhone too): icon over a short label */}
+      <div className="grid grid-cols-4 gap-1.5">
+        <button onClick={() => onStatus(b.id, 'done')} className={act} aria-label={`I finished ${b.title}`}>
+          <Check className="w-4 h-4" style={{ color: accent }} aria-hidden="true" />
+          <span>Finished</span>
         </button>
-        <button
-          onClick={() => onStatus(b.id, 'done')}
-          className="px-3.5 py-2 rounded-full text-sm font-semibold border border-[#2e5934] text-[#2e5934] dark:text-[#86b880] hover:bg-[#2e5934]/10 active:scale-95 transition flex items-center gap-1.5"
-        >
-          <Check className="w-3.5 h-3.5" aria-hidden="true" />
-          I finished it
+        <button onClick={() => onStatus(b.id, 'skip')} className={act} aria-label={`${b.title} is not for me`}>
+          <Ban className="w-4 h-4" aria-hidden="true" />
+          <span>Not for me</span>
         </button>
-        <button
-          onClick={() => onQuotes(b)}
-          className="ml-auto px-3 py-2 rounded-full text-xs font-semibold text-[#706256] dark:text-[#a89a8a] flex items-center gap-1.5 hover:bg-black/5 dark:hover:bg-white/10"
-        >
-          <Bookmark className="w-3.5 h-3.5 text-[#925838]" />
-          <span>Quotes {hlCount > 0 ? `(${hlCount})` : ''}</span>
+        <button onClick={() => onQuotes(b)} className={act} aria-label={`Quotes${hlCount ? ` (${hlCount})` : ''}`}>
+          <Bookmark className="w-4 h-4 text-[#925838]" aria-hidden="true" />
+          <span>Quotes{hlCount > 0 ? ` (${hlCount})` : ''}</span>
         </button>
-        <button
-          onClick={() => onStatus(b.id, 'skip')}
-          className="px-3 py-2 rounded-full text-xs font-semibold text-[#706256] dark:text-[#a89a8a] hover:bg-black/5 dark:hover:bg-white/10"
-        >
-          Not for me
+        <button onClick={() => (onShelf ?? onOpen)(b)} className={act} aria-label={`Shelves, tags and status for ${b.title}`}>
+          <Library className="w-4 h-4" style={{ color: accent }} aria-hidden="true" />
+          <span>Library</span>
         </button>
       </div>
 

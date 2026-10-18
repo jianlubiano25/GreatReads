@@ -74,7 +74,8 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
     setBusy(kind);
     try {
       resetInfoWaits(initialBook, kind === 'facts' ? FACT_FIELDS : kind === 'ratings' ? RATING_FIELDS : [...FACT_FIELDS, ...RATING_FIELDS]);
-      await ensureBookInfo(initialBook, kind === 'all' ? undefined : ['lookup']);
+      // at least a moment of spinning, so a quick answer from the network still reads as "it asked"
+      await Promise.all([ensureBookInfo(initialBook, kind === 'all' ? undefined : ['lookup']), new Promise(r => setTimeout(r, 800))]);
     } finally {
       setBusy(null);
     }
@@ -82,15 +83,15 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   const factsBusy = busy === 'facts' || busy === 'all';
   const ratingsBusy = busy === 'ratings' || busy === 'all';
   /** The "—" of an empty fact cell: tap to look it up */
-  const dash = (what: string) => (
+  const dash = (what: string, kind: 'facts' | 'ratings' = 'facts') => (
     <button
       type="button"
-      onClick={() => refresh('facts')}
+      onClick={() => refresh(kind)}
       disabled={!!busy}
-      aria-label={factsBusy ? `Looking up ${what}` : `Look up ${what}`}
+      aria-label={(kind === 'ratings' ? ratingsBusy : factsBusy) ? `Looking up ${what}` : `Look up ${what}`}
       className="min-w-[28px] min-h-[28px] px-2 inline-flex items-center justify-center rounded-md text-[#706256] dark:text-[#a89a8a] hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition"
     >
-      {factsBusy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" aria-hidden="true" /> : '—'}
+      {(kind === 'ratings' ? ratingsBusy : factsBusy) ? <RefreshCw className="w-3.5 h-3.5 animate-spin" aria-hidden="true" /> : '—'}
     </button>
   );
 
@@ -253,7 +254,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
                   <span>{main.average.toFixed(1)}</span>
                 </>
               ) : (
-                <span className="text-[#706256] dark:text-[#a89a8a]">—</span>
+                dash('rating', 'ratings')
               )}
             </div>
             <span className="text-[10px] sm:text-[11px] text-[#706256] dark:text-[#a89a8a]">{main?.source ? RATING_SOURCE_LABEL[main.source] : 'Readers'}</span>
