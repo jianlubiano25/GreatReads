@@ -45,10 +45,11 @@ export const compactCount = (n?: number) => (!n ? '' : n >= 1000 ? `${(n / 1000)
 export function RatingLine({ book, className = '', compact = false }: { book: Book; className?: string; compact?: boolean }) {
   const r = book.ratingSource && book.ratingSource !== 'library' ? externalRating(book) : ratingOf(book);
   if (!r) return null;
+  // One line, always: the stars never shrink or wrap, the number text never breaks (even 162.4k fits a 125px shelf card: compact = smaller stars and text)
   return (
-    <div className={`flex items-center gap-1 text-xs text-[#706256] dark:text-[#a89a8a] ${className}`}>
-      <StarRating value={r.average} />
-      <span>
+    <div className={`flex flex-nowrap items-center whitespace-nowrap text-[#706256] dark:text-[#a89a8a] ${compact ? 'gap-1 text-[11px]' : 'gap-1 text-xs'} ${className}`}>
+      <StarRating value={r.average} className={`shrink-0 ${compact ? 'text-[10px]' : ''}`} />
+      <span className="whitespace-nowrap tabular-nums">
         {r.average.toFixed(1)}
         {r.count ? ` · ${compactCount(r.count)}${compact ? '' : ' ratings'}` : ''}
       </span>

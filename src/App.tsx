@@ -230,22 +230,21 @@ export default function App() {
   }, [libraryBooks, state.status]);
 
   // The books whose own rating wins (ratings policy, step 1). One array per library, so its index (see indexKnownRatings) is built once, not on every render.
-  // Discover cards show where each book you own stands (status, pages, dates) and your own stars
+  // Discover cards show where each book you own stands (status) and your own stars, as one short chip
   const discoverLine = useMemo(() => {
     const byId = new Map(allBooks.map(b => [String(b.id), b]));
     return (b: Book): string | undefined => {
       const owned = byId.get(String(b.id)) ?? allBooks.find(x => sameWork(x, b, true));
       const key = String(owned ? owned.id : b.id);
       const mine = state.ratings[key] ?? (owned ? undefined : state.ratings[`w:${bookKey(b)}`]);
-      const stars = mine ? `You rated it ${formatRating(mine)} ★` : '';
+      const stars = mine ? `★ ${formatRating(mine)}` : '';
       if (!owned) return stars || undefined;
       const st = state.status[key];
-      const total = state.totalPages[key] || owned.pageCount || 0;
-      const page = state.currentPage[key] || 0;
+      // A short chip for the shelf card: where the book stands in the library, plus your own stars. Pages and dates stay in the library.
       const where =
-        st === 'now' ? `Reading now${page ? ` · page ${page}${total ? ` of ${total}` : ''}` : ''}`
+        st === 'now' ? 'Reading now'
         : st === 'next' ? 'Up next'
-        : st === 'done' ? `Finished${state.history[key]?.finished ? ` ${prettyDate(state.history[key]?.finished)}` : ''}`
+        : st === 'done' ? 'Finished'
         : st === 'dnf' ? 'Did not finish'
         : st === 'skip' ? 'Not for me' : 'In My Library';
       return [where, stars].filter(Boolean).join(' · ') || undefined;

@@ -118,7 +118,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
   if (failed && hideIfUnavailable) return null;
 
   return (
-    <div ref={holder} data-shelf-id={id} className="rl-shelf flex flex-col gap-3">
+    <div ref={holder} data-shelf-id={id} className="rl-shelf flex flex-col gap-3 scroll-mt-16">
       <h3 className="font-serif-display text-xl text-[#201a15] dark:text-[#f0e6d6] flex items-center gap-2">{source?.label?.() ?? title}</h3>
       {failed ? (
         <div className="flex items-center gap-3 flex-wrap text-sm text-[#706256] dark:text-[#a89a8a]">
@@ -157,7 +157,8 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
               </h4>
               <p className="text-[11px] leading-4 h-4 text-[#706256] dark:text-[#a89a8a] truncate">{b.author}</p>
               <div className="h-4"><RatingLine book={b} compact /></div>
-              {mine?.(b) && <p className="text-[11px] font-medium text-[#2e5934] dark:text-[#86b880] line-clamp-2">{mine(b)}</p>}
+              {/* One short chip (Reading now, In My Library, Finished...), on one line: the reading page / dates live in the library, not on a shelf card */}
+              {mine?.(b) && <span className="self-start max-w-full truncate px-2 py-0.5 rounded-full text-[10px] leading-4 font-semibold bg-[#2e5934]/10 text-[#2e5934] dark:bg-[#86b880]/15 dark:text-[#86b880]">{mine(b)}</span>}
               <AwardBadges book={b} />
             </div>
           ))}
