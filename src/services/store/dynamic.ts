@@ -494,6 +494,23 @@ export function nobelLaureates(tables: ReturnType<typeof parseWikiTables>): { ye
   return out.sort((a, b) => b.year - a.year);
 }
 
+/** The year a Nobel seed's label ends with ("Nobel Prize in Literature 2024"), or NaN. */
+const nobelYear = (s: Seed): number => Number(String(s[2] ?? '').match(/(\d{4})\s*$/)?.[1]);
+
+/**
+ * The laureates whose year the shelf does not have yet, NEWEST first, at most `limit`. The source's own order is not trusted (a list that
+ * runs oldest to newest used to fill the shelf with the OLDEST missing winners); a year that is not here yet is never one from the future.
+ */
+export function nobelMissing(laureates: { year: number; name: string }[], have: Set<number>, thisYear: number, limit = 4): { year: number; name: string }[] {
+  return laureates.filter(l => !have.has(l.year) && l.year <= thisYear).sort((a, b) => b.year - a.year).slice(0, limit);
+}
+
+/** The shelf order: latest year first, so a new year always lands at the front. Seeds without a year go after the dated ones; ties keep their order. */
+export function nobelOrder(seeds: Seed[]): Seed[] {
+  const y = (s: Seed) => { const n = nobelYear(s); return Number.isNaN(n) ? -Infinity : n; };
+  return [...seeds].sort((a, b) => (y(a) === y(b) ? 0 : y(a) < y(b) ? 1 : -1));
+}
+
 /**
  * The Nobel shelf: one book per laureate. A year the shelf does not have yet is added in front: the laureate comes from Wikipedia's
  * table, the book is the laureate's most-wanted book on Open Library (GreatReads' choice: the Nobel names an author, not a book, so
@@ -518,15 +535,15 @@ const nobelSpec = (): DynamicSpec => ({
       laureates = text ? nobelLaureates(parseWikiTables(text)) : [];
     }
     if (laureates.length < 20) return null;
-    const have = new Set([...shelf.seeds, ...(saved.get(shelf.id)?.seeds ?? [])].map(s => Number(String(s[2] ?? '').match(/(\d{4})\s*$/)?.[1])));
-    const todo = laureates.filter(l => !have.has(l.year) && l.year <= new Date().getFullYear()).slice(0, 4);
+    const have = new Set([...shelf.seeds, ...(saved.get(shelf.id)?.seeds ?? [])].map(nobelYear));
+    const todo = nobelMissing(laureates, have, new Date().getFullYear());
     const added: Seed[] = [];
     for (const l of todo) {
       const hits = await searchOpenLibrary({ q: `author:"${l.name}"` , sort: 'want_to_read' }, 20, { retries: 1 }).catch(() => [] as Hit[]);
       const pick = hits.find(h => (h.book.coverId || h.book.coverUrl) && authorsCompatible(h.book.author, l.name) && !JUNK.test(h.book.title) && !isBlocked(h.book.title, h.flags));
       if (pick) added.push([pick.book.title, l.name, `Nobel Prize in Literature ${l.year}`]);
     }
-    return { seeds: [...added, ...shelf.seeds] }; // the hand-picked list rides along so a week with nothing new is "unchanged", not a failure
+    return { seeds: nobelOrder([...added, ...shelf.seeds]) }; // the hand-picked list rides along so a week with nothing new is "unchanged", not a failure; latest year first
   },
 });
 
