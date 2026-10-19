@@ -136,7 +136,7 @@ export const NowReadingCard = React.memo(function NowReadingCard({
       </div>
 
       {/* Progress: compact, with the main button inside it */}
-      <div className="flex flex-col gap-1.5 p-2.5 rounded-xl border border-[#e3d7c3]/70 dark:border-[#382f25]">
+      <div className="flex flex-col gap-1.5 p-2.5 rounded-xl bg-black/[0.04] dark:bg-black/25">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-xs text-[#706256] dark:text-[#a89a8a]">
             <span>Page</span>
