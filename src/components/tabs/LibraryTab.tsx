@@ -42,20 +42,23 @@ const BUILT_IN_TAGS: Array<[string, string]> = [
 ];
 
 /** How the book lists are ordered. "Smart" is the app's own order (Reading now: latest read first, Finished: latest finished first, the rest as saved). */
-type SortKey = 'smart' | 'title' | 'author' | 'rating' | 'short';
+type SortKey = 'smart' | 'added' | 'title' | 'author' | 'rating' | 'short';
 const SORTS: Array<{ id: SortKey; label: string }> = [
   { id: 'smart', label: 'Smart order' },
+  { id: 'added', label: 'Last added' },
   { id: 'title', label: 'Title A–Z' },
   { id: 'author', label: 'Author A–Z' },
   { id: 'rating', label: 'Top rated' },
   { id: 'short', label: 'Shortest first' },
 ];
 
-/** A sorted copy (the list itself is never touched). Books without a rating / page count go last. */
+/** A sorted copy (the list itself is never touched). Books without a rating / page count / added date go last. */
 const sortBooks = (list: Book[], key: SortKey, totalPages: Record<string, number>): Book[] => {
   if (key === 'smart') return list;
   const pages = (b: Book) => totalPages[String(b.id)] || b.pageCount || Infinity;
+  const added = (b: Book) => (typeof b.addedAt === 'number' ? b.addedAt : -1);
   const by: Record<Exclude<SortKey, 'smart'>, (a: Book, b: Book) => number> = {
+    added: (a, b) => added(b) - added(a), // newest first
     title: (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }),
     author: (a, b) => (a.author || '').localeCompare(b.author || '', undefined, { sensitivity: 'base' }) || a.title.localeCompare(b.title),
     rating: (a, b) => (b.ratingAverage ?? 0) - (a.ratingAverage ?? 0),
