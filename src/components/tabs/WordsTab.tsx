@@ -4,6 +4,7 @@ import type { WordItem, ReadingState } from '../../types';
 import { BUILTIN_DICTIONARY } from '../../data/defaultWords';
 import { lookupWord } from '../../services/dictionary';
 import { WordCard } from '../cards';
+import { ClearButton } from '../ClearButton';
 import { TabPane } from './TabPane';
 
 interface Props {
@@ -24,6 +25,7 @@ export function WordsTab({ active, state, updateWord, editWord, lookupAgain, tog
   // Word Garden filters & search
   const [wordFilter, setWordFilter] = useState<'all' | 'learning' | 'learned'>('all');
   const [wordSearchQuery, setWordSearchQuery] = useState('');
+  const wordSearchInput = useRef<HTMLInputElement>(null);
 
   // Words saved without a pronunciation get one filled in. Each word is tried once per two weeks (remembered on
   // this device), so a word the dictionary doesn't know doesn't cause a network request on every launch.
@@ -135,12 +137,15 @@ export function WordsTab({ active, state, updateWord, editWord, lookupAgain, tog
           <div className="relative w-full sm:flex-1">
             <Search className="w-4 h-4 text-[#706256] dark:text-[#a89a8a] absolute left-3 top-3 pointer-events-none" />
             <input
+              ref={wordSearchInput}
               type="search"
               value={wordSearchQuery}
               onChange={e => setWordSearchQuery(e.target.value)}
               placeholder="Search discovered words or meanings…"
-              className="w-full pl-9 pr-4 py-2 bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-xs rounded-xl focus:outline-none"
+              aria-label="Search your words"
+              className="rl-search w-full pl-9 pr-10 py-2 bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-xs rounded-xl focus:outline-none"
             />
+            <ClearButton show={!!wordSearchQuery} onClear={() => { setWordSearchQuery(''); wordSearchInput.current?.focus(); }} />
           </div>
 
           <div className="flex gap-2 w-full sm:w-auto">

@@ -87,7 +87,7 @@
 /* Store shelves: the browser skips layout and painting of shelves that are off-screen (a Store has ~20 shelves and ~300 covers) and
    keeps each one's last measured height, so the page does not jump while scrolling. A shelf's contents already sit inside its own
    scroller, so nothing visible is clipped. */
-.rl-shelf { content-visibility: auto; contain-intrinsic-size: auto 344px; /* = the real height of a shelf (see StoreShelf: title + cover + four fixed lines), 369px from 640px up, so an unseen shelf holds the same room as a drawn one */ }
+.rl-shelf { content-visibility: auto; contain-intrinsic-size: auto 411px; /* = the real height of a shelf (see StoreShelf: title + cover + title / author / rating lines + the one-line honor slot and the status row; the same for every shelf), 433px from 640px up, so an unseen shelf holds the same room as a drawn one */ }
 
 
 .book-cover-modal-3d {
@@ -128,7 +128,7 @@
 
 /* ---- ratings, prize badges, cover trophy ---- */
 .rl-stars { color: #d9a441; letter-spacing: 1px; }
-@media (min-width: 640px) { .rl-shelf { contain-intrinsic-size: auto 369px; } }
+@media (min-width: 640px) { .rl-shelf { contain-intrinsic-size: auto 433px; } }
 .rl-bdgs { display: flex; flex-wrap: wrap; gap: 6px; }
 .rl-bdg { font: 600 12px/1.3 system-ui, sans-serif; padding: 4px 10px; border-radius: 12px; border: 1px solid #e3d7c3; color: #706256; }
 .rl-bdg-w { background: #e8efe7; color: #2e5934; border-color: #2e5934; }

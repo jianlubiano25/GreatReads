@@ -30,6 +30,8 @@ interface Props {
   lazy?: boolean;
   /** Draw nothing (instead of an error box) when the source can't load: for optional shelves such as the extra NYT lists */
   hideIfUnavailable?: boolean;
+  /** Draw nothing (no title, no placeholder) until there are books to show: for rows that may turn out empty, so they never flash on and then vanish */
+  hideWhileLoading?: boolean;
   /** Books you already have: when a shelf book is the same book as one of these, it shows that book's rating (average + count together) */
   known?: Book[];
   /** One of the first shelves on the page: its first covers load at once. Every other shelf's covers load as they come near the screen. */
@@ -48,8 +50,8 @@ function ShelfSkeleton({ pulse }: { pulse: boolean }) {
   return (
     <div className="flex gap-4 overflow-hidden pb-3" aria-busy="true">
       {[0, 1, 2, 3].map(i => (
-        <div key={i} className="w-[125px] sm:w-[140px] shrink-0 flex flex-col gap-1.5">
-          <div className={`w-full h-[180px] sm:h-[200px] rounded-md bg-[#e3d7c3]/60 dark:bg-[#382f25]/60 ${pulse ? 'animate-pulse' : ''}`} />
+        <div key={i} className="w-[150px] sm:w-[165px] shrink-0 flex flex-col gap-1.5">
+          <div className={`w-full h-[216px] sm:h-[238px] rounded-md bg-[#e3d7c3]/60 dark:bg-[#382f25]/60 ${pulse ? 'animate-pulse' : ''}`} />
           <div className="h-3 w-4/5 rounded bg-[#e3d7c3]/40 dark:bg-[#382f25]/40" />
           <div className="h-3 w-3/5 rounded bg-[#e3d7c3]/40 dark:bg-[#382f25]/40" />
           <div className="h-3 w-2/5 rounded bg-[#e3d7c3]/40 dark:bg-[#382f25]/40" />
@@ -60,7 +62,7 @@ function ShelfSkeleton({ pulse }: { pulse: boolean }) {
 }
 
 /** One horizontally scrolling store shelf, fed by a ShelfSource. */
-export const StoreShelf = React.memo(function StoreShelf({ id, title, source, books: fixedBooks, ranked, lazy, hideIfUnavailable, known, priority, mine, onOpen }: Props) {
+export const StoreShelf = React.memo(function StoreShelf({ id, title, source, books: fixedBooks, ranked, lazy, hideIfUnavailable, hideWhileLoading, known, priority, mine, onOpen }: Props) {
   const [loaded, setLoaded] = useState<Book[] | null>(() => (fixedBooks || !source || lazy ? null : source.cached()));
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0); // "Try again" reloads the shelf
@@ -116,6 +118,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
 
   if (fixedBooks && fixedBooks.length === 0) return null;
   if (failed && hideIfUnavailable) return null;
+  if (hideWhileLoading && !books && !failed) return null;
 
   return (
     <div ref={holder} data-shelf-id={id} className="rl-shelf flex flex-col gap-3 scroll-mt-16">
@@ -132,7 +135,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
       ) : (
         <div className="flex gap-4 overflow-x-auto pb-3 no-scrollbar">
           {books.map((b, i) => (
-            <div key={`${b.id}|${b.title}`} className="w-[125px] sm:w-[140px] shrink-0 flex flex-col gap-1.5">
+            <div key={`${b.id}|${b.title}`} className="w-[150px] sm:w-[165px] shrink-0 flex flex-col gap-1.5">
               <div className="relative">
                 {ranked && (
                   <span className="absolute top-2 left-2 z-30 px-2 py-0.5 rounded-md text-xs font-bold bg-[#fbf7ee] dark:bg-[#231d17] text-[#201a15] dark:text-[#f0e6d6] shadow">
@@ -142,7 +145,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
                 <button
                   type="button"
                   onClick={() => onOpen(b)}
-                  className="book-cover-3d w-full h-[180px] sm:h-[200px] text-left p-3 flex flex-col justify-between text-white overflow-hidden"
+                  className="book-cover-3d w-full h-[216px] sm:h-[238px] text-left p-3 flex flex-col justify-between text-white overflow-hidden"
                   style={{ backgroundColor: b.spineColor || '#6b6f80' }}
                   aria-label={`${b.title} by ${b.author}`}
                 >
@@ -157,9 +160,11 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
               </h4>
               <p className="text-[11px] leading-4 h-4 text-[#706256] dark:text-[#a89a8a] truncate">{b.author}</p>
               <div className="h-4"><RatingLine book={b} compact /></div>
-              <AwardBadges book={b} />
-              {/* One short chip (Reading now, In My Library, Finished...), on one line, below the honors: the reading page / dates live in the library, not on a shelf card */}
-              {mine?.(b) && <span className="self-start max-w-full truncate px-2 py-0.5 rounded-full text-[10px] leading-4 font-semibold bg-[#2e5934]/10 text-[#2e5934] dark:bg-[#86b880]/15 dark:text-[#86b880]">{mine(b)}</span>}
+              {/* Every honor of the book, in full (the long NYT label is shortened so it fits one line, see chipLabel). The slot is never shorter than one chip, so a shelf of
+                  books without honors is as tall as an awards shelf. Your own status chip (Reading now, In My Library...) has a row of its own on every Discover shelf
+                  (empty for a book you don't have), so owning a book never makes one shelf taller than the rest. */}
+              <div className="min-h-[26px]"><AwardBadges book={b} /></div>
+              {mine && <div className="h-5">{mine(b) && <span className="inline-block max-w-full truncate px-2 py-0.5 rounded-full text-[10px] leading-4 font-semibold bg-[#2e5934]/10 text-[#2e5934] dark:bg-[#86b880]/15 dark:text-[#86b880]">{mine(b)}</span>}</div>}
             </div>
           ))}
         </div>

@@ -36,11 +36,13 @@ export function StarRating({ value, className = '' }: { value: number; className
   );
 }
 
+/** 163204 -> 163.2k, 16000 -> 16k (never "16.0k"), 1,250,000 -> 1.3M (never "1250.0k"), 2,000,000 -> 2M */
 export const compactCount = (n?: number) => {
   if (!n) return '';
   if (n < 1000) return String(n);
-  const k = Math.round(n / 100) / 10; // 163204 -> 163.2
-  return k >= 1000 ? `${Math.round(n / 100000) / 10}M` : `${k.toFixed(1)}k`; // 1,250,000 -> 1.3M, never "1250.0k"
+  const k = Math.round(n / 100) / 10;
+  if (k >= 1000) return `${String(Math.round(n / 100000) / 10).replace(/\.0$/, '')}M`;
+  return `${String(k).replace(/\.0$/, '')}k`;
 };
 
 /**
@@ -56,10 +58,11 @@ export function RatingLine({ book, className = '', compact = false }: { book: Bo
   useSyncExternalStore(subscribe, () => infoVersion(book), () => 0);
   const r = shownRating(book) ?? (book.ratingSource && book.ratingSource !== 'library' ? externalRating(book) : ratingOf(book));
   if (!r) return null;
-  // One line, always: the stars never shrink or wrap, the number text never breaks (even 162.4k fits a 125px shelf card: compact = smaller stars and text)
+  // One line, always: the stars never wrap and the number text never breaks (even 162.4k fits a 150px shelf card). Compact = the shelf / library card size: the stars stay big and the card
+  // is made wide enough for them, rather than shrinking the stars to fit.
   return (
-    <div className={`flex flex-nowrap items-center whitespace-nowrap text-[#706256] dark:text-[#a89a8a] ${compact ? 'gap-0.5 text-[10px] max-w-full' : 'gap-1 text-xs'} ${className}`}>
-      <StarRating value={r.average} className={`shrink-0 ${compact ? 'text-[8px]' : ''}`} />
+    <div className={`flex flex-nowrap items-center whitespace-nowrap text-[#706256] dark:text-[#a89a8a] ${compact ? 'gap-1 text-[11px] max-w-full' : 'gap-1 text-xs'} ${className}`}>
+      <StarRating value={r.average} className={`shrink-0 ${compact ? 'text-xs' : ''}`} />
       <span className="whitespace-nowrap tabular-nums">
         {r.average.toFixed(1)}
         {r.count ? (compact ? `\u2009·\u2009${compactCount(r.count)}` : ` · ${compactCount(r.count)}`) : ''}
@@ -79,6 +82,8 @@ export const primaryAward = (b: Book): { type: AwardKind; label: string } | unde
 };
 
 const chipIcon = (t: AwardKind) => (t === 'c' ? '\u{1F4D6}' : t === 'w' ? '\u{1F3C6}' : '\u{1F396}\uFE0F');
+/** "NYT bestseller · 12 weeks" is wider than a shelf card and wrapped to two lines, which made every NYT shelf taller than the rest: on a chip it reads "NYT · 12 weeks" or "NYT · new" (the book info keeps the full label). */
+export const chipLabel = (label: string): string => label.replace(/^NYT bestseller · new this week$/, 'NYT · new').replace(/^NYT bestseller(?= · )/, 'NYT');
 const chipClass = (t: AwardKind) => `rl-bdg ${t === 'w' ? 'rl-bdg-w' : t === 'c' ? 'rl-bdg-c' : ''}`;
 
 /** Prize / shortlist chips, e.g. 🏆 Women's Prize 2021. `primary`: just the one main honor, on one line (Store shelves: every shelf stays the same height). */
@@ -88,7 +93,7 @@ export function AwardBadges({ book, primary }: { book: Book; primary?: boolean }
     if (!x) return null;
     return (
       <div className="rl-bdgs">
-        <span className={`${chipClass(x.type)} block max-w-full truncate whitespace-nowrap`} title={x.label}>{chipIcon(x.type)} {x.label}</span>
+        <span className={`${chipClass(x.type)} block max-w-full truncate whitespace-nowrap`} title={x.label}>{chipIcon(x.type)} {chipLabel(x.label)}</span>
       </div>
     );
   }
@@ -98,7 +103,7 @@ export function AwardBadges({ book, primary }: { book: Book; primary?: boolean }
     <div className="rl-bdgs">
       {a.map((x, i) => (
         <span key={i} className={chipClass(x.type)}>
-          {chipIcon(x.type)} {x.label}
+          {chipIcon(x.type)} {chipLabel(x.label)}
         </span>
       ))}
     </div>
