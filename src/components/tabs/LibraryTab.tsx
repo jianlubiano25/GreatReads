@@ -266,7 +266,8 @@ export function LibraryTab({ active, myBooks, state, handleOpenCover, handleOpen
   return (
     <TabPane active={active}>
       <div className="flex flex-col gap-6">
-        {/* Search My Library + the sort chip */}
+        {/* Pinned while the list scrolls (same pattern as the Store's jump bar): search + sort chip and the tags, tightly spaced */}
+        <div className="sticky top-0 z-20 -mx-4 sm:-mx-6 md:-mx-8 px-4 sm:px-6 md:px-8 pt-[max(env(safe-area-inset-top),0.25rem)] pb-1 bg-[#f5f0e6] dark:bg-[#181410] flex flex-col gap-1">
         <div className="flex items-center gap-2">
           <div className="relative flex-1 min-w-0">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#706256] dark:text-[#a89a8a] pointer-events-none" aria-hidden="true" />
@@ -351,6 +352,7 @@ export function LibraryTab({ active, myBooks, state, handleOpenCover, handleOpen
               <Pencil className="w-3.5 h-3.5" />
             </button>
           )}
+        </div>
         </div>
 
         {statusGroup('Reading', GROUP_NOW, nowTab, setNowTab)}
