@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pencil, Plus, Search, X } from 'lucide-react';
+import { ArrowUpDown, Check, Pencil, Plus, Search, X } from 'lucide-react';
 import type { Book, BookStatus, ReadingState } from '../../types';
 import { BOOK_AWARDS } from '../../data/defaultBooks';
 import { bookKind } from '../../services/bookKind';
@@ -40,6 +40,29 @@ const BUILT_IN_TAGS: Array<[string, string]> = [
   ['fic', '📖 Fiction'],
   ['nf', '🧭 Non-fiction'],
 ];
+
+/** How the book lists are ordered. "Smart" is the app's own order (Reading now: latest read first, Finished: latest finished first, the rest as saved). */
+type SortKey = 'smart' | 'title' | 'author' | 'rating' | 'short';
+const SORTS: Array<{ id: SortKey; label: string }> = [
+  { id: 'smart', label: 'Smart order' },
+  { id: 'title', label: 'Title A–Z' },
+  { id: 'author', label: 'Author A–Z' },
+  { id: 'rating', label: 'Top rated' },
+  { id: 'short', label: 'Shortest first' },
+];
+
+/** A sorted copy (the list itself is never touched). Books without a rating / page count go last. */
+const sortBooks = (list: Book[], key: SortKey, totalPages: Record<string, number>): Book[] => {
+  if (key === 'smart') return list;
+  const pages = (b: Book) => totalPages[String(b.id)] || b.pageCount || Infinity;
+  const by: Record<Exclude<SortKey, 'smart'>, (a: Book, b: Book) => number> = {
+    title: (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }),
+    author: (a, b) => (a.author || '').localeCompare(b.author || '', undefined, { sensitivity: 'base' }) || a.title.localeCompare(b.title),
+    rating: (a, b) => (b.ratingAverage ?? 0) - (a.ratingAverage ?? 0),
+    short: (a, b) => (pages(a) === pages(b) ? 0 : pages(a) < pages(b) ? -1 : 1),
+  };
+  return [...list].sort(by[key]);
+};
 
 const CHIP_BASE = 'shrink-0 px-3.5 py-1.5 rounded-full border text-xs font-semibold transition-all whitespace-nowrap';
 const CHIP_ON = 'bg-[#2e5934] text-white border-[#2e5934]';
@@ -103,6 +126,8 @@ export function LibraryTab({ active, myBooks, state, handleOpenCover, handleOpen
   const [nextTab, setNextTab] = useState<string>('next');
   const [masterTab, setMasterTab] = useState<string>('master');
   const [viewAll, setViewAll] = useState<{ title: string; books: Book[] } | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>('smart');
+  const [sortOpen, setSortOpen] = useState(false);
 
   // The header's "Add shelf" opens the new-shelf dialog (each new request opens it once)
   const handledRequest = useRef(newShelfRequest);
@@ -148,8 +173,9 @@ export function LibraryTab({ active, myBooks, state, handleOpenCover, handleOpen
     }
     map.set('now', readingNowOrder(map.get('now') || [], state.history));
     map.set('done', (map.get('done') || []).slice().sort((a, b) => (state.history[String(b.id)]?.finished ?? '').localeCompare(state.history[String(a.id)]?.finished ?? '')));
+    if (sortKey !== 'smart') for (const [k, list] of map) map.set(k, sortBooks(list, sortKey, state.totalPages));
     return map;
-  }, [visibleBooks, state.status, state.history]);
+  }, [visibleBooks, state.status, state.history, state.totalPages, sortKey]);
 
   const shownIds = useMemo(() => new Set(visibleBooks.map(b => String(b.id))), [visibleBooks]);
 
@@ -230,29 +256,64 @@ export function LibraryTab({ active, myBooks, state, handleOpenCover, handleOpen
   ];
   const openShelf = customShelves.find(c => c.id === masterTab);
   const masterValue = openShelf ? openShelf.id : 'master';
-  const masterBooks = openShelf ? shelfBooks(openShelf) : visibleBooks;
+  const masterBooks = useMemo(() => sortBooks(openShelf ? shelfBooks(openShelf) : visibleBooks, sortKey, state.totalPages), [openShelf, visibleBooks, myBooks, shownIds, sortKey, state.totalPages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedOwn = collections.find(c => c.id === libFilter && c.kind === 'tag');
 
   return (
     <TabPane active={active}>
       <div className="flex flex-col gap-6">
-        {/* Search My Library */}
-        <div className="relative">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#706256] dark:text-[#a89a8a] pointer-events-none" aria-hidden="true" />
-          <input
-            type="search"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Search your library"
-            aria-label="Search your library"
-            className="w-full py-2.5 pl-10 pr-10 rounded-full text-sm bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-[#201a15] dark:text-[#f0e6d6] placeholder:text-[#706256] dark:placeholder:text-[#a89a8a] focus:outline-none focus:border-[#2e5934]"
-          />
-          {query && (
-            <button type="button" onClick={() => setQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full hover:bg-black/5" aria-label="Clear search">
-              <X className="w-4 h-4 text-[#706256] dark:text-[#a89a8a]" />
+        {/* Search My Library + the sort chip */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 min-w-0">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#706256] dark:text-[#a89a8a] pointer-events-none" aria-hidden="true" />
+            <input
+              type="search"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search your library"
+              aria-label="Search your library"
+              className="w-full py-2.5 pl-10 pr-10 rounded-full text-sm bg-[#fbf7ee] dark:bg-[#231d17] border border-[#e3d7c3] dark:border-[#382f25] text-[#201a15] dark:text-[#f0e6d6] placeholder:text-[#706256] dark:placeholder:text-[#a89a8a] focus:outline-none focus:border-[#2e5934]"
+            />
+            {query && (
+              <button type="button" onClick={() => setQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full hover:bg-black/5" aria-label="Clear search">
+                <X className="w-4 h-4 text-[#706256] dark:text-[#a89a8a]" />
+              </button>
+            )}
+          </div>
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setSortOpen(o => !o)}
+              aria-label={`Sort books: ${SORTS.find(x => x.id === sortKey)?.label}`}
+              aria-haspopup="menu"
+              aria-expanded={sortOpen}
+              className={`flex items-center gap-1.5 h-[42px] px-3.5 rounded-full border text-xs font-semibold transition-all ${sortKey === 'smart' ? CHIP_OFF : CHIP_ON}`}
+            >
+              <ArrowUpDown className="w-4 h-4" aria-hidden="true" />
+              {sortKey !== 'smart' && <span className="whitespace-nowrap">{SORTS.find(x => x.id === sortKey)?.label}</span>}
             </button>
-          )}
+            {sortOpen && (
+              <>
+                <button type="button" aria-label="Close sort menu" className="fixed inset-0 z-30 cursor-default" onClick={() => setSortOpen(false)} />
+                <div role="menu" className="absolute right-0 top-full mt-1.5 z-40 w-44 rounded-2xl border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] shadow-lg py-1">
+                  {SORTS.map(o => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={sortKey === o.id}
+                      onClick={() => { setSortKey(o.id); setSortOpen(false); }}
+                      className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-xs font-semibold text-left text-[#201a15] dark:text-[#f0e6d6] hover:bg-[#2e5934]/10"
+                    >
+                      {o.label}
+                      {sortKey === o.id && <Check className="w-4 h-4 text-[#2e5934] dark:text-[#86b880]" aria-hidden="true" />}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Tags: scroll sideways; the + makes a new one */}

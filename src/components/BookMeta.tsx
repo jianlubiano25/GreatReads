@@ -82,8 +82,10 @@ export const primaryAward = (b: Book): { type: AwardKind; label: string } | unde
 };
 
 const chipIcon = (t: AwardKind) => (t === 'c' ? '\u{1F4D6}' : t === 'w' ? '\u{1F3C6}' : '\u{1F396}\uFE0F');
-/** "NYT bestseller · 12 weeks" is wider than a shelf card and wrapped to two lines, which made every NYT shelf taller than the rest: on a chip it reads "NYT · 12 weeks" or "NYT · new" (the book info keeps the full label). */
-export const chipLabel = (label: string): string => label.replace(/^NYT bestseller · new this week$/, 'NYT · new').replace(/^NYT bestseller(?= · )/, 'NYT');
+/** "NYT bestseller · 12 weeks" reads "NYT · 12 weeks" on a chip, and "NYT · new this week" in full (never cut: a chip too wide for its card wraps to a second line). The book info keeps the full label. */
+export const chipLabel = (label: string): string => label.replace(/^NYT bestseller(?= · )/, 'NYT');
+/** Does the book wear any honor chip? (The shelf card uses it to place your status chip.) */
+export const hasHonors = (b: Book): boolean => awardsFor(b).length > 0;
 const chipClass = (t: AwardKind) => `rl-bdg ${t === 'w' ? 'rl-bdg-w' : t === 'c' ? 'rl-bdg-c' : ''}`;
 
 /** Prize / shortlist chips, e.g. 🏆 Women's Prize 2021. `primary`: just the one main honor, on one line (Store shelves: every shelf stays the same height). */
@@ -93,7 +95,7 @@ export function AwardBadges({ book, primary }: { book: Book; primary?: boolean }
     if (!x) return null;
     return (
       <div className="rl-bdgs">
-        <span className={`${chipClass(x.type)} block max-w-full truncate whitespace-nowrap`} title={x.label}>{chipIcon(x.type)} {chipLabel(x.label)}</span>
+        <span className={`${chipClass(x.type)} block max-w-full`} title={x.label}>{chipIcon(x.type)} {chipLabel(x.label)}</span>
       </div>
     );
   }

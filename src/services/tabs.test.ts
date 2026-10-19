@@ -222,7 +222,7 @@ test('Shelf rating line: the stars on a shelf card keep the normal size (they ar
   const html = renderToStaticMarkup(h(RatingLine, { book: rated, compact: true }));
   assert.ok(!/text-\[(8|9|10)px\]/.test(html.slice(0, html.indexOf('4.5'))), 'no tiny star size');
   const shelf = renderToStaticMarkup(h(StoreShelf, { id: 'x', title: 'X', books: [rated], onOpen: noop }));
-  assert.match(shelf, /w-\[150px\] sm:w-\[165px\]/); // the card is wide enough for them
+  assert.match(shelf, /w-\[138px\] sm:w-\[154px\]/); // the card is wide enough for them
   assert.match(shelf, /min-h-\[26px\]/); // and every card holds at least one honor line
 });
 
@@ -233,19 +233,25 @@ test('Shelf cards: a long NYT honor fits one line, so every shelf has the same h
   const onNyt = draw(nyt);
   assert.match(onNyt, /NYT · 12 weeks/); // the chip reads short ...
   assert.ok(!/NYT bestseller · 12 weeks/.test(onNyt));
-  assert.equal(chipLabel('NYT bestseller · new this week'), 'NYT · new');
+  assert.equal(chipLabel('NYT bestseller · new this week'), 'NYT · new this week'); // in full, never just "new"
   assert.equal(chipLabel('NYT bestseller · 104 weeks'), 'NYT · 104 weeks');
   assert.equal(chipLabel('NYT bestseller'), 'NYT bestseller'); // a short one stays as it is
   assert.equal(chipLabel("Women's Prize 2021"), "Women's Prize 2021"); // and no other honor is touched
   assert.equal((onNyt.match(/class="rl-bdg[ "]/g) || []).length, 1); // still shown in full, never cut to a fraction
-  const slots = (html: string) => (html.match(/class="min-h-\[26px\]"/g) || []).length;
+  const slots = (html: string) => (html.match(/class="min-h-\[26px\] /g) || []).length;
   assert.equal(slots(onNyt), 1);
   assert.equal(slots(draw(plain)), 1); // a book with no honor still holds the slot
-  // the status row is on every Discover shelf (the Store passes `mine`), owned book or not
-  const withMine = (html: string) => (html.match(/class="h-5"/g) || []).length;
-  assert.equal(withMine(draw(plain, () => undefined)), 1);
-  assert.equal(withMine(draw(plain, () => 'Reading now')), 1);
-  assert.equal(withMine(draw(plain)), 0); // a shelf outside Discover has none
+  // your status chip sits in the honor slot: right under the rating when the book has no honor, below its honors when it has some
+  const chips = (html: string) => (html.match(/rounded-full text-\[10px\]/g) || []).length;
+  assert.equal(chips(draw(plain, () => undefined)), 0);
+  const ownedPlain = draw(plain, () => 'Reading now');
+  assert.equal(chips(ownedPlain), 1);
+  assert.equal(slots(ownedPlain), 1); // inside the same slot: no row of its own, no gap
+  assert.ok(ownedPlain.indexOf('Reading now') > ownedPlain.indexOf('min-h-[26px]'));
+  const ownedNyt = draw(nyt, () => 'In My Library');
+  assert.ok(ownedNyt.indexOf('In My Library') > ownedNyt.indexOf('NYT · 12 weeks'));
+  assert.ok(!/truncate/.test(ownedNyt.slice(ownedNyt.indexOf('min-h-[26px]')))); // nothing in the slot is cut off
+  assert.equal(chips(draw(plain)), 0); // a shelf outside Discover has none
 });
 
 test('A row that may turn out empty draws nothing while it loads (no title or placeholder that then disappears)', () => {

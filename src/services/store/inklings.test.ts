@@ -144,7 +144,7 @@ test('a Store cover wears ONE honor: its own shelf\'s label first, else the best
   assert.equal(primaryAward(bk({}))?.label, undefined, 'no honor, no chip');
   const html = renderToStaticMarkup(React.createElement(AwardBadges, { book: bk({ awardLabel: 'Booker Prize 2025' }), primary: true } as any));
   assert.equal((html.match(/rl-bdg /g) || []).length, 1);
-  assert.match(html, /truncate/, 'one line, so every shelf keeps the same height');
+  assert.ok(!/truncate/.test(html), 'never cut off: a long honor wraps instead');
   assert.equal(renderToStaticMarkup(React.createElement(AwardBadges, { book: bk({}), primary: true } as any)), '');
 });
 
