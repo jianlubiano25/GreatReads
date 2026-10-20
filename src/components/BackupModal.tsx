@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { copyText } from '../services/clipboard';
-import { refreshBookCovers } from '../services/books';
+import { refreshAllCovers } from '../services/books';
 import { X, Copy, Upload, Check, AlertCircle, RefreshCw, Download, Trash2, Image as ImageIcon } from 'lucide-react';
 
 interface BackupModalProps {
@@ -114,12 +114,12 @@ export const BackupModal: React.FC<BackupModalProps> = ({
     setResetNote(done);
   };
 
-  // Forgets saved cover repairs so every book shows its current cover again. Your books and data are not touched.
-  const handleRefreshCovers = () => {
-    const n = refreshBookCovers();
-    setCoverNote(n > 0
-      ? `Done. ${n} saved cover repair${n === 1 ? '' : 's'} cleared; covers are reloading.`
-      : 'Done. No saved cover repairs were found; covers are reloading.');
+  // Forgets every saved cover choice and fetches the latest published covers, then reloads so each shelf picks its covers again. Your books and data are not touched.
+  const handleRefreshCovers = async () => {
+    setCoverNote('Refreshing covers…');
+    await refreshAllCovers();
+    setCoverNote('Done. Saved covers cleared and the latest published covers fetched; reloading.');
+    setTimeout(() => window.location.reload(), 900);
   };
 
   const handleRestore = () => {

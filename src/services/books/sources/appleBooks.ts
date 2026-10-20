@@ -1,6 +1,7 @@
 import { getJsonDetailed } from '../http';
 import { authorListMatches, subtitleKey, titleKey, titleVariants, titlesMatch } from '../identity';
 import { genreFromSubjects, makeBook, plainText } from '../model';
+import { isEnglishLanguage } from '../language';
 import type { CallOpts, Hit } from './types';
 
 /**
@@ -21,7 +22,9 @@ export async function lookupApple(q: { title: string; author?: string }, opts: C
     // The same book can be listed more than once (editions, re-listings). Apple's first match stays the book, but when that listing is unrated,
     // an identically titled duplicate that Apple's readers rated (the most ratings) is taken instead: an unrated duplicate must not hide the
     // rating. A differently titled listing (a study guide, a bundle) is never a stand-in.
-    const matches: any[] = (r.data?.results || []).filter((it: any) => it.artworkUrl100 && titlesMatch(String(it.trackName || ''), q.title) && authorListMatches(it.artistName, q.author || ''));
+    // A listing that declares another language (Apple's languageCodesISO2A) is a translation's art: skipped, so an English listing (or the next source) supplies the cover
+    const english = (it: any) => isEnglishLanguage(String(it.languageCodesISO2A?.[0] || '').toLowerCase());
+    const matches: any[] = (r.data?.results || []).filter((it: any) => it.artworkUrl100 && english(it) && titlesMatch(String(it.trackName || ''), q.title) && authorListMatches(it.artistName, q.author || ''));
     const rated = (it: any) => (it.averageUserRating && it.userRatingCount > 0 ? Number(it.userRatingCount) : 0);
     const first = matches[0];
     const sameListing = (it: any) => titleKey(String(it.trackName || '')) === titleKey(String(first.trackName || '')) && subtitleKey(String(it.trackName || '')) === subtitleKey(String(first.trackName || ''));

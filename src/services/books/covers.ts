@@ -6,7 +6,7 @@
  */
 import { type Book } from '../../types';
 import { isAppleCoverUrl, isNytCoverUrl } from './model';
-import { persistentCache, registerClearableKey } from './cache';
+import { clearCaches, COVER_CACHE_KEYS, persistentCache, registerClearableKey } from './cache';
 import { dedupeInflight, mapPool, pool, transientFailureCount } from './http';
 import { identityOf, isUnknownAuthor, primaryAuthor, titleVariants, titlesMatch, authorKey, titleKey } from './identity';
 import { findApple } from './sources/appleBooks';
@@ -753,6 +753,8 @@ export async function repairMissingCovers(opts: { includeNotFound?: boolean; onP
  */
 export function refreshBookCovers(): number {
   const count = Object.keys(fixes).length;
+  // The saved answers a cover is chosen from: each book's resolved result, the shelves built from them and the cover viewer's lists. (Ratings are looked up again with them.)
+  clearCaches([COVER_CACHE_KEYS.resolved, COVER_CACHE_KEYS.shelves, COVER_CACHE_KEYS.candidates]);
   fixes = {};
   try { localStorage.removeItem(FIX_KEY); localStorage.removeItem(NONE_KEY); } catch {}
   inflight.clear();
@@ -760,6 +762,18 @@ export function refreshBookCovers(): number {
   lastNotFound = [];
   emitMissing();
   emitFixes();
+  return count;
+}
+
+/**
+ * "Refresh Book Covers" in full: forget every saved cover choice (refreshBookCovers), drop the browser's saved Open Library / Google / Apple answers (the service worker
+ * keeps them for 12 hours and would hand the same old answer back), and fetch the covers published for everyone right now. Your own picks and your data are untouched.
+ * Pictures already on the device stay: a new choice is a different picture, and an unchanged one need not be downloaded again. The caller reloads the page afterwards.
+ */
+export async function refreshAllCovers(): Promise<number> {
+  const count = refreshBookCovers();
+  try { await (globalThis as any).caches?.delete('rl-api-v1'); } catch {}
+  await syncSharedCovers({ force: true }).catch(() => false);
   return count;
 }
 
@@ -961,7 +975,7 @@ const fromOpenLibrary: Finder = async (b, author) => {
 
 type Run = { found: CoverCandidate[]; subs: Set<(list: CoverCandidate[]) => void>; done: Promise<CoverCandidate[]> };
 const runs = new Map<string, Run>();
-const cache = persistentCache<CoverCandidate[]>('readlife.coverCands1', {
+const cache = persistentCache<CoverCandidate[]>(COVER_CACHE_KEYS.candidates, {
   ttl: 7 * 24 * 60 * 60 * 1000,
   max: 40,
   validate: v => Array.isArray(v) && v.every(c => c && typeof c.url === 'string' && /^https:\/\//.test(c.url) && typeof c.source === 'string'),

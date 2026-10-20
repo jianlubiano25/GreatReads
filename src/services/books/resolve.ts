@@ -1,7 +1,7 @@
 import type { Book } from '../../types';
 import { dedupeInflight, transientFailureCount } from './http';
 import { bump } from './perf';
-import { persistentCache } from './cache';
+import { COVER_CACHE_KEYS, persistentCache } from './cache';
 import { authorKey, cleanIsbn, isbnPair, mergeIdentity, titleKey } from './identity';
 import { titleLooksForeign } from './language';
 import { isAppleCoverUrl } from './model';
@@ -61,9 +61,9 @@ export interface Resolved {
  * belongs to another language's edition is never chosen here (the cover lookup at draw time keeps it as the very last resort for a book with no cover at all).
  * A saved result whose cover is not Apple's and was chosen before this rule is looked up again once (an Apple cover is Apple's US-store art, so it stays).
  */
-const COVER_RULE = 2;
+export const COVER_RULE = 2;
 
-const cache = persistentCache<Resolved | null>('readlife.resolved3', { ttl: 14 * 24 * 60 * 60 * 1000, keepStale: 90 * 24 * 60 * 60 * 1000, max: 250, validate: v => v === null || (!!v && typeof v === 'object' && !!v.book && typeof v.book.title === 'string') });
+const cache = persistentCache<Resolved | null>(COVER_CACHE_KEYS.resolved, { ttl: 14 * 24 * 60 * 60 * 1000, keepStale: 90 * 24 * 60 * 60 * 1000, max: 250, validate: v => v === null || (!!v && typeof v === 'object' && !!v.book && typeof v.book.title === 'string') });
 /**
  * Books no source could place. Remembered only briefly: "not found" is often a dropped connection or a rate limit, and a miss
  * that lasted two weeks (as saved results do) left covers blank long after the network was fine again.

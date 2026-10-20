@@ -8,7 +8,21 @@ export interface Cache<T> {
   peek(key: string): { value: T; ageMs: number } | undefined;
   set(key: string, value: T): void;
   delete(key: string): void;
+  /** Forget everything in this cache (memory and storage). */
+  clear(): void;
 }
+
+/** The saved caches that hold a book's cover choice, named once so "Refresh Book Covers" and the caches themselves cannot disagree. */
+export const COVER_CACHE_KEYS = { resolved: 'readlife.resolved3', shelves: 'readlife.curated3', candidates: 'readlife.coverCands1' } as const;
+const instances = new Map<string, Cache<any>>();
+/** Empty the named caches, in memory as well as in storage (removing only the storage key would leave this session's copy in use). */
+export const clearCaches = (keys: readonly string[]): void => {
+  for (const k of keys) {
+    const c = instances.get(k);
+    if (c) c.clear();
+    else { try { localStorage.removeItem(k); } catch {} }
+  }
+};
 
 /** Every localStorage key the app can download again, so the "storage is full" cleanup can never go stale. */
 const clearableKeys = new Set<string>();
@@ -63,7 +77,7 @@ export function persistentCache<T>(storageKey: string, opts: {
     }, 400);
   };
 
-  return {
+  const cache: Cache<T> = {
     get(key) {
       load();
       const e = mem.get(key);
@@ -89,7 +103,15 @@ export function persistentCache<T>(storageKey: string, opts: {
       load();
       if (mem.delete(key)) save();
     },
+    clear() {
+      loaded = true;
+      mem.clear();
+      clearTimeout(timer);
+      try { localStorage.removeItem(storageKey); } catch {}
+    },
   };
+  instances.set(storageKey, cache);
+  return cache;
 }
 
 /** Cache keys older versions of the app used for book data. Removed at startup so they do not eat the 5 MB storage budget. */

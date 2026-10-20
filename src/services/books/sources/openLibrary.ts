@@ -124,6 +124,11 @@ function workEditions(workId: string, opts: CallOpts = {}): Promise<any[] | null
 /** Tests only. */
 export const forgetEditionsForTests = () => editionsMemo.clear();
 
+/** The year an edition says it was published ("2019", "March 3, 2021"), or 0 when it does not say. */
+const editionYear = (e: any): number => Number(String(e?.publish_date ?? '').match(/\b(1[5-9]|20)\d\d\b/)?.[0]) || 0;
+/** Newest first (an edition that gives no year keeps its place after the dated ones): a modern jacket is preferred to the work's oldest scan. */
+const newestFirst = (entries: any[]): any[] => entries.map((e, i) => ({ e, i })).sort((a, b) => editionYear(b.e) - editionYear(a.e) || a.i - b.i).map(x => x.e);
+
 const isEnglishEdition = (e: any): boolean => {
   const langs: string[] = Array.isArray(e?.languages) ? e.languages.map((l: any) => String(l?.key || '')) : [];
   return !langs.length || langs.includes('/languages/eng');
@@ -144,7 +149,7 @@ export async function openLibraryEditionPages(workId: string, opts: CallOpts = {
  */
 export async function openLibraryEditionCovers(workId: string, max = 8, opts: CallOpts = {}): Promise<number[]> {
   const ids: number[] = [];
-  for (const e of ((await workEditions(workId, opts)) || [])) {
+  for (const e of newestFirst((await workEditions(workId, opts)) || [])) {
     if (!isEnglishEdition(e)) continue; // a translation's jacket is a different book to look at
     const id = (Array.isArray(e?.covers) ? e.covers : []).find((c: unknown) => Number.isInteger(c) && (c as number) > 0);
     if (id && !ids.includes(id)) ids.push(id);
@@ -162,7 +167,7 @@ export async function openLibraryEnglishCoverFor(workId: string, coverId: number
   const english = new Set<number>();
   const foreign = new Set<number>();
   let firstEnglish: number | undefined;
-  for (const e of ((await workEditions(workId, opts)) || [])) {
+  for (const e of newestFirst((await workEditions(workId, opts)) || [])) {
     const ids: number[] = (Array.isArray(e?.covers) ? e.covers : []).filter((c: unknown) => Number.isInteger(c) && (c as number) > 0);
     if (isEnglishEdition(e)) { ids.forEach(id => english.add(id)); firstEnglish ??= ids[0]; } else ids.forEach(id => foreign.add(id));
   }

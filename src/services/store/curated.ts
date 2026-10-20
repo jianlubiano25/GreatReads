@@ -2,13 +2,13 @@ import type { Book } from '../../types';
 import resolvedData from '../../data/storeResolved.json';
 import { CURATED_SHELVES, type CuratedShelf } from '../../data/storeCatalog';
 import { mapPool } from '../books/http';
-import { persistentCache } from '../books/cache';
+import { COVER_CACHE_KEYS, persistentCache } from '../books/cache';
 import { authorKey, authorsCompatible, titleKey, titlesMatch, workIdFromKey } from '../books/identity';
 import { makeBook } from '../books/model';
 import { getCoverUrl } from '../books/covers';
 import { mergeBooks } from '../books/merge';
 import { externalRating } from '../books/ratings';
-import { resolveBook } from '../books/resolve';
+import { COVER_RULE, resolveBook } from '../books/resolve';
 import type { ShelfSource } from './shelves';
 
 /** Output of `npm run prefetch:store`: covers + combined ratings bundled with the app, matched to the seed list by position. */
@@ -16,7 +16,9 @@ const PREFETCHED = resolvedData as unknown as Record<string, (Partial<Book> & { 
 
 const SEED_COLORS = ['#6b6f80', '#8a5a3b', '#2e5934', '#925838', '#3a7d80', '#7a4a6a'];
 // v3: shelves saved by older versions could hold a cover that belonged to another book, or stars picked by older rating rules; they are looked up again once
-const cache = persistentCache<{ sig: string; books: Book[] }>('readlife.curated3', { ttl: 7 * 24 * 60 * 60 * 1000, max: 40, validate: v => !!v && typeof v.sig === 'string' && Array.isArray(v.books) });
+// `cv`: the cover rule the books' covers were chosen by (resolve.ts). A shelf saved before the English-first rule is dropped when read, so its books are resolved again
+// (a shelf book that already has a cover and a rating is never looked up, so an old foreign cover would otherwise stay for the whole week)
+const cache = persistentCache<{ sig: string; books: Book[]; cv?: number }>(COVER_CACHE_KEYS.shelves, { ttl: 7 * 24 * 60 * 60 * 1000, max: 40, validate: v => !!v && typeof v.sig === 'string' && Array.isArray(v.books) && v.cv === COVER_RULE });
 
 /** A short fingerprint of text (not for security): equal text, equal fingerprint. */
 const fingerprint = (text: string): string => {
@@ -160,7 +162,7 @@ export async function resolveCuratedShelf(shelf: CuratedShelf, current: Book[], 
     if (!hadCover) try { new Image().src = getCoverUrl(r.book.coverId, 'M', r.book.coverUrl); } catch {} // warm the cache
     onUpdate([...out]);
   });
-  if (out.filter(b => b.coverId || b.coverUrl).length >= Math.ceil(out.length / 2)) cache.set(shelf.id, { sig: shelfSig(shelf), books: out });
+  if (out.filter(b => b.coverId || b.coverUrl).length >= Math.ceil(out.length / 2)) cache.set(shelf.id, { sig: shelfSig(shelf), books: out, cv: COVER_RULE });
 }
 
 /** A curated shelf as a ShelfSource (used by the Store's generic shelf component). */

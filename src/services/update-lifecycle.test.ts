@@ -1,6 +1,7 @@
 // Run with: npm test
 // The update lifecycle: detecting and applying a new app version without loops or interruptions, stale book data being replaced by new
 // bundled data, a failed refresh keeping the last good data, and user data never being touched by any of it.
+import { COVER_RULE } from './books/resolve';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -144,12 +145,14 @@ test('a shelf saved by the same bundle is reused; one saved before (older signat
   const books = shelf.seeds.map(([title, author]: string[]) => ({ id: title, title, author }));
   const key = 'readlife.curated3';
   store.set(key, JSON.stringify({
-    fantasy: { t: Date.now(), v: { sig: shelfSig(shelf), books } },
+    fantasy: { t: Date.now(), v: { sig: shelfSig(shelf), books, cv: COVER_RULE } },
+    beforerule: { t: Date.now(), v: { sig: shelfSig({ ...shelf, id: 'beforerule' }), books } }, // chosen before the English-first cover rule: looked up again
     oldformat: { t: Date.now(), v: { sig: 'A Title|An Author|~B Title|B Author|', books } },
   }));
   // (the cache reads storage at first use, which is here)
   assert.equal(getCachedCurated(shelf)?.length, 2);
   assert.equal(getCachedCurated({ ...shelf, id: 'oldformat' }), null);
+  assert.equal(getCachedCurated({ ...shelf, id: 'beforerule' }), null);
 });
 
 test('a saved cache entry in a shape this version cannot use is dropped alone; its neighbours and all user data stay', () => {
