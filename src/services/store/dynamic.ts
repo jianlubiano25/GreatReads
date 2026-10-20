@@ -60,6 +60,8 @@ export interface DynamicSpec {
   keepExisting?: boolean;
   /** The most books an appending shelf keeps (the oldest fall off the end) */
   cap?: number;
+  /** The shelf's order, applied to what is saved AND to what a refresh makes (a list saved in a wrong order is put right on screen at once, not only after a refresh) */
+  order?: (seeds: Seed[]) => Seed[];
 }
 
 interface Saved { seeds: Seed[]; title?: string; /** the last refresh came from the official page (specs that have a fallback) */ official?: boolean; /** last SUCCESSFUL refresh */ at: number; /** last attempt, successful or not (only used to space retries) */ tried: number }
@@ -188,8 +190,9 @@ export async function refreshShelf(shelf: CuratedShelf, spec: DynamicSpec, now =
     return null;
   }
   attempts.set(shelf.id, { at: now, ok: true });
+  const order = spec.order ?? ((x: Seed[]) => x);
   const seeds = spec.merge === 'append'
-    ? mergeAppend(found, old?.seeds ?? shelf.seeds, spec.cap, spec.keepExisting)
+    ? order(mergeAppend(found, order(old?.seeds ?? shelf.seeds), spec.cap, spec.keepExisting))
     : found.slice(0, Math.max(shelf.seeds.length, 12));
   const next: Saved = { seeds, title: fresh?.title, official: fresh?.official, at: now, tried: now };
   saved.set(shelf.id, next);
@@ -228,7 +231,8 @@ const refreshing = new Map<string, Promise<Saved | null>>();
 
 /** A curated shelf that refreshes itself on schedule. Same shape as curatedSource, so the Store treats it like any shelf. */
 export function dynamicCuratedSource(base: CuratedShelf, spec: DynamicSpec): ShelfSource {
-  const current = () => withSeeds(base, saved.get(base.id));
+  const ordered = (v?: Saved): Saved | undefined => (v && spec.order ? { ...v, seeds: spec.order(v.seeds) } : v);
+  const current = () => withSeeds(base, ordered(saved.get(base.id)));
   const refresh = () => dedupeInflight(refreshing, base.id, () => refreshShelf(base, spec));
   let generation = 0; // a refreshed list replaces the old one on screen; late updates from the old list are ignored
 
@@ -250,7 +254,7 @@ export function dynamicCuratedSource(base: CuratedShelf, spec: DynamicSpec): She
       // their late results must never replace the newer list on screen.
       let version = 0;
       const showFor = (v: number) => (b: Book[]) => { if (mine === generation && v === version) onUpdate(b); };
-      const have = saved.get(base.id);
+      const have = ordered(saved.get(base.id));
 
       if (!isDue(have, spec)) return curatedSource(withSeeds(base, have)).load(showFor(version));
 
@@ -263,7 +267,7 @@ export function dynamicCuratedSource(base: CuratedShelf, spec: DynamicSpec): She
 
       // Otherwise show what the shelf has right now and swap the refreshed list in when (and only if) it differs.
       // An appending shelf's current list is the floor it grows from, so it never has to wait.
-      const before = have?.seeds ?? base.seeds;
+      const before = have?.seeds ?? (spec.order ? spec.order(base.seeds) : base.seeds);
       void refresh().then(fresh => {
         if (!fresh || sameSeeds(fresh.seeds, before) || mine !== generation) return;
         const next = curatedSource(withSeeds(base, fresh));
@@ -524,6 +528,7 @@ const nobelSpec = (): DynamicSpec => ({
   minSeeds: 5,
   cap: 60,
   keepExisting: true,
+  order: nobelOrder,
   fetch: async (shelf, signal) => {
     // The Nobel Foundation's own list first (up to date the day the prize is announced), Wikipedia's table (which lags) as the backup
     const official = await getJson('/api/nobel', { timeout: 20000, signal }).catch(() => null);

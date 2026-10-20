@@ -46,3 +46,21 @@ test('a refresh with an oldest-first source puts the newest missing year first a
   const years = nobelOrder([...added, ...shelf]).map(s => Number(String(s[2]).slice(-4)));
   assert.deepEqual(years, [2024, 2023, 2022, 2021, 2000, 1990, 1980]);
 });
+
+// The real refresh path: a shelf saved in the WRONG order (older winners in front, 2026 in the middle, as one device showed) is put right
+import { refreshShelf, DYNAMIC_SPECS } from './dynamic';
+import { CURATED_SHELVES } from '../../data/storeCatalog';
+
+test('refreshShelf puts a wrongly ordered saved shelf latest to oldest, with the new year in front (keepExisting no longer freezes a bad order)', async () => {
+  const base = CURATED_SHELVES.find(s => s.id === 'nobel')!;
+  const wrong: Seed[] = [['Old C', 'A3', label(2017)], ['Old B', 'A2', label(2018)], ['Old A', 'A1', label(2019)], ['Mid', 'M', label(2026)], ['Eleven', 'E', label(2025)], ['Ten', 'T', label(2024)]];
+  const shelf = { ...base, id: 'nobel-order-test', seeds: wrong };
+  const fresh: Seed[] = [['Newest', 'N', label(2027)], ['Mid', 'M', label(2026)], ['Eleven', 'E', label(2025)], ['Ten', 'T', label(2024)], ['Old A', 'A1', label(2019)]];
+  const spec = { ...DYNAMIC_SPECS.nobel, fetch: async () => ({ seeds: fresh }) };
+  const saved = await refreshShelf(shelf, spec);
+  assert.ok(saved);
+  const years = saved!.seeds.map(s => Number(String(s[2]).slice(-4)));
+  assert.deepEqual(years, [2027, 2026, 2025, 2024, 2019, 2018, 2017]);
+  assert.equal(saved!.seeds.filter(s => s[0] === 'Mid').length, 1, 'no duplicates');
+  assert.equal(spec.order, DYNAMIC_SPECS.nobel.order, 'the Nobel spec orders its shelf');
+});
