@@ -275,6 +275,21 @@ export function inspectCover(url: string): Promise<CoverVerdict> {
   return readCover(url).then(r => r.verdict);
 }
 
+/** The remembered verdict for a picture without doing any work: undefined when it has not been judged on this device yet. */
+export const knownVerdict = (url: string): CoverVerdict | undefined => flatSaved.get(flatKey(url))?.verdict;
+
+/**
+ * Should a book's OWN cover wait before it is drawn? First pass: a 3D render (a tilted book, the spine showing) used to be drawn and replaced by a flat
+ * front a few seconds later. Now it is held (the title card shows) until its picture has been judged: flat or unreadable is drawn at once, a render waits for
+ * the lookup (`settled` = the lookup answered, or found nothing flat so the render stays), and a picture not judged yet waits for its verdict. The NYT's marketing
+ * art counts as a render when it cannot be read (the same rule the lookup uses). Verdicts are remembered, so from the second time on nothing is held.
+ */
+export function holdCover(verdict: CoverVerdict | undefined, nyt: boolean, settled: boolean): boolean {
+  if (settled) return false;
+  if (verdict === undefined) return true;
+  return verdict === 'render' || (verdict === 'unknown' && nyt);
+}
+
 export function readCover(url: string): Promise<CoverReading> {
   const key = flatKey(url);
   const hit = flatSaved.get(key);

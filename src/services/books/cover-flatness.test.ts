@@ -90,3 +90,30 @@ test('Apple still wins when its art is flat (Threshing Day), and a render is the
   assert.equal(await resolveCover({ id: 'x4', title: 'Only Renders', author: 'Ann Author', coverUrl: 'https://own/render.jpg' }), ''); // it already has one: not swapped for another render
   setCoverInspectorForTests();
 });
+
+// ---- first pass: the book's own cover is judged BEFORE it is drawn (no render flashing up and being replaced)
+import { holdCover, knownVerdict, inspectCover } from './covers';
+
+test('holdCover: a flat or unreadable picture is drawn at once, a render (or an unreadable NYT image) waits for the lookup, an unjudged picture waits for its verdict', () => {
+  assert.equal(holdCover('flat', false, false), false);
+  assert.equal(holdCover('unknown', false, false), false, 'cannot be read: drawn as before');
+  assert.equal(holdCover('render', false, false), true, 'a 3D render is not drawn first');
+  assert.equal(holdCover('unknown', true, false), true, 'the NYT\'s art that cannot be read is treated as a render');
+  assert.equal(holdCover('flat', true, false), false);
+  assert.equal(holdCover(undefined, false, false), true, 'not judged yet: the title card shows');
+  // the lookup answered (a flat replacement was found, or nothing flat exists so the render stays): never held
+  for (const v of ['render', 'unknown', undefined] as const) assert.equal(holdCover(v, true, true), false);
+});
+
+test('knownVerdict answers at once from this device once a picture has been judged, and says nothing before', async () => {
+  const url = 'https://example.com/covers/first-pass-known.jpg';
+  assert.equal(knownVerdict(url), undefined);
+  setCoverInspectorForTests(async () => 'render');
+  assert.equal(await inspectCover(url), 'render');
+  assert.equal(knownVerdict(url), 'render', 'the next card for this book needs no waiting');
+  setCoverInspectorForTests(async () => 'unknown');
+  const unreadable = 'https://example.com/covers/first-pass-unreadable.jpg';
+  await inspectCover(unreadable);
+  assert.equal(knownVerdict(unreadable), undefined, 'an unreadable picture is not remembered (asked again later)');
+  setCoverInspectorForTests(undefined);
+});
