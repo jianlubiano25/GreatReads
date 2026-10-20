@@ -17,6 +17,9 @@ const FOREIGN = new Set((
   'il di che per sono da gli nel della delle degli'
 ).split(' '));
 
+/** Is a catalogue language code English, or not stated? (Google says "en"; Open Library's flag is already folded to "en".) The ONE place that decides this. */
+export const isEnglishLanguage = (language?: string): boolean => !language || language === 'en';
+
 const words = (t: string): string[] => t.toLowerCase().normalize('NFC').split(/[^\p{L}\p{M}]+/u).filter(Boolean);
 
 /** Share of letters that are not Latin script (Cyrillic, CJK, Arabic, ...). */

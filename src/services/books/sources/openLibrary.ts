@@ -154,6 +154,22 @@ export async function openLibraryEditionCovers(workId: string, max = 8, opts: Ca
 }
 
 /**
+ * The cover id to show for a work whose search record says `coverId`. That id is the cover of ONE edition, and not always an English one (a translation's jacket
+ * can be the work's cover_i). It is replaced only when the editions prove it: it belongs to an edition in another language, no English edition uses it, and an
+ * English edition has a cover of its own. Anything unknown keeps the id it has, so a cover that is already right is never swapped.
+ */
+export async function openLibraryEnglishCoverFor(workId: string, coverId: number, opts: CallOpts = {}): Promise<number> {
+  const english = new Set<number>();
+  const foreign = new Set<number>();
+  let firstEnglish: number | undefined;
+  for (const e of ((await workEditions(workId, opts)) || [])) {
+    const ids: number[] = (Array.isArray(e?.covers) ? e.covers : []).filter((c: unknown) => Number.isInteger(c) && (c as number) > 0);
+    if (isEnglishEdition(e)) { ids.forEach(id => english.add(id)); firstEnglish ??= ids[0]; } else ids.forEach(id => foreign.add(id));
+  }
+  return foreign.has(coverId) && !english.has(coverId) && firstEnglish ? firstEnglish : coverId;
+}
+
+/**
  * The English title of a work Open Library files under another language's title ("L’étranger" -> "The Stranger"): the title most of its tagged-English
  * editions use (ties: the one listed first). Editions with no language tag are not trusted for this. '' when no edition is tagged English or the work has none.
  */

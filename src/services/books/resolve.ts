@@ -4,12 +4,13 @@ import { bump } from './perf';
 import { persistentCache } from './cache';
 import { authorKey, cleanIsbn, isbnPair, mergeIdentity, titleKey } from './identity';
 import { titleLooksForeign } from './language';
+import { isAppleCoverUrl } from './model';
 import { mergeBooks } from './merge';
 import { chooseRating, externalRating, setRating, settleSiteRating, SUFFICIENT_RATINGS, type SourceRating } from './ratings';
 import type { ContentFlags } from './quality';
 import { lookupApple } from './sources/appleBooks';
-import { findGoogle, findGoogleRating } from './sources/googleBooks';
-import { findOpenLibrary, openLibraryEnglishTitle, openLibraryRatings } from './sources/openLibrary';
+import { findGoogle, findGoogleRating, isEnglishVolume } from './sources/googleBooks';
+import { findOpenLibrary, openLibraryEnglishCoverFor, openLibraryEnglishTitle, openLibraryRatings } from './sources/openLibrary';
 import type { CallOpts } from './sources/types';
 
 /**
@@ -51,7 +52,16 @@ export interface Resolved {
    * Absent on a result that is final, and on results saved by older versions.
    */
   retry?: { at: number; tries: number };
+  /** Which cover rule chose `book`'s cover (see COVER_RULE). Results saved before the rule existed have none. */
+  cv?: number;
 }
+
+/**
+ * Version of the rule that picks a resolved book's cover: Apple's art; else an ENGLISH Google front; else an English edition's Open Library cover. A jacket that
+ * belongs to another language's edition is never chosen here (the cover lookup at draw time keeps it as the very last resort for a book with no cover at all).
+ * A saved result whose cover is not Apple's and was chosen before this rule is looked up again once (an Apple cover is Apple's US-store art, so it stays).
+ */
+const COVER_RULE = 2;
 
 const cache = persistentCache<Resolved | null>('readlife.resolved3', { ttl: 14 * 24 * 60 * 60 * 1000, keepStale: 90 * 24 * 60 * 60 * 1000, max: 250, validate: v => v === null || (!!v && typeof v === 'object' && !!v.book && typeof v.book.title === 'string') });
 /**
@@ -87,8 +97,10 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
   const key = keyOf(q);
   const hit = cache.get(key);
   const waiting = !!hit?.retry && hit.retry.at > Date.now(); // unrated because Google failed: not asked again yet
+  // A result whose (non-Apple) cover was chosen before the English rule is asked again once; it is still kept below as `had`, so its ratings survive a failed lookup
+  const coverStale = !!hit && hit.cv !== COVER_RULE && !isAppleCoverUrl(hit.book.coverUrl);
   // Only a real result is reused for long. (Older versions also saved "not found" here for 14 days: those are looked up again.)
-  if (hit && (!hit.retry || waiting)) {
+  if (hit && !coverStale && (!hit.retry || waiting)) {
     bump(waiting ? 'resolve.retryWait' : 'resolve.cacheHit');
     return Promise.resolve({ ...hit, book: { ...hit.book, id: pickId(hit.book, q) } });
   }
@@ -113,7 +125,9 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
       if (!opts.signal?.aborted && !appleFailed && transientFailureCount() === troubleBefore) misses.set(key, true);
       return null;
     }
-    let book: Book = hits.map(h => h.book).reduce((a, b) => mergeBooks(a, b));
+    // A Google volume in another language keeps its text and ratings but not its jacket: mergeBooks ranks covers by the link alone, so it would beat an English cover
+    const gbForeignCover = !!gb && !isEnglishVolume(gb);
+    let book: Book = hits.map(h => (h === gb && gbForeignCover ? { ...h.book, coverUrl: undefined } : h.book)).reduce((a, b) => mergeBooks(a, b));
     book.identity = mergeIdentity(book.identity, isbnPair(q.isbn));
     // English title: a work catalogued under another language's title ("L’étranger") is shown by its English one, from the other sources that matched this book or from
     // Open Library's own English editions. A book with no English title anywhere keeps the one it has.
@@ -124,6 +138,11 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
     // Apple's 600x900 art, when Apple (asked for, and matched on title AND author) has the book, is the cover. Every caller that asks Apple
     // (Store cards, the book info, the prefetch script) therefore gets the same cover, instead of each picking the first source that had one.
     if (ap?.book.coverUrl) book = { ...book, coverUrl: ap.book.coverUrl, coverId: undefined };
+    // No Apple or English Google cover: the Open Library cover_i is one edition's, a translation's included. An English edition's cover replaces it when the editions show that.
+    else if (!book.coverUrl && book.coverId && book.identity?.olWork) {
+      const coverId = await openLibraryEnglishCoverFor(book.identity.olWork, book.coverId, opts);
+      if (coverId !== book.coverId) book = { ...book, coverId };
+    }
     // Ratings follow the ladder in ratings.ts: ONE source's average + count, never a mix and never a sum. Apple (when asked for) first,
     // then Open Library (its work-level ratings when the search record has none), then Google. A site with no count has no rating.
     const pairOf = (h: typeof ol, source: 'apple' | 'openlibrary' | 'google') => { const r = externalRating(h?.book); return r && { ...r, source }; };
@@ -168,6 +187,7 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
       words: hits.flatMap(h => [...(h.flags.subjects || []), h.book.genre]),
       ratings: [olRating, google, appleRating].filter((r): r is SourceRating => !!r),
       checked: [...(olRating ? ['openlibrary' as const] : []), ...(googleChecked ? ['google' as const] : []), ...(q.apple && !appleFailed ? ['apple' as const] : [])],
+      cv: COVER_RULE,
     };
     if (!opts.signal?.aborted) {
       // Apple (asked for) could not be reached and the stars came from a lower step (or there are none): Apple would have been first, so this is asked again soon

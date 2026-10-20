@@ -15,7 +15,7 @@ const book = (coverUrl?: string, coverId?: number) => ({ title: 'How to Win Frie
 const key = 'how to win friends|dale carnegie';
 
 store.set(FIX, JSON.stringify({
-  [key]: { url: 'https://fix/new.jpg', t: now - DAY, own: 'https://own/old.jpg' },
+  [key]: { url: 'https://fix/new.jpg', t: now - DAY, own: 'https://own/old.jpg', v: 2 },
 }));
 const load = (q: string): Promise<typeof import('./covers')> => import(`./covers?${q}`); // fresh copy, so it re-reads storage
 const covers = await load('base');
@@ -33,7 +33,7 @@ test('a book with no own link keeps using its repair', () => {
 });
 
 test('a repair saved before this check (no own) is ignored when the book has its own cover', async () => {
-  store.set(FIX, JSON.stringify({ [key]: { url: 'https://fix/legacy.jpg', t: now } }));
+  store.set(FIX, JSON.stringify({ [key]: { url: 'https://fix/legacy.jpg', t: now, v: 2 } }));
   const c = await load('legacy');
   assert.equal(c.getCoverFix(book('https://own/any.jpg')), '');
   assert.equal(c.getCoverFix(book(undefined, 123)), '');
@@ -41,7 +41,7 @@ test('a repair saved before this check (no own) is ignored when the book has its
 });
 
 test('an expired repair is ignored when the book has its own link', async () => {
-  store.set(FIX, JSON.stringify({ [key]: { url: 'https://fix/old.jpg', t: now - 31 * DAY, own: 'https://own/a.jpg' } }));
+  store.set(FIX, JSON.stringify({ [key]: { url: 'https://fix/old.jpg', t: now - 31 * DAY, own: 'https://own/a.jpg', v: 2 } }));
   const c = await load('expired');
   assert.equal(c.getCoverFix(book('https://own/a.jpg')), '');
 });
@@ -50,8 +50,8 @@ const tick = () => new Promise(r => setTimeout(r, 10));
 
 test('a dead repair (no own, book has its own cover) is removed from storage; a live one for a book with no own link is kept', async () => {
   store.set(FIX, JSON.stringify({
-    [key]: { url: 'https://fix/legacy.jpg', t: now },
-    'other|someone': { url: 'https://fix/keep.jpg', t: now, own: 'https://own/o.jpg' },
+    [key]: { url: 'https://fix/legacy.jpg', t: now, v: 2 },
+    'other|someone': { url: 'https://fix/keep.jpg', t: now, own: 'https://own/o.jpg', v: 2 },
   }));
   const c = await load('prune-legacy');
   assert.equal(c.getCoverFix(book('https://own/any.jpg')), '');
@@ -62,13 +62,13 @@ test('a dead repair (no own, book has its own cover) is removed from storage; a 
 });
 
 test('an expired repair is removed once it is seen to be dead; one for a different own link is kept (another copy may use it)', async () => {
-  store.set(FIX, JSON.stringify({ [key]: { url: 'https://fix/old.jpg', t: now - 31 * DAY, own: 'https://own/a.jpg' } }));
+  store.set(FIX, JSON.stringify({ [key]: { url: 'https://fix/old.jpg', t: now - 31 * DAY, own: 'https://own/a.jpg', v: 2 } }));
   const c = await load('prune-expired');
   assert.equal(c.getCoverFix(book('https://own/a.jpg')), '');
   await tick();
   assert.equal(key in JSON.parse(store.get(FIX)!), false);
 
-  store.set(FIX, JSON.stringify({ [key]: { url: 'https://fix/new.jpg', t: now, own: 'https://own/a.jpg' } }));
+  store.set(FIX, JSON.stringify({ [key]: { url: 'https://fix/new.jpg', t: now, own: 'https://own/a.jpg', v: 2 } }));
   const d = await load('prune-other-own');
   assert.equal(d.getCoverFix(book('https://own/DIFFERENT.jpg')), '');
   await tick();
@@ -86,4 +86,13 @@ test('refreshBookCovers forgets repairs and the not-found notes, and nothing els
   assert.equal(store.has('readlife.coverNone3'), false);
   assert.equal(store.get('readlife.v2'), '{"library":1}');
   assert.equal(c.refreshBookCovers(), 0);
+});
+
+test('a repair chosen before the English-first rule (no v) is not used, and is forgotten: it may be another language\'s jacket', async () => {
+  store.set(FIX, JSON.stringify({ [key]: { url: 'https://fix/spanish.jpg', t: now, own: 'https://own/a.jpg' }, 'solo|autor': { url: 'https://fix/x.jpg', t: now } }));
+  const c = await load('prune-old-rule');
+  assert.equal(c.getCoverFix(book('https://own/a.jpg')), '');
+  assert.equal(c.getCoverFix({ title: 'Solo', author: 'Autor' }), ''); // not even for a book with no own link
+  await tick();
+  assert.deepEqual(Object.keys(JSON.parse(store.get(FIX)!)), []);
 });

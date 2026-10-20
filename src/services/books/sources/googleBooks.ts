@@ -3,6 +3,7 @@ import { bump } from '../perf';
 import { authorVariants, cleanIsbn, isbnPair, titleVariants, titlesMatch, authorListMatches } from '../identity';
 import { difficultyFor, hasRealSummary, isKnownGenre, makeBook } from '../model';
 import { externalRating } from '../ratings';
+import { isEnglishLanguage } from '../language';
 import type { CallOpts, Hit } from './types';
 
 const GB = 'https://www.googleapis.com/books/v1';
@@ -197,7 +198,7 @@ export async function googleVolume(id: string, opts: CallOpts = {}): Promise<Hit
 const isWanted = (h: Hit, q: { title: string; author?: string }): boolean => (!q.title.trim() || titlesMatch(h.book.title, q.title)) && authorListMatches(h.book.author, q.author || '');
 
 /** Is this volume in English (or does Google not say)? */
-export const isEnglishVolume = (h: Hit): boolean => !h.flags.language || h.flags.language === 'en';
+export const isEnglishVolume = (h: Hit): boolean => isEnglishLanguage(h.flags.language);
 
 /** What a caller wants from a Google volume. Only a missing NEEDED field is worth another search (a cover lookup does not care about the description). */
 export type GoogleNeed = 'cover' | 'pages' | 'year' | 'text';

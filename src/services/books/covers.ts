@@ -11,7 +11,8 @@ import { dedupeInflight, mapPool, pool, transientFailureCount } from './http';
 import { identityOf, isUnknownAuthor, primaryAuthor, titleVariants, titlesMatch, authorKey, titleKey } from './identity';
 import { findApple } from './sources/appleBooks';
 import { findGoogle, googleVolume } from './sources/googleBooks';
-import { olCoverById, olCoverByIsbn, openLibraryEditionCovers, searchOpenLibrary, findOpenLibrary } from './sources/openLibrary';
+import { isEnglishLanguage } from './language';
+import { olCoverById, olCoverByIsbn, openLibraryEditionCovers, openLibraryEnglishCoverFor, searchOpenLibrary, findOpenLibrary } from './sources/openLibrary';
 import { isFrontCoverShape } from './placeholderCover';
 
 /* ======================================================================================================
@@ -456,7 +457,9 @@ const write = (key: string, value: unknown) => {
 
 export const coverKey = (b: { title?: string; author?: string }) => `${(b.title || '').trim()}|${(b.author || '').trim()}`.toLowerCase();
 
-type CoverFix = { url: string; t: number; own?: string };
+type CoverFix = { url: string; t: number; own?: string; v?: number };
+/** Version of the rule a repair was chosen by (2 = English first). An older repair may be another language's jacket, so it is not used and is forgotten. */
+const FIX_RULE = 2;
 let fixes: Record<string, CoverFix> = read(FIX_KEY);
 let fixVersion = 0;
 const fixListeners = new Set<() => void>();
@@ -496,12 +499,13 @@ export const getCoverFix = (book: CoverLinks): string => {
   const f = fixes[key];
   if (!f?.url) return '';
   const own = ownLinkOf(book);
-  if (!own) return f.url;
+  const current = f.v === FIX_RULE;
+  if (!own) { if (!current) scheduleFixPrune(key); return current ? f.url : ''; }
   const fresh = Date.now() - f.t < FIX_TTL;
   // Dead for good: an old repair that never recorded the link it replaced (this book now has its own cover), or one past its 30 days. Forgotten a moment later, off the drawing path.
   // (A repair recorded for a DIFFERENT own link is left alone: another copy of the same title may still be using it.)
-  if (f.own === undefined || !fresh) scheduleFixPrune(key);
-  return f.own === own && fresh ? f.url : '';
+  if (f.own === undefined || !fresh || !current) scheduleFixPrune(key);
+  return f.own === own && fresh && current ? f.url : '';
 };
 
 const stalePrune = new Set<string>();
@@ -516,7 +520,7 @@ function scheduleFixPrune(key: string) {
     for (const k of stalePrune) {
       const f = fixes[k];
       // Re-check: a new repair may have replaced it in the meantime
-      if (f && (f.own === undefined || Date.now() - f.t >= FIX_TTL)) { delete fixes[k]; changed = true; }
+      if (f && (f.own === undefined || f.v !== FIX_RULE || Date.now() - f.t >= FIX_TTL)) { delete fixes[k]; changed = true; }
     }
     stalePrune.clear();
     if (changed) write(FIX_KEY, fixes); // no redraw needed: a stale entry already answered ''
@@ -524,7 +528,7 @@ function scheduleFixPrune(key: string) {
 }
 
 const saveFix = (key: string, url: string, own: string) => {
-  fixes[key] = { url, t: Date.now(), own };
+  fixes[key] = { url, t: Date.now(), own, v: FIX_RULE };
   const keys = Object.keys(fixes);
   if (keys.length > MAX_FIXES) keys.slice(0, keys.length - MAX_FIXES).forEach(k => delete fixes[k]);
   write(FIX_KEY, fixes);
@@ -586,7 +590,7 @@ const inflight = new Map<string, Promise<string>>();
 
 /** English first: hits whose language is English or unknown come before hits whose editions are all in another language (each group keeps its order). */
 export const englishFirst = <T extends { flags: { language?: string } }>(hits: T[]): T[] => {
-  const isEnglish = (h: T) => !h.flags.language || h.flags.language === 'en';
+  const isEnglish = (h: T) => isEnglishLanguage(h.flags.language);
   return [...hits.filter(isEnglish), ...hits.filter(h => !isEnglish(h))];
 };
 
@@ -598,7 +602,7 @@ async function search(b: MissingBook): Promise<string> {
   const renders: string[] = [];
   // English is preferred: a cover that belongs to another language's edition is only kept for the end, and used only for a book with no cover at all
   const foreign: string[] = [];
-  const isEnglish = (language?: string) => !language || language === 'en';
+  const isEnglish = isEnglishLanguage;
   const accept = async (url?: string) => {
     if (!url || !(await probeImage(url, 5000, true))) return '';
     if ((await inspectCover(url)) === 'render') { renders.push(url); return ''; }
@@ -920,18 +924,8 @@ export const coverSourceLabel = (s: CoverSource): string => COVER_SOURCE_LABEL[s
 const MAX_CANDIDATES = 14;
 const MAX_OL = 8;
 
-/** One key per picture, whatever its size: the same Apple art at 200x300 and 600x900, or the same Open Library cover as S / M / L, is one cover. */
-export function imageKey(url: string): string {
-  try {
-    const u = new URL(url);
-    if (/(^|\.)(openlibrary\.org|archive\.org)$/.test(u.hostname)) return `${u.hostname}${u.pathname.replace(/-[SML]\.jpg$/, '')}`;
-    if (/(^|\.)mzstatic\.com$/.test(u.hostname)) return `${u.hostname}${u.pathname.replace(/\/\d+x\d+bb\.(jpg|png)$/, '/art')}`;
-    const q = [...u.searchParams].filter(([k]) => k !== 'zoom' && k !== 'edge' && k !== 'imgtk').map(kv => kv.join('=')).join('&');
-    return `${u.hostname}${u.pathname}?${q}`;
-  } catch {
-    return url;
-  }
-}
+/** One key per picture, whatever its size (the same Apple art at 200x300 and 600x900, the same Open Library cover as S / M / L): the key the picture's verdict is saved under. */
+export const imageKey = flatKey;
 
 type Finder = (b: Pick<Book, 'title' | 'author' | 'id' | 'identity' | 'coverId'>, author: string) => Promise<CoverCandidate[]>;
 
@@ -942,9 +936,11 @@ const fromApple: Finder = async (b, author) => {
 
 const fromGoogle: Finder = async (b, author) => {
   const id = identityOf(b);
-  let hit = id.gbVolume ? await googleVolume(id.gbVolume) : null; // the exact edition when we know it
-  if (!hit?.book.coverUrl) hit = await findGoogle({ title: b.title, author, isbn: id.isbn13 || id.isbn10 }, {}, ['cover']);
-  return hit?.book.coverUrl ? [{ url: hit.book.coverUrl, source: 'google' }] : [];
+  const exact = id.gbVolume ? await googleVolume(id.gbVolume) : null; // the exact edition when we know it
+  const byName = !exact?.book.coverUrl || !isEnglishLanguage(exact.flags.language) ? await findGoogle({ title: b.title, author, isbn: id.isbn13 || id.isbn10 }, {}, ['cover']) : null;
+  // English jackets first; another language's edition is still offered (the reader may want it), but after
+  return englishFirst([byName, exact].filter((h): h is NonNullable<typeof h> => !!h?.book.coverUrl))
+    .map(h => ({ url: h.book.coverUrl!, source: 'google' as const }));
 };
 
 const fromOpenLibrary: Finder = async (b, author) => {
@@ -957,7 +953,9 @@ const fromOpenLibrary: Finder = async (b, author) => {
     first = first ?? hit?.book.coverId;
   }
   const editions = work ? await openLibraryEditionCovers(work, MAX_OL) : [];
-  const ids = [...(first ? [first] : []), ...editions].filter((n, i, a) => a.indexOf(n) === i).slice(0, MAX_OL);
+  // The work's cover_i (one edition's) stays first, unless the editions show it is a translation's jacket and an English edition has its own: then the English ones lead
+  const translation = !!(work && first) && (await openLibraryEnglishCoverFor(work, first)) !== first;
+  const ids = (translation ? [...editions, first!] : [...(first ? [first] : []), ...editions]).filter((n, i, a) => a.indexOf(n) === i).slice(0, MAX_OL);
   return ids.map(n => ({ url: olCoverById(n, 'L'), source: 'openlibrary' as const }));
 };
 
