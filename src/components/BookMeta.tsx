@@ -6,7 +6,7 @@ import { externalRating, isNytCoverUrl, ratingOf, starFills } from '../services/
 import { infoKey, infoVersion, shownRating, subscribeInfo } from '../services/books/infoStore';
 import { placeholderStyleFor, titleSizeCqw, isFrontCoverShape } from '../services/books/placeholderCover';
 import { inspectCover } from '../services/books/coverFlatness';
-import { coverKey, getCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, reportMissingCover, clearMissingCover, getCoverPickInfo, pickSizedUrl, markCoverPickFailed } from '../services/books';
+import { coverKey, getCoverUrl, sizedCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, reportMissingCover, clearMissingCover, getCoverPickInfo, pickSizedUrl, markCoverPickFailed } from '../services/books';
 
 export type AwardKind = 'w' | 's' | 'c'; // winner, shortlist, other pick (book club, series...)
 
@@ -212,13 +212,16 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
   // Re-render when "Reload missing covers" repairs one or a cover is picked in the cover viewer. A picked cover wins over a repaired one, which wins over the original link
   useSyncExternalStore(subscribeCovers, getCoversVersion, getCoversVersion);
   const pick = getCoverPickInfo(book);
-  const baseUrl = pick ? pickSizedUrl(pick.url, imgSize) : getCoverFix(book) || getCoverUrl(book.coverId, imgSize, book.coverUrl);
+  // ONE URL per picture: a repaired cover is drawn at the card's size exactly like the same picture arriving through the book's own link (getCoverUrl). Raw, a repair
+  // (Apple's 600x900) and the book's updated link (360x540) were two URLs for one picture, so the cover loaded twice and visibly swapped.
+  const fix = pick ? '' : getCoverFix(book);
+  const baseUrl = pick ? pickSizedUrl(pick.url, imgSize) : fix ? sizedCoverUrl(fix, imgSize) : getCoverUrl(book.coverId, imgSize, book.coverUrl);
   type St = { base: string; tries: number; alt: string; dead: boolean };
   const [st, setSt] = useState<St>({ base: baseUrl, tries: 0, alt: '', dead: false });
   const cur: St = st.base === baseUrl ? st : { base: baseUrl, tries: 0, alt: '', dead: false };
 
   // Retry twice (cache-busted), then look for the same book's cover on Apple / Google Books
-  const src = cur.alt || (cur.tries > 0 && baseUrl ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}r=${cur.tries}` : baseUrl);
+  const src = (cur.alt && sizedCoverUrl(cur.alt, imgSize)) || (cur.tries > 0 && baseUrl ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}r=${cur.tries}` : baseUrl);
   // Starts false even for a cover seen before: until the picture really is in hand the stand-in cover shows (never the bare book colour); the effect below flips it at once for a cached one
   const [imgLoaded, setImgLoaded] = useState(false);
 
