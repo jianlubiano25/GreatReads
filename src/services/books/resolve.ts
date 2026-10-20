@@ -127,7 +127,8 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
     }
     // A Google volume in another language keeps its text and ratings but not its jacket: mergeBooks ranks covers by the link alone, so it would beat an English cover
     const gbForeignCover = !!gb && !isEnglishVolume(gb);
-    let book: Book = hits.map(h => (h === gb && gbForeignCover ? { ...h.book, coverUrl: undefined } : h.book)).reduce((a, b) => mergeBooks(a, b));
+    // (its blurb goes too: a Spanish description is no "about this book", and the word-list check cannot be trusted to catch every language)
+    let book: Book = hits.map(h => (h === gb && gbForeignCover ? { ...h.book, coverUrl: undefined, summary: '' } : h.book)).reduce((a, b) => mergeBooks(a, b));
     book.identity = mergeIdentity(book.identity, isbnPair(q.isbn));
     // English title: a work catalogued under another language's title ("L’étranger") is shown by its English one, from the other sources that matched this book or from
     // Open Library's own English editions. A book with no English title anywhere keeps the one it has.
@@ -175,7 +176,7 @@ export function resolveBook(q: ResolveQuery, opts: CallOpts = {}): Promise<Resol
     if (q.genreHint && !book.genre) book.genre = q.genreHint;
     const flags: ContentFlags = {
       subjects: hits.flatMap(h => h.flags.subjects || []),
-      description: hits.map(h => h.flags.description).find(Boolean),
+      description: hits.map(h => (h === gb && gbForeignCover ? undefined : h.flags.description)).find(Boolean),
       googleMaturity: hits.map(h => h.flags.googleMaturity).find(Boolean),
       appleAdvisory: hits.map(h => h.flags.appleAdvisory).find(Boolean),
       publisher: hits.map(h => h.flags.publisher).find(Boolean),

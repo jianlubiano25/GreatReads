@@ -147,10 +147,10 @@ export async function openLibraryEditionPages(workId: string, opts: CallOpts = {
  * Cover ids of a work's editions: the first cover of each English (or language-less) edition, de-duplicated, in the order Open Library lists them.
  * One request; the ids need no image check because Open Library only lists covers it has.
  */
-export async function openLibraryEditionCovers(workId: string, max = 8, opts: CallOpts = {}): Promise<number[]> {
+export async function openLibraryEditionCovers(workId: string, max = 8, opts: CallOpts = {}, anyLanguage = false): Promise<number[]> {
   const ids: number[] = [];
   for (const e of newestFirst((await workEditions(workId, opts)) || [])) {
-    if (!isEnglishEdition(e)) continue; // a translation's jacket is a different book to look at
+    if (!anyLanguage && !isEnglishEdition(e)) continue; // a translation's jacket is a different book to look at (`anyLanguage`: the picker's last resort)
     const id = (Array.isArray(e?.covers) ? e.covers : []).find((c: unknown) => Number.isInteger(c) && (c as number) > 0);
     if (id && !ids.includes(id)) ids.push(id);
     if (ids.length >= max) break;

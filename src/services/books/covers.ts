@@ -970,6 +970,8 @@ const fromOpenLibrary: Finder = async (b, author) => {
   // The work's cover_i (one edition's) stays first, unless the editions show it is a translation's jacket and an English edition has its own: then the English ones lead
   const translation = !!(work && first) && (await openLibraryEnglishCoverFor(work, first)) !== first;
   const ids = (translation ? [...editions, first!] : [...(first ? [first] : []), ...editions]).filter((n, i, a) => a.indexOf(n) === i).slice(0, MAX_OL);
+  // No English edition has a cover (or none is tagged): another language's jacket is still offered rather than "no cover found" (English ones always lead)
+  if (!ids.length && work) ids.push(...(await openLibraryEditionCovers(work, MAX_OL, {}, true).catch(() => [] as number[])));
   return ids.map(n => ({ url: olCoverById(n, 'L'), source: 'openlibrary' as const }));
 };
 
@@ -997,7 +999,7 @@ function startRun(book: Pick<Book, 'title' | 'author' | 'id' | 'identity' | 'cov
   run.done = Promise.all([fromApple, fromGoogle, fromOpenLibrary].map(f => f(book, author).then(add, () => {})))
     .then(() => {
       // A lookup that was disturbed by a network failure is not remembered as "this book has these covers"
-      if (transientFailureCount() === trouble) cache.set(key, run.found);
+      if (transientFailureCount() === trouble && run.found.length) cache.set(key, run.found); // "nothing found" is asked again next time, never remembered for a week
       return run.found;
     })
     .finally(() => { runs.delete(key); });
