@@ -37,8 +37,8 @@ export function looksEnglish(text = ''): boolean {
   const en = w.filter(x => EN.has(x)).length;
   const foreign = w.filter(x => FOREIGN.has(x)).length;
   if (foreign / w.length > 0.12 && en < foreign) return false;
-  // Long prose in a language the word list does not know (Swedish, Danish, Polish ...) has almost none of English's most common words; English has a lot
-  return w.length < 25 || en / w.length >= 0.1;
+  // Prose (from a handful of words up) in a language the word list does not know (Swedish, Danish, Dutch ...) has almost none of English's most common words; English has a lot
+  return w.length < 8 || en / w.length >= 0.1;
 }
 
 const FOREIGN_LEADERS = new Set('le la les l el los las der die das il lo gli un une des du ein eine een het um uma'.split(' '));
