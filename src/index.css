@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Tailwind's font-sans must follow the text font picked in developer mode too (a bare var, not a fixed stack), so no label keeps the old font */
+@theme {
+  --font-sans: var(--rl-text-font, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif);
+}
+
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *, .dark, .dark *));
 
 @layer base {

@@ -86,6 +86,16 @@ const TITLE_ALIASES: Record<string, string[]> = {
   'etranger': ['stranger', 'outsider'],
 };
 
+/**
+ * The other way round, for searching: what to ask the catalogues so that a search for the ORIGINAL title also brings up the English translation
+ * ("L'Étranger" -> "The Stranger"). Each entry is a plain "Title Author" query; a title that is not listed adds nothing.
+ */
+const ENGLISH_EDITIONS: Record<string, string[]> = {
+  'l etranger': ['The Stranger Albert Camus', 'The Outsider Albert Camus'],
+  'etranger': ['The Stranger Albert Camus', 'The Outsider Albert Camus'],
+};
+export const englishEditionQueries = (title = ''): string[] => ENGLISH_EDITIONS[titleKey(title)] || [];
+
 /** Every main-title key a title answers to: the whole main title, plus each half of a dual title, plus any narrow alias. */
 export function titleKeys(title = ''): string[] {
   const keys = [titleKey(title), ...dualTitleParts(title).map(titleKey)].filter(Boolean);

@@ -136,7 +136,7 @@ function PlaceholderCover({ book, size }: { book: Book; size: keyof typeof AUTHO
       <div className="absolute inset-0 flex flex-col justify-between" style={{ padding: '9cqw 9cqw 8cqw' }}>
       <b
         style={{
-          fontFamily: '"SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif',
+          fontFamily: 'var(--rl-text-font, "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif)',
           fontWeight: 800,
           color: '#fff',
           fontSize: `${titleSizeCqw(book.title)}cqw`,

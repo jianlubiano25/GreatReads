@@ -154,13 +154,15 @@ export function gbItemToHit(item: any, fallbackTitle = ''): Hit {
   const ids: { type: string; identifier: string }[] = v.industryIdentifiers || [];
   const isbn = isbnPair(ids.find(i => i.type === 'ISBN_13')?.identifier || ids.find(i => i.type === 'ISBN_10')?.identifier);
   const thumb = v.imageLinks?.thumbnail || v.imageLinks?.smallThumbnail || '';
+  // A volume Google says is in another language lends its jacket and ratings at most, never its blurb (the word-list English check cannot catch every language)
+  const foreignText = !!v.language && String(v.language).toLowerCase() !== 'en';
   const book = makeBook({
     id: `gb_${item?.id || Date.now()}`,
     title: v.title || fallbackTitle,
     author,
     year: v.publishedDate ? String(v.publishedDate).slice(0, 4) : '',
     genre: (v.categories || []).join(', ') || 'General',
-    summary: v.description ? String(v.description).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500) : `A book by ${author}.`,
+    summary: v.description && !foreignText ? String(v.description).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500) : `A book by ${author}.`,
     pageCount: pages,
     coverUrl: thumb ? cleanThumb(thumb) : undefined,
     ratingAverage: v.averageRating || undefined,
@@ -169,7 +171,7 @@ export function gbItemToHit(item: any, fallbackTitle = ''): Hit {
     source: 'google',
     identity: { gbVolume: item?.id, ...isbn },
   });
-  return { book, flags: { language: v.language ? String(v.language).toLowerCase() : undefined, subjects: v.categories, description: v.description ? String(v.description) : undefined, googleMaturity: v.maturityRating, publisher: v.publisher ? String(v.publisher) : undefined } };
+  return { book, flags: { language: v.language ? String(v.language).toLowerCase() : undefined, subjects: v.categories, description: v.description && !foreignText ? String(v.description) : undefined, googleMaturity: v.maturityRating, publisher: v.publisher ? String(v.publisher) : undefined } };
 }
 
 /** English volumes only (`langRestrict=en`): English titles, covers and blurbs are preferred. An exact ISBN / volume lookup is the one edition asked for, so it is not restricted. */

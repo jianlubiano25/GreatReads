@@ -4,7 +4,7 @@ import { hasRealSummary, isKnownGenre, shrunkRating } from './model';
 import { searchGoogle } from './sources/googleBooks';
 import { searchOpenLibrary } from './sources/openLibrary';
 import type { Hit } from './sources/types';
-import { isUnknownAuthor, sameWork, titleKey } from './identity';
+import { englishEditionQueries, isUnknownAuthor, sameWork, titleKey } from './identity';
 import { isBlocked } from './quality';
 import { titleLooksForeign } from './language';
 import { rememberExcluded } from './eligibility';
@@ -252,6 +252,8 @@ export function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
     ];
   }
   const text = q.tokens.join(' ');
+  // The original title of a translated book ("L'Étranger") also asks for its English edition ("The Stranger"): the English one shows next to it
+  const english: Task[] = final && !q.isbn ? englishEditionQueries(text).map((e, i) => ({ name: `google-en-${i}`, run: (n: number, signal?: AbortSignal) => google(e, n, signal, false) })) : [];
   const wild = q.partial && q.tokens.length ? `${q.tokens.slice(0, -1).join(' ')} ${q.tokens[q.tokens.length - 1]}*`.trim() : text;
   if (q.scope === 'keywords' || q.mood) {
     // Topics, themes and moods ("cozy mystery", "dragons", "classics"): the catalogs' subject searches first, plus the plain query (descriptions count there).
@@ -294,13 +296,14 @@ export function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
       { name: 'ol-q', run: (n, signal) => ol({ q: `${text} ${q.author}` }, n, signal, false) },
     ];
     if (q.full) both.push({ name: 'google-full', run: (n, signal) => google(q.full, n, signal, false) }); // "x by y" read as one title too
-    return both;
+    return [...both, ...english];
   }
   const tasks: Task[] = [
     { name: 'ol', run: (n, signal) => ol({ q: wild }, n, signal) }, // title, author or keyword
     { name: 'google', run: (n, signal) => google(text, n, signal) },
   ];
   if (q.full) tasks.push({ name: 'google-full', run: (n, signal) => google(q.full, n, signal, false) }); // "x by y" read as one title too
+  tasks.push(...english);
   if (final && q.tokens.length > 1) tasks.push({ name: 'ol-title', run: (n, signal) => ol({ title: wild }, n, signal, false) }); // titles only: far fewer unrelated hits
   return tasks;
 }

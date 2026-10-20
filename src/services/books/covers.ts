@@ -646,6 +646,12 @@ async function search(b: MissingBook): Promise<string> {
       }
     }
   }
+  // The cover viewer's own list (Apple, Google, every Open Library edition: English ones first) is the last place looked at, so a cover the viewer can show is never
+  // a placeholder on a shelf (the two used to search differently). A book that already has its own cover keeps it.
+  if (!ownLinkOf(b)) {
+    const listed = await loadCoverCandidates(b, () => {}).catch(() => [] as CoverCandidate[]);
+    for (const c of listed) if ((url = await accept(c.url))) return url;
+  }
   // No English cover anywhere. For a book with NO cover at all, a flat jacket of another language's edition beats a render, and a render beats nothing; a book that already has a cover keeps it
   if (!ownLinkOf(b)) {
     for (const f of foreign) if ((url = await accept(f))) return url;
