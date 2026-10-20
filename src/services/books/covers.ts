@@ -4,7 +4,7 @@ import { dedupeInflight, mapPool, pool } from './http';
 import { identityOf, isUnknownAuthor, primaryAuthor, titleVariants, titlesMatch } from './identity';
 import { findApple } from './sources/appleBooks';
 import { findGoogle, googleVolume } from './sources/googleBooks';
-import { olCoverById, olCoverByIsbn, searchOpenLibrary } from './sources/openLibrary';
+import { olCoverById, olCoverByIsbn, openLibraryEditionCovers, searchOpenLibrary } from './sources/openLibrary';
 import { isFrontCoverShape } from './placeholderCover';
 import { inspectCover } from './coverFlatness';
 import { isWeakCover } from './coverQuality';
@@ -199,12 +199,21 @@ export function probeImage(url: string, ms = 5000, front = false): Promise<boole
 const lookupSlots = pool(6); // covers are looked up six at a time (a results page shows nine at once), however many ask
 const inflight = new Map<string, Promise<string>>();
 
+/** English first: hits whose language is English or unknown come before hits whose editions are all in another language (each group keeps its order). */
+export const englishFirst = <T extends { flags: { language?: string } }>(hits: T[]): T[] => {
+  const isEnglish = (h: T) => !h.flags.language || h.flags.language === 'en';
+  return [...hits.filter(isEnglish), ...hits.filter(h => !isEnglish(h))];
+};
+
 async function search(b: MissingBook): Promise<string> {
   const id = identityOf(b);
   const author = isUnknownAuthor(b.author) ? '' : primaryAuthor(b.author);
   // Every candidate must load AND be a flat front cover (no spine / back / photographed book). A picture that loads but is a 3D RENDER (a tilted book,
   // the spine showing: coverFlatness.ts) is set aside and only used when nothing flat is found anywhere: no source is flat for every book, so the picture decides
   const renders: string[] = [];
+  // English is preferred: a cover that belongs to another language's edition is only kept for the end, and used only for a book with no cover at all
+  const foreign: string[] = [];
+  const isEnglish = (language?: string) => !language || language === 'en';
   const accept = async (url?: string) => {
     if (!url || !(await probeImage(url, 5000, true))) return '';
     if ((await inspectCover(url)) === 'render') { renders.push(url); return ''; }
@@ -222,12 +231,13 @@ async function search(b: MissingBook): Promise<string> {
   const apple = await appleAsk.catch(() => null);
   if (apple?.book.coverUrl && (url = await accept(apple.book.coverUrl))) return url;
   const gb = await gbAsk.catch(() => null);
-  if (gb?.book.coverUrl && gb.flags.language && gb.flags.language !== 'en') { /* another language's jacket: skip */ }
+  if (gb?.book.coverUrl && !isEnglish(gb.flags.language)) foreign.push(gb.book.coverUrl); // another language's jacket: only if nothing English turns up
   else if (gb?.book.coverUrl && (url = await accept(gb.book.coverUrl))) return url;
 
   // Google by name (title and author must really match)
   const byName = await findGoogle({ title: b.title, author });
-  if (byName?.book.coverUrl && (url = await accept(byName.book.coverUrl))) return url;
+  if (byName?.book.coverUrl && !isEnglish(byName.flags.language)) foreign.push(byName.book.coverUrl);
+  else if (byName?.book.coverUrl && (url = await accept(byName.book.coverUrl))) return url;
 
   // Open Library: the exact edition by ISBN, then other editions of this book (under any of its title forms), most popular first
   const olIsbnCover = await olIsbnAsk;
@@ -237,10 +247,22 @@ async function search(b: MissingBook): Promise<string> {
       .filter(h => h.book.coverId && h.book.coverId !== b.coverId && titlesMatch(h.book.title, b.title))
       .sort((x, y) => (y.book.ratingCount || 0) - (x.book.ratingCount || 0) || (y.book.coverId || 0) - (x.book.coverId || 0)) // popular work first (ratings_count), then the newer cover_i
       .slice(0, 4);
-    for (const h of editions) if ((url = await accept(olCoverById(h.book.coverId!, 'M')))) return url;
+    for (const h of englishFirst(editions)) {
+      if (!isEnglish(h.flags.language)) { foreign.push(olCoverById(h.book.coverId!, 'M')); continue; }
+      // The work's cover_i can be ANY edition's, a translation's included: an English edition's own cover is asked for first (one memoized request), cover_i after it
+      const work = h.book.identity?.olWork;
+      const english = work ? await openLibraryEditionCovers(work, 2).catch(() => [] as number[]) : [];
+      for (const id of [...english, h.book.coverId!].filter((n, i, a) => n !== b.coverId && a.indexOf(n) === i)) {
+        if ((url = await accept(olCoverById(id, 'M')))) return url;
+      }
+    }
   }
-  // Nothing flat anywhere: a render is better than no cover at all, but never a replacement for a cover the book already has (that would only swap one render for another)
-  return (!ownLinkOf(b) && renders[0]) || '';
+  // No English cover anywhere. For a book with NO cover at all, a flat jacket of another language's edition beats a render, and a render beats nothing; a book that already has a cover keeps it
+  if (!ownLinkOf(b)) {
+    for (const f of foreign) if ((url = await accept(f))) return url;
+    return renders[0] || '';
+  }
+  return '';
 }
 
 /**
