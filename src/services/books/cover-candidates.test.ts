@@ -40,7 +40,7 @@ test('every source adds its covers: Open Library editions, Google Books and Appl
   const updates: CoverCandidate[][] = [];
   const final = await loadCoverCandidates(mk('Many Covers', 'Ann Author'), l => updates.push(l));
   const bySource = (s: string) => urls(final.filter(c => c.source === s));
-  assert.deepEqual(bySource('openlibrary'), ['https://covers.openlibrary.org/b/id/111-L.jpg', 'https://covers.openlibrary.org/b/id/222-L.jpg', 'https://covers.openlibrary.org/b/id/444-L.jpg']);
+  assert.deepEqual(bySource('openlibrary'), ['https://covers.openlibrary.org/b/id/222-L.jpg', 'https://covers.openlibrary.org/b/id/444-L.jpg', 'https://covers.openlibrary.org/b/id/111-L.jpg']); // English editions' own covers first, the work's cover_i after them
   assert.deepEqual(bySource('google'), ['https://books.google.com/books/content?id=g1&zoom=1']);
   assert.deepEqual(bySource('apple'), ['https://is1-ssl.mzstatic.com/image/thumb/Pub/a/b/600x900bb.jpg']);
   assert.equal(final.length, 5);
@@ -69,7 +69,7 @@ test('a book whose Open Library work is known goes straight to its editions (no 
   const calls = routeFetch([olEditions('OL11W', [{ covers: [8] }, { covers: [9] }]), google('g3', 'Known Work', 'Cy Author', 'https://g/y?id=3'), apple('Known Work', 'Cy Author')]);
   const final = await loadCoverCandidates(mk('Known Work', 'Cy Author', { id: 'ol_/works/OL11W', coverId: 7 }), () => {});
   assert.equal(calls.filter(c => c.includes('/search.json')).length, 0);
-  assert.deepEqual(urls(final.filter(c => c.source === 'openlibrary')), ['7', '8', '9'].map(n => `https://covers.openlibrary.org/b/id/${n}-L.jpg`));
+  assert.deepEqual(urls(final.filter(c => c.source === 'openlibrary')), ['8', '9', '7'].map(n => `https://covers.openlibrary.org/b/id/${n}-L.jpg`));
 });
 
 test('a source that has nothing, or is down, only means fewer covers', async () => {
@@ -107,4 +107,11 @@ test('the same picture at another size is the same cover', () => {
   assert.equal(imageKey('https://is1-ssl.mzstatic.com/image/thumb/P/a/200x300bb.jpg'), imageKey('https://is1-ssl.mzstatic.com/image/thumb/P/a/600x900bb.jpg'));
   assert.equal(imageKey('https://books.google.com/books/content?id=1&zoom=1'), imageKey('https://books.google.com/books/content?id=1&zoom=2'));
   assert.notEqual(imageKey('https://books.google.com/books/content?id=1&zoom=1'), imageKey('https://books.google.com/books/content?id=2&zoom=1'));
+});
+
+import { rankCandidates } from './covers';
+test('rankCandidates: English before another language, then Apple, Google, Open Library; arrival order never decides', () => {
+  const c = (source: any, n: string, foreign?: true) => ({ url: `https://x/${n}`, source, ...(foreign ? { foreign } : {}) });
+  const ranked = rankCandidates([c('openlibrary', 'ol1'), c('google', 'g-fr', true), c('openlibrary', 'ol2'), c('apple', 'ap'), c('google', 'g1'), c('openlibrary', 'ol-es', true)]);
+  assert.deepEqual(ranked.map(x => x.url.split('/').pop()), ['ap', 'g1', 'ol1', 'ol2', 'g-fr', 'ol-es']);
 });

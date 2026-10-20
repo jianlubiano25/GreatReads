@@ -1,7 +1,7 @@
 import { getJson } from '../http';
 import { authorVariants, cleanIsbn, titleVariants, titlesMatch, authorListMatches, workIdFromKey } from '../identity';
 import { genreFromSubjects, makeBook } from '../model';
-import { looksEnglish, titleLooksForeign } from '../language';
+import { isEnglishEditionLanguages, looksEnglish, titleLooksForeign } from '../language';
 import type { CallOpts, Hit } from './types';
 
 const OL = 'https://openlibrary.org';
@@ -130,8 +130,7 @@ const editionYear = (e: any): number => Number(String(e?.publish_date ?? '').mat
 const newestFirst = (entries: any[]): any[] => entries.map((e, i) => ({ e, i })).sort((a, b) => editionYear(b.e) - editionYear(a.e) || a.i - b.i).map(x => x.e);
 
 const isEnglishEdition = (e: any): boolean => {
-  const langs: string[] = Array.isArray(e?.languages) ? e.languages.map((l: any) => String(l?.key || '')) : [];
-  return !langs.length || langs.includes('/languages/eng');
+  return isEnglishEditionLanguages(Array.isArray(e?.languages) ? e.languages.map((l: any) => String(l?.key || '')) : []);
 };
 
 /** Median page count across a work's editions (used when the search index has no page count). */

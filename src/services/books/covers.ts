@@ -8,11 +8,11 @@ import { type Book } from '../../types';
 import { isAppleCoverUrl, isNytCoverUrl } from './model';
 import { clearCaches, COVER_CACHE_KEYS, persistentCache, registerClearableKey } from './cache';
 import { dedupeInflight, mapPool, pool, transientFailureCount } from './http';
-import { identityOf, isUnknownAuthor, primaryAuthor, titleVariants, titlesMatch, authorKey, titleKey } from './identity';
+import { identityOf, isUnknownAuthor, primaryAuthor, authorKey, titleKey } from './identity';
 import { findApple } from './sources/appleBooks';
 import { findGoogle, googleVolume } from './sources/googleBooks';
 import { isEnglishLanguage } from './language';
-import { olCoverById, olCoverByIsbn, openLibraryEditionCovers, openLibraryEnglishCoverFor, searchOpenLibrary, findOpenLibrary } from './sources/openLibrary';
+import { olCoverById, olCoverByIsbn, openLibraryEditionCovers, openLibraryEnglishCoverFor, findOpenLibrary } from './sources/openLibrary';
 import { isFrontCoverShape } from './placeholderCover';
 
 /* ======================================================================================================
@@ -276,21 +276,6 @@ export function inspectCover(url: string): Promise<CoverVerdict> {
   return readCover(url).then(r => r.verdict);
 }
 
-/** The remembered verdict for a picture without doing any work: undefined when it has not been judged on this device yet. */
-export const knownVerdict = (url: string): CoverVerdict | undefined => flatSaved.get(flatKey(url))?.verdict;
-
-/**
- * Should a book's OWN cover wait before it is drawn? First pass: a 3D render (a tilted book, the spine showing) used to be drawn and replaced by a flat
- * front a few seconds later. Now it is held (the title card shows) until its picture has been judged: flat or unreadable is drawn at once, a render waits for
- * the lookup (`settled` = the lookup answered, or found nothing flat so the render stays), and a picture not judged yet waits for its verdict. The NYT's marketing
- * art counts as a render when it cannot be read (the same rule the lookup uses). Verdicts are remembered, so from the second time on nothing is held.
- */
-export function holdCover(verdict: CoverVerdict | undefined, nyt: boolean, settled: boolean): boolean {
-  if (settled) return false;
-  if (verdict === undefined) return true;
-  return verdict === 'render' || (verdict === 'unknown' && nyt);
-}
-
 export function readCover(url: string): Promise<CoverReading> {
   const key = flatKey(url);
   const hit = flatSaved.get(key);
@@ -437,7 +422,8 @@ const NONE_KEY = 'readlife.coverNone3'; // key -> time of the last miss
 registerClearableKey(FIX_KEY);
 registerClearableKey(NONE_KEY);
 const NONE_TTL = 24 * 60 * 60 * 1000;
-const MAX_FIXES = 400;
+const MAX_FIXES = 1500; // repairs and settled marks together (small records)
+const SETTLED_TTL = 90 * 24 * 60 * 60 * 1000;
 const FIX_TTL = 30 * 24 * 60 * 60 * 1000; // a repaired cover is trusted over the book's own link for 30 days at most
 
 export type MissingBook = Pick<Book, 'id' | 'title' | 'author' | 'coverId' | 'coverUrl' | 'identity'>;
@@ -536,6 +522,30 @@ const saveFix = (key: string, url: string, own: string) => {
   if (key in none) { delete none[key]; write(NONE_KEY, none); }
 };
 
+/**
+ * A book is SETTLED once its cover has had its one look (measured, and replaced by a flat front when one was found, or kept because none was): from then on nothing is
+ * measured, looked up or swapped for it again while its own cover link stays the same, for 90 days. It is the same record as a repair (an entry with no replacement
+ * url), so Refresh Book Covers clears both and a changed cover link reopens the book. Not recorded while offline: a failed lookup is not "nothing better exists".
+ */
+export const isCoverSettled = (book: CoverLinks): boolean => {
+  const f = fixes[coverKey(book)];
+  return !!f && f.v === FIX_RULE && f.own === ownLinkOf(book) && Date.now() - f.t < SETTLED_TTL;
+};
+export function markCoverSettled(book: CoverLinks) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+  const key = coverKey(book);
+  if (!book.title || fixes[key]?.url) return; // a repair already says it
+  fixes[key] = { url: '', t: Date.now(), own: ownLinkOf(book), v: FIX_RULE };
+  // A shelf settles many books in a burst: the list is written once, a moment later
+  clearTimeout(settledWrite);
+  settledWrite = setTimeout(() => {
+    const keys = Object.keys(fixes);
+    if (keys.length > MAX_FIXES) keys.slice(0, keys.length - MAX_FIXES).forEach(k => delete fixes[k]);
+    write(FIX_KEY, fixes);
+  }, 1500);
+}
+let settledWrite: ReturnType<typeof setTimeout> | undefined;
+
 /** A repaired cover that later stopped working: forget it so it can be repaired again. */
 export function dropCoverFix(book: { title?: string; author?: string }) {
   const key = coverKey(book);
@@ -588,76 +598,26 @@ export function probeImage(url: string, ms = 5000, front = false): Promise<boole
 const lookupSlots = pool(6); // covers are looked up six at a time (a results page shows nine at once), however many ask
 const inflight = new Map<string, Promise<string>>();
 
-/** English first: hits whose language is English or unknown come before hits whose editions are all in another language (each group keeps its order). */
-export const englishFirst = <T extends { flags: { language?: string } }>(hits: T[]): T[] => {
-  const isEnglish = (h: T) => isEnglishLanguage(h.flags.language);
-  return [...hits.filter(isEnglish), ...hits.filter(h => !isEnglish(h))];
-};
-
+/**
+ * The cover for a book whose own link is missing, broken or a 3D render: the FIRST picture of the cover viewer's own ranked list (loadCoverCandidates: English before
+ * another language, Apple, Google, Open Library) that really loads, is front-shaped and is not a render. One list, so the shelf and the viewer never disagree, and the
+ * viewer opens on what the shelf already looked up. A render is only the last resort for a book with no cover at all; another language's jacket likewise (a book that
+ * already has a cover keeps it rather than get either).
+ */
 async function search(b: MissingBook): Promise<string> {
-  const id = identityOf(b);
-  const author = isUnknownAuthor(b.author) ? '' : primaryAuthor(b.author);
-  // Every candidate must load AND be a flat front cover (no spine / back / photographed book). A picture that loads but is a 3D RENDER (a tilted book,
-  // the spine showing: covers.ts) is set aside and only used when nothing flat is found anywhere: no source is flat for every book, so the picture decides
+  const ownUrl = b.coverUrl || (b.coverId && b.coverId > 0 ? olCoverById(b.coverId, 'M') : '');
+  const hasOwn = !!ownLinkOf(b);
   const renders: string[] = [];
-  // English is preferred: a cover that belongs to another language's edition is only kept for the end, and used only for a book with no cover at all
-  const foreign: string[] = [];
-  const isEnglish = isEnglishLanguage;
-  const accept = async (url?: string) => {
-    if (!url || !(await probeImage(url, 5000, true))) return '';
-    if ((await inspectCover(url)) === 'render') { renders.push(url); return ''; }
+  const listed = rankCandidates(await loadCoverCandidates(b, () => {}).catch(() => [] as CoverCandidate[]));
+  for (const c of listed) {
+    if (c.foreign && hasOwn) break; // foreign ones are last: a book with a cover of its own is not given another language's
+    if (ownUrl && imageKey(c.url) === imageKey(ownUrl)) continue; // the cover it already has is the one that failed
+    const url = c.source === 'openlibrary' ? c.url.replace(/-L\.jpg/, '-M.jpg') : c.url; // a shelf card is drawn from the medium size (the viewer shows the large one)
+    if (!(await probeImage(url, 5000, true))) continue;
+    if ((await inspectCover(url)) === 'render') { renders.push(url); continue; }
     return url;
-  };
-  let url = '';
-
-  // All are asked at the same time (the slowest no longer holds up the others), then judged in a fixed order: Apple first, then
-  // Google, then Open Library. Apple's art is flat, clean, front-facing and modern, so it beats a paper / contents-looking scan
-  // whenever both exist; Open Library's scans are the most likely to be a spine, a back or a photographed book, so they come last.
-  const isbn = id.isbn13 || id.isbn10;
-  const appleAsk = findApple({ title: b.title, author });
-  const olIsbnAsk = isbn ? accept(olCoverByIsbn(isbn, 'L')) : Promise.resolve('');
-  const gbAsk = id.gbVolume ? googleVolume(id.gbVolume) : isbn ? findGoogle({ title: b.title, author, isbn }, {}, ['cover']) : Promise.resolve(null);
-  const apple = await appleAsk.catch(() => null);
-  if (apple?.book.coverUrl && (url = await accept(apple.book.coverUrl))) return url;
-  const gb = await gbAsk.catch(() => null);
-  if (gb?.book.coverUrl && !isEnglish(gb.flags.language)) foreign.push(gb.book.coverUrl); // another language's jacket: only if nothing English turns up
-  else if (gb?.book.coverUrl && (url = await accept(gb.book.coverUrl))) return url;
-
-  // Google by name (title and author must really match)
-  const byName = await findGoogle({ title: b.title, author });
-  if (byName?.book.coverUrl && !isEnglish(byName.flags.language)) foreign.push(byName.book.coverUrl);
-  else if (byName?.book.coverUrl && (url = await accept(byName.book.coverUrl))) return url;
-
-  // Open Library: the exact edition by ISBN, then other editions of this book (under any of its title forms), most popular first
-  const olIsbnCover = await olIsbnAsk;
-  if (olIsbnCover) return olIsbnCover;
-  for (const title of titleVariants(b.title)) {
-    const editions = (await searchOpenLibrary({ title, ...(author ? { author } : {}) }, 8))
-      .filter(h => h.book.coverId && h.book.coverId !== b.coverId && titlesMatch(h.book.title, b.title))
-      .sort((x, y) => (y.book.ratingCount || 0) - (x.book.ratingCount || 0) || (y.book.coverId || 0) - (x.book.coverId || 0)) // popular work first (ratings_count), then the newer cover_i
-      .slice(0, 4);
-    for (const h of englishFirst(editions)) {
-      if (!isEnglish(h.flags.language)) { foreign.push(olCoverById(h.book.coverId!, 'M')); continue; }
-      // The work's cover_i can be ANY edition's, a translation's included: an English edition's own cover is asked for first (one memoized request), cover_i after it
-      const work = h.book.identity?.olWork;
-      const english = work ? await openLibraryEditionCovers(work, 2).catch(() => [] as number[]) : [];
-      for (const id of [...english, h.book.coverId!].filter((n, i, a) => n !== b.coverId && a.indexOf(n) === i)) {
-        if ((url = await accept(olCoverById(id, 'M')))) return url;
-      }
-    }
   }
-  // The cover viewer's own list (Apple, Google, every Open Library edition: English ones first) is the last place looked at, so a cover the viewer can show is never
-  // a placeholder on a shelf (the two used to search differently). A book that already has its own cover keeps it.
-  if (!ownLinkOf(b)) {
-    const listed = await loadCoverCandidates(b, () => {}).catch(() => [] as CoverCandidate[]);
-    for (const c of listed) if ((url = await accept(c.url))) return url;
-  }
-  // No English cover anywhere. For a book with NO cover at all, a flat jacket of another language's edition beats a render, and a render beats nothing; a book that already has a cover keeps it
-  if (!ownLinkOf(b)) {
-    for (const f of foreign) if ((url = await accept(f))) return url;
-    return renders[0] || '';
-  }
-  return '';
+  return hasOwn ? '' : renders[0] || '';
 }
 
 /**
@@ -938,7 +898,16 @@ export function restoreCoverPicksFromBackup(text: string): number | null {
  * (a lookup disturbed by a network failure is not remembered). Nothing is fetched for a book nobody opened.
  */
 
-export type CoverCandidate = { url: string; source: CoverSource };
+/** `foreign`: the picture belongs to another language's edition (kept, but always after every English one) */
+export type CoverCandidate = { url: string; source: CoverSource; foreign?: true };
+const SOURCE_RANK: Record<string, number> = { apple: 0, google: 1, openlibrary: 2 };
+/**
+ * THE order covers are tried in, for the shelves and the cover viewer alike: English before another language's edition, then Apple, Google, Open Library (Apple's art is
+ * flat, modern and clean; Open Library's scans are the likeliest to be a spine, a back or a photographed book). Within a source the order it gave stays. The three
+ * sources answer at different speeds, so the arrival order never decides.
+ */
+export const rankCandidates = (list: CoverCandidate[]): CoverCandidate[] =>
+  list.map((c, i) => ({ c, i })).sort((a, b) => Number(!!a.c.foreign) - Number(!!b.c.foreign) || (SOURCE_RANK[a.c.source] ?? 9) - (SOURCE_RANK[b.c.source] ?? 9) || a.i - b.i).map(x => x.c);
 export const coverSourceLabel = (s: CoverSource): string => COVER_SOURCE_LABEL[s];
 
 const MAX_CANDIDATES = 14;
@@ -959,33 +928,39 @@ const fromGoogle: Finder = async (b, author) => {
   const exact = id.gbVolume ? await googleVolume(id.gbVolume) : null; // the exact edition when we know it
   const byName = !exact?.book.coverUrl || !isEnglishLanguage(exact.flags.language) ? await findGoogle({ title: b.title, author, isbn: id.isbn13 || id.isbn10 }, {}, ['cover']) : null;
   // English jackets first; another language's edition is still offered (the reader may want it), but after
-  return englishFirst([byName, exact].filter((h): h is NonNullable<typeof h> => !!h?.book.coverUrl))
-    .map(h => ({ url: h.book.coverUrl!, source: 'google' as const }));
+  return [byName, exact].filter((h): h is NonNullable<typeof h> => !!h?.book.coverUrl)
+    .map(h => ({ url: h.book.coverUrl!, source: 'google' as const, ...(isEnglishLanguage(h.flags.language) ? {} : { foreign: true as const }) }));
 };
 
 const fromOpenLibrary: Finder = async (b, author) => {
   const id = identityOf(b);
+  const isbn = id.isbn13 || id.isbn10;
   let work = id.olWork;
   let first = b.coverId && b.coverId > 0 ? b.coverId : undefined;
+  // The exact edition (the ISBN the book is pinned to) is asked at the same time as its work
+  const byIsbn = isbn ? probeImage(olCoverByIsbn(isbn, 'L'), 5000, true) : Promise.resolve(false);
   if (!work) {
-    const hit = await findOpenLibrary({ title: b.title, author, isbn: id.isbn13 || id.isbn10 });
+    const hit = await findOpenLibrary({ title: b.title, author, isbn });
     work = hit?.book.identity?.olWork;
     first = first ?? hit?.book.coverId;
   }
   const editions = work ? await openLibraryEditionCovers(work, MAX_OL) : [];
-  // The work's cover_i (one edition's) stays first, unless the editions show it is a translation's jacket and an English edition has its own: then the English ones lead
   const translation = !!(work && first) && (await openLibraryEnglishCoverFor(work, first)) !== first;
-  const ids = (translation ? [...editions, first!] : [...(first ? [first] : []), ...editions]).filter((n, i, a) => a.indexOf(n) === i).slice(0, MAX_OL);
+  // An English edition's own cover leads; the work's cover_i (any edition's) follows it, unless it is provably a translation's (then it is last and marked foreign)
+  const english = [...editions, ...(first && !translation ? [first] : [])].filter((n, i, a) => a.indexOf(n) === i);
+  const out: CoverCandidate[] = english.map(n => ({ url: olCoverById(n, 'L'), source: 'openlibrary' as const }));
+  if (translation) out.push({ url: olCoverById(first!, 'L'), source: 'openlibrary', foreign: true });
   // No English edition has a cover (or none is tagged): another language's jacket is still offered rather than "no cover found" (English ones always lead)
-  if (!ids.length && work) ids.push(...(await openLibraryEditionCovers(work, MAX_OL, {}, true).catch(() => [] as number[])));
-  return ids.map(n => ({ url: olCoverById(n, 'L'), source: 'openlibrary' as const }));
+  if (!out.length && work) out.push(...(await openLibraryEditionCovers(work, MAX_OL, {}, true).catch(() => [] as number[])).map(n => ({ url: olCoverById(n, 'L'), source: 'openlibrary' as const, foreign: true as const })));
+  if (await byIsbn) out.unshift({ url: olCoverByIsbn(isbn!, 'L'), source: 'openlibrary' });
+  return out.slice(0, MAX_OL);
 };
 
 type Run = { found: CoverCandidate[]; subs: Set<(list: CoverCandidate[]) => void>; done: Promise<CoverCandidate[]> };
 const runs = new Map<string, Run>();
 const cache = persistentCache<CoverCandidate[]>(COVER_CACHE_KEYS.candidates, {
-  ttl: 7 * 24 * 60 * 60 * 1000,
-  max: 40,
+  ttl: 30 * 24 * 60 * 60 * 1000, // a book's covers are looked up once and kept; Refresh Book Covers forgets them
+  max: 150,
   validate: v => Array.isArray(v) && v.every(c => c && typeof c.url === 'string' && /^https:\/\//.test(c.url) && typeof c.source === 'string'),
 });
 
@@ -999,11 +974,12 @@ function startRun(book: Pick<Book, 'title' | 'author' | 'id' | 'identity' | 'cov
       if (run.found.length >= MAX_CANDIDATES) break;
       if (!run.found.some(f => imageKey(f.url) === imageKey(c.url))) { run.found.push(c); changed = true; }
     }
-    if (changed) run.subs.forEach(s => s([...run.found]));
+    if (changed) run.subs.forEach(s => s([...run.found])); // arrival order while the viewer is open (it keeps its own slide order); ranked once everything has answered
   };
   // The three sources are asked together; a source that fails or finds nothing only means fewer covers
   run.done = Promise.all([fromApple, fromGoogle, fromOpenLibrary].map(f => f(book, author).then(add, () => {})))
     .then(() => {
+      run.found = rankCandidates(run.found);
       // A lookup that was disturbed by a network failure is not remembered as "this book has these covers"
       if (transientFailureCount() === trouble && run.found.length) cache.set(key, run.found); // "nothing found" is asked again next time, never remembered for a week
       return run.found;

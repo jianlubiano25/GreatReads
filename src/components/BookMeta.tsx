@@ -5,8 +5,8 @@ import { honorKind, mergeHonors } from '../services/store/honors';
 import { externalRating, isNytCoverUrl, ratingOf, starFills } from '../services/books';
 import { infoKey, infoVersion, shownRating, subscribeInfo } from '../services/books/infoStore';
 import { placeholderStyleFor, titleSizeCqw, isFrontCoverShape } from '../services/books/placeholderCover';
-import { inspectCover, knownVerdict, holdCover, type CoverVerdict } from '../services/books/covers';
-import { coverKey, getCoverUrl, sizedCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, reportMissingCover, clearMissingCover, getCoverPickInfo, pickSizedUrl, markCoverPickFailed } from '../services/books';
+import { inspectCover } from '../services/books/covers';
+import { coverKey, getCoverUrl, sizedCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, isCoverSettled, markCoverSettled, reportMissingCover, clearMissingCover, getCoverPickInfo, pickSizedUrl, markCoverPickFailed } from '../services/books';
 
 export type AwardKind = 'w' | 's' | 'c'; // winner, shortlist, other pick (book club, series...)
 
@@ -220,22 +220,6 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
   const [st, setSt] = useState<St>({ base: baseUrl, tries: 0, alt: '', dead: false });
   const cur: St = st.base === baseUrl ? st : { base: baseUrl, tries: 0, alt: '', dead: false };
 
-  // FIRST PASS: the book's own cover is judged BEFORE it is drawn. A 3D render (a tilted book, the spine showing) used to be drawn and replaced by a flat front a few
-  // seconds later; now the title card shows until the verdict is in, and the render is never drawn when a flat front exists. A verdict is remembered on this device,
-  // so from the second time on nothing waits. A pick, a repair and a replacement were judged when they were chosen.
-  const judge = !pick && !fix && !cur.alt && !!baseUrl;
-  const [judged, setJudged] = useState<{ base: string; v: CoverVerdict } | null>(null);
-  const verdict: CoverVerdict | undefined = !judge ? 'flat' : judged?.base === baseUrl ? judged.v : knownVerdict(baseUrl);
-  const [settledFor, setSettledFor] = useState(''); // a render the lookup found no flat front for: drawn after all (better than a placeholder)
-  useEffect(() => {
-    if (!judge || !baseUrl || knownVerdict(baseUrl)) return;
-    let live = true;
-    const t = setTimeout(() => { if (live) setJudged({ base: baseUrl, v: 'unknown' }); }, 2500); // never wait long: a picture that cannot be judged is drawn as before
-    void inspectCover(baseUrl).then(v => { if (live) { clearTimeout(t); setJudged({ base: baseUrl, v }); } });
-    return () => { live = false; clearTimeout(t); };
-  }, [baseUrl, judge]);
-  const hold = holdCover(verdict, isNytCoverUrl(book.coverUrl), settledFor === baseUrl);
-
   // Retry twice (cache-busted), then look for the same book's cover on Apple / Google Books
   const src = (cur.alt && sizedCoverUrl(cur.alt, imgSize)) || (cur.tries > 0 && baseUrl ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}r=${cur.tries}` : baseUrl);
   // Starts false even for a cover seen before: until the picture really is in hand the stand-in cover shows (never the bare book colour); the effect below flips it at once for a cached one
@@ -257,23 +241,23 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
     resolveCover(book).then(u => setSt(u ? { ...cur, alt: u } : { ...cur, dead: true }));
   };
 
-  // A cover that loaded fine can still be a 3D render (a tilted book, the spine showing). Its pixels are measured once per picture (remembered on this device);
-  // a render is replaced by a flat front cover from another source when there is one. Not for a cover you picked, nor for one that already is a replacement.
+  // The cover is drawn at once. A cover that loaded fine can still be a 3D render (a tilted book, the spine showing): its pixels are measured once, and a render is
+  // replaced by a flat front from another source when there is one, ONCE. Then the book is settled (covers.ts: markCoverSettled): it is never measured or looked up
+  // again, whatever scrolling or reopening does, until Refresh Book Covers, a pick or a newly published cover. Not for a cover you picked, nor for a replacement.
   const liveSrc = useRef('');
   liveSrc.current = src;
   const vetted = useRef(new Set<string>());
   const vet = (u: string) => {
-    if (pick || cur.alt || !u || vetted.current.has(u)) return;
+    if (pick || fix || cur.alt || !u || vetted.current.has(u) || isCoverSettled(book)) return;
     vetted.current.add(u);
     void inspectCover(u).then(async v => {
       if (liveSrc.current !== u) return;
       // A 3D render always looks for a flat front. So does the NYT's marketing image when its pixels cannot be read ('unknown'): it is a render far more often than not.
-      if (v !== 'render' && !(v === 'unknown' && isNytCoverUrl(book.coverUrl))) return;
-      // The first flat front the lookup finds (Apple, Google, then Open Library) replaces it, even though the book already has a cover link: the lookup itself only
-      // answers with a picture that loads, is front-shaped and is not a render. With none, the cover stays (a render is still better than a placeholder)
+      if (v !== 'render' && !(v === 'unknown' && isNytCoverUrl(book.coverUrl))) return markCoverSettled(book);
+      // The first flat front the lookup finds (Apple, Google, then Open Library) replaces it. With none, the render stays (better than a placeholder) and the book is settled
       const alt = await resolveCover(book).catch(() => '');
       if (alt && alt !== u && liveSrc.current === u) setSt({ ...cur, alt });
-      else if (liveSrc.current === u) setSettledFor(baseUrl);
+      else if (liveSrc.current === u) markCoverSettled(book);
     });
   };
   useEffect(() => {
@@ -308,7 +292,7 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
   const won = awardsFor(book).some(a => a.type === 'w');
   const isEager = eager || size === 'lg' || size === 'xl';
   const wasKnown = url ? loadedCovers.has(url) : false; // seen before on this device: appears with no fade
-  const isReady = imgLoaded && !hold; // only a picture that really loaded (and is not a render still being replaced) replaces the stand-in (a remembered URL can still be slow or gone)
+  const isReady = imgLoaded; // only a picture that really loaded replaces the stand-in (a remembered URL can still be slow or gone)
 
   return (
     <>

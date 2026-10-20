@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 const store = new Map<string, string>();
 (globalThis as any).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
 
-import { resolveCover, englishFirst, getCoverUrl, sizedCoverUrl } from './covers';
+import { resolveCover, getCoverUrl, sizedCoverUrl } from './covers';
 import { routeFetch } from '../store/testkit';
 
 const isOl = (u: URL) => u.hostname === 'openlibrary.org';
@@ -43,11 +43,6 @@ test('a book that already has a cover is never given another language\'s jacket 
   routeFetch([noApple, googleVolume('Madame Bovary', 'Gustave Flaubert', 'fr', FR_THUMB), none]);
   const url = await resolveCover({ id: 'a3', title: 'Madame Bovary', author: 'Gustave Flaubert', coverUrl: 'https://own.example/bovary.jpg' } as any);
   assert.equal(url, '');
-});
-
-test('englishFirst: English or unknown-language hits first, the rest after, each group in its order', () => {
-  const h = (n: string, language?: string) => ({ n, flags: { language } });
-  assert.deepEqual(englishFirst([h('fr', 'fre'), h('en1', 'en'), h('?'), h('de', 'ger'), h('en2', 'en')]).map(x => x.n), ['en1', '?', 'en2', 'fr', 'de']);
 });
 
 test('a repaired cover and the same picture arriving through the book\'s own link are ONE url at every card size', () => {
