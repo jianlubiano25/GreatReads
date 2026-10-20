@@ -25,7 +25,7 @@ import {
  * The cover viewer: swipe through every cover the sources have for this book, tap the star to use one everywhere in the app.
  *
  * Light by design: a CSS scroll-snap strip (no gesture library), the first three pictures load at once and the rest as they come near,
- * and the covers come from services/books/coverCandidates.ts, which asks each source once per book and remembers the answer.
+ * and the covers come from services/books/covers.ts, which asks each source once per book and remembers the answer.
  * The slide order is fixed when the viewer opens (your pick, the default cover, then new finds as they arrive) so nothing jumps while you swipe.
  */
 

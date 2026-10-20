@@ -25,10 +25,10 @@ function server(handler: (c: Call) => { status?: number; body?: unknown; etag?: 
   return calls;
 }
 // The modules as the app has them (they share state with each other), and a standalone copy that re-reads storage like a new launch
-const base = { shared: await import('./sharedCovers'), picks: await import('./coverPicks'), admin: await import('./coverAdmin') };
+const base = { shared: await import('./covers'), picks: await import('./covers'), admin: await import('./covers') };
 const launch = async (q: string) => ({
-  shared: (await import(`./sharedCovers?${q}`)) as typeof import('./sharedCovers'),
-  admin: (await import(`./coverAdmin?${q}`)) as typeof import('./coverAdmin'),
+  shared: (await import(`./covers?${q}`)) as typeof import('./covers'),
+  admin: (await import(`./covers?${q}`)) as typeof import('./covers'),
 });
 const covers = await import('./covers');
 
@@ -131,7 +131,7 @@ test('the owner\'s tools: five quick taps switch them on, slow taps do not, five
 });
 
 test('publish list: published + yours (yours win) minus what you removed, with a status for each', async () => {
-  const { buildDraft, draftStatus, countChanges } = await import('./coverPublish');
+  const { buildDraft, draftStatus, countChanges } = await import('./covers');
   const rec = (url: string) => ({ url, source: 'link' as const, t: 1 });
   const shared = { a: rec('https://x/a1'), b: rec('https://x/b1'), c: rec('https://x/c1') };
   const mine = { b: rec('https://x/b2'), d: rec('https://x/d1') };
@@ -148,7 +148,7 @@ test('publish list: published + yours (yours win) minus what you removed, with a
 test('publish: sends the token and the set, then everyone (this device too) draws the published set', async () => {
   const { shared, picks } = base;
   const NEW = 'https://is1-ssl.mzstatic.com/image/thumb/P/v4/cd/art2/600x900bb.jpg';
-  const { publishCovers } = await import('./coverPublish');
+  const { publishCovers } = await import('./covers');
   const draft = { [KEY]: { url: NEW, source: 'apple' as const, t: 2, title: 'Shared One', author: 'Ann Author' } };
   const calls = server(() => ({ body: { v: 50, picks: draft, dropped: 0 } }));
   const r = await publishCovers(draft, 'tok');
@@ -163,7 +163,7 @@ test('publish: sends the token and the set, then everyone (this device too) draw
 test('publish: says why it failed and changes nothing', async () => {
   const { shared } = base;
   const before = shared.sharedCoversVersion();
-  const { publishCovers } = await import('./coverPublish');
+  const { publishCovers } = await import('./covers');
   const cases: [any, string][] = [
     [{ status: 401, body: { error: 'unauthorized' } }, 'unauthorized'],
     [{ status: 503, body: { error: 'not_configured' } }, 'not_configured'],

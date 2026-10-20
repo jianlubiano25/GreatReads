@@ -17,7 +17,7 @@ import {
   syncSharedCovers,
   type CoverPick,
 } from '../services/books';
-import { buildDraft, countChanges, draftStatus, publishCovers, type PublishResult } from '../services/books/coverPublish';
+import { buildDraft, countChanges, draftStatus, publishCovers, type PublishResult } from '../services/books/covers';
 import { CoverPickerModal } from './CoverPickerModal';
 
 /**

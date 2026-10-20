@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 const store = new Map<string, string>();
 (globalThis as any).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
 
-import { coverQuality, coverBonus, isWeakCover } from './coverQuality';
+import { coverQuality, coverBonus, isWeakCover } from './covers';
 import { fillMissingCovers } from './covers';
 import { rank, forgetRecentSearchesForTests } from './search';
 import { forgetSeenForTests } from './localIndex';

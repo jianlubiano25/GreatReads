@@ -5,7 +5,7 @@ import { honorKind, mergeHonors } from '../services/store/honors';
 import { externalRating, isNytCoverUrl, ratingOf, starFills } from '../services/books';
 import { infoKey, infoVersion, shownRating, subscribeInfo } from '../services/books/infoStore';
 import { placeholderStyleFor, titleSizeCqw, isFrontCoverShape } from '../services/books/placeholderCover';
-import { inspectCover } from '../services/books/coverFlatness';
+import { inspectCover } from '../services/books/covers';
 import { coverKey, getCoverUrl, sizedCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, reportMissingCover, clearMissingCover, getCoverPickInfo, pickSizedUrl, markCoverPickFailed } from '../services/books';
 
 export type AwardKind = 'w' | 's' | 'c'; // winner, shortlist, other pick (book club, series...)

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 const store = new Map<string, string>();
 (globalThis as any).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
 
-const load = async (q: string): Promise<typeof import('./coverPicks')> => import(`./coverPicks?${q}`); // fresh copy: re-reads storage
+const load = async (q: string): Promise<typeof import('./covers')> => import(`./covers?${q}`); // fresh copy: re-reads storage
 const { clearableCacheKeys } = await import('./cache');
 const covers = await import('./covers');
 
@@ -42,7 +42,7 @@ test('a card gets the picked cover at its own size (Apple art resized, an Open L
 test('unstarring goes back to the automatic cover, and a change tells every drawn cover to look again', async () => {
   const c = await load('clear');
   let ticks = 0;
-  const off = covers.subscribeCovers(() => { ticks++; });
+  const off = c.subscribeCovers(() => { ticks++; });
   c.setCoverPick(book, { url: APPLE, source: 'apple' });
   assert.equal(ticks, 1);
   c.clearCoverPick(book);

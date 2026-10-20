@@ -8,7 +8,7 @@ import { dateKey } from '../services/dates';
 import { applyHistoryEdit, applyRating, stampProgress, stampStatus, type HistoryPatch } from '../services/bookHistory';
 import { applyAddBook, type AddDestination, type AddStatus } from '../services/library';
 import { clearableCacheKeys } from '../services/books/cache';
-import { exportCoverPicks, restoreCoverPicksFromBackup } from '../services/books/coverPicks';
+import { exportCoverPicks, restoreCoverPicksFromBackup } from '../services/books/covers';
 import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
 import { applyMerge, findDuplicateGroups, idMapOf, remapCollections } from '../services/mergeDuplicates';
 import { exportCollections, loadCollections, restoreCollectionsFromBackup, saveCollections } from '../services/libraryCollections';

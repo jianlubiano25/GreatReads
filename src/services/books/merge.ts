@@ -1,14 +1,14 @@
 import type { Book } from '../../types';
 import { mergeIdentity, sameWork, titleKey, titlesMatch } from './identity';
 import { looksEnglish, titleLooksForeign } from './language';
-import { coverQuality } from './coverQuality';
+import { coverQuality } from './covers';
 import { hasRealSummary, isKnownGenre } from './model';
 import { chooseRating, externalRating, ratingOf, type RatingPair } from './ratings';
 
 /** The same book from two places becomes one record that keeps the best of both. `a` wins on identity (id, title, author). */
 export function mergeBooks(a: Book, b: Book): Book {
   const out: Book = { ...a };
-  // The better cover wins (coverQuality.ts): Apple's flat front, then a Google Books front, then an Open Library cover or another link, then the NYT's marketing image
+  // The better cover wins (covers.ts): Apple's flat front, then a Google Books front, then an Open Library cover or another link, then the NYT's marketing image
   // (often a 3D render). Open Library's cover is often the work's oldest edition or a scan, so a modern Google front beats it. At equal quality the first cover found stays.
   if (coverQuality(b) > coverQuality(out)) { out.coverUrl = b.coverUrl; out.coverId = b.coverUrl ? undefined : b.coverId; }
   if (!out.pageCount && b.pageCount) { out.pageCount = b.pageCount; out.difficulty = b.difficulty; }

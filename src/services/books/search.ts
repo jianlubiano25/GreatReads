@@ -11,7 +11,7 @@ import { rememberExcluded } from './eligibility';
 import { localMatches, rememberSeen } from './localIndex';
 import { contentTokens, normQ, parseQuery, tokenHits, type ParsedQuery, type SearchScope } from './query';
 import { keywordGroups, keywordPhrases, stem } from './keywords';
-import { coverBonus } from './coverQuality';
+import { coverBonus } from './covers';
 import { diversify, kindAdjust, kindOfQuery, thinRecord } from './genreRank';
 
 /** Editions that are about a book, not the book ("Study Guide", "Summary of ...", boxed sets): ranked far down unless that is what was asked for. */

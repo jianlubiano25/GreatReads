@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 const store = new Map<string, string>();
 (globalThis as any).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
 
-import { analyzePixels, analysisUrl, flatKey, setCoverInspectorForTests, SAMPLE_W as W, SAMPLE_H as H } from './coverFlatness';
+import { analyzePixels, analysisUrl, flatKey, setCoverInspectorForTests, SAMPLE_W as W, SAMPLE_H as H } from './covers';
 import { resolveCover, refreshBookCovers } from './covers';
 import { routeFetch } from '../store/testkit';
 
