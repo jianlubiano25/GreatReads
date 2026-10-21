@@ -372,8 +372,24 @@ async function search(b: MissingBook): Promise<string> {
     return '';
   };
   const tried = new Set<string>();
+  // Early accept: the moment Apple or Google hands over an English cover that loads, is front-shaped and is flat, it is taken: no waiting for the slower source or for Open Library
+  let early: ((u: string) => void) | undefined;
+  const earlyWin = new Promise<string>(r => { early = r; });
+  const seen = new Set<string>();
+  const onEarly = (list: CoverCandidate[]) => {
+    for (const c of rankCandidates(list)) {
+      if (c.foreign || c.source === 'openlibrary' || seen.has(c.url) || (ownUrl && imageKey(c.url) === imageKey(ownUrl))) continue;
+      seen.add(c.url);
+      void (async () => {
+        if (!(await probeImage(c.url, 5000, true))) return;
+        if ((await inspectCover(c.url)) === 'render') return;
+        early?.(c.url);
+      })();
+    }
+  };
   // Apple and Google first (quick); Open Library, the slow source, only when they gave nothing usable (no cover, a render, or another language's)
-  const quick = await tryList(await loadCoverCandidates(b, () => {}, undefined, { fast: true }).catch(() => [] as CoverCandidate[]));
+  const quickList = loadCoverCandidates(b, onEarly, undefined, { fast: true }).catch(() => [] as CoverCandidate[]);
+  const quick = await Promise.race([earlyWin, quickList.then(tryList)]);
   if (quick) return quick;
   const full = await tryList(await loadCoverCandidates(b, () => {}).catch(() => [] as CoverCandidate[]));
   if (full) return full;
@@ -402,8 +418,10 @@ export function resolveCover(b: MissingBook, opts: { force?: boolean } = {}): Pr
     } else if (typeof navigator === 'undefined' || navigator.onLine !== false) {
       // "No cover anywhere" is remembered for a day only when every site really answered. A timeout, a rate limit or an error says nothing about the book,
       // so then it is remembered for 5 minutes only (a stampede of lookups no longer leaves a book on a placeholder for 24 hours)
+      // A FIRST miss (nothing stored for the book yet, as after Refresh Book Covers) is remembered for 2 minutes only, so the next view tries again; a repeated clean miss is remembered for the day.
       const none = read<number>(NONE_KEY);
-      none[key] = transientFailureCount() === trouble ? Date.now() : Date.now() - NONE_TTL + 5 * 60 * 1000;
+      const repeated = key in none && transientFailureCount() === trouble;
+      none[key] = repeated ? Date.now() : Date.now() - NONE_TTL + (transientFailureCount() === trouble ? 2 : 5) * 60 * 1000;
       write(NONE_KEY, none);
     }
     return url;

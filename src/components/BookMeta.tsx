@@ -6,7 +6,7 @@ import { externalRating, isNytCoverUrl, ratingOf, starFills } from '../services/
 import { infoKey, infoVersion, shownRating, subscribeInfo } from '../services/books/infoStore';
 import { placeholderStyleFor, titleSizeCqw, isFrontCoverShape } from '../services/books/placeholderCover';
 import { inspectCover } from '../services/books/covers';
-import { coverKey, getCoverUrl, sizedCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, isCoverSettled, markCoverSettled, reportMissingCover, clearMissingCover, getCoverPickInfo, pickSizedUrl, markCoverPickFailed } from '../services/books';
+import { coverKey, getCoverUrl, sizedCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, isCoverSettled, markCoverSettled, reportMissingCover, clearMissingCover, getCoverPickInfo, pickSizedUrl, markCoverPickFailed, peekCoverCandidate } from '../services/books';
 
 export type AwardKind = 'w' | 's' | 'c'; // winner, shortlist, other pick (book club, series...)
 
@@ -215,7 +215,10 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
   // ONE URL per picture: a repaired cover is drawn at the card's size exactly like the same picture arriving through the book's own link (getCoverUrl). Raw, a repair
   // (Apple's 600x900) and the book's updated link (360x540) were two URLs for one picture, so the cover loaded twice and visibly swapped.
   const fix = pick ? '' : getCoverFix(book);
-  const baseUrl = pick ? pickSizedUrl(pick.url, imgSize) : fix ? sizedCoverUrl(fix, imgSize) : getCoverUrl(book.coverId, imgSize, book.coverUrl);
+  // Whatever is already known is drawn at once (pick, repair, the book's own link, else a cover kept from an earlier lookup): nothing here waits on a lookup or a measurement.
+  const own = pick ? '' : getCoverUrl(book.coverId, imgSize, book.coverUrl);
+  const kept = pick || fix || own ? '' : peekCoverCandidate(book);
+  const baseUrl = pick ? pickSizedUrl(pick.url, imgSize) : fix ? sizedCoverUrl(fix, imgSize) : own || (kept ? sizedCoverUrl(kept, imgSize) : '');
   type St = { base: string; tries: number; alt: string; dead: boolean };
   const [st, setSt] = useState<St>({ base: baseUrl, tries: 0, alt: '', dead: false });
   const cur: St = st.base === baseUrl ? st : { base: baseUrl, tries: 0, alt: '', dead: false };
@@ -251,7 +254,9 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
   const vet = (u: string) => {
     if (pick || fix || cur.alt || !u || vetted.current.has(u) || isCoverSettled(book)) return;
     vetted.current.add(u);
-    void inspectCover(u).then(async v => {
+    // Background only: after the picture is already on screen, when the browser is idle
+    const idle = (fn: () => void) => { try { (window as any).requestIdleCallback ? (window as any).requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 60); } catch { setTimeout(fn, 60); } };
+    idle(() => void inspectCover(u).then(async v => {
       if (liveSrc.current !== u) return;
       // A 3D render always looks for a flat front. So does the NYT's marketing image when its pixels cannot be read ('unknown'): it is a render far more often than not.
       if (v !== 'render' && !(v === 'unknown' && isNytCoverUrl(book.coverUrl))) return markCoverSettled(book);
@@ -259,7 +264,7 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
       const alt = await resolveCover(book).catch(() => '');
       if (alt && alt !== u && liveSrc.current === u) setSt({ ...cur, alt });
       else if (liveSrc.current === u) markCoverSettled(book);
-    });
+    }));
   };
   useEffect(() => {
     if (!baseUrl && !cur.alt && !cur.dead) giveUp();

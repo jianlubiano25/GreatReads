@@ -5,7 +5,7 @@ import { identityOf, isUnknownAuthor, primaryAuthor } from './identity';
 import { findApple } from './sources/appleBooks';
 import { findGoogle, googleVolume } from './sources/googleBooks';
 import { isEnglishLanguage } from './language';
-import { olCoverById, olCoverByIsbn, openLibraryEditionCovers, openLibraryEnglishCoverFor, findOpenLibrary } from './sources/openLibrary';
+import { olCoverById, olCoverByIsbn, openLibraryEditionCovers, openLibraryEnglishCoverFor, findOpenLibrary, BUNDLE_TITLE } from './sources/openLibrary';
 import { coverKey, flatKey, probeImage } from './coverAnalysis';
 import { COVER_SOURCE_LABEL, type CoverSource } from './covers';
 
@@ -53,7 +53,7 @@ const fromGoogle: Finder = async (b, author) => {
   const exact = id.gbVolume ? await googleVolume(id.gbVolume) : null; // the exact edition when we know it
   const byName = !exact?.book.coverUrl || !isEnglishLanguage(exact.flags.language) ? await findGoogle({ title: b.title, author, isbn: id.isbn13 || id.isbn10 }, {}, ['cover']) : null;
   // English jackets first; another language's edition is still offered (the reader may want it), but after
-  return [byName, exact].filter((h): h is NonNullable<typeof h> => !!h?.book.coverUrl)
+  return [byName, exact].filter((h): h is NonNullable<typeof h> => !!h?.book.coverUrl && !BUNDLE_TITLE.test(h.book.title || '')) // a box set / "3 in 1" volume's jacket is a collage, never the book
     .map(h => ({ url: h.book.coverUrl!, source: 'google' as const, ...(isEnglishLanguage(h.flags.language) ? {} : { foreign: true as const }) }));
 };
 
@@ -125,6 +125,13 @@ function startRun(book: Pick<Book, 'title' | 'author' | 'id' | 'identity' | 'cov
  * Hand `onUpdate` the covers found so far, again each time more arrive (the list only ever grows, in a stable order). Resolves with the
  * final list. `signal` only stops the callbacks: a lookup other callers share keeps running and is remembered.
  */
+/** Instant, no network: the best saved English cover for a book that has no link of its own (from a list the cover viewer or an earlier lookup already kept), or ''. */
+export function peekCoverCandidate(book: { title?: string; author?: string }): string {
+  const saved = cache.get(coverKey(book));
+  const best = saved ? rankCandidates(saved).find(c => !c.foreign) : undefined;
+  return best ? (best.source === 'openlibrary' ? best.url.replace(/-L\.jpg/, '-M.jpg') : best.url) : '';
+}
+
 export function loadCoverCandidates(book: Pick<Book, 'title' | 'author' | 'id' | 'identity' | 'coverId'>, onUpdate: (list: CoverCandidate[]) => void, signal?: AbortSignal, opts: { fast?: boolean } = {}): Promise<CoverCandidate[]> {
   const key = coverKey(book);
   const saved = cache.get(key);

@@ -90,6 +90,8 @@ export const FLAT_TUNING = {
   edgeJump: 40, // luminance step that counts as an edge
   edgeRowsMin: 0.72, // share of rows that must show the same edge
   sideColourGap: 70, // colours either side of a spine edge differ by at least this
+  blankLum: 38, // a background darker than this ...
+  blankInk: 0.025, // ... with less than this share of the picture not the background is a black "cover to be revealed" image
 };
 
 /** Measure a W x H RGBA sample (any size; the app uses SAMPLE_W x SAMPLE_H). */
@@ -138,6 +140,9 @@ export function analyzePixels(data: ArrayLike<number>, w: number, h: number): Co
     }
   }
   if (spineEdge >= T.edgeRowsMin) reasons.push('spine edge');
+
+  // 4. an (almost) all-black picture: a "cover to be revealed" teaser, not a jacket. Treated like a render so a real cover replaces it whenever one exists
+  if (bgSame >= T.bgSameMin && lum(bg) <= T.blankLum && ink / (w * h) <= T.blankInk) reasons.push('blank black reveal');
 
   return { verdict: reasons.length ? 'render' : 'flat', reasons, bgSame, density, spineEdge, insets };
 }
