@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 const store = new Map<string, string>();
 (globalThis as any).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
 
-const load = async (q: string): Promise<typeof import('./covers')> => import(`./covers?${q}`); // fresh copy: re-reads storage
+// fresh copy of the picks module (re-reads storage); the lookup module stays the app's one, so a pick still tells the drawn covers to look again
+const load = async (q: string): Promise<typeof import('./covers')> => ({ ...(await import('./coverLookup')), ...(await import(`./coverPicks?${q}`)) }) as typeof import('./covers');
 const { clearableCacheKeys } = await import('./cache');
 const covers = await import('./covers');
 

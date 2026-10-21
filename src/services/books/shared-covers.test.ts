@@ -26,10 +26,10 @@ function server(handler: (c: Call) => { status?: number; body?: unknown; etag?: 
 }
 // The modules as the app has them (they share state with each other), and a standalone copy that re-reads storage like a new launch
 const base = { shared: await import('./covers'), picks: await import('./covers'), admin: await import('./covers') };
-const launch = async (q: string) => ({
-  shared: (await import(`./covers?${q}`)) as typeof import('./covers'),
-  admin: (await import(`./covers?${q}`)) as typeof import('./covers'),
-});
+const launch = async (q: string) => {
+  const fresh = { ...(await import('./coverLookup')), ...(await import(`./coverPicks?${q}`)) } as typeof import('./covers'); // fresh picks / shared / admin state, the app's one lookup module
+  return { shared: fresh, admin: fresh };
+};
 const covers = await import('./covers');
 
 test('a published cover is used by everyone; your own pick wins on your device; a failing one falls back', async () => {

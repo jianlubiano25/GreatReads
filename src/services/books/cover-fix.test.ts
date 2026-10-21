@@ -17,7 +17,7 @@ const key = 'how to win friends|dale carnegie';
 store.set(FIX, JSON.stringify({
   [key]: { url: 'https://fix/new.jpg', t: now - DAY, own: 'https://own/old.jpg', v: 2 },
 }));
-const load = (q: string): Promise<typeof import('./covers')> => import(`./covers?${q}`); // fresh copy, so it re-reads storage
+const load = (q: string): Promise<typeof import('./coverLookup')> => import(`./coverLookup?${q}`); // fresh copy of the module that holds the repairs, so it re-reads storage
 const covers = await load('base');
 
 test('a repair is used while the book still has the link it replaced', () => {

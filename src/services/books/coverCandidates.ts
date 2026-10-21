@@ -7,7 +7,7 @@ import { findGoogle, googleVolume } from './sources/googleBooks';
 import { isEnglishLanguage } from './language';
 import { olCoverById, olCoverByIsbn, openLibraryEditionCovers, openLibraryEnglishCoverFor, findOpenLibrary, BUNDLE_TITLE } from './sources/openLibrary';
 import { coverKey, flatKey, probeImage } from './coverAnalysis';
-import { COVER_SOURCE_LABEL, type CoverSource } from './covers';
+import { COVER_SOURCE_LABEL, type CoverSource } from './coverPicks';
 
 /* ======================================================================================================
  * the covers offered in the cover viewer  (was coverCandidates.ts)
