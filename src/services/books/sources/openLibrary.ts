@@ -1,7 +1,7 @@
 import { getJson } from '../http';
 import { authorVariants, cleanIsbn, titleVariants, titlesMatch, authorListMatches, workIdFromKey } from '../identity';
 import { genreFromSubjects, makeBook } from '../model';
-import { isEnglishEditionLanguages, looksEnglish, titleLooksForeign } from '../language';
+import { looksEnglish, titleLooksForeign } from '../language';
 import type { CallOpts, Hit } from './types';
 
 const OL = 'https://openlibrary.org';
@@ -115,7 +115,8 @@ const editionsMemo = new Map<string, Promise<any[] | null>>();
 function workEditions(workId: string, opts: CallOpts = {}): Promise<any[] | null> {
   const memo = editionsMemo.get(workId);
   if (memo) return memo;
-  const p = getJson(`${OL}/works/${workId}/editions.json?limit=40`, { signal: opts.signal }).then(d => (d ? ((d.entries || []) as any[]) : null));
+  // Open Library is often slow or rate-limited: one patient retry beats "no covers"
+  const p = getJson(`${OL}/works/${workId}/editions.json?limit=40`, { signal: opts.signal, timeout: 10000, retries: 1 }).then(d => (d ? ((d.entries || []) as any[]) : null));
   editionsMemo.set(workId, p);
   p.then(v => { if (v === null || opts.signal?.aborted) editionsMemo.delete(workId); }); // a failure (or a cancelled read) is asked again next time
   if (editionsMemo.size > 200) editionsMemo.delete(editionsMemo.keys().next().value as string);
@@ -129,8 +130,22 @@ const editionYear = (e: any): number => Number(String(e?.publish_date ?? '').mat
 /** Newest first (an edition that gives no year keeps its place after the dated ones): a modern jacket is preferred to the work's oldest scan. */
 const newestFirst = (entries: any[]): any[] => entries.map((e, i) => ({ e, i })).sort((a, b) => editionYear(b.e) - editionYear(a.e) || a.i - b.i).map(x => x.e);
 
+const editionLangs = (e: any): string[] => (Array.isArray(e?.languages) ? e.languages.map((l: any) => String(l?.key || '')) : []);
+/** A box set / omnibus / bundle: its jacket is a collage of several books, never one book's front. */
+export const BUNDLE_TITLE = /\b\d+\s*(?:in|-in-)\s*\d+\b|\b(?:box(?:ed)?\s*set|omnibus|bundle|complete (?:series|collection|trilogy)|the (?:complete|collected) )\b/i;
+/** Open Library often leaves an edition's language empty, and an untagged German omnibus or Hindi edition then passed as English. An edition counts as English when it is tagged English, or untagged AND its title is not a bundle and does not look foreign. */
 const isEnglishEdition = (e: any): boolean => {
-  return isEnglishEditionLanguages(Array.isArray(e?.languages) ? e.languages.map((l: any) => String(l?.key || '')) : []);
+  const title = typeof e?.title === 'string' ? e.title : '';
+  if (BUNDLE_TITLE.test(title)) return false;
+  const langs = editionLangs(e);
+  if (langs.length) return langs.includes('/languages/eng');
+  return !titleLooksForeign(title);
+};
+const isTaggedEnglish = (e: any): boolean => editionLangs(e).includes('/languages/eng');
+/** Newest first, but editions that SAY they are English come before untagged ones (an untagged edition is a guess). */
+const bestFirst = (entries: any[]): any[] => {
+  const sorted = newestFirst(entries);
+  return [...sorted.filter(isTaggedEnglish), ...sorted.filter(e => !isTaggedEnglish(e))];
 };
 
 /** Median page count across a work's editions (used when the search index has no page count). */
@@ -148,7 +163,8 @@ export async function openLibraryEditionPages(workId: string, opts: CallOpts = {
  */
 export async function openLibraryEditionCovers(workId: string, max = 8, opts: CallOpts = {}, anyLanguage = false): Promise<number[]> {
   const ids: number[] = [];
-  for (const e of newestFirst((await workEditions(workId, opts)) || [])) {
+  for (const e of bestFirst((await workEditions(workId, opts)) || [])) {
+    if (BUNDLE_TITLE.test(typeof e?.title === 'string' ? e.title : '')) continue; // a box set's collage is never offered
     if (!anyLanguage && !isEnglishEdition(e)) continue; // a translation's jacket is a different book to look at (`anyLanguage`: the picker's last resort)
     const id = (Array.isArray(e?.covers) ? e.covers : []).find((c: unknown) => Number.isInteger(c) && (c as number) > 0);
     if (id && !ids.includes(id)) ids.push(id);
@@ -166,7 +182,7 @@ export async function openLibraryEnglishCoverFor(workId: string, coverId: number
   const english = new Set<number>();
   const foreign = new Set<number>();
   let firstEnglish: number | undefined;
-  for (const e of newestFirst((await workEditions(workId, opts)) || [])) {
+  for (const e of bestFirst((await workEditions(workId, opts)) || [])) {
     const ids: number[] = (Array.isArray(e?.covers) ? e.covers : []).filter((c: unknown) => Number.isInteger(c) && (c as number) > 0);
     if (isEnglishEdition(e)) { ids.forEach(id => english.add(id)); firstEnglish ??= ids[0]; } else ids.forEach(id => foreign.add(id));
   }

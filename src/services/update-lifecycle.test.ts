@@ -96,9 +96,9 @@ test('the worker reports the build it was made from, so the page can tell a real
 
 test('activating a new worker removes only the old app-shell caches; book caches (covers, API answers) are kept', async () => {
   const w = loadWorker();
-  for (const n of ['rl-shell-oldbuild', 'rl-shell-testbuild1', 'rl-img-v3', 'rl-api-v1', 'rl-font-v1', 'something-else']) await w.open(n);
+  for (const n of ['rl-shell-oldbuild', 'rl-shell-testbuild1', 'rl-img-v4', 'rl-api-v1', 'rl-font-v1', 'something-else']) await w.open(n);
   await w.run('activate', {});
-  assert.deepEqual([...w.caches.keys()].sort(), ['rl-api-v1', 'rl-font-v1', 'rl-img-v3', 'rl-shell-testbuild1']);
+  assert.deepEqual([...w.caches.keys()].sort(), ['rl-api-v1', 'rl-font-v1', 'rl-img-v4', 'rl-shell-testbuild1']);
 });
 
 test('a failed refresh keeps the last good book-API answer: an error answer or no network never replaces it', async () => {

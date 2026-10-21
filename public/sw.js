@@ -15,7 +15,7 @@ let PRECACHE = [];
 try { PRECACHE = JSON.parse('__PRECACHE_LIST__'); } catch (e) { /* dev / unreplaced */ }
 
 const SHELL = 'rl-shell-' + BUILD;
-const IMG = 'rl-img-v3'; // v3 guarantees all OpenLibrary, Apple, and Google covers are cached permanently
+const IMG = 'rl-img-v4'; // v4: v3 could keep an opaque ERROR answer for a cover for good (an unreadable response looks fine to the cache); the old cache is dropped on activate
 const API = 'rl-api-v1';
 const FONT = 'rl-font-v1';
 const KEEP = [SHELL, IMG, API, FONT];
@@ -45,6 +45,9 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
   } else if (type === 'GET_BUILD' && event.ports && event.ports[0]) {
     event.ports[0].postMessage({ build: BUILD });
+  } else if (type === 'FORGET_COVER' && typeof event.data.url === 'string') {
+    // A cover that failed to draw must not be answered from the cache again (an opaque error answer cannot be inspected when it is stored)
+    event.waitUntil(caches.open(IMG).then((c) => c.delete(event.data.url, MATCH)).catch(() => {}));
   } else if (type === 'WARM_COVERS' && Array.isArray(event.data.urls)) {
     // The app tells us which covers it will show first; fetch the missing ones now so they are on the device next time.
     event.waitUntil(warmCovers(event.data.urls.filter((u) => typeof u === 'string' && u.startsWith('https://')).slice(0, 80)));

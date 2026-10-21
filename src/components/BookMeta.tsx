@@ -230,9 +230,10 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
   const imgRef = useRef<HTMLImageElement>(null);
   useEffect(() => {
     const im = imgRef.current;
-    if (im && im.complete && im.naturalWidth >= 8 && (pick || isFrontCoverShape(im.naturalWidth, im.naturalHeight))) {
+    const ready = !!im && im.complete && im.naturalWidth >= 8 && (!!pick || isFrontCoverShape(im.naturalWidth, im.naturalHeight));
+    // Always set (not only to true): a NEW picture (a pick, a repair, a replacement) starts as "not loaded", so the stand-in stays until THIS picture is in hand\n    setImgLoaded(ready);
+    if (ready) {
       recordLoadedCover(src);
-      setImgLoaded(true);
       vet(src);
     }
   }, [src]);
@@ -272,6 +273,8 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
   }, [cur.dead, book.title, book.author]);
 
   const onErr = () => {
+    // Forget the cached answer for this URL: a bad answer must not be handed back on every retry and every visit
+    try { navigator.serviceWorker?.controller?.postMessage({ type: 'FORGET_COVER', url: src }); } catch {}
     if (cur.alt) return setSt({ ...cur, dead: true });
     if (cur.tries < 2 && baseUrl) {
       setTimeout(() => setSt(p => (p.base === baseUrl ? { ...p, tries: cur.tries + 1 } : p)), 700 * (cur.tries + 1));

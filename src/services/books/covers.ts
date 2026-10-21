@@ -608,15 +608,29 @@ async function search(b: MissingBook): Promise<string> {
   const ownUrl = b.coverUrl || (b.coverId && b.coverId > 0 ? olCoverById(b.coverId, 'M') : '');
   const hasOwn = !!ownLinkOf(b);
   const renders: string[] = [];
-  const listed = rankCandidates(await loadCoverCandidates(b, () => {}).catch(() => [] as CoverCandidate[]));
-  for (const c of listed) {
-    if (c.foreign && hasOwn) break; // foreign ones are last: a book with a cover of its own is not given another language's
-    if (ownUrl && imageKey(c.url) === imageKey(ownUrl)) continue; // the cover it already has is the one that failed
-    const url = c.source === 'openlibrary' ? c.url.replace(/-L\.jpg/, '-M.jpg') : c.url; // a shelf card is drawn from the medium size (the viewer shows the large one)
-    if (!(await probeImage(url, 5000, true))) continue;
-    if ((await inspectCover(url)) === 'render') { renders.push(url); continue; }
-    return url;
-  }
+  const tryList = async (list: CoverCandidate[]): Promise<string> => {
+    const usable = rankCandidates(list)
+      .filter(c => !(c.foreign && hasOwn)) // foreign ones are last: a book with a cover of its own is not given another language's
+      .filter(c => !(ownUrl && imageKey(c.url) === imageKey(ownUrl))) // the cover it already has is the one that failed
+      .map(c => (c.source === 'openlibrary' ? c.url.replace(/-L\.jpg/, '-M.jpg') : c.url)) // a shelf card is drawn from the medium size (the viewer shows the large one)
+      .filter(u => !tried.has(imageKey(u)));
+    // The first few are checked TOGETHER (one slow picture no longer holds up the rest), then taken in rank order
+    const checked = await Promise.all(usable.slice(0, 4).map(u => probeImage(u, 5000, true)));
+    for (let i = 0; i < usable.length; i++) {
+      const url = usable[i];
+      tried.add(imageKey(url));
+      if (i < checked.length ? !checked[i] : !(await probeImage(url, 5000, true))) continue;
+      if ((await inspectCover(url)) === 'render') { renders.push(url); continue; }
+      return url;
+    }
+    return '';
+  };
+  const tried = new Set<string>();
+  // Apple and Google first (quick); Open Library, the slow source, only when they gave nothing usable (no cover, a render, or another language's)
+  const quick = await tryList(await loadCoverCandidates(b, () => {}, undefined, { fast: true }).catch(() => [] as CoverCandidate[]));
+  if (quick) return quick;
+  const full = await tryList(await loadCoverCandidates(b, () => {}).catch(() => [] as CoverCandidate[]));
+  if (full) return full;
   return hasOwn ? '' : renders[0] || '';
 }
 
@@ -634,13 +648,16 @@ export function resolveCover(b: MissingBook, opts: { force?: boolean } = {}): Pr
   }
   return dedupeInflight(inflight, key, () => lookupSlots(async () => {
     let url = '';
+    const trouble = transientFailureCount();
     try { url = await search(b); } catch {}
     if (url) {
       saveFix(key, url, ownLinkOf(b));
       emitFixes();
     } else if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+      // "No cover anywhere" is remembered for a day only when every site really answered. A timeout, a rate limit or an error says nothing about the book,
+      // so then it is remembered for 5 minutes only (a stampede of lookups no longer leaves a book on a placeholder for 24 hours)
       const none = read<number>(NONE_KEY);
-      none[key] = Date.now();
+      none[key] = transientFailureCount() === trouble ? Date.now() : Date.now() - NONE_TTL + 5 * 60 * 1000;
       write(NONE_KEY, none);
     }
     return url;
@@ -964,7 +981,7 @@ const cache = persistentCache<CoverCandidate[]>(COVER_CACHE_KEYS.candidates, {
   validate: v => Array.isArray(v) && v.every(c => c && typeof c.url === 'string' && /^https:\/\//.test(c.url) && typeof c.source === 'string'),
 });
 
-function startRun(book: Pick<Book, 'title' | 'author' | 'id' | 'identity' | 'coverId'>, key: string): Run {
+function startRun(book: Pick<Book, 'title' | 'author' | 'id' | 'identity' | 'coverId'>, key: string, fast = false): Run {
   const author = isUnknownAuthor(book.author) ? '' : primaryAuthor(book.author);
   const trouble = transientFailureCount();
   const run: Run = { found: [], subs: new Set(), done: Promise.resolve([]) };
@@ -977,15 +994,22 @@ function startRun(book: Pick<Book, 'title' | 'author' | 'id' | 'identity' | 'cov
     if (changed) run.subs.forEach(s => s([...run.found])); // arrival order while the viewer is open (it keeps its own slide order); ranked once everything has answered
   };
   // The three sources are asked together; a source that fails or finds nothing only means fewer covers
-  run.done = Promise.all([fromApple, fromGoogle, fromOpenLibrary].map(f => f(book, author).then(add, () => {})))
+  const ask = (fs: Finder[]) => Promise.all(fs.map(f => f(book, author).then(add, () => {})));
+  // A shelf card needs ONE good cover, not the whole list: Apple and Google answer in a moment, Open Library (a search, then the editions, then a probe) is the slow, rate-limited one.
+  // So a shelf (fast) asks the two quick sources first and only goes on to Open Library when neither gave an English cover. The picker (not fast) asks all three, as before.
+  const lookup = fast
+    ? ask([fromApple, fromGoogle]).then(() => (run.found.some(c => !c.foreign) ? undefined : ask([fromOpenLibrary])))
+    : ask([fromApple, fromGoogle, fromOpenLibrary]);
+  run.done = lookup
     .then(() => {
       run.found = rankCandidates(run.found);
-      // A lookup that was disturbed by a network failure is not remembered as "this book has these covers"
-      if (transientFailureCount() === trouble && run.found.length) cache.set(key, run.found); // "nothing found" is asked again next time, never remembered for a week
+      // A lookup that was disturbed by a network failure is not remembered as "this book has these covers".
+      // A short list is not remembered either (one source may simply have been slow or empty today): the picker asks again next time. A fast (shelf) lookup is partial by design, so it is never saved as the list.
+      if (!fast && transientFailureCount() === trouble && run.found.length >= 2) cache.set(key, run.found);
       return run.found;
     })
-    .finally(() => { runs.delete(key); });
-  runs.set(key, run);
+    .finally(() => { runs.delete(key + (fast ? '|fast' : '')); });
+  runs.set(key + (fast ? '|fast' : ''), run);
   return run;
 }
 
@@ -993,14 +1017,17 @@ function startRun(book: Pick<Book, 'title' | 'author' | 'id' | 'identity' | 'cov
  * Hand `onUpdate` the covers found so far, again each time more arrive (the list only ever grows, in a stable order). Resolves with the
  * final list. `signal` only stops the callbacks: a lookup other callers share keeps running and is remembered.
  */
-export function loadCoverCandidates(book: Pick<Book, 'title' | 'author' | 'id' | 'identity' | 'coverId'>, onUpdate: (list: CoverCandidate[]) => void, signal?: AbortSignal): Promise<CoverCandidate[]> {
+export function loadCoverCandidates(book: Pick<Book, 'title' | 'author' | 'id' | 'identity' | 'coverId'>, onUpdate: (list: CoverCandidate[]) => void, signal?: AbortSignal, opts: { fast?: boolean } = {}): Promise<CoverCandidate[]> {
   const key = coverKey(book);
   const saved = cache.get(key);
   if (saved) {
     if (!signal?.aborted) onUpdate([...saved]);
     return Promise.resolve([...saved]);
   }
-  const run = runs.get(key) || startRun(book, key);
+  const fast = !!opts.fast;
+  const runKey = key + (fast ? '|fast' : '');
+  // A full run already going answers a fast request too
+  const run = runs.get(key) || (fast ? runs.get(runKey) : undefined) || startRun(book, key, fast);
   const sub = (list: CoverCandidate[]) => { if (!signal?.aborted) onUpdate(list); };
   run.subs.add(sub);
   if (run.found.length) sub([...run.found]);
