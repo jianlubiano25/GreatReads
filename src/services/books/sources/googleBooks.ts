@@ -3,7 +3,7 @@ import { bump } from '../perf';
 import { authorVariants, cleanIsbn, isbnPair, titleVariants, titlesMatch, authorListMatches } from '../identity';
 import { difficultyFor, hasRealSummary, isKnownGenre, makeBook } from '../model';
 import { externalRating } from '../ratings';
-import { isEnglishLanguage } from '../language';
+import { isEnglishLanguage, titleIsNonLatin } from '../language';
 import type { CallOpts, Hit } from './types';
 
 const GB = 'https://www.googleapis.com/books/v1';
@@ -246,13 +246,13 @@ async function matchingEditions(q: { title: string; author?: string }, opts: Cal
     for (const author of generic ? [undefined] : authorVariants(q.author)) {
       if (searches >= maxSearches) return [];
       searches++;
-      const matches = (await searchGoogle(`intitle:"${title}"${author ? ` inauthor:"${author}"` : ''}`, 6, opts)).filter(h => isWanted(h, q));
+      const matches = (await searchGoogle(`intitle:"${title}"${author ? ` inauthor:"${author}"` : ''}`, 6, { ...opts, anyLanguage: titleIsNonLatin(q.title) || undefined })).filter(h => isWanted(h, q));
       if (matches.length || opts.signal?.aborted) return matches;
     }
   }
   // Strict intitle:/inauthor: often finds nothing although a plain "Title Author" search finds the book: ONE loose search, same filter.
   // Not when the caller capped the searches (an exact-ISBN volume only looks for gaps to fill): that must not cost more requests.
-  if (maxSearches === Infinity) return (await searchGoogle(looseQuery(q.title, generic ? undefined : q.author), 10, opts)).filter(h => isWanted(h, q));
+  if (maxSearches === Infinity) return (await searchGoogle(looseQuery(q.title, generic ? undefined : q.author), 10, { ...opts, anyLanguage: titleIsNonLatin(q.title) || undefined })).filter(h => isWanted(h, q));
   return [];
 }
 

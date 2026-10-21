@@ -4,7 +4,7 @@
  */
 import { type Book } from '../../types';
 import { clearCaches, COVER_CACHE_KEYS, registerClearableKey } from './cache';
-import { dedupeInflight, mapPool, pool, transientFailureCount } from './http';
+import { dedupeInflight, mapPool, transientFailureCount } from './http';
 import { olCoverById } from './sources/openLibrary';
 import { coverKey, inspectCover, isWeakCover, probeImage } from './coverAnalysis';
 import { imageKey, loadCoverCandidates, rankCandidates, type CoverCandidate } from './coverCandidates';
@@ -52,9 +52,10 @@ export function getCoverUrl(coverId?: number, size: CoverSize = 'M', customUrl?:
 /* ---------------- stores: repaired covers (rare) and the missing list (for the button) ---------------- */
 
 const FIX_KEY = 'readlife.coverFix1'; // key -> { url, t }
-const NONE_KEY = 'readlife.coverNone3'; // key -> time of the last miss
+const NONE_KEY = 'readlife.coverNone4'; // key -> time of the last miss (4: the day-long misses a title-matching bug left in 3 are not carried over)
 registerClearableKey(FIX_KEY);
 registerClearableKey(NONE_KEY);
+try { localStorage.removeItem('readlife.coverNone3'); } catch {}
 const NONE_TTL = 24 * 60 * 60 * 1000;
 const MAX_FIXES = 1500; // repairs and settled marks together (small records)
 const SETTLED_TTL = 90 * 24 * 60 * 60 * 1000;
@@ -205,7 +206,42 @@ export function clearMissingCover(book: { title?: string; author?: string }) {
 /* ---------------- finding a cover ---------------- */
 
 
-const lookupSlots = pool(6); // covers are looked up six at a time (a results page shows nine at once), however many ask
+/**
+ * Covers are looked up six at a time (a results page shows nine at once), however many ask, and the books on screen go first: a lookup asked for by a visible
+ * cover jumps ahead of every background one, and background lookups (below the fold, upgrades, repairs) never take more than two of the six slots, so a
+ * long Library cannot hold up the covers you are looking at. A book is queued once; asking again (visible now) only moves it forward.
+ */
+const MAX_LOOKUPS = 6;
+const MAX_BACKGROUND = 2;
+type Waiting = { high: boolean; start: () => void };
+const waiting = new Map<string, Waiting>();
+let activeLookups = 0;
+let activeBackground = 0;
+function pumpLookups() {
+  while (activeLookups < MAX_LOOKUPS && waiting.size) {
+    let pick: [string, Waiting] | undefined;
+    for (const e of waiting) if (e[1].high) { pick = e; break; }
+    if (!pick && activeBackground < MAX_BACKGROUND) pick = waiting.entries().next().value as [string, Waiting];
+    if (!pick) return;
+    waiting.delete(pick[0]);
+    pick[1].start();
+  }
+}
+function lookupSlot<T>(key: string, high: boolean, job: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const w: Waiting = {
+      high,
+      start: () => {
+        const bg = !w.high;
+        activeLookups++;
+        if (bg) activeBackground++;
+        job().then(resolve, reject).finally(() => { activeLookups--; if (bg) activeBackground--; pumpLookups(); });
+      },
+    };
+    waiting.set(key, w);
+    pumpLookups();
+  });
+}
 const inflight = new Map<string, Promise<string>>();
 
 /**
@@ -264,7 +300,7 @@ async function search(b: MissingBook): Promise<string> {
  * Find a working cover for a book whose own link is missing or broken. Returns the URL, or '' when nothing reliable exists.
  * Remembered per book; concurrent calls for the same book share one lookup.
  */
-export function resolveCover(b: MissingBook, opts: { force?: boolean } = {}): Promise<string> {
+export function resolveCover(b: MissingBook, opts: { force?: boolean; background?: boolean } = {}): Promise<string> {
   const key = coverKey(b);
   if (!opts.force) {
     const known = getCoverFix(b);
@@ -272,7 +308,9 @@ export function resolveCover(b: MissingBook, opts: { force?: boolean } = {}): Pr
     const none = read<number>(NONE_KEY)[key];
     if (none && Date.now() - none < NONE_TTL) return Promise.resolve('');
   }
-  return dedupeInflight(inflight, key, () => lookupSlots(async () => {
+  const w = waiting.get(key);
+  if (w && !opts.background && !w.high) { w.high = true; pumpLookups(); } // a visible cover asks for a book that was queued in the background: it moves up
+  return dedupeInflight(inflight, key, () => lookupSlot(key, !opts.background, async () => {
     let url = '';
     const trouble = transientFailureCount();
     try { url = await search(b); } catch {}
@@ -341,7 +379,7 @@ export async function repairMissingCovers(opts: { includeNotFound?: boolean; onP
     await mapPool(queue, 3, async ([key, book]) => {
       if (typeof navigator !== 'undefined' && navigator.onLine === false) result.failed++;
       else {
-        const url = await resolveCover(book, { force: true });
+        const url = await resolveCover(book, { force: true, background: true });
         if (url) { missing.delete(key); result.fixed++; }
         else { missing.delete(key); lastNotFound.push(book); result.notFound++; }
       }

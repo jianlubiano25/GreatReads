@@ -77,13 +77,13 @@ test('an expired repair is removed once it is seen to be dead; one for a differe
 
 test('refreshBookCovers forgets repairs and the not-found notes, and nothing else', async () => {
   store.set(FIX, JSON.stringify({ [key]: { url: 'https://fix/x.jpg', t: now, own: 'https://own/a.jpg' } }));
-  store.set('readlife.coverNone3', JSON.stringify({ other: now }));
+  store.set('readlife.coverNone4', JSON.stringify({ other: now }));
   store.set('readlife.v2', '{"library":1}');
   const c = await load('refresh');
   assert.equal(c.refreshBookCovers(), 1);
   assert.equal(c.getCoverFix(book('https://own/a.jpg')), '');
   assert.equal(store.has(FIX), false);
-  assert.equal(store.has('readlife.coverNone3'), false);
+  assert.equal(store.has('readlife.coverNone4'), false);
   assert.equal(store.get('readlife.v2'), '{"library":1}');
   assert.equal(c.refreshBookCovers(), 0);
 });

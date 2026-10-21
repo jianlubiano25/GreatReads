@@ -4,7 +4,7 @@ import { transientFailureCount } from './http';
 import { identityOf, isUnknownAuthor, primaryAuthor } from './identity';
 import { findApple } from './sources/appleBooks';
 import { findGoogle, googleVolume } from './sources/googleBooks';
-import { isEnglishLanguage } from './language';
+import { isEnglishLanguage, titleIsNonLatin } from './language';
 import { olCoverById, olCoverByIsbn, openLibraryEditionCovers, openLibraryEnglishCoverFor, findOpenLibrary, BUNDLE_TITLE } from './sources/openLibrary';
 import { coverKey, flatKey, probeImage } from './coverAnalysis';
 import { COVER_SOURCE_LABEL, type CoverSource } from './coverPicks';
@@ -102,7 +102,8 @@ function startRun(book: Pick<Book, 'title' | 'author' | 'id' | 'identity' | 'cov
     if (changed) run.subs.forEach(s => s([...run.found])); // arrival order while the viewer is open (it keeps its own slide order); ranked once everything has answered
   };
   // The three sources are asked together; a source that fails or finds nothing only means fewer covers
-  const ask = (fs: Finder[]) => Promise.all(fs.map(f => f(book, author).then(add, () => {})));
+  const own = titleIsNonLatin(book.title); // 変な絵: its own language's jacket is the book, not a translation to rank last
+  const ask = (fs: Finder[]) => Promise.all(fs.map(f => f(book, author).then(l => add(own ? l.map(({ foreign, ...c }) => c) : l), () => {})));
   // A shelf card needs ONE good cover, not the whole list: Apple and Google answer in a moment, Open Library (a search, then the editions, then a probe) is the slow, rate-limited one.
   // So a shelf (fast) asks the two quick sources first and only goes on to Open Library when neither gave an English cover. The picker (not fast) asks all three, as before.
   const lookup = fast

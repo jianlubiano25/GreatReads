@@ -14,7 +14,8 @@ const strip = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[\u0300-
 export function titleKey(title = ''): string {
   let t = strip(title).replace(/&/g, ' and ');
   t = t.replace(/\(.*?\)|\[.*?\]/g, ' ').split(/\s*[:–—]\s+|\s+-\s+/)[0];
-  t = t.replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  // Letters of other scripts (\u5909\u306a\u7d75, \u0412\u043e\u0439\u043d\u0430) stay in the key: they used to be erased, leaving '' and a title nothing could ever match
+  t = t.replace(/[^a-z0-9\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Cyrillic}\p{Script=Greek}\p{Script=Arabic}\p{Script=Hebrew}\u3099\u309a\u30fc]+/gu, ' ').replace(/\s+/g, ' ').trim();
   return t.replace(/^(the|a|an) /, '');
 }
 
@@ -186,11 +187,15 @@ export function mergeIdentity(a?: BookIdentity, b?: BookIdentity): BookIdentity 
 
 /* ---------------- matching ---------------- */
 
+/** One writer, two names (a pen name and the real name): catalogues list a book under either. Deliberately short and exact. */
+const SAME_WRITER: string[][] = [['t kingfisher', 'ursula vernon']];
+const sameWriter = (ka: string, kb: string): boolean => SAME_WRITER.some(g => g.some(n => ka === n || ka.startsWith(`${n} `)) && g.some(n => kb === n || kb.startsWith(`${n} `)));
+
 export function authorsCompatible(a = '', b = ''): boolean {
   if (isUnknownAuthor(a) || isUnknownAuthor(b)) return true; // nothing to contradict
   const ka = authorKey(a);
   const kb = authorKey(b);
-  if (ka === kb) return true;
+  if (ka === kb || sameWriter(ka, kb)) return true;
   if (ka.replace(/ /g, '') === kb.replace(/ /g, '')) return true; // "Jokha al-Harthi" / "Jokha Alharthi": a hyphen or a space inside a surname
   const pa = ka.split(' ');
   const pb = kb.split(' ');

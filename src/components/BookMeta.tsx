@@ -241,8 +241,20 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
     }
   }, [src]);
 
+  // A cover on screen (or near it) asks for its lookup first; one far below the fold still resolves, but in the background and behind every visible one
+  const sentinel = useRef<HTMLSpanElement>(null);
+  const [near, setNear] = useState(eager || size === 'lg' || size === 'xl' || size === 'nook');
+  useEffect(() => {
+    if (near) return;
+    const el = sentinel.current;
+    if (!el || typeof IntersectionObserver === 'undefined') { setNear(true); return; }
+    const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { setNear(true); io.disconnect(); } }, { rootMargin: '600px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [near]);
+
   const giveUp = () => {
-    resolveCover(book).then(u => setSt(u ? { ...cur, alt: u } : { ...cur, dead: true }));
+    resolveCover(book, { background: !near }).then(u => setSt(u ? { ...cur, alt: u } : { ...cur, dead: true }));
   };
 
   // The cover is drawn at once. A cover that loaded fine can still be a 3D render (a tilted book, the spine showing): its pixels are measured once, and a render is
@@ -261,14 +273,14 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
       // A 3D render always looks for a flat front. So does the NYT's marketing image when its pixels cannot be read ('unknown'): it is a render far more often than not.
       if (v !== 'render' && !(v === 'unknown' && isNytCoverUrl(book.coverUrl))) return markCoverSettled(book);
       // The first flat front the lookup finds (Apple, Google, then Open Library) replaces it. With none, the render stays (better than a placeholder) and the book is settled
-      const alt = await resolveCover(book).catch(() => '');
+      const alt = await resolveCover(book, { background: true }).catch(() => '');
       if (alt && alt !== u && liveSrc.current === u) setSt({ ...cur, alt });
       else if (liveSrc.current === u) markCoverSettled(book);
     }));
   };
   useEffect(() => {
-    if (!baseUrl && !cur.alt && !cur.dead) giveUp();
-  }, [baseUrl, book.title]);
+    if (!baseUrl && !cur.alt && !cur.dead) giveUp(); // runs again when the cover scrolls near: the same lookup, moved to the front
+  }, [baseUrl, book.title, near]);
 
   // Every attempt failed: tell the "Reload missing covers" button
   useEffect(() => {
@@ -304,6 +316,7 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
 
   return (
     <>
+      {near ? null : <span ref={sentinel} aria-hidden className="absolute inset-0 pointer-events-none" />}
       {url && !failed ? (
         <img
           key={url}

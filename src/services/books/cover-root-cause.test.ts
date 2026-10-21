@@ -44,19 +44,19 @@ test('a lookup that failed (rate limit / server error) is remembered as "no cove
   store.clear();
   routeFetch([() => ({ status: 429, body: {} })]);
   assert.equal(await resolveCover({ id: 't1', title: 'Some Brand New Book', author: 'Nobody Known' } as any), '');
-  const soon = JSON.parse(store.get('readlife.coverNone3') || '{}')['some brand new book|nobody known'];
+  const soon = JSON.parse(store.get('readlife.coverNone4') || '{}')['some brand new book|nobody known'];
   assert.ok(soon && Date.now() - soon > 23 * 3600 * 1000, 'a failed lookup must expire within minutes (stamp is back-dated)');
 
   store.clear();
   routeFetch([(u: URL) => (u.hostname === 'itunes.apple.com' ? { body: { results: [] } } : u.hostname === 'openlibrary.org' ? { body: { docs: [] } } : { body: { items: [] } })]);
   assert.equal(await resolveCover({ id: 't2', title: 'Another Unknown Book', author: 'Also Nobody' } as any), '');
-  const first = JSON.parse(store.get('readlife.coverNone3') || '{}')['another unknown book|also nobody'];
+  const first = JSON.parse(store.get('readlife.coverNone4') || '{}')['another unknown book|also nobody'];
   assert.ok(first && Date.now() - first > 23 * 3600 * 1000, 'a FIRST miss is back-dated: retried on the next view, never a day-long "none found"');
 
   // the same book missing again (a repeated, clean miss) is remembered for the full day
-  const none = JSON.parse(store.get('readlife.coverNone3') || '{}');
-  store.set('readlife.coverNone3', JSON.stringify(none));
+  const none = JSON.parse(store.get('readlife.coverNone4') || '{}');
+  store.set('readlife.coverNone4', JSON.stringify(none));
   assert.equal(await resolveCover({ id: 't2', title: 'Another Unknown Book', author: 'Also Nobody' } as any, { force: true }), '');
-  const real = JSON.parse(store.get('readlife.coverNone3') || '{}')['another unknown book|also nobody'];
+  const real = JSON.parse(store.get('readlife.coverNone4') || '{}')['another unknown book|also nobody'];
   assert.ok(real && Date.now() - real < 60 * 1000, 'a repeated real miss is stamped now (remembered for the full day)');
 });

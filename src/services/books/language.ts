@@ -49,6 +49,9 @@ const FOREIGN_LEADERS = new Set('le la les l el los las der die das il lo gli un
  * Does a TITLE look like it is not English ("L’étranger", "Der Process", "Cien años de soledad", a non-Latin script)? Only a hint that an English title
  * is worth looking for: an English title with an accent ("Pokémon") passes the check and the lookup simply finds the same title.
  */
+/** A title written mostly in another script (\u5909\u306a\u7d75): its own language's listing is the book, so it is never filtered out as "foreign". */
+export const titleIsNonLatin = (title = ''): boolean => nonLatinShare(title) > 0.5;
+
 export function titleLooksForeign(title = ''): boolean {
   if (!title.trim()) return false;
   if (nonLatinShare(title) > 0.3) return true;

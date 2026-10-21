@@ -27,7 +27,7 @@ test('the real app caches are all registered (curated2, top15, appleCharts1, res
   await import('../store/bestsellers');
   await import('../store/curated');
   const keys = clearableCacheKeys();
-  for (const k of ['readlife.curated3', 'readlife.curated2', 'readlife.top15', 'readlife.appleCharts1', 'readlife.resolvedmiss1', 'readlife.coverFix1', 'readlife.coverNone3', 'readlife.resolved3', 'readlife.meta6', 'readlife.ratingsrc3', 'readlife.resolved2', 'readlife.meta5', 'readlife.ratingsrc2', 'readlife.resolved1', 'readlife.meta4', 'readlife.bookinfo1', 'readlife.nytgone1']) {
+  for (const k of ['readlife.curated3', 'readlife.curated2', 'readlife.top15', 'readlife.appleCharts1', 'readlife.resolvedmiss1', 'readlife.coverFix1', 'readlife.coverNone4', 'readlife.resolved3', 'readlife.meta6', 'readlife.ratingsrc3', 'readlife.resolved2', 'readlife.meta5', 'readlife.ratingsrc2', 'readlife.resolved1', 'readlife.meta4', 'readlife.bookinfo1', 'readlife.nytgone1']) {
     assert.ok(keys.includes(k), `${k} should be clearable`);
   }
   assert.ok(!keys.includes('readlife.v2') && !keys.includes('readlife.storeprefs1'), 'your own data and settings must never be on the cleanup list');
