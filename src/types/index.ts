@@ -27,6 +27,8 @@ export interface Book {
   /** Which site ratingAverage + ratingCount came from (the two always come from the same one). Older saved books have none; it is then worked out when needed. */
   ratingSource?: 'openlibrary' | 'google' | 'apple' | 'library';
   spineColor?: string;
+  /** The title the book was saved under when GreatReads replaced it with its English one ("変な絵" -> "Strange Pictures"): kept so the original still finds it in a search. */
+  originalTitle?: string;
   source?: 'curated' | 'openlibrary' | 'google' | 'apple' | 'nyt' | 'manual';
   addedAt?: number;
   awardLabel?: string; // e.g. "International Booker 2026" or "Service95 Pick"

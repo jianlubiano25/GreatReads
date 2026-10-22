@@ -64,3 +64,25 @@ test('saved books keep each rating pair and the site it came from; an unknown so
   assert.deepEqual(pair(5), [undefined, undefined, undefined]);
   assert.deepEqual(pair(6), [4, 9, undefined]); // older saved books: unchanged (the source is worked out when needed)
 });
+
+import { parseBackup } from './stateSanitizer';
+
+const baseState: any = { status: {}, currentPage: {}, totalPages: {}, dailyLog: {}, notes: {}, highlights: {}, goal: { type: 'pages', target: 20 }, readingIntention: '', profile: { name: '', avatar: '' }, customBooks: [], onDeviceOverrides: {}, hiddenBookIds: {}, words: [], garden: emptyGarden(), history: {}, ratings: {} };
+
+test('a backup whose highlight holds curly quotes restores (the file is valid JSON; curly quotes inside text are not JSON quotes)', () => {
+  const text = JSON.stringify({ status: { '1': 'now' }, notes: { '1': 'He said “hello” and ‘left’' }, highlights: { '1': [{ id: 'h', text: '“The word ‘love’ is most often', page: 3 }] } }, null, 2);
+  const r = parseBackup(text, baseState);
+  assert.ok(r, 'parsed');
+  assert.equal(r!.status['1'], 'now');
+  assert.equal(r!.notes['1'], 'He said “hello” and ‘left’'); // untouched
+});
+
+test('a pasted copy whose quotes were turned curly is still repaired', () => {
+  const r = parseBackup('{“status”: {“1”: “now”}}', baseState);
+  assert.equal(r?.status['1'], 'now');
+});
+
+test('garbage is still rejected', () => {
+  assert.equal(parseBackup('not json', baseState), null);
+  assert.equal(parseBackup('[1,2]', baseState), null);
+});

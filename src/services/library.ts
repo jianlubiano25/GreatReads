@@ -1,6 +1,6 @@
 import type { Book, BookStatus, ReadingState } from '../types';
 import { DEFAULT_BOOKS } from '../data/defaultBooks';
-import { bookKey, mergeBooks, sameWork } from './books';
+import { bookKey, isUnknownAuthor, mergeBooks, sameWork } from './books';
 import { stampStatus } from './bookHistory';
 import { dateKey } from './dates';
 
@@ -35,7 +35,9 @@ export function applyAddBook(prev: ReadingState, incoming: Book, destination: Ad
     // Re-adding a book refreshes it, but only the rating fields are decided by the ladder (mergeBooks(incoming, saved)): a card with no rating
     // (or a lower-ranked site's) must not wipe or replace the saved pair of a better-ranked site; the same site's newer pair still wins.
     const merged = dupe ? mergeBooks(existingCustom, incoming) : withRatingFrom(mergeBooks(incoming, existingCustom), { ...existingCustom, ...incoming });
-    updatedCustom = prev.customBooks.map(b => (String(b.id) === idKey ? { ...merged, id: existingCustom.id, isOnDevice: isDevice || existingCustom.isOnDevice } : b));
+    // The author you have stays: a provider's spelling of it (a pen name's legal name) never silently renames a saved book
+    const author = existingCustom.author && !isUnknownAuthor(existingCustom.author) ? existingCustom.author : merged.author;
+    updatedCustom = prev.customBooks.map(b => (String(b.id) === idKey ? { ...merged, author, id: existingCustom.id, isOnDevice: isDevice || existingCustom.isOnDevice } : b));
   } else if (!isCatalogDupe) {
     updatedCustom = [{ ...incoming, isOnDevice: isDevice }, ...prev.customBooks];
   }

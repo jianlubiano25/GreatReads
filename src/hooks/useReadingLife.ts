@@ -379,6 +379,15 @@ export function useReadingLife() {
     }));
   }, []);
 
+  /** A saved book takes its English title; the one it had is kept as `originalTitle` (for search). Only saved (custom) books; the id never changes. */
+  const setBookTitle = useCallback((bookId: string | number, title: string) => {
+    const idKey = String(bookId);
+    setState(prev => ({
+      ...prev,
+      customBooks: prev.customBooks.map(b => (String(b.id) === idKey && b.title !== title ? { ...b, title, originalTitle: b.originalTitle || b.title } : b)),
+    }));
+  }, []);
+
   const updateBookNote = useCallback((bookId: string | number, note: string) => {
     const idKey = String(bookId);
     setState(prev => ({
@@ -577,6 +586,7 @@ export function useReadingLife() {
     removeBook,
     restoreHiddenBooks,
     updateBookNote,
+    setBookTitle,
     addHighlight,
     updateHighlight,
     deleteHighlight,

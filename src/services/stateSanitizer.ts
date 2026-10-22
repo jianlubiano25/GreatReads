@@ -240,6 +240,7 @@ export function sanitizeCustomBooks(raw: unknown): Book[] {
       // which site the pair came from: kept so a reload does not turn a saved Apple / Google pair into one of unknown origin
       ratingSource: rating !== undefined && (VALID_RATING_SOURCES as readonly string[]).includes(b.ratingSource) ? b.ratingSource : undefined,
       spineColor: hexColor(b.spineColor),
+      originalTitle: str(b.originalTitle) || undefined,
       source: (VALID_SOURCES as readonly string[]).includes(b.source) ? b.source : undefined,
       addedAt: num(b.addedAt),
       awardLabel: typeof b.awardLabel === 'string' ? b.awardLabel : undefined,
@@ -435,12 +436,17 @@ export function normalizeLegacy(p: Record<string, any>, base: ReadingState): Rea
  */
 export function parseBackup(jsonStr: string, base: ReadingState): ReadingState | null {
   try {
-    let clean = String(jsonStr ?? '').trim();
-    if ((clean.startsWith('"') && clean.endsWith('"')) || (clean.startsWith('\u201C') && clean.endsWith('\u201D'))) {
-      clean = clean.slice(1, -1).trim();
+    const text = String(jsonStr ?? '').trim();
+    // The text as it is comes FIRST: a real backup is valid JSON, and its notes / highlights can hold curly quotes (“like this”) that must stay as they are.
+    // Only when that fails is a pasted copy repaired (wrapping quotes, curly quotes standing in for the JSON's own quotes).
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      let clean = text;
+      if ((clean.startsWith('"') && clean.endsWith('"')) || (clean.startsWith('\u201C') && clean.endsWith('\u201D'))) clean = clean.slice(1, -1).trim();
+      parsed = JSON.parse(clean.replace(/[\u201C\u201D]/g, '"'));
     }
-    clean = clean.replace(/[\u201C\u201D]/g, '"');
-    const parsed = JSON.parse(clean);
     if (!isObj(parsed)) return null;
 
     // Check the current format FIRST: v2 backups also contain a "words" key,

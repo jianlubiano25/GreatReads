@@ -162,7 +162,7 @@ export function LibraryTab({ active, myBooks, state, handleOpenCover, handleOpen
 
   const needle = query.trim().toLowerCase();
   const visibleBooks = useMemo(() => {
-    const list = myBooks.filter(passesTag).filter(b => !needle || `${b.title} ${b.author} ${b.genre || ''}`.toLowerCase().includes(needle));
+    const list = myBooks.filter(passesTag).filter(b => !needle || `${b.title} ${b.originalTitle || ''} ${b.author} ${b.genre || ''}`.toLowerCase().includes(needle));
     // "First 12" keeps its own reading order
     return libFilter === 'f' ? list.sort((a, b) => (a.first12Order || 0) - (b.first12Order || 0)) : list;
   }, [myBooks, passesTag, libFilter, needle]);

@@ -1,9 +1,17 @@
 import type { Book } from '../../types';
-import { mergeIdentity, sameWork, titleKey, titlesMatch } from './identity';
+import { authorKey, isUnknownAuthor, mergeIdentity, sameWork, titleKey, titlesMatch } from './identity';
 import { looksEnglish, titleLooksForeign } from './language';
 import { coverQuality } from './covers';
 import { hasRealSummary, isKnownGenre } from './model';
 import { chooseRating, externalRating, ratingOf, type RatingPair } from './ratings';
+
+/**
+ * Whose spelling of the author to show when two records of the SAME book name the author differently (a pen name and the legal name: Open Library files
+ * T. Kingfisher's books under Ursula Vernon). The name on the jacket is the one a bookshop prints, so a retail / curated / hand-entered name outranks Open Library's,
+ * and the result never depends on which record happened to arrive first.
+ */
+const AUTHOR_RANK: Record<string, number> = { manual: 5, curated: 4, apple: 3, google: 2, nyt: 2, openlibrary: 1 };
+const authorRank = (source?: string): number => AUTHOR_RANK[source || ''] ?? 0;
 
 /** The same book from two places becomes one record that keeps the best of both. `a` wins on identity (id, title, author). */
 export function mergeBooks(a: Book, b: Book): Book {
@@ -36,6 +44,7 @@ export function mergeBooks(a: Book, b: Book): Book {
   if ((!out.authorBio || !looksEnglish(out.authorBio)) && b.authorBio && looksEnglish(b.authorBio)) out.authorBio = b.authorBio;
   // The same book catalogued under a foreign title ("L’étranger") takes the English title of its other copy ("The Stranger"); a different spelling alone ("Pokémon") is not a translation
   if (titleLooksForeign(out.title) && !titleLooksForeign(b.title) && titleKey(out.title) !== titleKey(b.title) && titlesMatch(out.title, b.title)) out.title = b.title;
+  if (b.author && !isUnknownAuthor(b.author) && (isUnknownAuthor(out.author) || (authorKey(out.author) !== authorKey(b.author) && authorRank(b.source) > authorRank(out.source)))) out.author = b.author;
   if (!isKnownGenre(out.genre) && isKnownGenre(b.genre)) out.genre = b.genre;
   out.identity = mergeIdentity(out.identity, b.identity);
   return out;

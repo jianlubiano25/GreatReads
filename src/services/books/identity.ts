@@ -95,6 +95,12 @@ const ENGLISH_EDITIONS: Record<string, string[]> = {
   'l etranger': ['The Stranger Albert Camus', 'The Outsider Albert Camus'],
   'etranger': ['The Stranger Albert Camus', 'The Outsider Albert Camus'],
 };
+/**
+ * The English title of a few books whose catalogues do not link the translation to the original, so no lookup can find it ("変な絵" -> "Strange Pictures").
+ * Only the fallback: a catalogue's own English edition title (resolve.ts) is used first.
+ */
+const ENGLISH_TITLES: Record<string, string> = { '変な絵': 'Strange Pictures', 'l etranger': 'The Stranger' };
+export const knownEnglishTitle = (title = ''): string => ENGLISH_TITLES[titleKey(title)] || '';
 export const englishEditionQueries = (title = ''): string[] => ENGLISH_EDITIONS[titleKey(title)] || [];
 
 /** Every main-title key a title answers to: the whole main title, plus each half of a dual title, plus any narrow alias. */
@@ -187,15 +193,11 @@ export function mergeIdentity(a?: BookIdentity, b?: BookIdentity): BookIdentity 
 
 /* ---------------- matching ---------------- */
 
-/** One writer, two names (a pen name and the real name): catalogues list a book under either. Deliberately short and exact. */
-const SAME_WRITER: string[][] = [['t kingfisher', 'ursula vernon']];
-const sameWriter = (ka: string, kb: string): boolean => SAME_WRITER.some(g => g.some(n => ka === n || ka.startsWith(`${n} `)) && g.some(n => kb === n || kb.startsWith(`${n} `)));
-
 export function authorsCompatible(a = '', b = ''): boolean {
   if (isUnknownAuthor(a) || isUnknownAuthor(b)) return true; // nothing to contradict
   const ka = authorKey(a);
   const kb = authorKey(b);
-  if (ka === kb || sameWriter(ka, kb)) return true;
+  if (ka === kb) return true;
   if (ka.replace(/ /g, '') === kb.replace(/ /g, '')) return true; // "Jokha al-Harthi" / "Jokha Alharthi": a hyphen or a space inside a surname
   const pa = ka.split(' ');
   const pb = kb.split(' ');

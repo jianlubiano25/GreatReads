@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, useSyncExternalStore, lazy, Suspense } from 'react';
 import { Book, TabType, WordItem } from './types';
 import { useReadingLife } from './hooks/useReadingLife';
-import { bookKey, getCoverPick, getCoverUrl, sameWork, withKnownRating, isCoverAdminOn, subscribeCoverAdmin, tapSecret, syncSharedCovers } from './services/books';
+import { bookKey, getCoverPick, getCoverUrl, sameWork, withKnownRating, isCoverAdminOn, subscribeCoverAdmin, tapSecret, syncSharedCovers, englishTitleOf, titleLooksForeign, mapPool } from './services/books';
 import { milestone } from './services/books/perf';
 import { formatRating, prettyDate, readingNowOrder } from './services/bookHistory';
 import { makeCollection, setBookMembership } from './services/libraryCollections';
@@ -99,6 +99,7 @@ export default function App() {
     updateHighlight,
     deleteHighlight,
     updateIntention,
+    setBookTitle,
     updateProfile,
     setGoal,
     addWord,
@@ -262,6 +263,20 @@ export default function App() {
     }, 4000); // not during startup: the screen comes first
     return () => clearTimeout(t);
   }, [nowReadingBooks, upNextBooks, libraryBooks]);
+
+  // English titles: a saved book titled in another language ("変な絵") takes its English one, a few at a time, once per launch. Nothing else about the book changes.
+  const titleChecked = useRef(new Set<string>());
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const todo = libraryBooks.filter(b => !titleChecked.current.has(String(b.id)) && titleLooksForeign(b.title));
+      todo.forEach(b => titleChecked.current.add(String(b.id)));
+      void mapPool(todo.slice(0, 12), 2, async b => {
+        const english = await englishTitleOf(b);
+        if (english) setBookTitle(b.id, english);
+      });
+    }, 6000); // after the screen and the covers
+    return () => clearTimeout(t);
+  }, [libraryBooks, setBookTitle]);
 
   // Remember the covers you'll see first (the nook shelves, then reading now / up next) so the next launch can start
   // loading them before the app code runs. Same 'M' size URLs the nook and cards request, so it is one shared cache.

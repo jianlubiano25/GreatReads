@@ -5,7 +5,9 @@ import assert from 'node:assert/strict';
 const store = new Map<string, string>();
 (globalThis as any).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
 
-import { titleKey, titlesMatch, authorsCompatible } from './identity';
+import { titleKey, titlesMatch } from './identity';
+import { mergeBooks } from './merge';
+import { applyAddBook } from '../library';
 import { findApple } from './sources/appleBooks';
 import { routeFetch } from '../store/testkit';
 
@@ -17,11 +19,16 @@ test('a title in another script keeps a key, so its own listing matches (変な�
   assert.equal(titleKey('The Fruit Fly: A Novel'), 'fruit fly'); // Latin titles key exactly as before
 });
 
-test('Nettle & Bone: "&" = "and", and the pen name is the same writer as the real name', () => {
+test('Nettle & Bone: "&" = "and"; the author is the jacket name whichever record arrives first, and a saved author is never renamed', () => {
   assert.ok(titlesMatch('Nettle and Bone', 'Nettle & Bone'));
-  assert.ok(authorsCompatible('T. Kingfisher', 'Ursula Vernon'));
-  assert.ok(authorsCompatible('T. Kingfisher (Ursula Vernon)', 'T. Kingfisher'));
-  assert.ok(!authorsCompatible('T. Kingfisher', 'Stephen King'));
+  const apple: any = { id: 'a1', title: 'Nettle & Bone', author: 'T. Kingfisher', source: 'apple', identity: { olWork: 'OL1W' } };
+  const ol: any = { id: 'o1', title: 'Nettle & Bone', author: 'Ursula Vernon', source: 'openlibrary', identity: { olWork: 'OL1W' } };
+  assert.equal(mergeBooks(ol, apple).author, 'T. Kingfisher');
+  assert.equal(mergeBooks(apple, ol).author, 'T. Kingfisher');
+  // re-adding the saved book from an Open Library result keeps the author already saved
+  const state: any = { customBooks: [{ ...apple }], hiddenBookIds: {}, status: {}, ratings: {}, onDeviceOverrides: {}, history: {}, highlights: {}, notes: {}, currentPage: {}, totalPages: {} };
+  const next = applyAddBook(state, { ...ol, id: 'o2' }, 'library');
+  assert.equal(next.customBooks.find((b: any) => /nettle/i.test(b.title))?.author, 'T. Kingfisher');
 });
 
 test('Apple: a Japanese listing is accepted for a Japanese title (not dropped as "foreign"), an unrelated book is not', async () => {
@@ -47,4 +54,17 @@ test('a visible cover is looked up before the queued background ones, and backgr
   const visible = resolveCover(mk(99));
   await Promise.all([...background, visible]);
   assert.ok(order.indexOf('Queue99') >= 0 && order.indexOf('Queue99') <= 2, `visible book started early: ${order.slice(0, 5).join(', ')}`);
+});
+
+import { englishTitleOf } from './englishTitle';
+import { sanitizeCustomBooks } from '../stateSanitizer';
+
+test('a saved book titled in Japanese gets its English title; an English title is left alone', async () => {
+  assert.equal(await englishTitleOf({ id: 'j', title: '変な絵', author: 'Uketsu' } as any), 'Strange Pictures');
+  assert.equal(await englishTitleOf({ id: 'e', title: 'The Housemaid', author: 'Freida McFadden' } as any), '');
+});
+
+test('the original title survives a save / restore (it is how the Japanese title still finds the book)', () => {
+  const [b] = sanitizeCustomBooks([{ id: 1, title: 'Strange Pictures', author: 'Uketsu', originalTitle: '変な絵' }]);
+  assert.equal(b.originalTitle, '変な絵');
 });
