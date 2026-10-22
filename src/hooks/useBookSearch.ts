@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Book } from '../types';
 import { fillMissingCovers, getCoverPick, isWeakCover, resolveCover, searchBooksLive, searchLocal, type SearchScope } from '../services/books';
+import { displayBook } from '../services/books/englishTitle';
 
 /** Wait this long after the last keystroke before asking the network (books already on the device are shown with no wait at all). */
 const TYPING_DELAY_MS = 150;
@@ -80,7 +81,7 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
     const final = forced.current;
     forced.current = false;
     const controller = new AbortController();
-    const live = (raw: Book[]) => { const books = withPicks(raw); if (!controller.signal.aborted) { setResults(books); latest.current = books; setStale(false); setEmpty(false); } };
+    const live = (raw: Book[]) => { const books = withPicks(raw).map(displayBook); if (!controller.signal.aborted) { setResults(books); latest.current = books; setStale(false); setEmpty(false); } };
 
     // Instant: books already on this device. With none, the old list stays (dimmed) until the first answer.
     const instant = searchLocal(query, author, limit, known, scope);

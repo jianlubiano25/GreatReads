@@ -1,5 +1,6 @@
 import type { Book } from '../../types';
-import { authorKey, isUnknownAuthor, mergeIdentity, sameWork, titleKey, titlesMatch } from './identity';
+import { authorKey, identityOf, isUnknownAuthor, mergeIdentity, sameEdition, sameWork, titleKey, titlesMatch } from './identity';
+import { learnAuthorGroup } from './authorAliases';
 import { looksEnglish, titleLooksForeign } from './language';
 import { coverQuality } from './covers';
 import { hasRealSummary, isKnownGenre } from './model';
@@ -44,6 +45,12 @@ export function mergeBooks(a: Book, b: Book): Book {
   if ((!out.authorBio || !looksEnglish(out.authorBio)) && b.authorBio && looksEnglish(b.authorBio)) out.authorBio = b.authorBio;
   // The same book catalogued under a foreign title ("L’étranger") takes the English title of its other copy ("The Stranger"); a different spelling alone ("Pokémon") is not a translation
   if (titleLooksForeign(out.title) && !titleLooksForeign(b.title) && titleKey(out.title) !== titleKey(b.title) && titlesMatch(out.title, b.title)) out.title = b.title;
+  // Two records of the very same book (same edition or Open Library work) that name the author differently: the two names are one author, and the better-ranked one is shown
+  const x = identityOf(a), y = identityOf(b);
+  if (a.author && b.author && authorKey(a.author) !== authorKey(b.author) && (sameEdition(a, b) || (!!x.olWork && x.olWork === y.olWork))) {
+    const top = authorRank(b.source) > authorRank(a.source) ? b : a;
+    learnAuthorGroup([a.author, b.author], authorRank(a.source) !== authorRank(b.source) ? { name: top.author, rank: authorRank(top.source) } : undefined);
+  }
   if (b.author && !isUnknownAuthor(b.author) && (isUnknownAuthor(out.author) || (authorKey(out.author) !== authorKey(b.author) && authorRank(b.source) > authorRank(out.source)))) out.author = b.author;
   if (!isKnownGenre(out.genre) && isKnownGenre(b.genre)) out.genre = b.genre;
   out.identity = mergeIdentity(out.identity, b.identity);

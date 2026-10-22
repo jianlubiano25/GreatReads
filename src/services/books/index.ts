@@ -7,7 +7,7 @@ export { searchBooks, searchBooksLive, searchLocal, searchRelevance, type Search
 export { type SearchScope } from './query';
 export { applySearchView, genreOptions, isDefaultView, activeFilterCount, DEFAULT_SEARCH_VIEW, SEARCH_SORT_LABEL, SEARCH_PUBLISHED_LABEL, type SearchSort, type SearchView } from './searchView';
 export { resolveBook, type ResolveQuery, type Resolved } from './resolve';
-export { englishTitleOf } from './englishTitle';
+export { englishTitleOf, displayBook, refreshNames } from './englishTitle';
 export { titleLooksForeign } from './language';
 export { mapPool } from './http';
 export { enrichBookDetails, fetchBookMeta, fetchRatingSources } from './details';

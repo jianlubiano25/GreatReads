@@ -1,4 +1,5 @@
 import type { Book, BookIdentity } from '../../types';
+import { sameAuthorByAlias } from './authorAliases';
 
 /**
  * The single source of truth for "which book is this?".
@@ -197,7 +198,7 @@ export function authorsCompatible(a = '', b = ''): boolean {
   if (isUnknownAuthor(a) || isUnknownAuthor(b)) return true; // nothing to contradict
   const ka = authorKey(a);
   const kb = authorKey(b);
-  if (ka === kb) return true;
+  if (ka === kb || sameAuthorByAlias(ka, kb)) return true; // (or two names the catalogues say are one author)
   if (ka.replace(/ /g, '') === kb.replace(/ /g, '')) return true; // "Jokha al-Harthi" / "Jokha Alharthi": a hyphen or a space inside a surname
   const pa = ka.split(' ');
   const pb = kb.split(' ');

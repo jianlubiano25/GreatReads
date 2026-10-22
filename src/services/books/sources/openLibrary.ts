@@ -1,16 +1,18 @@
 import { getJson } from '../http';
+import { learnAuthorGroup } from '../authorAliases';
 import { authorVariants, cleanIsbn, titleVariants, titlesMatch, authorListMatches, workIdFromKey } from '../identity';
 import { genreFromSubjects, makeBook } from '../model';
 import { looksEnglish, titleLooksForeign } from '../language';
 import type { CallOpts, Hit } from './types';
 
 const OL = 'https://openlibrary.org';
-const FIELDS = 'key,title,author_name,author_key,first_publish_year,cover_i,cover_edition_key,ratings_average,ratings_count,number_of_pages_median,subject,language';
+const FIELDS = 'key,title,author_name,author_alternative_name,author_key,first_publish_year,cover_i,cover_edition_key,ratings_average,ratings_count,number_of_pages_median,subject,language';
 
 export interface OlDoc {
   key: string;
   title: string;
   author_name?: string[];
+  author_alternative_name?: string[];
   first_publish_year?: number;
   cover_i?: number;
   cover_edition_key?: string;
@@ -51,7 +53,10 @@ export async function searchOpenLibrary(params: Record<string, string>, limit: n
   const q = new URLSearchParams({ limit: String(limit), fields: FIELDS, ...params });
   const data = await getJson(`${OL}/search.json?${q}`, { signal: opts.signal, retries: opts.retries, timeout: opts.timeout });
   if (typeof data?.numFound === 'number') opts.onTotal?.(data.numFound);
-  return ((data?.docs || []) as OlDoc[]).filter(d => d?.title).map((d, i) => olDocToHit(d, i));
+  const docs = ((data?.docs || []) as OlDoc[]).filter(d => d?.title);
+  // Open Library knows an author's other names (a pen name): they are one author from here on (authorAliases.ts)
+  for (const d of docs) if (d.author_name?.[0] && d.author_alternative_name?.length) learnAuthorGroup([d.author_name[0], ...d.author_alternative_name.slice(0, 8)]);
+  return docs.map((d, i) => olDocToHit(d, i));
 }
 
 /** Open Library's own trending lists (what readers are doing right now). Rank 0 = most trending. */

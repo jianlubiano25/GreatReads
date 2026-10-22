@@ -9,6 +9,8 @@ import { applyHistoryEdit, applyRating, stampProgress, stampStatus, type History
 import { applyAddBook, type AddDestination, type AddStatus } from '../services/library';
 import { clearableCacheKeys } from '../services/books/cache';
 import { exportCoverPicks, restoreCoverPicksFromBackup } from '../services/books/covers';
+import { displayBook, refreshNames } from '../services/books/englishTitle';
+import { mapPool } from '../services/books/http';
 import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
 import { applyMerge, findDuplicateGroups, idMapOf, remapCollections } from '../services/mergeDuplicates';
 import { exportCollections, loadCollections, restoreCollectionsFromBackup, saveCollections } from '../services/libraryCollections';
@@ -187,6 +189,8 @@ export function useReadingLife() {
     }
   }, [state.profile.theme]);
 
+  const [namesTick, setNamesTick] = useState(0);
+
   // Merge default books + custom books with overrides
   const allBooks = useMemo<Book[]>(() => {
     const map = new Map<string | number, Book>();
@@ -209,8 +213,18 @@ export function useReadingLife() {
       map.set(b.id, { ...b, isOnDevice: onDevice });
     }
 
-    return Array.from(map.values());
-  }, [state.customBooks, state.hiddenBookIds, state.onDeviceOverrides]);
+    // English title and jacket author name, from what is already known (instant; the saved records are not changed)
+    return Array.from(map.values()).map(displayBook);
+  }, [state.customBooks, state.hiddenBookIds, state.onDeviceOverrides, namesTick]);
+
+  // What is not known yet is looked up in the background, a few books at a time and each book once a month (all saved books, finished ones too), and shown as soon as it is learned
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const todo = state.customBooks.slice(0, 60);
+      void mapPool(todo, 2, async b => { if (await refreshNames(b).catch(() => false)) setNamesTick(n => n + 1); });
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [state.customBooks]);
 
   // Daily log metrics
   const todayPages = state.dailyLog[todayKey] || 0;
@@ -376,15 +390,6 @@ export function useReadingLife() {
     setState(prev => ({
       ...prev,
       hiddenBookIds: {},
-    }));
-  }, []);
-
-  /** A saved book takes its English title; the one it had is kept as `originalTitle` (for search). Only saved (custom) books; the id never changes. */
-  const setBookTitle = useCallback((bookId: string | number, title: string) => {
-    const idKey = String(bookId);
-    setState(prev => ({
-      ...prev,
-      customBooks: prev.customBooks.map(b => (String(b.id) === idKey && b.title !== title ? { ...b, title, originalTitle: b.originalTitle || b.title } : b)),
     }));
   }, []);
 
@@ -586,7 +591,6 @@ export function useReadingLife() {
     removeBook,
     restoreHiddenBooks,
     updateBookNote,
-    setBookTitle,
     addHighlight,
     updateHighlight,
     deleteHighlight,
