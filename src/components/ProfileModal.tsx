@@ -10,6 +10,7 @@ import { AchievementsModal } from './garden/AchievementsModal';
 import { MILESTONES } from '../data/gardenCatalog';
 import { isCoverAdminOn, subscribeCoverAdmin } from '../services/books';
 import { GoogleKeyPanel } from './GoogleKeyPanel';
+import { AccountPanel } from './AccountPanel';
 import { TITLE_FONTS, TEXT_FONTS, getFontPrefs, setFontPrefs, loadFontPreviews } from '../services/fontPrefs';
 
 interface ProfileModalProps {
@@ -399,6 +400,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               </button>
             </div>
           )}
+
+          <AccountPanel />
 
           {onOpenCoverPublish && (
             <div className="pt-3 border-t border-[#e3d7c3] dark:border-[#382f25]">
