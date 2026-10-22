@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef, useSyncExtern
 import { Book, TabType, WordItem } from './types';
 import { useReadingLife } from './hooks/useReadingLife';
 import { syncCatalog } from './services/catalog';
-import { consumeAuthRedirect } from './services/supabase';
+import { consumeAuthRedirect, checkAdmin, currentUser } from './services/supabase';
 import { bookKey, getCoverPick, getCoverUrl, sameWork, withKnownRating, isCoverAdminOn, subscribeCoverAdmin, tapSecret, syncSharedCovers } from './services/books';
 import { milestone } from './services/books/perf';
 import { formatRating, prettyDate, readingNowOrder } from './services/bookHistory';
@@ -164,6 +164,7 @@ export default function App() {
   // It is throttled inside (10 min, ETag), never blocks drawing, and a failure just keeps the saved copy.
   useEffect(() => {
     consumeAuthRedirect();
+    if (currentUser()) void checkAdmin(); // asked of the database; only decides whether the owner's tools show
     const t = setTimeout(() => { void syncSharedCovers(); void syncCatalog(); }, 3000);
     const onShow = () => { if (document.visibilityState === 'visible') { void syncSharedCovers(); void syncCatalog(); } };
     document.addEventListener('visibilitychange', onShow);

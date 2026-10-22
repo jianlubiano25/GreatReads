@@ -3,6 +3,7 @@
  * Self-contained on purpose (no imports from the cover code) so the cover chain can read it without a circular import.
  */
 import { registerClearableKey } from './cache';
+import { authorKey, titleKey } from './identity';
 
 const KEY = 'readlife.catalog1';
 registerClearableKey(KEY);
@@ -68,3 +69,25 @@ const index = (): Map<string, string> => {
 
 /** The catalog's cover for a book, by the app's own key (title|author, lower case). */
 export const getCatalogCover = (key: string): string | undefined => index().get(key);
+
+/* ---- the whole work (description, bio, facts, rating) for Book Info ---- */
+let byInfo: Map<string, CatalogWork> | undefined;
+let byIsbn: Map<string, CatalogWork> | undefined;
+let infoIndexVersion = -1;
+const buildInfoIndex = () => {
+  if (infoIndexVersion === version && byInfo && byIsbn) return;
+  byInfo = new Map(); byIsbn = new Map();
+  for (const w of Object.values(catalogCopy().works)) {
+    for (const t of [w.title, ...(w.aliases || [])]) {
+      for (const a of [w.author, ...(w.authorAliases || [])]) { const k = `${titleKey(t)}|${authorKey(a || '')}`; if (!byInfo.has(k)) byInfo.set(k, w); }
+    }
+    for (const e of w.editions || []) for (const i of [e.isbn13, e.isbn10]) if (i && !byIsbn.has(i)) byIsbn.set(i, w);
+  }
+  infoIndexVersion = version;
+};
+/** The catalog's published work for a book: by ISBN when the book has one, else by title + author (aliases included). */
+export function getCatalogWork(book: { title?: string; author?: string; isbn13?: string; isbn10?: string }): CatalogWork | undefined {
+  buildInfoIndex();
+  const isbn = [book.isbn13, book.isbn10].map(i => (i || '').replace(/[^0-9Xx]/g, '')).find(i => i && byIsbn!.has(i));
+  return (isbn && byIsbn!.get(isbn)) || byInfo!.get(`${titleKey(book.title || '')}|${authorKey(book.author || '')}`);
+}

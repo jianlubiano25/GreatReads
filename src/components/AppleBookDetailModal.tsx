@@ -6,6 +6,8 @@ import type { HistoryPatch } from '../services/bookHistory';
 import { RateThisBook, YourReading } from './BookJourney';
 import { DIFFICULTY_LABELS, SHELF_LABELS } from '../data/defaultBooks';
 import { useBookInfo } from '../hooks/useBookInfo';
+import { saveBookToCatalog } from '../services/catalog';
+import { authVersion, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
 import { mainRating, otherRatings, RATING_SOURCE_LABEL, isCoverAdminOn, subscribeCoverAdmin, type SourceRating } from '../services/books';
 import { CoverFace, StarRating, compactCount, honorsListFor } from './BookMeta';
 import { X, BookOpen, Star, Award, ChevronDown, Check, Bookmark, Image as ImageIcon, RefreshCw } from 'lucide-react';
@@ -63,6 +65,9 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   const { book, siteRatings, loading } = useBookInfo(initialBook);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showCovers, setShowCovers] = useState(false);
+  useSyncExternalStore(subscribeAuth, authVersion, authVersion);
+  const isOwner = !!currentUser() && isAdminKnown() === true;
+  const [catalogNote, setCatalogNote] = useState('');
   const coverTools = useSyncExternalStore(subscribeCoverAdmin, isCoverAdminOn, isCoverAdminOn); // the cover button is hidden until the owner switches it on
 
   // Manual refresh: lift the wait on these fields and ask again. What is already shown stays until the new answer replaces it.
@@ -453,6 +458,16 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
             >
               <RefreshCw className={`w-3.5 h-3.5 text-[#706256] dark:text-[#a89a8a] ${busy === 'all' ? 'animate-spin' : ''}`} aria-hidden="true" />
             </button>
+            {coverTools && isOwner && <button
+              type="button"
+              onClick={async () => {
+                setCatalogNote('Saving…');
+                const r = await saveBookToCatalog(book, siteRatings);
+                setCatalogNote(r.ok ? `Saved to catalog: ${r.saved.join(', ')}${r.skipped.length ? ` (skipped: ${r.skipped.join(', ')})` : ''}` : `Not saved${r.skipped.length ? `: ${r.skipped.join(', ')}` : ''}`);
+              }}
+              className="inline-flex items-center justify-center px-2 h-8 rounded-lg border border-[#e3d7c3] dark:border-[#382f25] text-[11px] font-semibold text-[#2e5934] dark:text-[#86b880] hover:bg-[#fbf7ee] dark:hover:bg-[#231d17] transition-colors"
+              title="Save what this screen shows into the catalog and publish it"
+            >Save to catalog</button>}
             {coverTools && <button
               onClick={() => setShowCovers(true)}
               className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-[#e3d7c3] dark:border-[#382f25] hover:bg-[#fbf7ee] dark:hover:bg-[#231d17] transition-colors"
@@ -472,6 +487,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
         </div>
       </div>
     </div>
+    {catalogNote && <div role="status" aria-live="polite" className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] max-w-[90vw] px-3 py-2 rounded-xl text-xs bg-[#201a15] text-white shadow-lg" onClick={() => setCatalogNote('')}>{catalogNote}</div>}
     {coverTools && showCovers && (
       <Suspense fallback={null}>
         <CoverPickerModal book={book} onClose={() => setShowCovers(false)} />

@@ -19,6 +19,7 @@ import {
 } from '../services/books';
 import { buildDraft, countChanges, draftStatus, publishCovers, type PublishResult } from '../services/books/covers';
 import { CoverPickerModal } from './CoverPickerModal';
+import { CatalogReviewModal } from './CatalogReviewModal';
 import { publishCoverToCatalog, syncCatalog } from '../services/catalog';
 import { authVersion, checkAdmin, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
 
@@ -54,6 +55,7 @@ export function CoverPublishModal({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [editing, setEditing] = useState<Book | null>(null);
+  const [reviewing, setReviewing] = useState(false);
   useSyncExternalStore(subscribeAuth, authVersion, authVersion);
   const signedIn = !!currentUser();
   const isOwner = isAdminKnown();
@@ -225,6 +227,9 @@ export function CoverPublishModal({ onClose }: { onClose: () => void }) {
                 {busy ? 'Working…' : `Publish ${rows.length} to the catalog (Supabase)`}
               </button>
             )}
+            {isOwner && (
+              <button type="button" onClick={() => setReviewing(true)} className="w-full py-2.5 rounded-xl text-sm font-semibold border border-[#e3d7c3] dark:border-[#382f25] active:scale-[0.98] transition-all">Review catalog (browse, publish, reject)</button>
+            )}
             {!isOwner && (
               <p className="text-[11px] text-[#706256] dark:text-[#a89a8a]">To publish to the new catalog, sign in as the owner in Profile → Account.</p>
             )}
@@ -235,6 +240,7 @@ export function CoverPublishModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>
+      {reviewing && <CatalogReviewModal onClose={() => setReviewing(false)} />}
       {editing && <CoverPickerModal book={editing} onClose={() => setEditing(null)} />}
     </>
   );
