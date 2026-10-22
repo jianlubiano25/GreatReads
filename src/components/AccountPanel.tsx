@@ -32,7 +32,7 @@ export const AccountPanel: React.FC = () => {
     else setMsg({ ok: false, text: r.error || 'Something went wrong.' });
   };
 
-  const Box = ({ children }: { children: React.ReactNode }) => (
+  const box = (children: React.ReactNode) => (
     <div className="pt-3 border-t border-[#e3d7c3] dark:border-[#382f25] space-y-2">
       <span className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] block">Account</span>
       {children}
@@ -43,7 +43,7 @@ export const AccountPanel: React.FC = () => {
   // arrived from the reset link, or changing the password while signed in
   if (user && (recovering || changing)) {
     return (
-      <Box>
+      box(<>
         <p className="text-xs text-[#706256] dark:text-[#a89a8a]">{recovering ? 'Choose a new password.' : 'Change your password.'}</p>
         <input type="password" autoComplete="new-password" className={field} placeholder="New password (8+ characters)" value={pw} onChange={e => setPw(e.target.value)} />
         <input type="password" autoComplete="new-password" className={field} placeholder="Repeat new password" value={pw2} onChange={e => setPw2(e.target.value)} />
@@ -53,24 +53,24 @@ export const AccountPanel: React.FC = () => {
           void run(() => setPassword(pw), () => setChanging(false));
         }}>Save new password</button>
         {!recovering && <button type="button" className={link} onClick={() => { setChanging(false); setMsg(null); }}>Cancel</button>}
-      </Box>
+      </>)
     );
   }
 
   if (user) {
     return (
-      <Box>
+      box(<>
         <p className="text-xs">Signed in as <span className="font-semibold break-all">{user.email}</span>{admin ? <span className="ml-1 text-[#2e5934] dark:text-[#86b880]">(owner)</span> : null}</p>
         <div className="flex gap-4">
           <button type="button" className={link} onClick={() => { setChanging(true); setMsg(null); }}>Change password</button>
           <button type="button" className={link} onClick={() => void signOut()}>Sign out</button>
         </div>
-      </Box>
+      </>)
     );
   }
 
   return (
-    <Box>
+    box(<>
       <input type="email" autoComplete="email" className={field} placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
       {mode !== 'forgot' && <input type="password" autoComplete={mode === 'up' ? 'new-password' : 'current-password'} className={field} placeholder="Password" value={pw} onChange={e => setPw(e.target.value)} />}
       {mode === 'in' && <button type="button" className={btn} disabled={busy || !email || !pw} onClick={() => void run(() => signIn(email, pw))}>Sign in</button>}
@@ -85,6 +85,6 @@ export const AccountPanel: React.FC = () => {
         <a href={oauthUrl('google')} className={`${btn} text-center`}>Google</a>
         <a href={oauthUrl('facebook')} className={`${btn} text-center`}>Facebook</a>
       </div>
-    </Box>
+    </>)
   );
 };

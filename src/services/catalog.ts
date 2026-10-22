@@ -174,18 +174,72 @@ export async function saveBookToCatalog(book: Pick<Book, 'title' | 'author' | 's
   await meta('pageCount', book.pageCount || undefined);
   await meta('genre', book.genre && book.genre !== 'Book' ? book.genre : undefined);
 
-  // the catalog keeps ONE main rating per book (the database allows one selected): the first valid pair, in the app's own source order
-  const SRC: Record<string, string> = { apple: 'apple_books', google: 'google_books', openlibrary: 'open_library' };
-  const main = ratings.find(r => SRC[r.source] && r.average > 0 && (r.count ?? 0) > 0);
-  if (main) {
-    const src = SRC[main.source];
-    const body = { work_id: workId, source_name: src, average_rating: main.average, rating_count: main.count, rating_scale: 5, status: 'approved' };
-    let id: string | undefined;
-    const ex = await rest<{ id: string }[]>(`catalog_rating_candidates?work_id=eq.${workId}&source_name=eq.${src}&edition_id=is.null&select=id&limit=1`);
-    if (ex.ok && ex.data[0]) { id = ex.data[0].id; await rest(`catalog_rating_candidates?id=eq.${id}`, { method: 'PATCH', body: { average_rating: main.average, rating_count: main.count, checked_at: new Date().toISOString() } }); }
-    else { const ins = await rest<{ id: string }[]>('catalog_rating_candidates', { method: 'POST', prefer: 'return=representation', body }); id = ins.ok ? ins.data[0]?.id : undefined; }
-    if (id && (await rpc('catalog_publish_rating', { p_id: id })).ok) saved.push('rating'); else skipped.push('rating');
-  }
+  // every site's rating is kept (one per source); each is published on its own
+  for (const r of ratings) if (await storeRating(workId, r, true)) saved.push(`rating:${r.source}`); else if (RATING_SRC[r.source] && r.average > 0) skipped.push(`rating:${r.source}`);
   if (saved.length) await setWorkStatus(workId, 'published');
   return { ok: saved.length > 0, saved, skipped };
+}
+
+const RATING_SRC: Record<string, string> = { apple: 'apple_books', google: 'google_books', openlibrary: 'open_library' };
+
+/** The catalog's id for this book, created as a hidden draft when it is not there yet (nothing is shown to readers until something is published). */
+export async function ensureWork(book: { title: string; author?: string }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const key = coverKey(book);
+  const found = await rest<{ id: string }[]>(`catalog_works?work_key=eq.${encodeURIComponent(key)}&select=id&limit=1`);
+  if (!found.ok) return { ok: false, error: found.status === 401 || found.status === 403 ? 'Sign in as the owner first (Profile → Account).' : found.error };
+  if (found.data[0]) return { ok: true, id: found.data[0].id };
+  const made = await rest<{ id: string }[]>('catalog_works', { method: 'POST', prefer: 'return=representation', body: { canonical_title: book.title.trim(), canonical_author: (book.author || '').trim() || null, work_key: key, status: 'draft' } });
+  if (!made.ok) return { ok: false, error: made.status === 401 || made.status === 403 ? 'Sign in as the owner first (Profile → Account).' : made.error };
+  return made.data[0]?.id ? { ok: true, id: made.data[0].id } : { ok: false, error: 'The catalog did not return the book.' };
+}
+
+/** Store one site's rating for the book (one row per source); published straight away when `publish`, else kept as an approved version to review. */
+export async function storeRating(workId: string, r: SourceRating, publish: boolean): Promise<boolean> {
+  const src = RATING_SRC[r.source];
+  if (!src || !(r.average > 0)) return false;
+  const ex = await rest<{ id: string }[]>(`catalog_rating_candidates?work_id=eq.${workId}&source_name=eq.${src}&edition_id=is.null&select=id&limit=1`);
+  let id: string | undefined;
+  if (ex.ok && ex.data[0]) {
+    id = ex.data[0].id;
+    const up = await rest(`catalog_rating_candidates?id=eq.${id}&status=neq.rejected`, { method: 'PATCH', body: { average_rating: r.average, rating_count: r.count ?? null, checked_at: new Date().toISOString() } });
+    if (!up.ok) return false;
+  } else {
+    const ins = await rest<{ id: string }[]>('catalog_rating_candidates', { method: 'POST', prefer: 'return=representation', body: { work_id: workId, source_name: src, average_rating: r.average, rating_count: r.count ?? null, rating_scale: 5, status: 'approved' } });
+    id = ins.ok ? ins.data[0]?.id : undefined;
+  }
+  if (!id) return false;
+  return publish ? (await rpc('catalog_publish_rating', { p_id: id })).ok : true;
+}
+
+/** Keep a description or author bio as a stored version (approved, not live) so it can be compared and published from the review screen. */
+export async function storeText(workId: string, type: 'book_description' | 'author_bio', text: string): Promise<boolean> {
+  if (!text || text.length < 40) return false;
+  const ins = await rest('catalog_content_versions', { method: 'POST', body: { work_id: workId, content_type: type, language_code: 'en', content: text, source_name: 'app', status: 'approved' } });
+  return ins.ok || ins.status === 409; // 409: this exact text is already stored
+}
+
+/** The cover for this book is not to be used: stored as rejected (never comes back) and taken off the book if it was the main one. */
+export async function rejectCoverForBook(book: { title: string; author?: string }, url: string): Promise<CatalogPublishResult> {
+  const w = await ensureWork(book);
+  if (!w.ok) return w;
+  const found = await rest<{ id: string; status: string }[]>(`catalog_cover_candidates?work_id=eq.${w.id}&image_url=eq.${encodeURIComponent(url)}&select=id,status&limit=1`);
+  if (!found.ok) return { ok: false, error: found.error };
+  if (found.data[0]) {
+    if (found.data[0].status === 'rejected') return { ok: true };
+    const r = await rpc('catalog_reject_cover', { p_cover_id: found.data[0].id, p_reason: 'rejected in the cover viewer' });
+    if (!r.ok) return { ok: false, error: r.error };
+  } else {
+    const ins = await rest('catalog_cover_candidates', { method: 'POST', body: { work_id: w.id, image_url: url, source_name: coverSourceOf(url), status: 'rejected', reviewed_at: new Date().toISOString() } });
+    if (!ins.ok) return { ok: false, error: ins.error };
+  }
+  void syncCatalog({ force: true });
+  return { ok: true };
+}
+
+/** Cover addresses the owner already rejected for this book (the viewer hides them). */
+export async function rejectedCovers(book: { title: string; author?: string }): Promise<string[]> {
+  const w = await rest<{ id: string }[]>(`catalog_works?work_key=eq.${encodeURIComponent(coverKey(book))}&select=id&limit=1`);
+  if (!w.ok || !w.data[0]) return [];
+  const r = await rest<{ image_url: string }[]>(`catalog_cover_candidates?work_id=eq.${w.data[0].id}&status=eq.rejected&select=image_url`);
+  return r.ok ? r.data.map(x => x.image_url) : [];
 }

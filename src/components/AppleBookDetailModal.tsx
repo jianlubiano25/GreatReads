@@ -7,10 +7,11 @@ import { RateThisBook, YourReading } from './BookJourney';
 import { DIFFICULTY_LABELS, SHELF_LABELS } from '../data/defaultBooks';
 import { useBookInfo } from '../hooks/useBookInfo';
 import { saveBookToCatalog } from '../services/catalog';
+import { CatalogReviewModal } from './CatalogReviewModal';
 import { authVersion, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
 import { mainRating, otherRatings, RATING_SOURCE_LABEL, isCoverAdminOn, subscribeCoverAdmin, type SourceRating } from '../services/books';
 import { CoverFace, StarRating, compactCount, honorsListFor } from './BookMeta';
-import { X, BookOpen, Star, Award, ChevronDown, Check, Bookmark, Image as ImageIcon, RefreshCw } from 'lucide-react';
+import { X, BookOpen, Star, Award, ChevronDown, Check, Bookmark, Image as ImageIcon, RefreshCw, Code } from 'lucide-react';
 import { ensureBookInfo, resetInfoWaits, type InfoField } from '../services/books/infoStore';
 
 // The cover viewer is only fetched the first time someone opens it
@@ -68,6 +69,13 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   useSyncExternalStore(subscribeAuth, authVersion, authVersion);
   const isOwner = !!currentUser() && isAdminKnown() === true;
   const [catalogNote, setCatalogNote] = useState('');
+  const [review, setReview] = useState<null | 'book_description' | 'author_bio' | 'rating'>(null);
+  // the small <> beside a section (developer mode): browse, store, publish or reject the versions of that part
+  const devBtn = (kind: 'book_description' | 'author_bio' | 'rating', label: string) => coverTools ? (
+    <button type="button" onClick={() => setReview(kind)} aria-label={`Catalog versions: ${label}`} title={`Catalog versions: ${label}`} className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-[#2e5934] dark:text-[#86b880] hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition">
+      <Code className="w-4 h-4" aria-hidden="true" />
+    </button>
+  ) : null;
   const coverTools = useSyncExternalStore(subscribeCoverAdmin, isCoverAdminOn, isCoverAdminOn); // the cover button is hidden until the owner switches it on
 
   // Manual refresh: lift the wait on these fields and ask again. What is already shown stays until the new answer replaces it.
@@ -315,9 +323,10 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
 
         {/* Synopsis / Description Section */}
         <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25]">
-          <h4 className="font-serif-display text-lg text-[#201a15] dark:text-[#f0e6d6] mb-2">
-            About this book
-          </h4>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-serif-display text-lg text-[#201a15] dark:text-[#f0e6d6]">About this book</h4>
+            {devBtn('book_description', 'description')}
+          </div>
           <p
             className={`text-[17px] leading-[1.65] text-[#201a15] dark:text-[#f0e6d6] ${
               isExpanded ? '' : 'line-clamp-5'
@@ -354,6 +363,8 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
               <h4 className="font-serif-display text-lg">
                 Ratings{main && mainSource ? <span className="font-sans text-sm font-normal text-[#706256] dark:text-[#a89a8a]"> · {RATING_SOURCE_LABEL[mainSource]}</span> : null}
               </h4>
+              <span className="inline-flex items-center">
+              {devBtn('rating', 'ratings')}
               <button
                 type="button"
                 onClick={() => refresh('ratings')}
@@ -364,6 +375,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
               >
                 <RefreshCw className={`w-4 h-4 ${ratingsBusy ? 'animate-spin' : ''}`} aria-hidden="true" />
               </button>
+              </span>
             </div>
             {!main && !otherSites.length ? <p className="text-sm text-[#706256] dark:text-[#a89a8a]">No ratings found yet.</p> : null}
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
@@ -429,9 +441,10 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
         )}
         {book.authorBio && !book.authorBio.startsWith('No author') && (
           <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25]">
-            <h4 className="font-serif-display text-lg text-[#201a15] dark:text-[#f0e6d6] mb-2">
-              About the Author
-            </h4>
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="font-serif-display text-lg text-[#201a15] dark:text-[#f0e6d6]">About the Author</h4>
+              {devBtn('author_bio', 'author bio')}
+            </div>
             <p className="text-[17px] leading-[1.65] text-[#201a15]/80 dark:text-[#f0e6d6]/80">
               {book.authorBio}
             </p>
@@ -487,6 +500,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
         </div>
       </div>
     </div>
+    {coverTools && review && <CatalogReviewModal onClose={() => setReview(null)} book={book} initialKind={review} shown={{ summary: book.summary, authorBio: book.authorBio, ratings: siteRatings }} />}
     {catalogNote && <div role="status" aria-live="polite" className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] max-w-[90vw] px-3 py-2 rounded-xl text-xs bg-[#201a15] text-white shadow-lg" onClick={() => setCatalogNote('')}>{catalogNote}</div>}
     {coverTools && showCovers && (
       <Suspense fallback={null}>

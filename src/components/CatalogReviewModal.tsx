@@ -1,7 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useModalA11y } from '../hooks/useModalA11y';
-import { listWorks, loadCandidates, publishCandidate, rejectCandidate, setWorkStatus, syncCatalog, type Candidate, type WorkRow } from '../services/catalog';
+import { ensureWork, listWorks, loadCandidates, publishCandidate, rejectCandidate, setWorkStatus, storeRating, storeText, syncCatalog, type Candidate, type WorkRow } from '../services/catalog';
+import { authVersion, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
+import type { SourceRating } from '../services/books';
 
 /**
  * Owner only (developer mode, signed in, on the admin list). Pick a book, then browse every stored version of its cover, description,
@@ -16,8 +18,13 @@ const KINDS: { kind: Candidate['kind']; label: string }[] = [
 const pill = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-black/5 dark:bg-white/10 text-[#706256] dark:text-[#a89a8a]';
 const btn = 'py-2 px-3 rounded-xl text-xs font-semibold border active:scale-95 transition-all disabled:opacity-40';
 
-export function CatalogReviewModal({ onClose }: { onClose: () => void }) {
+/** What Book Info shows right now for the book (so it can be stored as a version) */
+export type ShownInfo = { summary?: string; authorBio?: string; ratings?: SourceRating[] };
+
+export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onClose: () => void; book?: { title: string; author?: string }; initialKind?: Candidate['kind']; shown?: ShownInfo }) {
   useModalA11y(onClose);
+  useSyncExternalStore(subscribeAuth, authVersion, authVersion);
+  const owner = !!currentUser() && isAdminKnown() === true;
   const [q, setQ] = useState('');
   const [works, setWorks] = useState<WorkRow[] | null>(null);
   const [work, setWork] = useState<WorkRow | null>(null);
@@ -28,7 +35,23 @@ export function CatalogReviewModal({ onClose }: { onClose: () => void }) {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
-    if (work) return;
+    if (!book || !owner) return;
+    let live = true;
+    (async () => {
+      const w = await ensureWork(book);
+      if (!live) return;
+      if (!w.ok) return setMsg({ ok: false, text: w.error });
+      const found = await listWorks(book.title);
+      const row = found.ok ? found.data.find(x => x.id === w.id) : undefined;
+      if (!live) return;
+      if (row) { setWork(row); setKind(initialKind || 'cover'); const r = await loadCandidates(w.id); if (live && r.ok) setCands(r.data); }
+    })();
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [owner, book?.title, book?.author]);
+
+  useEffect(() => {
+    if (work || book) return;
     let live = true;
     const t = setTimeout(() => { listWorks(q).then(r => { if (!live) return; if (r.ok) { setWorks(r.data); setMsg(null); } else setMsg({ ok: false, text: r.error }); }); }, q ? 300 : 0);
     return () => { live = false; clearTimeout(t); };
@@ -63,7 +86,8 @@ export function CatalogReviewModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 space-y-3">
-          {!work && (
+          {!owner && <p className="text-sm text-[#706256] dark:text-[#a89a8a] py-4">Sign in as the owner first: Profile → Account.</p>}
+          {!work && owner && !book && (
             <>
               <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search title or author" aria-label="Search the catalog" className="w-full px-3 py-2 rounded-xl text-sm bg-white dark:bg-[#1a1511] border border-[#e3d7c3] dark:border-[#382f25]" />
               {works === null && <p className="text-sm text-center text-[#706256] dark:text-[#a89a8a]" role="status">Loading…</p>}
@@ -90,6 +114,13 @@ export function CatalogReviewModal({ onClose }: { onClose: () => void }) {
                   </button>
                 ))}
               </div>
+              {shown && (kind === 'book_description' || kind === 'author_bio' || kind === 'rating') && (
+                <button type="button" disabled={busy} className={`${btn} w-full border-[#e3d7c3] dark:border-[#382f25]`} onClick={() => void act(async () => {
+                  const text = kind === 'book_description' ? shown.summary : kind === 'author_bio' ? shown.authorBio : undefined;
+                  if (kind === 'rating') { let n = 0; for (const r of shown.ratings || []) if (await storeRating(work.id, r, false)) n++; return n ? { ok: true } : { ok: false, error: 'No ratings to store.' }; }
+                  return (await storeText(work.id, kind, text || '')) ? { ok: true } : { ok: false, error: 'Nothing usable to store (too short or empty).' };
+                }, 'Stored as a version. Publish it below when you are happy with it.')}>Store what Book Info shows now as a version</button>
+              )}
               {!cur && <p className="text-sm text-[#706256] dark:text-[#a89a8a] py-6 text-center">No versions stored for this yet.</p>}
               {cur && (
                 <div className="rounded-xl border border-[#e3d7c3] dark:border-[#382f25] p-3 space-y-2">
