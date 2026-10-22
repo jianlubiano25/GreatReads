@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef, useSyncExtern
 import { Book, TabType, WordItem } from './types';
 import { useReadingLife } from './hooks/useReadingLife';
 import { syncCatalog } from './services/catalog';
+import { autoBackup } from './services/cloudSync';
 import { consumeAuthRedirect, checkAdmin, currentUser } from './services/supabase';
 import { bookKey, getCoverPick, getCoverUrl, sameWork, withKnownRating, isCoverAdminOn, subscribeCoverAdmin, tapSecret, syncSharedCovers } from './services/books';
 import { milestone } from './services/books/perf';
@@ -169,6 +170,16 @@ export default function App() {
     const onShow = () => { if (document.visibilityState === 'visible') { void syncSharedCovers(); void syncCatalog(); } };
     document.addEventListener('visibilitychange', onShow);
     return () => { clearTimeout(t); document.removeEventListener('visibilitychange', onShow); };
+  }, []);
+  // Cloud backup (only if turned on in Backup & Restore and signed in): a quiet upload every few minutes and when the app goes to the background.
+  const exportRef = useRef(exportBackup);
+  exportRef.current = exportBackup;
+  useEffect(() => {
+    const run = () => void autoBackup(() => exportRef.current());
+    const t = setInterval(run, 5 * 60 * 1000);
+    const onHide = () => { if (document.visibilityState === 'hidden') run(); };
+    document.addEventListener('visibilitychange', onHide);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onHide); };
   }, []);
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);

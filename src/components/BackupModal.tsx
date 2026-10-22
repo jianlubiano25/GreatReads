@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { copyText } from '../services/clipboard';
 import { refreshAllCovers } from '../services/books';
+import { CloudBackupSection } from './CloudBackupSection';
 import { X, Copy, Upload, Check, AlertCircle, RefreshCw, Download, Trash2, Image as ImageIcon } from 'lucide-react';
 
 interface BackupModalProps {
@@ -240,6 +241,8 @@ export const BackupModal: React.FC<BackupModalProps> = ({
           </div>
 
           {/* Section 2: Restore from Pasted JSON */}
+          <CloudBackupSection onExportBackup={onExportBackup} onImportBackup={onImportBackup} />
+
           <div className="pt-2 border-t border-[#e3d7c3] dark:border-[#382f25]">
             <label className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] block mb-1">
               Restore from Previous Backup
