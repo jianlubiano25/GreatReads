@@ -101,7 +101,11 @@ const ENGLISH_EDITIONS: Record<string, string[]> = {
  * Only the fallback: a catalogue's own English edition title (resolve.ts) is used first.
  */
 const ENGLISH_TITLES: Record<string, string> = { '変な絵': 'Strange Pictures', 'l etranger': 'The Stranger' };
-export const knownEnglishTitle = (title = ''): string => ENGLISH_TITLES[titleKey(title)] || '';
+export const knownEnglishTitle = (title = ''): string => {
+  // the title as written, in compatibility form (full-width letters, ...), and each half of a dual title ("Strange Pictures, 変な絵")
+  for (const k of [titleKey(title), titleKey(title.normalize('NFKC')), ...dualTitleParts(title).map(titleKey)]) if (ENGLISH_TITLES[k]) return ENGLISH_TITLES[k];
+  return '';
+};
 export const englishEditionQueries = (title = ''): string[] => ENGLISH_EDITIONS[titleKey(title)] || [];
 
 /** Every main-title key a title answers to: the whole main title, plus each half of a dual title, plus any narrow alias. */

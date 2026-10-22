@@ -8,7 +8,7 @@ import { authorKey, isUnknownAuthor } from './identity';
  *  - the names of a group count as ONE author when books are matched (identity.ts authorsCompatible);
  *  - the group shows the name a bookshop prints (Apple, Google, a curated or hand-entered record before Open Library), once such a record has been seen.
  */
-interface Group { keys: string[]; shown?: string; rank?: number }
+interface Group { keys: string[]; shown?: string; rank?: number; /** the real spellings seen ("Ursula Vernon", "T. Kingfisher"), for a picker; matching only ever uses `keys` */ names?: string[] }
 const store = persistentCache<Group>('readlife.authorAliases1', {
   ttl: 365 * 24 * 60 * 60 * 1000,
   max: 400,
@@ -31,7 +31,11 @@ export function learnAuthorGroup(names: Array<string | undefined>, shown?: { nam
     }
     all = [...new Set(all)];
     if (all.length < 2) return;
-    for (const k of all) store.set(k, { keys: all, shown: best?.name, rank: best?.rank });
+    // real spellings, one per key, the jacket name first
+    const spelled = new Map<string, string>();
+    for (const n of [...(best ? [best.name] : []), ...known, ...keys.flatMap(k => store.get(k)?.names ?? [])]) { const k = authorKey(n); if (k && !spelled.has(k)) spelled.set(k, n); }
+    const names = [...spelled.values()].slice(0, 6);
+    for (const k of all) store.set(k, { keys: all, shown: best?.name, rank: best?.rank, names });
   } catch {}
 }
 
@@ -48,4 +52,12 @@ export function preferredAuthor(name = ''): string {
     const g = isUnknownAuthor(name) ? undefined : store.get(authorKey(name));
     return g?.shown && authorKey(g.shown) !== authorKey(name) ? g.shown : name;
   } catch { return name; }
+}
+
+/** The names this author is known by (jacket name first), as spelled by the catalogues: for a small "show this name" choice. Empty when no alias group is known. */
+export function authorNames(name = ''): string[] {
+  try {
+    const g = isUnknownAuthor(name) ? undefined : store.get(authorKey(name));
+    return g && g.keys.length > 1 ? (g.names ?? []) : [];
+  } catch { return []; }
 }

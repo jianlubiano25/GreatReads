@@ -1,5 +1,5 @@
 import { moreLikeThis } from '../services/books/genreRank';
-import React, { Suspense, lazy, useState, useSyncExternalStore } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { Book, BookHistory } from '../types';
 import type { HistoryPatch } from '../services/bookHistory';
@@ -9,9 +9,9 @@ import { useBookInfo } from '../hooks/useBookInfo';
 import { saveBookToCatalog } from '../services/catalog';
 import { CatalogReviewModal } from './CatalogReviewModal';
 import { authVersion, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
-import { mainRating, otherRatings, RATING_SOURCE_LABEL, isCoverAdminOn, subscribeCoverAdmin, type SourceRating } from '../services/books';
+import { displayBook, nameAlternates, nameChoiceOf, setNameChoice, subscribeNames, mainRating, otherRatings, RATING_SOURCE_LABEL, isCoverAdminOn, subscribeCoverAdmin, type SourceRating } from '../services/books';
 import { CoverFace, StarRating, compactCount, honorsListFor } from './BookMeta';
-import { X, BookOpen, Star, Award, ChevronDown, Check, Bookmark, Image as ImageIcon, RefreshCw, Code } from 'lucide-react';
+import { X, BookOpen, Star, Award, ChevronDown, Check, Bookmark, Image as ImageIcon, RefreshCw, Code, Languages } from 'lucide-react';
 import { ensureBookInfo, resetInfoWaits, type InfoField } from '../services/books/infoStore';
 
 // The cover viewer is only fetched the first time someone opens it
@@ -63,11 +63,18 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   useModalA11y(onClose);
   // Everything already found about this book is here on the first render (no loading state); what is missing is fetched in the background,
   // joining any lookup already running, and each field appears as it is found. See services/books/infoStore.ts.
-  const { book, siteRatings, loading } = useBookInfo(initialBook);
+  const { book: infoBook, siteRatings, loading } = useBookInfo(initialBook);
+  // The name shown: English title and jacket author (or the owner's own choice for this book), applied at draw time; the saved record is not changed
+  const [namesTick, setNamesTick] = useState(0);
+  useEffect(() => subscribeNames(() => setNamesTick(n => n + 1)), []);
+  const book = useMemo(() => displayBook(infoBook), [infoBook, namesTick]);
+  const [namesOpen, setNamesOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showCovers, setShowCovers] = useState(false);
   useSyncExternalStore(subscribeAuth, authVersion, authVersion);
   const isOwner = !!currentUser() && isAdminKnown() === true;
+  const alts = isOwner ? nameAlternates(book) : { titles: [], authors: [] };
+  const picked = nameChoiceOf(book);
   const [catalogNote, setCatalogNote] = useState('');
   const [review, setReview] = useState<null | 'book_description' | 'author_bio' | 'rating'>(null);
   // the small <> beside a section (developer mode): browse, store, publish or reject the versions of that part
@@ -212,7 +219,39 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
             </h2>
             <div className="text-[#2e5934] dark:text-[#86b880] font-medium text-base mb-2">
               {book.author}
+              {(alts.titles.length > 0 || alts.authors.length > 1) && (
+                <button type="button" onClick={() => setNamesOpen(o => !o)} aria-expanded={namesOpen} aria-label="Choose the title and author to show" title="Choose the title and author to show" className="ml-2 inline-flex items-center justify-center w-7 h-7 rounded-lg align-middle hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition">
+                  <Languages className="w-4 h-4" aria-hidden="true" />
+                </button>
+              )}
             </div>
+            {namesOpen && (
+              <div className="mb-3 w-full max-w-md rounded-xl border border-[#e3d7c3] dark:border-[#382f25] p-3 text-sm text-[#201a15] dark:text-[#f0e6d6]" role="group" aria-label="Names to show for this book">
+                <p className="text-xs text-[#706256] dark:text-[#a89a8a] mb-2">Shown on this device only. The saved title and author are not changed.</p>
+                {alts.titles.length > 0 && (
+                  <div className="mb-2">
+                    <div className="text-xs font-medium mb-1">Title</div>
+                    <div className="flex flex-wrap gap-2">
+                      {alts.titles.map((t, i) => {
+                        const active = i === 0 ? picked.title !== 'original' : picked.title === 'original';
+                        return <button key={t} type="button" aria-pressed={active} onClick={() => setNameChoice(book, { ...picked, title: i === 0 ? undefined : 'original' })} className={`px-3 py-1.5 rounded-lg border text-left ${active ? 'border-[#2e5934] dark:border-[#86b880] bg-[#2e5934]/10' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}>{t}</button>;
+                      })}
+                    </div>
+                  </div>
+                )}
+                {alts.authors.length > 1 && (
+                  <div>
+                    <div className="text-xs font-medium mb-1">Author</div>
+                    <div className="flex flex-wrap gap-2">
+                      {alts.authors.map((a, i) => {
+                        const active = picked.author ? picked.author === a : i === 0;
+                        return <button key={a} type="button" aria-pressed={active} onClick={() => setNameChoice(book, { ...picked, author: i === 0 ? undefined : a })} className={`px-3 py-1.5 rounded-lg border text-left ${active ? 'border-[#2e5934] dark:border-[#86b880] bg-[#2e5934]/10' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}>{a}</button>;
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {book.notes && (
               <p className="text-xs text-[#706256] dark:text-[#a89a8a] italic mb-4 max-w-md line-clamp-2">

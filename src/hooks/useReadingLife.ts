@@ -9,7 +9,7 @@ import { applyHistoryEdit, applyRating, stampProgress, stampStatus, type History
 import { applyAddBook, type AddDestination, type AddStatus } from '../services/library';
 import { clearableCacheKeys } from '../services/books/cache';
 import { exportCoverPicks, restoreCoverPicksFromBackup } from '../services/books/covers';
-import { displayBook, refreshNames } from '../services/books/englishTitle';
+import { displayBook, refreshNames, subscribeNames } from '../services/books/englishTitle';
 import { mapPool } from '../services/books/http';
 import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
 import { applyMerge, findDuplicateGroups, idMapOf, remapCollections } from '../services/mergeDuplicates';
@@ -190,6 +190,7 @@ export function useReadingLife() {
   }, [state.profile.theme]);
 
   const [namesTick, setNamesTick] = useState(0);
+  useEffect(() => subscribeNames(() => setNamesTick(n => n + 1)), []); // an owner's title/author choice redraws the lists
 
   // Merge default books + custom books with overrides
   const allBooks = useMemo<Book[]>(() => {
