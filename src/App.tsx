@@ -5,7 +5,7 @@ import { syncCatalog } from './services/catalog';
 import { autoBackup } from './services/cloudSync';
 import { authVersion, consumeAuthRedirect, checkAdmin, currentUser, isAdminKnown, subscribeAuth } from './services/supabase';
 import { initCapture, maybeBackfill } from './services/captureDevice';
-import { bookKey, getCoverPick, getCoverUrl, sameWork, withKnownRating, isCoverAdminOn, subscribeCoverAdmin, tapSecret, syncSharedCovers } from './services/books';
+import { bookKey, getCoverPick, ownCoverUrl, sameWork, withKnownRating, isCoverAdminOn, subscribeCoverAdmin, tapSecret, syncSharedCovers } from './services/books';
 import { milestone } from './services/books/perf';
 import { formatRating, prettyDate, readingNowOrder } from './services/bookHistory';
 import { makeCollection, setBookMembership } from './services/libraryCollections';
@@ -298,7 +298,7 @@ export default function App() {
   useEffect(() => {
     try {
       const urls = [...nowReadingBooks, ...upNextBooks, ...sceneBooks]
-        .map(b => getCoverPick(b, 'M') || getCoverUrl(b.coverId, 'M', b.coverUrl))
+        .map(b => getCoverPick(b, 'M') || ownCoverUrl(b, 'M'))
         .filter((u, i, a) => !!u && a.indexOf(u) === i)
         .slice(0, 60);
       localStorage.setItem('readlife.preload', JSON.stringify(urls));

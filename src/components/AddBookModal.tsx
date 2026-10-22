@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { Book, ShelfKey } from '../types';
-import { getCoverUrl, getCoverPick } from '../services/books';
+import { ownCoverUrl, getCoverPick } from '../services/books';
 import { useBookSearch } from '../hooks/useBookSearch';
 import { ClearButton } from './ClearButton';
 import { ViewMoreBar } from './ViewMoreBar';
@@ -219,7 +219,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({
                 </span>
                 {searchResults.slice(0, visibleCount).map((b, idx) => {
                   const isAdded = addedIds[String(b.id)];
-                  const cover = getCoverPick(b, 'S') || getCoverUrl(b.coverId, 'S', b.coverUrl);
+                  const cover = getCoverPick(b, 'S') || ownCoverUrl(b, 'S');
                   return (
                     <div
                       key={`${b.id}-${idx}`}

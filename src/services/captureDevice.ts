@@ -5,12 +5,13 @@
 import resolvedData from '../data/storeResolved.json';
 import { CURATED_SHELVES } from '../data/storeCatalog';
 import type { Book } from '../types';
+import { syncCatalog } from './catalog';
 import { coverKey } from './books/coverAnalysis';
 import { peekCoverCandidates, setCandidateSink } from './books/coverCandidates';
 import { getMyCoverPick } from './books/coverPicks';
 import { getInfo, setInfoSink, siteRatingsOf } from './books/infoStore';
 import { hasRealSummary, isKnownGenre } from './books/model';
-import { backfillDone, captureBook, captureMany, captureOn, captureStatus, markBackfillDone, type CaptureItem, type CaptureRating } from './capture';
+import { backfillDone, captureBook, captureMany, captureOn, captureStatus, markBackfillDone, publishAllMissing, setPublishedSink, type CaptureItem, type CaptureRating } from './capture';
 
 const SITES = new Set(['apple', 'google', 'openlibrary']);
 
@@ -70,6 +71,7 @@ let wired = false;
 export function initCapture(): void {
   if (wired) return;
   wired = true;
+  setPublishedSink(() => { void syncCatalog({ force: true }); }); // this device then shows what was just published
   setInfoSink((book) => captureBook(itemOf(book)));
   setCandidateSink((book, list) => captureBook({ title: book.title, author: book.author, covers: list.map(c => c.url) }));
 }
@@ -77,10 +79,10 @@ export function initCapture(): void {
 /** The first time the owner is signed in on this device: send everything it already has. */
 export function maybeBackfill(library: Book[]): void {
   if (!captureOn() || backfillDone()) return;
-  void captureMany(deviceItems(library)).then(() => { if (!captureStatus().error) markBackfillDone(); });
+  void captureMany(deviceItems(library)).then(() => publishAllMissing()).then(() => { if (!captureStatus().error) markBackfillDone(); });
 }
 
 /** On demand (Profile → Data): send everything again; what is already stored is skipped. */
 export function backfillNow(library: Book[]): Promise<void> {
-  return captureMany(deviceItems(library)).then(() => { if (!captureStatus().error) markBackfillDone(); });
+  return captureMany(deviceItems(library)).then(() => publishAllMissing()).then(() => { if (!captureStatus().error) markBackfillDone(); });
 }

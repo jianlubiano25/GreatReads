@@ -1,15 +1,17 @@
 /**
  * Owner-only auto-capture: whatever this app fetches for a book (covers, description, author bio, year / pages / genre, each site's rating) is
- * quietly kept in the catalog as a HIDDEN candidate, so it can be browsed in the review screen and published or rejected there.
+ * kept in the catalog, so it can be browsed in the review screen and edited, published or rejected there.
+ *  - Everything is stored as a candidate. Where a book has nothing published yet for a cover / description / bio / fact / site rating, the best stored one is then
+ *    published (the database does this in one owner-only step), so the data the app already has reaches every reader at once. A published value is never replaced.
  *
  *  - Only runs when you are signed in AND the database says you are the owner. Readers never write anything.
  *  - Insert only: a stored row is never changed, a published row is never touched, a rejected row is never revived (the database refuses the same cover / text again).
- *  - A new book is created as a hidden draft: nothing is shown to readers until you publish something.
+ *  - A new book is created as a draft and becomes visible when something of it is published.
  *  - Slow and quiet on purpose (one request at a time, a small pause between them); a failure just stops it and it picks up again later.
  */
 import { coverKey } from './books/coverAnalysis';
 import { coverSourceOf } from './books/coverPicks';
-import { currentUser, isAdminKnown, rest } from './supabase';
+import { currentUser, isAdminKnown, rest, rpc } from './supabase';
 
 export type CaptureRating = { source: string; average: number; count?: number };
 export type CaptureItem = {
@@ -23,11 +25,12 @@ export type CaptureItem = {
   genre?: string;
   ratings?: CaptureRating[];
 };
-export type CaptureStatus = { on: boolean; running: boolean; queued: number; sent: number; total: number; error?: string };
+export type CaptureStatus = { on: boolean; running: boolean; queued: number; sent: number; published: number; total: number; error?: string };
 
 const DONE_KEY = 'readlife.captured1';
 const OFF_KEY = 'readlife.captureOff1';
-const BACKFILL_KEY = 'readlife.captureBackfill1';
+const BACKFILL_KEY = 'readlife.captureBackfill2'; // 2: the first upload now also publishes
+const PUB_OFF_KEY = 'readlife.capturePubOff1';
 const MAX_QUEUE = 3000;
 const MAX_DONE = 60000;
 const GAP_MS = 80;
@@ -66,13 +69,15 @@ export function setCaptureWanted(on: boolean): void {
   if (!on) { queue.length = 0; }
   emit();
 }
+export const autoPublishWanted = (): boolean => { try { return localStorage.getItem(PUB_OFF_KEY) !== '1'; } catch { return true; } };
+export function setAutoPublish(on: boolean): void { try { on ? localStorage.removeItem(PUB_OFF_KEY) : localStorage.setItem(PUB_OFF_KEY, '1'); } catch {} emit(); }
 export const isOwnerNow = (): boolean => !!currentUser() && isAdminKnown() === true;
 export const captureOn = (): boolean => isOwnerNow() && captureWanted();
 
 /* ---------------- status ---------------- */
 
 const listeners = new Set<() => void>();
-let status: CaptureStatus = { on: false, running: false, queued: 0, sent: 0, total: 0 };
+let status: CaptureStatus = { on: false, running: false, queued: 0, sent: 0, published: 0, total: 0 };
 const emit = () => {
   status = { ...status, on: captureOn(), queued: queue.length };
   listeners.forEach(l => l());
@@ -163,6 +168,32 @@ async function send(table: string, rows: Row[]): Promise<Row[]> {
   return okRows;
 }
 
+/* ---------------- publishing what is missing ---------------- */
+
+let publishedSink: (() => void) | undefined;
+/** Told when something was published (this device then refreshes its own copy of the catalog). */
+export const setPublishedSink = (f?: () => void) => { publishedSink = f; };
+const touched = new Set<string>();
+
+/** Ask the database to publish the best stored candidate wherever these books have nothing published yet (it never replaces, never uses a rejected one, skips hidden books). */
+async function publishFor(ids: string[]): Promise<void> {
+  let total = 0;
+  for (let i = 0; i < ids.length; i += 25) {
+    const r = await rpc<number>('catalog_publish_defaults', { p_work_ids: ids.slice(i, i + 25) });
+    if (!r.ok) { const s = stopFor(r); if (s) throw s; continue; }
+    total += Number(r.data) || 0;
+  }
+  if (total) { status.published += total; try { publishedSink?.(); } catch {} }
+}
+
+/** Publish what is missing for every book the catalog has (what is already published stays as it is). */
+export async function publishAllMissing(): Promise<void> {
+  if (!captureOn() || !autoPublishWanted()) return;
+  try { await loadWorks(); await publishFor([...works.values()]); status = { ...status, error: undefined }; }
+  catch (e) { status = { ...status, error: e instanceof Stop && e.message === 'not owner' ? 'Not signed in as the owner.' : 'Paused: no connection. It continues next time.' }; }
+  emit();
+}
+
 /* ---------------- the queue ---------------- */
 
 const queue: CaptureItem[] = [];
@@ -182,6 +213,7 @@ async function processOne(item: CaptureItem): Promise<void> {
     for (const r of sent) { doneSet().add(r.id); dirty = true; }
     status.sent += sent.length;
   }
+  touched.add(workId);
 }
 
 function pump(): Promise<void> {
@@ -196,8 +228,10 @@ function pump(): Promise<void> {
         await processOne(item);
         emit();
         if (dirty && queue.length % 20 === 0) saveDone();
+        if (touched.size >= 25 && autoPublishWanted()) { const ids = [...touched]; touched.clear(); await publishFor(ids); emit(); }
         await sleep(GAP_MS);
       }
+      if (touched.size && autoPublishWanted() && captureOn()) { const ids = [...touched]; touched.clear(); await publishFor(ids); }
     } catch (e) {
       queue.length = 0;
       status = { ...status, error: e instanceof Stop && e.message === 'not owner' ? 'Not signed in as the owner.' : 'Paused: no connection. It continues next time.' };
@@ -236,4 +270,4 @@ export const markBackfillDone = (): void => { try { localStorage.setItem(BACKFIL
 export const resetBackfill = (): void => { try { localStorage.removeItem(BACKFILL_KEY); } catch {} };
 
 /** Tests only. */
-export const resetCaptureForTests = (): void => { queue.length = 0; works.clear(); worksLoaded = false; done = new Set(); dirty = false; running = undefined; status = { on: false, running: false, queued: 0, sent: 0, total: 0 }; };
+export const resetCaptureForTests = (): void => { queue.length = 0; works.clear(); worksLoaded = false; done = new Set(); dirty = false; running = undefined; touched.clear(); status = { on: false, running: false, queued: 0, sent: 0, published: 0, total: 0 }; };

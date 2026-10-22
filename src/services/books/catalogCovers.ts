@@ -11,6 +11,8 @@ registerClearableKey(KEY);
 export type CatalogWork = {
   id: string; key: string | null; title: string; author: string; aliases?: string[]; authorAliases?: string[]; genres?: string[];
   identifiers?: Record<string, unknown>; updatedAt: string; cover: string | null;
+  /** Cover addresses the owner rejected: never shown or used on any device */
+  rejectedCovers?: string[];
   content?: { type: string; language?: string; content: string; source?: string }[];
   metadata?: { field: string; value: string; source?: string }[];
   ratings?: { source: string; average: number; count?: number; checkedAt?: string }[];
