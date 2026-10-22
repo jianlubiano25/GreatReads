@@ -1,5 +1,5 @@
 /**
- * A tiny Supabase client written by hand (no dependency): email + password sign-in, password reset, Google / Facebook sign-in by redirect,
+ * A tiny Supabase client written by hand (no dependency): email + password sign-in, password reset, Google sign-in by redirect,
  * and database function calls. Only the PUBLISHABLE key lives here; it is safe to ship. Secret / service-role keys never go in the app.
  * The session is kept on this device only and is never part of a backup.
  */
@@ -108,8 +108,8 @@ export async function signOut(): Promise<void> {
   if (s) { try { await auth('logout', undefined, 'POST', s.access); } catch {} }
 }
 
-/** Google / Facebook: the browser goes to the provider and comes back here signed in. Both are free; the provider must be switched on in Supabase. */
-export function oauthUrl(provider: 'google' | 'facebook'): string {
+/** Google: the browser goes to Google and comes back here signed in (Google must be switched on in Supabase). */
+export function oauthUrl(provider: 'google'): string {
   return `${URL_}/auth/v1/authorize?provider=${provider}&redirect_to=${encodeURIComponent(location.origin + location.pathname)}`;
 }
 

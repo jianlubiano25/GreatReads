@@ -3,7 +3,8 @@ import { Book, TabType, WordItem } from './types';
 import { useReadingLife } from './hooks/useReadingLife';
 import { syncCatalog } from './services/catalog';
 import { autoBackup } from './services/cloudSync';
-import { consumeAuthRedirect, checkAdmin, currentUser } from './services/supabase';
+import { authVersion, consumeAuthRedirect, checkAdmin, currentUser, isAdminKnown, subscribeAuth } from './services/supabase';
+import { initCapture, maybeBackfill } from './services/captureDevice';
 import { bookKey, getCoverPick, getCoverUrl, sameWork, withKnownRating, isCoverAdminOn, subscribeCoverAdmin, tapSecret, syncSharedCovers } from './services/books';
 import { milestone } from './services/books/perf';
 import { formatRating, prettyDate, readingNowOrder } from './services/bookHistory';
@@ -69,6 +70,7 @@ const AppleLookUpModal = lazyModal<typeof import('./components/AppleLookUpModal'
 const AddBookModal = lazyModal<typeof import('./components/AddBookModal').AddBookModal>(() => import('./components/AddBookModal'), 'AddBookModal');
 const HighlightsModal = lazyModal<typeof import('./components/HighlightsModal').HighlightsModal>(() => import('./components/HighlightsModal'), 'HighlightsModal');
 const ProfileModal = lazyModal<typeof import('./components/ProfileModal').ProfileModal>(() => import('./components/ProfileModal'), 'ProfileModal');
+const CatalogReviewModal = lazyModal<typeof import('./components/CatalogReviewModal').CatalogReviewModal>(() => import('./components/CatalogReviewModal'), 'CatalogReviewModal');
 const CoverPublishModal = lazyModal<typeof import('./components/CoverPublishModal').CoverPublishModal>(() => import('./components/CoverPublishModal'), 'CoverPublishModal');
 const BackupModal = lazyModal<typeof import('./components/BackupModal').BackupModal>(() => import('./components/BackupModal'), 'BackupModal');
 const WordPracticeModal = lazyModal<typeof import('./components/WordPracticeModal').WordPracticeModal>(() => import('./components/WordPracticeModal'), 'WordPracticeModal');
@@ -148,6 +150,7 @@ export default function App() {
   }>({ open: false });
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showCoverPublish, setShowCoverPublish] = useState(false);
+  const [showCatalogReview, setShowCatalogReview] = useState(false);
 
   // Developer mode (the owner's hidden tools): five taps on the greeting switch it on or off. Everyone else never sees it.
   const coverTools = useSyncExternalStore(subscribeCoverAdmin, isCoverAdminOn, isCoverAdminOn);
@@ -171,6 +174,17 @@ export default function App() {
     document.addEventListener('visibilitychange', onShow);
     return () => { clearTimeout(t); document.removeEventListener('visibilitychange', onShow); };
   }, []);
+  // Owner only: what the app fetches is also kept in the catalog as hidden candidates (to review, publish or reject), and what this device already has is sent once.
+  useSyncExternalStore(subscribeAuth, authVersion, authVersion);
+  const ownerSignedIn = !!currentUser() && isAdminKnown() === true;
+  const booksRef = useRef(allBooks);
+  booksRef.current = allBooks;
+  useEffect(() => { initCapture(); }, []);
+  useEffect(() => {
+    if (!ownerSignedIn) return;
+    const t = setTimeout(() => maybeBackfill(booksRef.current), 8000);
+    return () => clearTimeout(t);
+  }, [ownerSignedIn]);
   // Cloud backup (only if turned on in Backup & Restore and signed in): a quiet upload every few minutes and when the app goes to the background.
   const exportRef = useRef(exportBackup);
   exportRef.current = exportBackup;
@@ -751,10 +765,13 @@ export default function App() {
           onImportBackup={importBackup}
           onOpenBackupModal={() => setShowBackupModal(true)}
           onOpenCoverPublish={coverTools ? () => setShowCoverPublish(true) : undefined}
+          libraryBooks={allBooks}
+          onOpenCatalogReview={() => setShowCatalogReview(true)}
         />
       )}
 
       {coverTools && showCoverPublish && <CoverPublishModal onClose={() => setShowCoverPublish(false)} />}
+      {showCatalogReview && <CatalogReviewModal onClose={() => setShowCatalogReview(false)} />}
 
       {/* Modal 6: Word Practice / Quiz Modal */}
       {showWordPracticeModal && (

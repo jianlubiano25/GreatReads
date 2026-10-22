@@ -55,6 +55,10 @@ const store = persistentCache<InfoEntry>('readlife.bookinfo1', {
   validate: v => !!v && typeof v === 'object' && !!v.facts && typeof v.facts === 'object' && !!v.ratings && typeof v.ratings === 'object' && !!v.miss && typeof v.miss === 'object' && !!v.at && typeof v.at === 'object',
 });
 
+/** Told what a lookup saved for a book (the owner's quiet catalog capture listens here). Never throws into the lookup. */
+let infoSink: ((book: Book, entry: InfoEntry) => void) | undefined;
+export const setInfoSink = (f?: (book: Book, entry: InfoEntry) => void) => { infoSink = f; };
+
 let clock = () => Date.now();
 /** Tests only. */
 export const setInfoClockForTests = (fn?: () => number) => { clock = fn ?? (() => Date.now()); };
@@ -348,7 +352,9 @@ export async function ensureBookInfo(book: Book, only?: InfoGroup[]): Promise<In
       setLoading(key, g, false);
     }
   })));
-  return getInfo(book);
+  const out = getInfo(book);
+  if (groups.length) { try { infoSink?.(book, out); } catch { /* capture must never disturb a lookup */ } }
+  return out;
 }
 
 // ---- showing it ----
