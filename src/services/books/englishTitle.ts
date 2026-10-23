@@ -1,6 +1,6 @@
 import type { Book } from '../../types';
 import { persistentCache } from './cache';
-import { bookKey, isUnknownAuthor, knownEnglishTitle, primaryAuthor, titleKey } from './identity';
+import { authorKey, bookKey, isUnknownAuthor, knownEnglishTitle, primaryAuthor, titleKey } from './identity';
 import { titleLooksForeign } from './language';
 import { resolveBook } from './resolve';
 import { findOpenLibrary } from './sources/openLibrary';
@@ -45,10 +45,15 @@ export function setNameChoice(b: Pick<Book, 'title' | 'originalTitle'>, choice: 
 }
 
 /** What the owner can pick between for this book: the English and the original title (only when an English one is known), the jacket and the other names of the author. */
-export function nameAlternates(b: Pick<Book, 'title' | 'originalTitle' | 'author'>): { titles: string[]; authors: string[] } {
+export function nameAlternates(b: Pick<Book, 'title' | 'originalTitle' | 'author'> & Partial<Pick<Book, 'originalAuthor'>>): { titles: string[]; authors: string[] } {
   const raw = b.originalTitle || b.title;
   const en = englishTitleNow(raw);
-  return { titles: en && titleKey(en) !== titleKey(raw) ? [en, raw] : [], authors: authorNames(b.author) };
+  // the author as saved, the jacket name, and every other spelling the group has seen (a group saved by an older version has no spellings: the two names in hand still count)
+  const rawAuthor = b.originalAuthor || b.author;
+  const seen = new Map<string, string>();
+  if (!isUnknownAuthor(rawAuthor)) for (const n of [preferredAuthor(rawAuthor), ...authorNames(rawAuthor), rawAuthor, b.author]) { const k = authorKey(n); if (k && !seen.has(k)) seen.set(k, n); }
+  const authors = [...seen.values()];
+  return { titles: en && titleKey(en) !== titleKey(raw) ? [en, raw] : [], authors: authors.length > 1 ? authors : [] };
 }
 
 /** The book as it is shown: English title and jacket author name when known (or the owner's choice for this book); the same object when nothing changes. */
@@ -61,10 +66,14 @@ export function displayBook<T extends Book>(b: T): T {
     const en = englishTitleNow(b.title);
     if (en && en !== b.title) out = { ...out, title: en, originalTitle: b.originalTitle || b.title };
   }
-  const author = pick.author || preferredAuthor(b.author);
-  if (author !== b.author) out = { ...out, author };
+  const rawAuthor = b.originalAuthor || b.author;
+  const author = pick.author || preferredAuthor(rawAuthor);
+  if (author !== b.author) out = { ...out, author, originalAuthor: rawAuthor };
   return out;
 }
+
+/** displayBook for a list: the ONE way every screen (Discover shelves, search, library, Book Info) turns books into the names it draws. Unchanged books keep their object. */
+export const displayBooks = <T extends Book>(list: T[]): T[] => list.map(displayBook);
 
 /** English title from the other sites that matched the book or Open Library's English editions (resolveBook), else the known list. '' when there is none. */
 export async function englishTitleOf(book: Pick<Book, 'id' | 'title' | 'author' | 'identity'>): Promise<string> {

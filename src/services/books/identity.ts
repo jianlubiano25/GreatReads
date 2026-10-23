@@ -110,7 +110,9 @@ export const englishEditionQueries = (title = ''): string[] => ENGLISH_EDITIONS[
 
 /** Every main-title key a title answers to: the whole main title, plus each half of a dual title, plus any narrow alias. */
 export function titleKeys(title = ''): string[] {
-  const keys = [titleKey(title), ...dualTitleParts(title).map(titleKey)].filter(Boolean);
+  // a title on the known-English list is the same book as its English title ("変な絵" / "Strange Pictures"): the saved record and the copy drawn with the English title stay ONE book
+  const en = knownEnglishTitle(title);
+  const keys = [titleKey(title), ...dualTitleParts(title).map(titleKey), ...(en ? [titleKey(en)] : [])].filter(Boolean);
   return [...new Set([...keys, ...keys.flatMap(k => TITLE_ALIASES[k] || [])])];
 }
 

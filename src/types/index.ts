@@ -29,6 +29,8 @@ export interface Book {
   spineColor?: string;
   /** The title the book was saved under when GreatReads replaced it with its English one ("変な絵" -> "Strange Pictures"): kept so the original still finds it in a search. */
   originalTitle?: string;
+  /** Set only on a copy drawn with the jacket / chosen author name (displayBook): the author as saved, so the alias group stays one identity. Never saved. */
+  originalAuthor?: string;
   source?: 'curated' | 'openlibrary' | 'google' | 'apple' | 'nyt' | 'manual';
   addedAt?: number;
   awardLabel?: string; // e.g. "International Booker 2026" or "Service95 Pick"
