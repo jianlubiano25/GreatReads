@@ -45,6 +45,15 @@ test('same normalized title and author is probable, not a confirmed destructive 
   assert.equal(mayAutoMerge(result, 'library-merge'), false);
 });
 
+test('exact title and author can identify duplicate personal entries; abbreviated authors remain non-destructive evidence', () => {
+  const exact = matchIdentity(base('Piranesi', 'Susanna Clarke'), base('Piranesi', 'Clarke, Susanna'));
+  assert.equal(exact.status, 'probable');
+  assert.equal(mayAutoMerge(exact, 'library-merge'), true);
+  const abbreviated = matchIdentity(base('It Ends With Us', 'C. Hoover'), base('It Ends With Us', 'Colleen Hoover'));
+  assert.equal(abbreviated.status, 'probable');
+  assert.equal(mayAutoMerge(abbreviated, 'library-merge'), false);
+});
+
 test('a matching title with missing author metadata stays ambiguous', () => {
   const result = matchIdentity(base('The Witch', ''), base('The Witch', 'Freida McFadden'));
   assert.equal(result.status, 'ambiguous');

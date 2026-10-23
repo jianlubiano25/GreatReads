@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { identityOf, sameEdition, sameWork, isbnPair, titleKey, authorKey, titlesMatch, authorListMatches, bookKey, mergeIdentity } from './identity';
 import { searchBooks, searchRelevance } from './search';
 import { shrunkRating } from './model';
-import { dedupeBooks } from './merge';
+import { dedupeBooks, mergeBooks } from './merge';
 import { explicitScore, EXPLICIT_FILTER_AT, EXPLICIT_PENALTY_AT } from './quality';
 import { parseNytList, nytTitleCase } from './sources/nyt';
 import { sanitizeCustomBooks } from '../stateSanitizer';
@@ -27,7 +27,9 @@ test('identity: work vs edition, never touching Book.id', () => {
   const b = book({ id: 'gb_zzz', title: 'Writers & Lovers: A Novel', author: 'King, Lily', identity: { isbn13: '9780802148537' } });
   const c = book({ id: 'nyt_9780802148537', title: 'Other title', author: 'Someone', identity: { isbn13: '9780802148537' } });
   assert.ok(sameWork(a, b)); // same title/author, different record ids
-  assert.ok(sameEdition(b, c) && sameWork(b, c)); // same ISBN
+  assert.ok(!sameEdition(b, c) && !sameWork(b, c)); // shared ISBN cannot override contradictory title and author metadata
+  const matchingEdition = book({ id: 'other', title: 'Writers & Lovers', author: 'Lily King', identity: { isbn13: '9780802148537' } });
+  assert.ok(sameEdition(b, matchingEdition) && sameWork(b, matchingEdition));
   assert.ok(!sameWork(a, book({ title: 'Writers & Lovers', author: 'Stephen King' })));
   assert.ok(!sameWork(book({ title: 'Untitled', author: 'Unknown Author' }), book({ id: 'z', title: 'Untitled', author: 'Unknown Author' }), true));
   assert.equal(bookKey(b), 'isbn:9780802148537');
@@ -100,6 +102,14 @@ test('the same book listed twice is one result', () => {
   assert.equal(list.length, 1);
   assert.equal(list[0].coverUrl, 'https://x/y.jpg');
   assert.equal(list[0].id, 'ol_1');
+});
+
+test('ambiguous series records stay separate and do not donate metadata', () => {
+  const first = book({ id: 'local-dune', title: 'Dune', author: 'Frank Herbert', summary: '' });
+  const sequel = book({ id: 'provider-messiah', title: 'Dune: Messiah', author: 'Frank Herbert', summary: 'A sequel summary that must stay separate.' });
+  assert.equal(sameWork(first, sequel), false);
+  assert.equal(dedupeBooks([first, sequel]).length, 2);
+  assert.equal(mergeBooks(first, sequel).summary, '');
 });
 
 /* ---------- quality filter ---------- */

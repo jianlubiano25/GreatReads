@@ -37,7 +37,7 @@ const mk = (o: Partial<Book> & { id: string | number; title: string; author: str
 function bruteKnownRating(book: Book, known: readonly Book[]) {
   for (const k of known) {
     const r = ratingOf(k);
-    if (r && sameWork(k, book, true)) return { ...r, ...(inferRatingSource(k) ? { source: inferRatingSource(k) } : {}) };
+    if (r && sameWork(k, book)) return { ...r, ...(inferRatingSource(k) ? { source: inferRatingSource(k) } : {}) };
   }
   return undefined;
 }

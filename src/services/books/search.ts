@@ -242,9 +242,9 @@ type Task = { name: string; run: (candidates: number, signal?: AbortSignal) => P
 export function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
   // `report`: whether this request's own count is the number shown as "of N" (the main requests only, never the narrower extra ones)
   const ol = (params: Record<string, string>, n: number, signal?: AbortSignal, report = true) =>
-    searchOpenLibrary(io.page > 1 ? { ...params, page: String(io.page) } : params, n, { signal, onTotal: report ? t => io.onTotal('ol', t) : undefined });
+    searchOpenLibrary(io.page > 1 ? { ...params, page: String(io.page) } : params, n, { signal, onTotal: report ? t => io.onTotal('ol', t) : undefined, onFailure: () => io.onFailure?.('Open Library') });
   const google = (query: string, n: number, signal?: AbortSignal, report = true) =>
-    searchGoogle(query, n, { signal, start: io.page > 1 ? (io.page - 1) * Math.min(40, n) : 0, onTotal: report ? t => io.onTotal('google', t) : undefined });
+    searchGoogle(query, n, { signal, start: io.page > 1 ? (io.page - 1) * Math.min(40, n) : 0, onTotal: report ? t => io.onTotal('google', t) : undefined, onFailure: () => io.onFailure?.('Google Books') });
   if (q.isbn) {
     return [
       { name: 'ol', run: (n, signal) => ol({ isbn: q.isbn }, n, signal) },
@@ -309,7 +309,7 @@ export function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
 }
 
 /** Paging and the "N books match" count, shared by the requests of one search. */
-interface TaskIo { page: number; onTotal: (source: 'ol' | 'google', n: number) => void }
+interface TaskIo { page: number; onTotal: (source: 'ol' | 'google', n: number) => void; onFailure?: (source: string) => void }
 
 /**
  * The author a query names, read from what the first sources returned: two to four words, every one of them a whole word of one result's author
@@ -349,6 +349,8 @@ export interface SearchProgress {
   from: string;
   /** How many books the catalog says match in all (Open Library's count, else Google's); 0 until a source has said */
   total: number;
+  /** Providers that failed during this search; an empty list means they answered successfully. */
+  failedSources?: string[];
 }
 
 export interface LiveSearchOptions {
@@ -402,8 +404,9 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   let olTotal = 0;
   let googleTotal = 0;
   const totalNow = () => olTotal || googleTotal;
-  const emit = (books: Book[], from: string, done: boolean, total = totalNow()) => { if (!o.signal?.aborted) o.onUpdate?.(books, { done, from, total }); };
-  const io: TaskIo = { page, onTotal: (source, n) => { if (source === 'ol') olTotal = n; else googleTotal = n; } };
+  const failedSources = new Set<string>();
+  const emit = (books: Book[], from: string, done: boolean, total = totalNow()) => { if (!o.signal?.aborted) o.onUpdate?.(books, { done, from, total, failedSources: [...failedSources] }); };
+  const io: TaskIo = { page, onTotal: (source, n) => { if (source === 'ol') olTotal = n; else googleTotal = n; }, onFailure: source => failedSources.add(source) };
 
   const mine = useLocal && o.known?.length ? localMatches(q, limit, o.known) : [];
   const seenHere = useLocal ? localMatches(q, limit) : [];
@@ -424,7 +427,7 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   let latest: Book[] = local.length ? rank(local, q, limit, mine) : [];
   const runTask = async (t: Task) => {
     let hits: Hit[] = [];
-    try { hits = await t.run(candidates, o.signal); } catch { hits = []; } // a failed source is an empty answer, never an error
+    try { hits = await t.run(candidates, o.signal); } catch { hits = []; failedSources.add(t.name.startsWith('ol') ? 'Open Library' : 'Google Books'); }
     if (o.signal?.aborted) return;
     gathered.push(...hits);
     if (!hits.length) return;

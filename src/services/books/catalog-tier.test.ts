@@ -35,7 +35,7 @@ test('the catalog cover is used, and your own pick still wins', () => {
 test('a book is found by title, by an alias and by ISBN', () => {
   assert.equal(getCatalogWork({ title: 'Strange Pictures', author: 'Uketsu' })?.id, 'w1');
   assert.equal(getCatalogWork({ title: '変な絵', author: '雨穴' })?.id, 'w1');
-  assert.equal(getCatalogWork({ title: 'Something else', author: 'Nobody', isbn13: '978-1-234-56789-7' })?.id, 'w1');
+  assert.equal(getCatalogWork({ title: 'Something else', author: 'Nobody', isbn13: '978-1-234-56789-7' }), undefined); // an ISBN cannot override contradictory metadata
   assert.equal(getCatalogWork({ title: 'Unlisted', author: 'Nobody' }), undefined);
 });
 

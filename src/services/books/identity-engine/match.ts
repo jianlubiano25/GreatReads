@@ -47,7 +47,18 @@ export function normalizeIdentityText(input = ''): string {
 
 function normalizeAuthorName(input = ''): string {
   const parts = input.split(',').map(x => x.trim()).filter(Boolean);
-  return normalizeIdentityText(parts.length === 2 ? `${parts[1]} ${parts[0]}` : input);
+  const name = parts.length === 2 ? `${parts[1]} ${parts[0]}` : input;
+  return normalizeIdentityText(name.replace(/\bal[-‐‑–—](?=\p{L})/giu, 'al'));
+}
+
+function authorInitialMatch(a: Set<string>, b: Set<string>): boolean {
+  for (const x of a) for (const y of b) {
+    const left = x.split(' '), right = y.split(' ');
+    if (left.length === right.length && left.length > 1 && left.at(-1) === right.at(-1)
+      && left.slice(0, -1).every((part, i) => part[0] === right[i]?.[0])
+      && (left.some(p => p.length === 1) || right.some(p => p.length === 1))) return true;
+  }
+  return false;
 }
 
 export { validIsbn10, validIsbn13 };
@@ -79,7 +90,7 @@ function allIds(r: IdentityRecord): ExternalIdentifier[] {
 }
 
 function validEvidence(e: IdentityEvidence): boolean {
-  if (e.basis === 'owner-confirmed') return true;
+  if (e.basis === 'owner-confirmed' || e.basis === 'known-title-map' || e.basis === 'legacy-verified-alias') return true;
   return !!e.identifier && validNonIsbnId(e.identifier);
 }
 function titleSet(r: IdentityRecord): Set<string> {
@@ -88,7 +99,7 @@ function titleSet(r: IdentityRecord): Set<string> {
 }
 function authorSet(r: IdentityRecord): Set<string> {
   const names = [r.author, ...(r.authors || []).flatMap(a => [a.canonicalName, ...a.aliases.filter(x => validEvidence(x.evidence)).map(x => x.name)])];
-  return new Set(names.map(normalizeAuthorName).filter(Boolean));
+  return new Set(names.map(normalizeAuthorName).filter(name => name && !/^(unknown|featured)( author)?$/.test(name)));
 }
 function authorIds(r: IdentityRecord): ExternalIdentifier[] {
   return cleanIds((r.authors || []).flatMap(a => a.identifiers)).filter(i => i.kind === 'author');
@@ -107,11 +118,16 @@ function hasExplicitTitleLink(a: IdentityRecord, b: IdentityRecord): TitleAlias 
   return linked;
 }
 function subtitleParts(title: string): { main: string; subtitle: string } {
-  const [main = '', ...rest] = title.normalize('NFKC').split(/\s*[:–—]\s+|\s+-\s+/);
-  const subtitle = normalizeIdentityText(rest.join(' '));
+  const clean = title.normalize('NFKC').replace(/\(.*?\)|\[.*?\]/g, ' ');
+  const [main = '', ...rest] = clean.split(/\s*[:–—]\s+|\s+-\s+/);
+  const rawSubtitle = rest.join(' ');
+  const subtitle = normalizeIdentityText(rest.join(' ')).replace(/^(the|a|an) /, '');
   const generic = /^(a )?(novel|memoir|stories|short stories|special edition|deluxe edition|illustrated edition)$/;
-  return { main: normalizeIdentityText(main), subtitle: generic.test(subtitle) ? '' : subtitle };
+  const descriptive = /\b(book club|club pick|special edition|deluxe|illustrated|annotated|winner|award|prize|netflix|movie|tv series)\b/.test(subtitle)
+    || /,/.test(rawSubtitle) || /^(how|why|what|when|where|who)\b/.test(subtitle) || subtitle.split(' ').filter(Boolean).length >= 6;
+  return { main: normalizeIdentityText(main), subtitle: generic.test(subtitle) || descriptive ? '' : subtitle };
 }
+const misleadingSubtitle = /\b(study guide|summary of|workbook|analysis of|reader'?s guide|teacher'?s guide)\b/i;
 function outcome(status: MatchStatus, reason: string, evidence: IdentityEvidence[] = [], conflicts: string[] = []): MatchOutcome {
   return { status, reason, evidence, conflicts };
 }
@@ -128,12 +144,16 @@ export function matchIdentity(a: IdentityRecord, b: IdentityRecord): MatchOutcom
   const authorIdConflict = conflictingAuthorityId(aAuthorIds, bAuthorIds);
   const knownAuthors = aAuthors.size > 0 && bAuthors.size > 0;
   const authorsOverlap = [...aAuthors].some(x => bAuthors.has(x)) || !!sharedAuthor;
+  const authorInitialsOverlap = authorInitialMatch(aAuthors, bAuthors);
   const titlesOverlap = [...titleSet(a)].some(x => titleSet(b).has(x));
+  if (normalizeIdentityText(a.title) !== normalizeIdentityText(b.title) && (misleadingSubtitle.test(a.title) || misleadingSubtitle.test(b.title))) {
+    return outcome('distinct-work', 'A study guide or analysis title is not the underlying book.');
+  }
   const titleRootsOverlap = subtitleParts(a.title).main === subtitleParts(b.title).main && !!subtitleParts(a.title).main;
   const titleLink = hasExplicitTitleLink(a, b);
   const titleSameOrLinked = titlesOverlap || titleRootsOverlap || !!titleLink;
   const contradictions: string[] = [];
-  if (knownAuthors && !authorsOverlap) contradictions.push('Known author names or aliases do not agree.');
+  if (knownAuthors && !authorsOverlap && !authorInitialsOverlap) contradictions.push('Known author names or aliases do not agree.');
   if (authorIdConflict) contradictions.push('Author authority identifiers from the same provider disagree.');
   if ((sharedEdition || sharedWork) && titleSet(a).size && titleSet(b).size && !titleSameOrLinked) {
     contradictions.push('Titles do not agree and no explicit alternate-title link is present.');
@@ -148,7 +168,7 @@ export function matchIdentity(a: IdentityRecord, b: IdentityRecord): MatchOutcom
   if (sharedWork) return outcome('confirmed', 'Same provider work identifier.', [{ basis: 'provider-link', source: sharedWork.source, identifier: sharedWork }]);
   if (distinctWorkId) return outcome('conflict', 'Provider work identifiers disagree.', [], contradictions);
   if (authorIdConflict) return outcome('conflict', 'Author authority identifiers disagree.', [], contradictions);
-  if (knownAuthors && !authorsOverlap) return outcome('distinct-work', 'Same or related title cannot override different known authors.', [], contradictions);
+  if (knownAuthors && !authorsOverlap && !authorInitialsOverlap) return outcome('distinct-work', 'Same or related title cannot override different known authors.', [], contradictions);
 
   if (titleLink && (!knownAuthors || authorsOverlap)) {
     return outcome('probable', `Explicit ${titleLink.kind} title link; author evidence is ${knownAuthors ? 'consistent' : 'missing'}.`, [titleLink.evidence]);
@@ -156,19 +176,24 @@ export function matchIdentity(a: IdentityRecord, b: IdentityRecord): MatchOutcom
   if (!titleSameOrLinked) return outcome('distinct-work', 'No explicit title or work identity link.');
 
   const [ta, tb] = [subtitleParts(a.title), subtitleParts(b.title)];
-  if (ta.main && ta.main === tb.main && ta.subtitle && tb.subtitle && ta.subtitle !== tb.subtitle) {
+  const shortenedMatch = ta.subtitle && tb.subtitle && (ta.subtitle.startsWith(tb.subtitle) || tb.subtitle.startsWith(ta.subtitle));
+  if (ta.main && ta.main === tb.main && ta.subtitle && tb.subtitle && ta.subtitle !== tb.subtitle && !shortenedMatch) {
     return outcome('distinct-work', 'Series-style subtitles identify different works.');
   }
   if (ta.main && ta.main === tb.main && (!!ta.subtitle !== !!tb.subtitle)) {
     return outcome('ambiguous', 'One record is missing a subtitle that may distinguish a series work.');
   }
   if (!knownAuthors) return outcome('ambiguous', 'Title matches, but a non-empty author match is not established.');
-  return outcome('probable', 'Normalized title and author match; no stable work or edition identifier is shared.');
+  if (authorInitialsOverlap) return outcome('probable', 'Title matches and author initials and surname agree.', [{ basis: 'author-initial', note: 'Search and metadata evidence only; not a stored author alias.' }]);
+  const exactTitleAuthor = normalizeIdentityText(a.title) === normalizeIdentityText(b.title) && [...aAuthors].some(x => bAuthors.has(x));
+  return outcome('probable', 'Normalized title and author match; no stable work or edition identifier is shared.', exactTitleAuthor ? [{ basis: 'exact-title-author' }] : []);
 }
 
 /** Search may rank uncertain candidates; personal-library deduplication auto-merges only confirmed identity. */
 export function mayAutoMerge(outcome: MatchOutcome, purpose: MatchPurpose): boolean {
-  return purpose === 'library-merge' ? outcome.status === 'confirmed' : outcome.status === 'confirmed' || outcome.status === 'probable';
+  return purpose === 'library-merge'
+    ? outcome.status === 'confirmed' || (outcome.status === 'probable' && outcome.evidence.some(e => e.basis === 'exact-title-author'))
+    : outcome.status === 'confirmed' || outcome.status === 'probable';
 }
 
 /** Ambiguous records may remain visible and rank in Search, but cannot donate fields to one another automatically. */

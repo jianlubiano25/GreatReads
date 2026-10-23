@@ -1,7 +1,7 @@
 // Run with: npm test
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { titlesMatch, titleVariants, dualTitleParts, subtitleKey, sameWork, authorsCompatible, authorVariants } from './identity';
+import { titlesMatch, titleVariants, dualTitleParts, subtitleKey, sameWork, authorsCompatible, authorListMatches, authorVariants } from './identity';
 import { chooseRating, knownRating, withKnownRating, ratingOf, starFills, otherRatings, inferRatingSource } from './ratings';
 import { fetchRatingSources } from './details';
 import { repairSeeds } from '../store/dynamic';
@@ -82,7 +82,7 @@ test('same book in the library lends its rating as a pair, whatever the record i
   assert.equal(withKnownRating(other, [mine]), other); // a different author is a different book
   const noRating = book({ id: 1, title: 'Piranesi', author: 'Susanna Clarke' });
   assert.equal(withKnownRating(store, [noRating]), store); // nothing to reuse
-  assert.ok(sameWork(mine, store, true));
+  assert.ok(sameWork(mine, store)); // rating reuse is read-only; personal-record merges stay strict
 });
 
 test('merging never mixes or sums ratings: the first record keeps its pair', () => {
@@ -210,8 +210,9 @@ test('resolvedMatchesSeed accepts a dual or club-subtitled title for the same bo
 /* ---------- translated books: author spelling and original-language titles ---------- */
 
 test('an author written with or without a given name is the same author', () => {
-  assert.ok(authorsCompatible('Marieke Lucas Rijneveld', 'Lucas Rijneveld'));
-  assert.ok(authorsCompatible('Lucas Rijneveld', 'Marieke Lucas Rijneveld'));
+  assert.ok(authorListMatches(['Marieke Lucas Rijneveld'], 'Lucas Rijneveld'));
+  assert.ok(authorListMatches(['Lucas Rijneveld'], 'Marieke Lucas Rijneveld'));
+  assert.equal(authorsCompatible('Marieke Lucas Rijneveld', 'Lucas Rijneveld'), false); // query variation is not identity evidence
   assert.ok(!authorsCompatible('Lucas Rijneveld', 'Lucas Smith'));
   assert.ok(!authorsCompatible('Ann Brown', 'Bob Brown'));
 });

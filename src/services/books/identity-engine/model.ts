@@ -1,5 +1,5 @@
 /**
- * Isolated identity-engine prototype. Nothing in the app imports this module yet.
+ * Shared evidence model for book identity. Compatibility adapters keep stored Book records unchanged.
  * Provider IDs here never replace GreatReads' personal Book.id.
  */
 
@@ -13,7 +13,7 @@ export interface ExternalIdentifier {
   scheme?: 'isbn10' | 'isbn13' | 'provider-id';
 }
 
-export type EvidenceBasis = 'provider-link' | 'same-edition' | 'author-authority' | 'owner-confirmed' | 'catalog-link';
+export type EvidenceBasis = 'provider-link' | 'same-edition' | 'author-authority' | 'owner-confirmed' | 'catalog-link' | 'known-title-map' | 'legacy-verified-alias' | 'author-initial' | 'exact-title-author';
 export interface IdentityEvidence {
   basis: EvidenceBasis;
   source?: IdentitySource;

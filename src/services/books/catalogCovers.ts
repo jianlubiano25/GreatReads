@@ -4,6 +4,8 @@
  */
 import { registerClearableKey } from './cache';
 import { authorKey, titleKey } from './identity';
+import { matchIdentity, validIsbn10, validIsbn13 } from './identity-engine/match';
+import type { IdentityRecord, ExternalIdentifier } from './identity-engine/model';
 
 const KEY = 'readlife.catalog1';
 registerClearableKey(KEY);
@@ -30,7 +32,6 @@ export const catalogCopy = (): Saved => {
   }
   return saved;
 };
-let byCover: Map<string, string> | undefined;
 let version = 0;
 export const catalogVersion = (): number => version;
 
@@ -45,7 +46,7 @@ export function applyCatalog(works: CatalogWork[], since?: string): boolean {
   if (since) s.since = since;
   s.t = Date.now();
   try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {}
-  if (changed) { byCover = undefined; version++; }
+  if (changed) version++;
   return changed;
 }
 
@@ -54,42 +55,70 @@ export function pruneCatalog(keepIds: ReadonlySet<string>): void {
   const s = catalogCopy();
   let n = 0;
   for (const id of Object.keys(s.works)) if (!keepIds.has(id)) { delete s.works[id]; n++; }
-  if (n) { byCover = undefined; version++; try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} }
+  if (n) { version++; try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} }
 }
 
-const index = (): Map<string, string> => {
-  if (!byCover) {
-    byCover = new Map();
-    for (const w of Object.values(catalogCopy().works)) {
-      if (!w.cover || !/^https:\/\//i.test(w.cover)) continue;
-      const names = [w.key, `${w.title}|${w.author}`.toLowerCase(), ...(w.aliases || []).map(a => `${a}|${w.author}`.toLowerCase())];
-      for (const n of names) if (n && !byCover.has(n.toLowerCase())) byCover.set(n.toLowerCase(), w.cover);
-    }
-  }
-  return byCover;
-};
-
-/** The catalog's cover for a book, by the app's own key (title|author, lower case). */
-export const getCatalogCover = (key: string): string | undefined => index().get(key);
-
 /* ---- the whole work (description, bio, facts, rating) for Book Info ---- */
-let byInfo: Map<string, CatalogWork> | undefined;
-let byIsbn: Map<string, CatalogWork> | undefined;
+let byInfo: Map<string, CatalogWork[]> | undefined;
+let byIsbn: Map<string, CatalogWork[]> | undefined;
 let infoIndexVersion = -1;
 const buildInfoIndex = () => {
   if (infoIndexVersion === version && byInfo && byIsbn) return;
   byInfo = new Map(); byIsbn = new Map();
+  const add = (map: Map<string, CatalogWork[]>, key: string, work: CatalogWork) => {
+    const list = map.get(key) || [];
+    if (!list.some(x => x.id === work.id)) list.push(work);
+    map.set(key, list);
+  };
   for (const w of Object.values(catalogCopy().works)) {
     for (const t of [w.title, ...(w.aliases || [])]) {
-      for (const a of [w.author, ...(w.authorAliases || [])]) { const k = `${titleKey(t)}|${authorKey(a || '')}`; if (!byInfo.has(k)) byInfo.set(k, w); }
+      for (const a of [w.author, ...(w.authorAliases || [])]) {
+        const k = `${titleKey(t)}|${authorKey(a || '')}`;
+        if (titleKey(t) && authorKey(a || '')) add(byInfo, k, w);
+      }
     }
-    for (const e of w.editions || []) for (const i of [e.isbn13, e.isbn10]) if (i && !byIsbn.has(i)) byIsbn.set(i, w);
+    for (const e of w.editions || []) for (const i of [e.isbn13, e.isbn10]) if (i) add(byIsbn, i.replace(/[^0-9Xx]/g, '').toUpperCase(), w);
   }
   infoIndexVersion = version;
 };
-/** The catalog's published work for a book: by ISBN when the book has one, else by title + author (aliases included). */
-export function getCatalogWork(book: { title?: string; author?: string; isbn13?: string; isbn10?: string }): CatalogWork | undefined {
-  buildInfoIndex();
-  const isbn = [book.isbn13, book.isbn10].map(i => (i || '').replace(/[^0-9Xx]/g, '')).find(i => i && byIsbn!.has(i));
-  return (isbn && byIsbn!.get(isbn)) || byInfo!.get(`${titleKey(book.title || '')}|${authorKey(book.author || '')}`);
+function catalogIdentity(w: CatalogWork): IdentityRecord {
+  const link: ExternalIdentifier = { source: 'supabase', kind: 'work', value: w.id };
+  const editions: ExternalIdentifier[] = [];
+  for (const e of w.editions || []) {
+    const n13 = (e.isbn13 || '').replace(/[^0-9Xx]/g, '').toUpperCase();
+    const n10 = (e.isbn10 || '').replace(/[^0-9Xx]/g, '').toUpperCase();
+    if (validIsbn13(n13)) editions.push({ source: 'manual', kind: 'edition', value: n13, scheme: 'isbn13' });
+    if (validIsbn10(n10)) editions.push({ source: 'manual', kind: 'edition', value: n10, scheme: 'isbn10' });
+  }
+  const evidence = { basis: 'catalog-link' as const, source: 'supabase' as const, identifier: link };
+  return {
+    title: w.title, author: w.author, identifiers: [], edition: { identifiers: editions },
+    work: { identifiers: [], canonicalTitle: w.title, relatedWorkIds: [], titleAliases: (w.aliases || []).map(title => ({ title, kind: 'alternate-title' as const, evidence })) },
+    authors: w.authorAliases?.length ? [{ identifiers: [], canonicalName: w.author, aliases: w.authorAliases.map(name => ({ name, evidence })) }] : undefined,
+  };
 }
+/** The catalog's published work, accepted only when the shared identity matcher supports it. */
+export function getCatalogWork(book: { title?: string; author?: string; isbn13?: string; isbn10?: string; id?: string | number; identity?: { olWork?: string; olEdition?: string; gbVolume?: string; isbn13?: string; isbn10?: string } }): CatalogWork | undefined {
+  buildInfoIndex();
+  const ids = { ...(book.identity || {}), isbn13: book.isbn13 || book.identity?.isbn13, isbn10: book.isbn10 || book.identity?.isbn10 };
+  const query: IdentityRecord = {
+    title: book.title || '', author: book.author || '', identifiers: [],
+    work: { identifiers: ids.olWork ? [{ source: 'openlibrary', kind: 'work', value: ids.olWork }] : [], canonicalTitle: book.title, relatedWorkIds: [], titleAliases: [] },
+    edition: { identifiers: [...(ids.olEdition ? [{ source: 'openlibrary' as const, kind: 'edition' as const, value: ids.olEdition }] : []), ...(ids.gbVolume ? [{ source: 'google' as const, kind: 'edition' as const, value: ids.gbVolume }] : [])], isbn10: ids.isbn10, isbn13: ids.isbn13 },
+  };
+  const candidates = new Map<string, CatalogWork>();
+  const add = (works?: CatalogWork[]) => works?.forEach(w => candidates.set(w.id, w));
+  for (const isbn of [ids.isbn13, ids.isbn10]) if (isbn) add(byIsbn!.get(isbn.replace(/[^0-9Xx]/g, '').toUpperCase()));
+  const title = titleKey(book.title || ''), author = authorKey(book.author || '');
+  if (title && author) add(byInfo!.get(`${title}|${author}`));
+  return [...candidates.values()].find(w => {
+    const status = matchIdentity(query, catalogIdentity(w)).status;
+    return status === 'confirmed' || status === 'probable';
+  });
+}
+
+/** The catalog's cover is selected from the same validated work match as its Book Info metadata. */
+export const getCatalogCover = (book: Parameters<typeof getCatalogWork>[0]): string | undefined => {
+  const cover = getCatalogWork(book)?.cover;
+  return cover && /^https:\/\//i.test(cover) ? cover : undefined;
+};

@@ -26,7 +26,9 @@ export async function lookupApple(q: { title: string; author?: string }, opts: C
     // A listing that declares another language (Apple's languageCodesISO2A) is a translation's art: skipped, so an English listing (or the next source) supplies the cover
     const original = titleIsNonLatin(q.title); // asked for by its own non-Latin title: that language's listing is the book
     const english = (it: any) => original || isEnglishLanguage(String(it.languageCodesISO2A?.[0] || '').toLowerCase());
-    const matches: any[] = (r.data?.results || []).filter((it: any) => it.artworkUrl100 && english(it) && !BUNDLE_TITLE.test(String(it.trackName || '')) && titlesMatch(String(it.trackName || ''), q.title) && authorListMatches(it.artistName, q.author || ''));
+    const localizedAuthorCandidate = (it: any) => original && !!q.author && titleKey(String(it.trackName || '')) === titleKey(q.title)
+      && !authorListMatches(it.artistName, q.author) && /\p{Script=Latin}/u.test(q.author) !== /\p{Script=Latin}/u.test(String(it.artistName || ''));
+    const matches: any[] = (r.data?.results || []).filter((it: any) => it.artworkUrl100 && english(it) && !BUNDLE_TITLE.test(String(it.trackName || '')) && titlesMatch(String(it.trackName || ''), q.title) && (authorListMatches(it.artistName, q.author || '') || localizedAuthorCandidate(it)));
     const rated = (it: any) => (it.averageUserRating && it.userRatingCount > 0 ? Number(it.userRatingCount) : 0);
     const first = matches[0];
     const sameListing = (it: any) => titleKey(String(it.trackName || '')) === titleKey(String(first.trackName || '')) && subtitleKey(String(it.trackName || '')) === subtitleKey(String(first.trackName || ''));

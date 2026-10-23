@@ -1,5 +1,7 @@
 import type { Book, BookIdentity } from '../../types';
-import { sameAuthorByAlias } from './authorAliases';
+import { authorNames } from './authorAliases';
+import { fromLegacyBook, matchIdentity, mayAutoMerge, normalizeIdentityText } from './identity-engine/match';
+import type { IdentityRecord, TitleAlias } from './identity-engine/model';
 
 /**
  * The single source of truth for "which book is this?".
@@ -9,14 +11,13 @@ import { sameAuthorByAlias } from './authorAliases';
  * - EDITION identity: one publication. ISBN-13/10, Open Library edition id, Google Books volume id.
  */
 
-const strip = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+const strip = normalizeIdentityText;
 
 /** "The Fruit Fly: A Novel" -> "fruit fly". Subtitles, brackets and leading articles never block a match. */
 export function titleKey(title = ''): string {
-  let t = strip(title).replace(/&/g, ' and ');
+  let t = title.normalize('NFKC');
   t = t.replace(/\(.*?\)|\[.*?\]/g, ' ').split(/\s*[:–—]\s+|\s+-\s+/)[0];
-  // Letters of other scripts (\u5909\u306a\u7d75, \u0412\u043e\u0439\u043d\u0430) stay in the key: they used to be erased, leaving '' and a title nothing could ever match
-  t = t.replace(/[^a-z0-9\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Cyrillic}\p{Script=Greek}\p{Script=Arabic}\p{Script=Hebrew}\u3099\u309a\u30fc]+/gu, ' ').replace(/\s+/g, ' ').trim();
+  t = strip(t);
   return t.replace(/^(the|a|an) /, '');
 }
 
@@ -44,7 +45,7 @@ export function subtitleKey(title = ''): string {
   const parts = t.split(/\s*[:–—]\s+|\s+-\s+/);
   if (parts.length < 2) return '';
   const rawSub = parts.slice(1).join(' ');
-  const sub = rawSub.replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^(the|a|an) /, '');
+  const sub = strip(rawSub).replace(/^(the|a|an) /, '');
   return !sub || GENERIC_SUBTITLE.test(sub) || /^(a |an |the )?novel\b/.test(sub) || isDescriptiveSubtitle(rawSub, sub) ? '' : sub;
 }
 
@@ -61,7 +62,7 @@ export function primaryAuthor(author = ''): string {
 
 /** Normalised full name of the first author: "lily king". */
 export function authorKey(author = ''): string {
-  return strip(primaryAuthor(author)).replace(/\b(jr|sr|ii|iii|phd|md)\b\.?/g, ' ').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return strip(primaryAuthor(author)).replace(/\b(jr|sr|ii|iii|phd|md)\b/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /** "All the Way to the River: Love, Loss, and Liberation" -> "All the Way to the River". The title as a search engine most often has it. */
@@ -200,26 +201,56 @@ export function mergeIdentity(a?: BookIdentity, b?: BookIdentity): BookIdentity 
 
 /* ---------------- matching ---------------- */
 
+function identityRecord(b: Pick<Book, 'id' | 'identity' | 'title' | 'author'> & Partial<Pick<Book, 'originalTitle'>>): IdentityRecord {
+  const base = fromLegacyBook({ id: b.id, title: b.title, author: b.author, identity: identityOf(b) });
+  const verifiedNames = authorNames(b.author || '').filter(n => authorKey(n) !== authorKey(b.author || ''));
+  if (verifiedNames.length) base.authors = [{
+    identifiers: [], canonicalName: b.author,
+    aliases: verifiedNames.map(name => ({ name, evidence: { basis: 'legacy-verified-alias' } })),
+  }];
+  const aliases = new Map<string, TitleAlias>();
+  const addAlias = (title: string, kind: TitleAlias['kind'] = 'alternate-title') => {
+    const key = normalizeIdentityText(title);
+    if (key && key !== normalizeIdentityText(b.title)) aliases.set(key, { title, kind, evidence: { basis: 'known-title-map' } });
+  };
+  for (const title of dualTitleParts(b.title)) addAlias(title, 'dual-title');
+  if (b.originalTitle) addAlias(b.originalTitle, 'translation');
+  const english = knownEnglishTitle(b.title);
+  if (english) addAlias(english, 'translation');
+  const aliasDisplay: Record<string, string> = { stranger: 'The Stranger', outsider: 'The Outsider' };
+  for (const key of [titleKey(b.title), ...dualTitleParts(b.title).map(titleKey)]) {
+    for (const alias of TITLE_ALIASES[key] || []) if (aliasDisplay[alias]) addAlias(aliasDisplay[alias], 'translation');
+  }
+  if (base.work) base.work.titleAliases = [...aliases.values()];
+  return base;
+}
+
 export function authorsCompatible(a = '', b = ''): boolean {
-  if (isUnknownAuthor(a) || isUnknownAuthor(b)) return true; // nothing to contradict
-  const ka = authorKey(a);
-  const kb = authorKey(b);
-  if (ka === kb || sameAuthorByAlias(ka, kb)) return true; // (or two names the catalogues say are one author)
-  if (ka.replace(/ /g, '') === kb.replace(/ /g, '')) return true; // "Jokha al-Harthi" / "Jokha Alharthi": a hyphen or a space inside a surname
-  const pa = ka.split(' ');
-  const pb = kb.split(' ');
-  if (pa[pa.length - 1] === pb[pb.length - 1] && pa[0][0] === pb[0][0]) return true;
-  // One catalogue gives the full name, another drops or adds a name ("Marieke Lucas Rijneveld" / "Lucas Rijneveld"): the shorter name
-  // (at least first + last) is contained in the longer one
-  const [short, long] = pa.length <= pb.length ? [pa, pb] : [pb, pa];
-  return short.length >= 2 && short.every(w => long.includes(w));
+  const ka = authorKey(a), kb = authorKey(b);
+  if (!ka || !kb) return false;
+  const left = identityRecord({ id: '', title: 'author identity', author: a });
+  const right = identityRecord({ id: '', title: 'author identity', author: b });
+  const result = matchIdentity(left, right);
+  return result.status === 'probable' || result.status === 'confirmed';
 }
 
 /** Does a result's author (or author list) include the wanted author? Unknown wanted author matches anything. */
 export function authorListMatches(candidate: string | string[] | undefined, want: string): boolean {
   if (isUnknownAuthor(want)) return true;
   const list = Array.isArray(candidate) ? candidate : candidate ? [candidate] : [];
-  return list.some(c => authorsCompatible(c, want));
+  const queryVariant = (a: string, b: string) => {
+    const left = authorKey(a).split(' ').filter(Boolean), right = authorKey(b).split(' ').filter(Boolean);
+    // Initials help a catalog search find a result; they remain ranking/filter evidence only and never authorize a merge.
+    if (left.length < 2 || right.length < 2) return false;
+    const sequence = (long: string[], short: string[]) => long.length > short.length && long.slice(-short.length).every((part, i) => part === short[i]);
+    if (sequence(left, right) || sequence(right, left)) return true;
+    if (left.length !== right.length && left[0] === right[0] && left.at(-1) === right.at(-1)) return true;
+    if (left.length !== right.length) return false;
+    const surname = left.at(-1) === right.at(-1);
+    const given = left.slice(0, -1).every((part, i) => part[0] === right[i]?.[0]);
+    return surname && given && (left.some(x => x.length === 1) || right.some(x => x.length === 1));
+  };
+  return list.some(c => authorsCompatible(c, want) || queryVariant(c, want));
 }
 
 /**
@@ -228,34 +259,28 @@ export function authorListMatches(candidate: string | string[] | undefined, want
  * "The Fruit Fly: A Novel", a club or edition subtitle, or a one-sided subtitle still match, and a shortened subtitle still matches the full one.
  */
 export const titlesMatch = (a = '', b = ''): boolean => {
-  const kb = titleKeys(b);
-  if (!titleKeys(a).some(k => kb.includes(k))) return false;
-  const sa = subtitleKey(a);
-  const sb = subtitleKey(b);
-  if (!sa || !sb || sa === sb) return true;
-  return sa.startsWith(sb) || sb.startsWith(sa);
+  const left = identityRecord({ id: '', title: a, author: '__title_query__' });
+  const right = identityRecord({ id: '', title: b, author: '__title_query__' });
+  const result = matchIdentity(left, right);
+  return result.status === 'confirmed' || result.status === 'probable' || result.status === 'ambiguous';
 };
 
 /** Same publication: a shared ISBN or edition/volume id. */
-export function sameEdition(a: Pick<Book, 'id' | 'identity'>, b: Pick<Book, 'id' | 'identity'>): boolean {
-  const x = identityOf(a);
-  const y = identityOf(b);
-  return !!((x.isbn13 && x.isbn13 === y.isbn13) || (x.isbn10 && x.isbn10 === y.isbn10) || (x.olEdition && x.olEdition === y.olEdition) || (x.gbVolume && x.gbVolume === y.gbVolume));
+export function sameEdition(a: Pick<Book, 'id' | 'identity'> & Partial<Pick<Book, 'title' | 'author'>>, b: Pick<Book, 'id' | 'identity'> & Partial<Pick<Book, 'title' | 'author'>>): boolean {
+  const left = identityRecord({ ...a, title: a.title || '', author: a.author || '' });
+  const right = identityRecord({ ...b, title: b.title || '', author: b.author || '' });
+  const result = matchIdentity(left, right);
+  return result.status === 'confirmed' && result.evidence.some(e => e.basis === 'same-edition');
 }
 
 /**
  * Same book (any edition)? Shared work or edition ids win; otherwise the titles must match and the authors must not
- * contradict each other. `strict` also requires both authors to be known (used for the library, where merging two
- * different "Unknown Author" books would be wrong).
+ * contradict each other. `strict` is the personal-record policy: it accepts confirmed IDs or exact normalized title
+ * and author evidence; Search and read-only enrichment may also use a probable match.
  */
-export function sameWork(a: Pick<Book, 'id' | 'identity' | 'title' | 'author'>, b: Pick<Book, 'id' | 'identity' | 'title' | 'author'>, strict = false): boolean {
-  if (sameEdition(a, b)) return true;
-  const x = identityOf(a);
-  const y = identityOf(b);
-  if (x.olWork && x.olWork === y.olWork) return true;
-  if (!titlesMatch(a.title, b.title)) return false;
-  if (strict && (isUnknownAuthor(a.author) || isUnknownAuthor(b.author))) return false;
-  return authorsCompatible(a.author, b.author);
+export function sameWork(a: Pick<Book, 'id' | 'identity' | 'title' | 'author'> & Partial<Pick<Book, 'originalTitle'>>, b: Pick<Book, 'id' | 'identity' | 'title' | 'author'> & Partial<Pick<Book, 'originalTitle'>>, strict = false): boolean {
+  const result = matchIdentity(identityRecord(a), identityRecord(b));
+  return mayAutoMerge(result, strict ? 'library-merge' : 'search');
 }
 
 /** A stable key for caches: the exact edition if known, else the work, else title + author. */

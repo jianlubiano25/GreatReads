@@ -202,7 +202,7 @@ const looseIndex = () => {
 export function getCoverPickInfo(book: { title?: string; author?: string }): CoverPick | undefined {
   const key = coverKey(book);
   const ok = (p?: CoverPick) => (p && !failed.has(p.url) && !isCoverRejected(book, p.url) ? p : undefined);
-  const cat = getCatalogCover(key);
+  const cat = getCatalogCover(book);
   const fromCatalog = cat ? ok({ url: cat, source: coverSourceOf(cat), t: 0 }) : undefined; // your pick, then the catalog, then the older shared set
   const exact = ok(all()[key]) ?? fromCatalog ?? ok(getSharedPick(key));
   if (exact) return exact;
