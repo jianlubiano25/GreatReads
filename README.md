@@ -1,4 +1,4 @@
-# My Reading Life (GreatReads)
+# GreatReads
 
 Reading companion: daily page goal and streak, reading nook, library, book store, search by title, author or genre, and Word Garden.
 React + Vite + Tailwind. Reading data stays in the browser (use Backup to keep copies).
