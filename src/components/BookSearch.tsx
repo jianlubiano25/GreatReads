@@ -82,7 +82,7 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
     return lockBodyScroll(); // shared with the modals: a book's details opened over the results can be closed before or after the search, either order
   }, [searching, active]);
 
-  const { results: searchResults, loading: isSearching, stale: searchStale, empty: searchEmpty, searchNow, total: searchTotal, hasMore: searchHasMore, loadingMore: searchLoadingMore, loadMore: loadMoreResults } = useBookSearch(query, { known, limit: SEARCH_LIMIT, scope });
+  const { results: searchResults, loading: isSearching, stale: searchStale, empty: searchEmpty, failedSources, searchNow, total: searchTotal, hasMore: searchHasMore, loadingMore: searchLoadingMore, loadMore: loadMoreResults } = useBookSearch(query, { known, limit: SEARCH_LIMIT, scope });
   const genres = useMemo(() => genreOptions(searchResults), [searchResults]);
   const shownResults = useMemo(() => applySearchView(searchResults, view), [searchResults, view]);
   const filtersOn = !isDefaultView(view);
@@ -260,7 +260,9 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
 
           {searchResults.length === 0 && searchEmpty ? (
             <div className="p-8 text-center text-sm text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-xl border border-[#e3d7c3] dark:border-[#382f25]">
-              No books found{scope === 'all' ? '' : ` by ${scope}`}. Check the spelling, try All, or use the + button at the top to add it manually.
+              {failedSources.length
+                ? `Search could not reach ${failedSources.join(' and ')}. Results may be incomplete; check your connection and try again.`
+                : `No books found${scope === 'all' ? '' : ` by ${scope}`}. Check the spelling, try All, or use the + button at the top to add it manually.`}
             </div>
           ) : searchResults.length > 0 && shownResults.length === 0 ? (
             <div className="p-6 text-center text-sm text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-xl border border-[#e3d7c3] dark:border-[#382f25]">

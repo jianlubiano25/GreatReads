@@ -179,7 +179,9 @@ const searchUrl = (q: string, max: number, start = 0, anyLanguage = false) =>
   gbUrl({ q, maxResults: Math.min(40, max), startIndex: start, langRestrict: anyLanguage ? undefined : 'en', printType: 'books', fields: `totalItems,items(${FIELDS})` });
 
 export async function searchGoogle(q: string, max: number, opts: CallOpts & { anyLanguage?: boolean } = {}): Promise<Hit[]> {
-  const data = (await googleJson(searchUrl(q, max, opts.start, opts.anyLanguage), { signal: opts.signal })).data;
+  const result = await googleJson(searchUrl(q, max, opts.start, opts.anyLanguage), { signal: opts.signal });
+  if ((result.failure && result.failure !== 'aborted') || [403, 429].includes(result.status) || result.status >= 500) opts.onFailure?.();
+  const data = result.data;
   if (typeof data?.totalItems === 'number') opts.onTotal?.(data.totalItems);
   return (data?.items || []).map((i: any) => gbItemToHit(i));
 }
