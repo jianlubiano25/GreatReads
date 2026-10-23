@@ -6,6 +6,7 @@ import { copyText } from '../services/clipboard';
 import { isLocationWeatherEnabled, setLocationWeatherEnabled, fetchLocalWeather } from '../services/weather';
 import { getNookMatchesTheme, setNookMatchesTheme, getWindowFollowsTime, setWindowFollowsTime } from '../services/nookPrefs';
 import { useAppUpdate, checkForUpdate, applyUpdate, restartApp, APP_BUILD } from '../services/appUpdate';
+import { refreshEverything } from '../services/refreshApp';
 import { AchievementsModal } from './garden/AchievementsModal';
 import { MILESTONES } from '../data/gardenCatalog';
 import { isCoverAdminOn, subscribeCoverAdmin } from '../services/books';
@@ -63,6 +64,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const update = useAppUpdate();
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshNote, setRefreshNote] = useState('');
   const [locationWeather, setLocationWeather] = useState(isLocationWeatherEnabled);
   const [nookMatchesTheme, setNookTheme] = useState(getNookMatchesTheme);
   const [windowFollowsTime, setWindowTime] = useState(getWindowFollowsTime);
@@ -544,6 +547,26 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 Restart
               </button>
             </div>
+            <p className="text-xs text-[#706256] dark:text-[#a89a8a] mt-3 mb-2">
+              Still seeing old names, covers or data? This clears everything the app downloaded and its saved copy of itself, then reloads the newest version. Your library, notes, history and settings are not touched.
+            </p>
+            <button
+              type="button"
+              disabled={refreshing}
+              onClick={async () => {
+                setRefreshNote('Refreshing…');
+                setRefreshing(true);
+                const ok = await refreshEverything();
+                if (!ok) { setRefreshing(false); setRefreshNote('You are offline. Connect to the internet first, so the app can download itself again.'); return; }
+                setRefreshNote('Done. Reloading the newest version…');
+                setTimeout(() => window.location.reload(), 700);
+              }}
+              className="w-full py-2.5 px-3 rounded-xl text-xs font-semibold border border-[#2e5934] dark:border-[#86b880] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center gap-1.5 active:scale-95 transition-all disabled:opacity-60"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+              <span>Refresh App &amp; Data</span>
+            </button>
+            {refreshNote && <p className="mt-2 text-xs text-emerald-800 dark:text-emerald-300" role="status">{refreshNote}</p>}
           </div>
           </>)}
         </div>
