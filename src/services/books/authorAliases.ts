@@ -9,7 +9,9 @@ import { authorKey, isUnknownAuthor } from './identity';
  *  - the group shows the name a bookshop prints (Apple, Google, a curated or hand-entered record before Open Library), once such a record has been seen.
  */
 interface Group { keys: string[]; shown?: string; rank?: number; /** the real spellings seen ("Ursula Vernon", "T. Kingfisher"), for a picker; matching only ever uses `keys` */ names?: string[] }
-const store = persistentCache<Group>('readlife.authorAliases1', {
+// v2: groups saved by v1 could hold different people (a title-only Apple lookup once linked two authors of "The Witch"); they are dropped and relearned under the stricter rules
+try { localStorage.removeItem('readlife.authorAliases1'); } catch {}
+const store = persistentCache<Group>('readlife.authorAliases2', {
   ttl: 365 * 24 * 60 * 60 * 1000,
   max: 400,
   validate: v => !!v && Array.isArray(v.keys) && v.keys.every((k: unknown) => typeof k === 'string'),
@@ -31,6 +33,7 @@ export function learnAuthorGroup(names: Array<string | undefined>, shown?: { nam
     }
     all = [...new Set(all)];
     if (all.length < 2) return;
+    if (all.length > 6) return; // nobody writes under that many names: a group this big is two or more people chained together by a wrong link, so it is not grown further
     // real spellings, one per key, the jacket name first
     const spelled = new Map<string, string>();
     for (const n of [...(best ? [best.name] : []), ...known, ...keys.flatMap(k => store.get(k)?.names ?? [])]) { const k = authorKey(n); if (k && !spelled.has(k)) spelled.set(k, n); }
@@ -61,3 +64,33 @@ export function authorNames(name = ''): string[] {
     return g && g.keys.length > 1 ? (g.names ?? []) : [];
   } catch { return []; }
 }
+
+/**
+ * May these two names join one group? Not when either name already belongs to an alias group that does not include the other: two people each already known by other
+ * names are not made one author by a single lookup.
+ */
+export function canJoinAuthors(a = '', b = ''): boolean {
+  try {
+    if (isUnknownAuthor(a) || isUnknownAuthor(b)) return false;
+    const ka = authorKey(a), kb = authorKey(b);
+    if (!ka || !kb) return false;
+    if (ka === kb) return true;
+    const ga = store.get(ka), gb = store.get(kb);
+    if (ga && ga.keys.length > 1 && !ga.keys.includes(kb)) return false;
+    if (gb && gb.keys.length > 1 && !gb.keys.includes(ka)) return false;
+    return true;
+  } catch { return false; }
+}
+
+/** Take this author out of its alias group and forget the group (a wrong link): the names are relearned only from solid evidence. Returns true when a group was removed. */
+export function unlinkAuthorGroup(name = ''): boolean {
+  try {
+    const g = store.get(authorKey(name));
+    if (!g) return false;
+    for (const k of [...g.keys, authorKey(name)]) store.delete(k);
+    return true;
+  } catch { return false; }
+}
+
+/** Forget every learned alias group on this device (for a cleanup or a test). */
+export function clearAuthorAliases(): void { try { store.clear(); } catch {} }

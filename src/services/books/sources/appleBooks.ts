@@ -42,9 +42,13 @@ export async function lookupApple(q: { title: string; author?: string }, opts: C
  * Apple: T. Kingfisher). lookupApple cannot find it, because it only accepts a listing whose author matches the saved one. So this asks by title alone and
  * answers only when it is unambiguous: every English listing with that exact title names the same author (a common title with several authors answers nothing).
  */
+/** A title distinctive enough to identify one book on its own: three or more words once articles and subtitles are set aside ("Nettle & Bone"; not "The Witch", "Less", "Gone Girl"). */
+export const isDistinctiveTitle = (title = ''): boolean => titleKey(title).split(' ').filter(Boolean).length >= 3;
+
 export async function appleJacketAuthor(title: string, opts: CallOpts = {}): Promise<{ author: string; year: string } | null> {
   const t = title.trim();
-  if (!t || titleKey(t).length < 4) return null;
+  // A short or common title ("The Witch", "Less", "Gone") belongs to many books by different authors, so a title alone never says whose book this is: at least three words
+  if (!t || !isDistinctiveTitle(t)) return null;
   const r = await getJsonDetailed(`https://itunes.apple.com/search?media=ebook&entity=ebook&limit=8&country=us&lang=en_us&term=${encodeURIComponent(t)}`, { timeout: 4500, signal: opts.signal });
   const listings: any[] = (r.data?.results || []).filter((it: any) => it.artistName && isEnglishLanguage(String(it.languageCodesISO2A?.[0] || '').toLowerCase()) && !BUNDLE_TITLE.test(String(it.trackName || '')) && titleKey(String(it.trackName || '')) === titleKey(t));
   const authors = new Set(listings.map(it => String(it.artistName).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()));

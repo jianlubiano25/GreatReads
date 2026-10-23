@@ -9,7 +9,7 @@ import { useBookInfo } from '../hooks/useBookInfo';
 import { saveBookToCatalog } from '../services/catalog';
 import { CatalogReviewModal } from './CatalogReviewModal';
 import { authVersion, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
-import { displayBook, nameAlternates, nameChoiceOf, setNameChoice, subscribeNames, mainRating, otherRatings, RATING_SOURCE_LABEL, isCoverAdminOn, subscribeCoverAdmin, type SourceRating } from '../services/books';
+import { unlinkAuthorGroup, displayBook, nameAlternates, nameChoiceOf, setNameChoice, subscribeNames, mainRating, otherRatings, RATING_SOURCE_LABEL, isCoverAdminOn, subscribeCoverAdmin, type SourceRating } from '../services/books';
 import { CoverFace, StarRating, compactCount, honorsListFor } from './BookMeta';
 import { X, BookOpen, Star, Award, ChevronDown, Check, Bookmark, Image as ImageIcon, RefreshCw, Code, Languages } from 'lucide-react';
 import { ensureBookInfo, resetInfoWaits, type InfoField } from '../services/books/infoStore';
@@ -248,6 +248,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
                         return <button key={a} type="button" aria-pressed={active} onClick={() => setNameChoice(book, { ...picked, author: i === 0 ? undefined : a })} className={`px-3 py-1.5 rounded-lg border text-left ${active ? 'border-[#2e5934] dark:border-[#86b880] bg-[#2e5934]/10' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}>{a}</button>;
                       })}
                     </div>
+                    <button type="button" onClick={() => { unlinkAuthorGroup(book.originalAuthor || book.author); setNameChoice(book, { ...picked, author: undefined }); setNamesOpen(false); }} className="mt-2 text-xs underline text-[#706256] dark:text-[#a89a8a]">These are different people: unlink these names</button>
                   </div>
                 )}
               </div>
@@ -463,6 +464,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           {([
             ['Author', book.author],
             ['Published', book.year && book.year !== 'N/A' ? book.year : ''],
+            [book.identity?.isbn13 ? 'ISBN-13' : 'ISBN-10', book.identity?.isbn13 || book.identity?.isbn10 || ''],
             ['Genre', book.genre],
             ['Length', displayPages ? `${displayPages} pages` : ''],
             ['Level', book.difficulty ? DIFFICULTY_LABELS[book.difficulty] : ''],

@@ -16,3 +16,4 @@ export * from './covers';
 export { hasOwnGoogleKey, setOwnGoogleKey, looksLikeGoogleKey, checkGoogleBooks } from './sources/googleBooks';
 export * from './quality';
 dropLegacyBookCaches();
+export { unlinkAuthorGroup, clearAuthorAliases } from './authorAliases';

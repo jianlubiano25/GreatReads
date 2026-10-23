@@ -5,7 +5,7 @@ import { titleLooksForeign } from './language';
 import { resolveBook } from './resolve';
 import { findOpenLibrary } from './sources/openLibrary';
 import { appleJacketAuthor, lookupApple } from './sources/appleBooks';
-import { authorNames, hasAuthorGroup, learnAuthorGroup, preferredAuthor } from './authorAliases';
+import { authorNames, canJoinAuthors, hasAuthorGroup, learnAuthorGroup, preferredAuthor } from './authorAliases';
 
 /**
  * Names as GreatReads shows them: the book's ENGLISH title ("変な絵" -> "Strange Pictures") and the author name printed on the jacket (T. Kingfisher, not her legal
@@ -13,7 +13,7 @@ import { authorNames, hasAuthorGroup, learnAuthorGroup, preferredAuthor } from '
  * restored backup shows the same. What is not known yet is looked up in the background (refreshNames) and shows the next time the list is drawn.
  */
 const titles = persistentCache<string>('readlife.englishTitles1', { ttl: 365 * 24 * 60 * 60 * 1000, max: 300, validate: v => typeof v === 'string' });
-const checked = persistentCache<number>('readlife.namesChecked2', { ttl: 30 * 24 * 60 * 60 * 1000, max: 500, validate: v => typeof v === 'number' });
+const checked = persistentCache<number>('readlife.namesChecked3', { ttl: 30 * 24 * 60 * 60 * 1000, max: 500, validate: v => typeof v === 'number' });
 
 /** The English title of a non-English title, from what is known right now ('' when unknown). No network. A title on the known list needs no language guess. */
 export const englishTitleNow = (title = ''): string => {
@@ -100,15 +100,18 @@ export async function refreshNames(book: Pick<Book, 'id' | 'title' | 'author' | 
     const q = { title: en || book.title, author: primaryAuthor(book.author) };
     await findOpenLibrary(q).catch(() => null); // learns the author's other names, when Open Library lists any
     const before = preferredAuthor(book.author);
-    // The jacket name wins. With a known alias group Apple can be asked for this author directly; without one (Open Library often has no alternate names) it is asked by
-    // title alone, and accepted only when unambiguous (see appleJacketAuthor) and, when both years are known, from the same year.
+    // The jacket name wins, but a name is only ever linked to the saved author on evidence that it is the SAME person:
+    //  1. Open Library's alternate names (learned by the search above);
+    //  2. Apple asked with title AND author, which matched both (possible once a group exists: the author must match through the group);
+    //  3. last resort, Apple asked by title alone, when the title is distinctive, every listing names one author, both years are known and agree to within a year, and neither
+    //     name already belongs to a different alias group. A common title ("The Witch") never gets here: it names many books.
     let jacket = hasAuthorGroup(book.author) ? (await lookupApple(q).catch(() => ({ hit: null }))).hit?.book.author || '' : '';
     if (!jacket) {
       const a = await appleJacketAuthor(q.title).catch(() => null);
       const y = String(book.year || '').slice(0, 4);
-      if (a && !isUnknownAuthor(a.author) && (!/^\d{4}$/.test(y) || !a.year || Math.abs(Number(y) - Number(a.year)) <= 1)) jacket = a.author;
+      if (a && !isUnknownAuthor(a.author) && /^\d{4}$/.test(y) && /^\d{4}$/.test(a.year) && Math.abs(Number(y) - Number(a.year)) <= 1 && canJoinAuthors(book.author, a.author)) jacket = a.author;
     }
-    if (jacket && !isUnknownAuthor(jacket)) learnAuthorGroup([book.author, jacket], { name: jacket, rank: 3 });
+    if (jacket && !isUnknownAuthor(jacket) && canJoinAuthors(book.author, jacket)) learnAuthorGroup([book.author, jacket], { name: jacket, rank: 3 });
     changed = changed || preferredAuthor(book.author) !== before;
   }
   try { checked.set(key, Date.now()); } catch {}
