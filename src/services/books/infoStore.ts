@@ -5,6 +5,7 @@ import { authorKey, isUnknownAuthor, titleKey } from './identity';
 import { difficultyFor } from './model';
 import { chooseRating, externalRating, mainRating, setRating, type RatingPair, type SourceRating } from './ratings';
 import { prefetchedSourceRatings } from './prefetchIndex';
+import { getCatalogWork, catalogVersion } from './catalogCovers';
 import { RATING_SITES, forgetLookups, legacyBookInfo, lookupAuthorBio, lookupMeta, lookupRatingSources, lookupSummary, weak, weakBio } from './details';
 
 /**
@@ -54,11 +55,15 @@ const store = persistentCache<InfoEntry>('readlife.bookinfo1', {
   validate: v => !!v && typeof v === 'object' && !!v.facts && typeof v.facts === 'object' && !!v.ratings && typeof v.ratings === 'object' && !!v.miss && typeof v.miss === 'object' && !!v.at && typeof v.at === 'object',
 });
 
+/** Told what a lookup saved for a book (the owner's quiet catalog capture listens here). Never throws into the lookup. */
+let infoSink: ((book: Book, entry: InfoEntry) => void) | undefined;
+export const setInfoSink = (f?: (book: Book, entry: InfoEntry) => void) => { infoSink = f; };
+
 let clock = () => Date.now();
 /** Tests only. */
 export const setInfoClockForTests = (fn?: () => number) => { clock = fn ?? (() => Date.now()); };
 /** Tests only: forget in-memory state (saved data is the test's own storage). */
-export const resetInfoStoreForTests = () => { seeded.clear(); inflightNow.clear(); versions.clear(); adopted.clear(); };
+export const resetInfoStoreForTests = () => { catalogMemo.clear(); seeded.clear(); inflightNow.clear(); versions.clear(); adopted.clear(); };
 
 /**
  * One key per book, the same normalised title + first author the resolver uses when there is no ISBN, so a Store card, the NYT list, a search result and
@@ -105,14 +110,49 @@ function withBundledRatings(book: Book, base: InfoEntry, key: string): InfoEntry
   return out;
 }
 
+
+/**
+ * The published catalog comes BEFORE live lookups: what the owner published for this book (description, author bio, year, pages, genre, the main rating)
+ * is shown at once and is never replaced by a lookup. Lookups still fill whatever the catalog does not have. Same object until the saved entry or the catalog changes.
+ */
+const SITE_OF: Record<string, RatingSite> = { apple_books: 'apple', google_books: 'google', open_library: 'openlibrary', apple: 'apple', google: 'google', openlibrary: 'openlibrary' };
+const catalogMemo = new Map<string, { base: InfoEntry; v: number; out: InfoEntry }>();
+function withCatalog(book: Book, base: InfoEntry, key: string): InfoEntry {
+  const w = getCatalogWork(book);
+  if (!w) return base;
+  const v = catalogVersion();
+  const memo = catalogMemo.get(key);
+  if (memo && memo.base === base && memo.v === v) return memo.out;
+  const facts = { ...base.facts };
+  const at = { ...base.at };
+  const ratings = { ...base.ratings };
+  const miss = { ...base.miss };
+  const t = clock();
+  const text = (type: string) => w.content?.find(c => c.type === type && (!c.language || /^en/i.test(c.language)))?.content;
+  const meta = (f: string) => w.metadata?.find(m => m.field === f)?.value as unknown;
+  const ed = w.editions?.find(e => e.year || e.pages);
+  const desc = text('book_description'); if (desc) { facts.summary = desc; at.summary = t; delete miss.summary; }
+  const bio = text('author_bio'); if (bio) { facts.authorBio = bio; at.authorBio = t; delete miss.authorBio; }
+  const year = String(meta('year') ?? ed?.year ?? ''); if (/^\d{3,4}$/.test(year)) { facts.year = year; at.year = t; delete miss.year; }
+  const pages = Number(meta('pageCount') ?? ed?.pages); if (pages > 0) { facts.pageCount = pages; facts.difficulty = difficultyFor(pages); at.pageCount = t; delete miss.pageCount; }
+  const genre = (meta('genre') as string) || w.genres?.[0]; if (genre) { facts.genre = String(genre); at.genre = t; delete miss.genre; }
+  for (const r of w.ratings || []) {
+    const site = SITE_OF[r.source];
+    if (site && externalRating({ ratingAverage: r.average, ratingCount: r.count ?? 0 })) { ratings[site] = { average: r.average, count: r.count ?? 0, at: t }; delete miss[`rating:${site}` as InfoField]; }
+  }
+  const out: InfoEntry = { ...base, facts, at, ratings, miss };
+  catalogMemo.set(key, { base, v, out });
+  return out;
+}
+
 /** What is saved about a book (instantly, no network). Always the same object until something changes: safe for useSyncExternalStore. */
 export function getInfo(book: Book): InfoEntry {
   const key = infoKey(book);
   const saved = store.peek(key)?.value;
-  if (saved) return withBundledRatings(book, saved, key);
+  if (saved) return withCatalog(book, withBundledRatings(book, saved, key), key);
   let s = seeded.get(key);
   if (!s) { s = seedFromLegacy(book); seeded.set(key, s); }
-  return withBundledRatings(book, s, key);
+  return withCatalog(book, withBundledRatings(book, s, key), key);
 }
 
 // ---- subscribers (screens re-draw when what they show was found) ----
@@ -312,7 +352,9 @@ export async function ensureBookInfo(book: Book, only?: InfoGroup[]): Promise<In
       setLoading(key, g, false);
     }
   })));
-  return getInfo(book);
+  const out = getInfo(book);
+  if (groups.length) { try { infoSink?.(book, out); } catch { /* capture must never disturb a lookup */ } }
+  return out;
 }
 
 // ---- showing it ----

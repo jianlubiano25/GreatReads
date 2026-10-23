@@ -8,7 +8,7 @@ import { englishEditionQueries, isUnknownAuthor, sameWork, titleKey } from './id
 import { isBlocked } from './quality';
 import { titleLooksForeign } from './language';
 import { rememberExcluded } from './eligibility';
-import { localMatches, rememberSeen } from './localIndex';
+import { catalogMatches, localMatches, rememberSeen } from './localIndex';
 import { contentTokens, normQ, parseQuery, tokenHits, type ParsedQuery, type SearchScope } from './query';
 import { keywordGroups, keywordPhrases, stem } from './keywords';
 import { coverBonus } from './covers';
@@ -34,8 +34,8 @@ const classicish = (b: Book): boolean => {
 };
 
 /** An exact title match is worth more than anything else can add on top of a weaker title match (popularity, rating, metadata, cover, keywords: at most ~50). */
-const EXACT_TITLE = 130;
-const EXACT_TITLE_KEY = 125; // the same title once a subtitle / edition note is dropped ("Verity: Special Edition" -> "Verity")
+const EXACT_TITLE = 190;
+const EXACT_TITLE_KEY = 125; // a title after its subtitle / edition note is dropped: useful evidence, but weaker than the full exact title
 /** A full author name (two or more words, all whole words of the author) must stay above an exact title match by somebody else ("jane austen" -> her books before "Jane Austen: A Life"). */
 const AUTHOR_FULL_NAME = 170;
 /** One word of an author's name: only counts when the title did not already match, otherwise a title that merely CONTAINS the word and an author who has it stack up above the exact title. */
@@ -44,8 +44,8 @@ const AUTHOR_PARTIAL = 60;
 /**
  * How well a result fits what was typed, in this order of importance:
  * exact / strong title match -> author match -> keyword match -> popularity (rating count) -> rating quality -> metadata completeness -> cover -> a small recency nudge.
- * The title tier is worth up to 130 (an exact title); everything after it adds only a few points each, so a better title match nearly always
- * wins, and among similar title matches the established, well-documented book comes first. One author word never stacks on a title match.
+ * An exact title normally starts at 190 so secondary bonuses cannot displace it with a weaker title match. Broad popular searches scale it down to 130 before
+ * popularity weighting, so an obscure title hit does not crowd out widely read books about a topic. One author word never stacks on a title match.
  *
  * `partial` says the last word typed may be only a beginning ("harry pot"): it then matches the start of a word, a little below a whole word.
  */
@@ -78,7 +78,7 @@ export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial =
     // books about the subject are not buried under a shelf of obscure titles that merely contain the word.
     // A topic / genre search ("fantasy", "psychology") asks what a book is ABOUT: a title that merely contains the word ("The Psychology of Fantasy") counts for much less
     const titleWeight = (popular ? 0.45 + 0.55 * established(b) : 1) * (topic ? 0.35 : 1);
-    if (tier >= 0) score += tier * titleWeight;
+    if (tier >= 0) score += (popular && tier === EXACT_TITLE ? 130 : tier) * titleWeight;
     else {
       const hits = need.reduce((n, w) => n + tokenHits(w, tWords, partial && w === lastNeed), 0);
       score += need.length ? (42 * hits) / need.length : 0;
@@ -167,6 +167,7 @@ function inScope(b: Book, q: ParsedQuery): boolean {
     return need.every((w, i) => tokenHits(w, words, q.partial && i === need.length - 1) > 0);
   }
   if (q.scope === 'author') {
+    if (isUnknownAuthor(b.author)) return true; // a provider may have returned the right book without its author metadata; keep it separate as uncertain
     const qa = q.author.split(' ').filter(Boolean);
     const words = normQ(b.author).split(' ').filter(Boolean);
     return qa.every((w, i) => tokenHits(w, words, i === qa.length - 1) > 0);
@@ -242,9 +243,9 @@ type Task = { name: string; run: (candidates: number, signal?: AbortSignal) => P
 export function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
   // `report`: whether this request's own count is the number shown as "of N" (the main requests only, never the narrower extra ones)
   const ol = (params: Record<string, string>, n: number, signal?: AbortSignal, report = true) =>
-    searchOpenLibrary(io.page > 1 ? { ...params, page: String(io.page) } : params, n, { signal, onTotal: report ? t => io.onTotal('ol', t) : undefined });
+    searchOpenLibrary(io.page > 1 ? { ...params, page: String(io.page) } : params, n, { signal, onTotal: report ? t => io.onTotal('ol', t) : undefined, onFailure: () => io.onFailure?.('Open Library') });
   const google = (query: string, n: number, signal?: AbortSignal, report = true) =>
-    searchGoogle(query, n, { signal, start: io.page > 1 ? (io.page - 1) * Math.min(40, n) : 0, onTotal: report ? t => io.onTotal('google', t) : undefined });
+    searchGoogle(query, n, { signal, start: io.page > 1 ? (io.page - 1) * Math.min(40, n) : 0, onTotal: report ? t => io.onTotal('google', t) : undefined, onFailure: () => io.onFailure?.('Google Books') });
   if (q.isbn) {
     return [
       { name: 'ol', run: (n, signal) => ol({ isbn: q.isbn }, n, signal) },
@@ -309,7 +310,7 @@ export function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
 }
 
 /** Paging and the "N books match" count, shared by the requests of one search. */
-interface TaskIo { page: number; onTotal: (source: 'ol' | 'google', n: number) => void }
+interface TaskIo { page: number; onTotal: (source: 'ol' | 'google', n: number) => void; onFailure?: (source: string) => void }
 
 /**
  * The author a query names, read from what the first sources returned: two to four words, every one of them a whole word of one result's author
@@ -349,6 +350,8 @@ export interface SearchProgress {
   from: string;
   /** How many books the catalog says match in all (Open Library's count, else Google's); 0 until a source has said */
   total: number;
+  /** Providers that failed during this search; an empty list means they answered successfully. */
+  failedSources?: string[];
 }
 
 export interface LiveSearchOptions {
@@ -383,7 +386,7 @@ const RECENT_MAX = 40;
 export function searchLocal(title: string, author = '', limit = 10, known?: readonly Book[], scope: SearchScope = 'all'): Book[] {
   const q = parseQuery(title, author, true, scope);
   const mine = known?.length ? localMatches(q, limit, known) : [];
-  return rank([...mine, ...localMatches(q, limit)], q, limit, mine);
+  return rank([...mine, ...localMatches(q, limit), ...catalogMatches(q, limit)], q, limit, mine);
 }
 
 /**
@@ -402,12 +405,14 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   let olTotal = 0;
   let googleTotal = 0;
   const totalNow = () => olTotal || googleTotal;
-  const emit = (books: Book[], from: string, done: boolean, total = totalNow()) => { if (!o.signal?.aborted) o.onUpdate?.(books, { done, from, total }); };
-  const io: TaskIo = { page, onTotal: (source, n) => { if (source === 'ol') olTotal = n; else googleTotal = n; } };
+  const failedSources = new Set<string>();
+  const emit = (books: Book[], from: string, done: boolean, total = totalNow()) => { if (!o.signal?.aborted) o.onUpdate?.(books, { done, from, total, failedSources: [...failedSources] }); };
+  const io: TaskIo = { page, onTotal: (source, n) => { if (source === 'ol') olTotal = n; else googleTotal = n; }, onFailure: source => failedSources.add(source) };
 
   const mine = useLocal && o.known?.length ? localMatches(q, limit, o.known) : [];
   const seenHere = useLocal ? localMatches(q, limit) : [];
-  const local = [...mine, ...seenHere];
+  const catalogHere = useLocal ? catalogMatches(q, limit) : [];
+  const local = [...mine, ...seenHere, ...catalogHere];
   if (local.length) emit(rank(local, q, limit, mine), 'local', false, 0);
 
   const memoKey = q.key;
@@ -424,7 +429,7 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   let latest: Book[] = local.length ? rank(local, q, limit, mine) : [];
   const runTask = async (t: Task) => {
     let hits: Hit[] = [];
-    try { hits = await t.run(candidates, o.signal); } catch { hits = []; } // a failed source is an empty answer, never an error
+    try { hits = await t.run(candidates, o.signal); } catch { hits = []; failedSources.add(t.name.startsWith('ol') ? 'Open Library' : 'Google Books'); }
     if (o.signal?.aborted) return;
     gathered.push(...hits);
     if (!hits.length) return;

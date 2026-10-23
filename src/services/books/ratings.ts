@@ -121,7 +121,9 @@ export function indexKnownRatings(known: readonly Book[]): KnownRatings {
           if (best !== undefined && at > best) break; // positions are ascending: nothing later in this bucket can beat `best`
           if (seen.has(at)) continue;
           seen.add(at);
-          if (sameWork(known[at], book, true)) { best = at; break; }
+          // Reusing a rating is read-only enrichment, so a probable title/author match is useful here.
+          // Personal library duplicate checks still use strict confirmed evidence.
+          if (sameWork(known[at], book)) { best = at; break; }
         }
       }
       return best === undefined ? undefined : withSource(known[best], rated.get(best)!);

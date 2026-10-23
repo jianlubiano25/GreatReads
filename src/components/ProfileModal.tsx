@@ -1,15 +1,18 @@
 import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
-import { GardenState, UserProfile } from '../types';
+import { Book, GardenState, UserProfile } from '../types';
 import { Camera, Moon, Sun, Monitor, RefreshCw, Copy, Check, Upload, X, Download } from 'lucide-react';
 import { copyText } from '../services/clipboard';
 import { isLocationWeatherEnabled, setLocationWeatherEnabled, fetchLocalWeather } from '../services/weather';
 import { getNookMatchesTheme, setNookMatchesTheme, getWindowFollowsTime, setWindowFollowsTime } from '../services/nookPrefs';
 import { useAppUpdate, checkForUpdate, applyUpdate, restartApp, APP_BUILD } from '../services/appUpdate';
+import { refreshEverything } from '../services/refreshApp';
 import { AchievementsModal } from './garden/AchievementsModal';
 import { MILESTONES } from '../data/gardenCatalog';
 import { isCoverAdminOn, subscribeCoverAdmin } from '../services/books';
 import { GoogleKeyPanel } from './GoogleKeyPanel';
+import { AccountPanel } from './AccountPanel';
+import { CaptureSection } from './CaptureSection';
 import { TITLE_FONTS, TEXT_FONTS, getFontPrefs, setFontPrefs, loadFontPreviews } from '../services/fontPrefs';
 
 interface ProfileModalProps {
@@ -28,6 +31,10 @@ interface ProfileModalProps {
   onOpenBackupModal?: () => void;
   /** Only given while developer mode is on */
   onOpenCoverPublish?: () => void;
+  /** The library, for the owner's "send everything to the catalog" */
+  libraryBooks?: Book[];
+  /** Owner only: open the catalog review screen */
+  onOpenCatalogReview?: () => void;
 }
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({
@@ -45,15 +52,20 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   onImportBackup,
   onOpenBackupModal,
   onOpenCoverPublish,
+  libraryBooks,
+  onOpenCatalogReview,
 }) => {
   // Dismissing the sheet (outside tap, X, Escape) keeps your edits, just like Save & Close
   useModalA11y(() => handleSave());
+  const [tab, setTab] = useState<'profile' | 'look' | 'account' | 'data'>('profile');
   const [name, setName] = useState(profile.name);
   const [pageGoal, setPageGoal] = useState(String(goal));
   const [theme, setTheme] = useState(profile.theme);
   const [copied, setCopied] = useState(false);
   const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const update = useAppUpdate();
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshNote, setRefreshNote] = useState('');
   const [locationWeather, setLocationWeather] = useState(isLocationWeatherEnabled);
   const [nookMatchesTheme, setNookTheme] = useState(getNookMatchesTheme);
   const [windowFollowsTime, setWindowTime] = useState(getWindowFollowsTime);
@@ -162,7 +174,23 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           </button>
         </div>
 
+        <div role="tablist" aria-label="Settings sections" className="sticky top-[65px] z-10 px-4 py-2 bg-[#fbf7ee]/95 dark:bg-[#231d17]/95 backdrop-blur-md border-b border-[#e3d7c3] dark:border-[#382f25] grid grid-cols-4 gap-1.5">
+          {([['profile', 'Profile'], ['look', 'Appearance'], ['account', 'Account'], ['data', 'Data & app']] as const).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={tab === id}
+              onClick={() => setTab(id)}
+              className={`py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${tab === id ? 'bg-[#2e5934] text-white' : 'text-[#706256] dark:text-[#a89a8a] hover:bg-black/5 dark:hover:bg-white/5'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         <div className="p-6 flex flex-col gap-5 overflow-y-auto">
+          {tab === 'profile' && (<>
           {/* Avatar and name */}
           <div className="flex items-center gap-4">
             <div className="relative">
@@ -245,7 +273,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               <span>Achievements &amp; garden · {plantsEarned} of {MILESTONES.length} plants</span>
             </button>
           </div>
+          </>)}
 
+          {tab === 'look' && (<>
           {/* Appearance */}
           <div>
             <label className="text-xs font-semibold text-[#706256] dark:text-[#a89a8a] block mb-1.5">
@@ -385,7 +415,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               />
             </label>
           </div>
+          </>)}
 
+          {tab === 'data' && (<>
           {/* Hidden books restoration */}
           {hiddenCount > 0 && (
             <div className="pt-2">
@@ -399,7 +431,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               </button>
             </div>
           )}
+          </>)}
 
+          {tab === 'account' && (<>
+            <AccountPanel />
+            <CaptureSection books={libraryBooks || []} onOpenReview={onOpenCatalogReview} />
+          </>)}
+
+          {tab === 'data' && (<>
           {onOpenCoverPublish && (
             <div className="pt-3 border-t border-[#e3d7c3] dark:border-[#382f25]">
               <span className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] block mb-2">Book covers</span>
@@ -508,7 +547,28 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 Restart
               </button>
             </div>
+            <p className="text-xs text-[#706256] dark:text-[#a89a8a] mt-3 mb-2">
+              Still seeing old names, covers or data? This clears everything the app downloaded and its saved copy of itself, then reloads the newest version. Your library, notes, history and settings are not touched.
+            </p>
+            <button
+              type="button"
+              disabled={refreshing}
+              onClick={async () => {
+                setRefreshNote('Refreshing…');
+                setRefreshing(true);
+                const ok = await refreshEverything();
+                if (!ok) { setRefreshing(false); setRefreshNote('You are offline. Connect to the internet first, so the app can download itself again.'); return; }
+                setRefreshNote('Done. Reloading the newest version…');
+                setTimeout(() => window.location.reload(), 700);
+              }}
+              className="w-full py-2.5 px-3 rounded-xl text-xs font-semibold border border-[#2e5934] dark:border-[#86b880] text-[#2e5934] dark:text-[#86b880] flex items-center justify-center gap-1.5 active:scale-95 transition-all disabled:opacity-60"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+              <span>Refresh App &amp; Data</span>
+            </button>
+            {refreshNote && <p className="mt-2 text-xs text-emerald-800 dark:text-emerald-300" role="status">{refreshNote}</p>}
           </div>
+          </>)}
         </div>
 
         {showAchievements && <AchievementsModal garden={garden} onMovePlant={onMovePlant} onClose={() => setShowAchievements(false)} />}

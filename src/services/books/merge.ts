@@ -16,6 +16,9 @@ const authorRank = (source?: string): number => AUTHOR_RANK[source || ''] ?? 0;
 
 /** The same book from two places becomes one record that keeps the best of both. `a` wins on identity (id, title, author). */
 export function mergeBooks(a: Book, b: Book): Book {
+  // Callers include provider resolution and Store collation. Keep uncertain or contradictory
+  // records separate instead of letting a field-by-field merge imply they are one work.
+  if (!sameWork(a, b)) return a;
   const out: Book = { ...a };
   // The better cover wins (covers.ts): Apple's flat front, then a Google Books front, then an Open Library cover or another link, then the NYT's marketing image
   // (often a 3D render). Open Library's cover is often the work's oldest edition or a scan, so a modern Google front beats it. At equal quality the first cover found stays.

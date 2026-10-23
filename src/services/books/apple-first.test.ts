@@ -21,7 +21,7 @@ test('Apple art is recognised, and beats an NYT render or any other copy in a me
   const resolved = makeBook({ id: 'ol_/works/OL1W', title: 'The Witch', author: 'Freida McFadden', coverUrl: APPLE });
   assert.equal(combineWithNyt(nyt, resolved).coverUrl, APPLE); // the Discover shelf
   assert.equal(mergeBooks(nyt, resolved).coverUrl, APPLE); // the collated shelf merges the NYT book first
-  assert.equal(mergeBooks(makeBook({ id: 'a', title: 'T', author: 'A B', coverId: 5 }), resolved).coverId, undefined);
+  assert.equal(mergeBooks(makeBook({ id: 'a', title: 'The Witch', author: 'Freida McFadden', coverId: 5 }), resolved).coverId, undefined);
   // no Apple art: ANY flat front from another source beats the NYT's marketing image (an Open Library cover, a Google Books front); the NYT image stands in only when there is nothing else
   const GOOGLE = 'https://books.google.com/books/content?id=abc&printsec=frontcover&img=1&zoom=1';
   assert.equal(combineWithNyt(nyt, makeBook({ id: 'x', title: 'The Witch', author: 'Freida McFadden', coverId: 9 })).coverUrl, undefined);

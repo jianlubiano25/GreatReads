@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 const store = new Map<string, string>();
 (globalThis as any).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
 
-import { searchBooksLive, searchLocal, searchRelevance, forgetRecentSearchesForTests } from './search';
+import { searchBooksLive, searchLocal, searchRelevance, forgetRecentSearchesForTests, rank } from './search';
 import { forgetSeenForTests } from './localIndex';
 import { applySearchView, genreOptions, DEFAULT_SEARCH_VIEW } from './searchView';
 
@@ -125,8 +125,9 @@ test('Author scope treats everything typed as an author and keeps only that auth
   assert.deepEqual(found.map(b => b.title).sort(), ['Emma', 'Persuasion']);
   assert.ok(seen.some(u => u.searchParams.get('author') === 'jane aust'));
   // the same words in the All scope are not split off as a title
-  assert.equal(searchLocal('jane', '', 10, [book({ id: 'x', title: 'Jane Eyre', author: 'Charlotte Bronte' })], 'author').length, 0, 'a title word is not an author match');
-  assert.equal(searchLocal('bronte', '', 10, [book({ id: 'x', title: 'Jane Eyre', author: 'Charlotte Bronte' })], 'author').length, 1);
+  const mismatchedBook = (scope: 'author' | 'title') => searchLocal('jane', '', 10, [book({ id: 'x', title: 'Jane Eyre', author: 'Charlotte Bronte' })], scope);
+  assert.ok(!mismatchedBook('author').some(b => b.id === 'x'), 'a title word is not an author match');
+  assert.ok(searchLocal('bronte', '', 10, [book({ id: 'x', title: 'Jane Eyre', author: 'Charlotte Bronte' })], 'author').some(b => b.id === 'x'));
   assert.equal(searchLocal('bronte', '', 10, [book({ id: 'x', title: 'Jane Eyre', author: 'Charlotte Bronte' })], 'title').length, 0, 'an author word is not a title match');
 });
 
@@ -179,6 +180,48 @@ test('a well-rated book that merely starts with the word does not pass an exact 
   const exact = book({ title: 'Verity', author: 'Colleen Hoover' });
   const famous = book({ title: 'Verity Lambert: A Life in Television', author: 'Verity Lambert', ratingAverage: 4.8, ratingCount: 50000, coverUrl: 'https://example.test/c.jpg' });
   assert.ok(searchRelevance(exact, 'verity', '', true) > searchRelevance(famous, 'verity', '', true));
+});
+
+test('both same-title Witch books remain visible, and metadata cannot lift a subtitle above either exact title', () => {
+  const freida = book({ id: 'freida', title: 'The Witch', author: 'Freida McFadden', ratingCount: 20, ratingAverage: 3.8 });
+  const marie = book({ id: 'marie', title: 'The Witch', author: 'Marie Ndiaye', ratingCount: 10, ratingAverage: 3.7 });
+  const subtitle = book({ id: 'subtitle', title: 'The Witch: A Novel', author: 'Another Author', ratingCount: 50000, ratingAverage: 4.9, coverUrl: 'https://example.test/c.jpg', pageCount: 500, year: '2025' });
+  const found = rank([subtitle, marie, freida], parseQuery('The Witch'), 10);
+  assert.deepEqual(new Set(found.slice(0, 2).map(b => b.id)), new Set(['freida', 'marie']));
+  assert.ok(found.indexOf(subtitle) > found.indexOf(freida));
+  assert.ok(found.indexOf(subtitle) > found.indexOf(marie));
+});
+
+test('online Search combines a Discover-seeded Witch with provider results and deduplicates a duplicate provider copy', async () => {
+  reset();
+  mockFetch(url => {
+    if (url.hostname === 'openlibrary.org') return { numFound: 1, docs: [ol('OLFREIDA', 'The Witch', 'Freida McFadden')] };
+    if (url.hostname === 'www.googleapis.com') return { totalItems: 1, items: [gb('freida-google', { title: 'The Witch', authors: ['Freida McFadden'] })] };
+    return { docs: [], items: [] };
+  });
+  const found = await searchBooksLive('The Witch', { final: true, limit: 20 });
+  assert.equal(found.filter(b => /freida mcfadden/i.test(b.author)).length, 1);
+  assert.equal(found.filter(b => /marie ndiaye/i.test(b.author)).length, 1);
+  assert.deepEqual(searchLocal('The Witch', '', 20, undefined, 'title').filter(b => /marie ndiaye/i.test(b.author)).map(b => b.title), ['The Witch']);
+});
+
+test('a curated Discover candidate still appears when both online providers omit it', async () => {
+  reset();
+  mockFetch(url => (url.hostname === 'openlibrary.org' ? { numFound: 0, docs: [] } : { totalItems: 0, items: [] }));
+  const found = await searchBooksLive('The Witch', { final: true, limit: 20 });
+  assert.ok(found.some(b => b.title === 'The Witch' && /marie ndiaye/i.test(b.author)));
+});
+
+test('title search normalization keeps non-Latin text usable through the shared identity normalizer', () => {
+  const japanese = book({ id: 'jp', title: '変な絵', author: 'Uketsu' });
+  assert.deepEqual(searchLocal('変な絵', '', 10, [japanese], 'title').map(b => b.id), ['jp']);
+});
+
+test('Author scope keeps a provider candidate with missing author metadata as an uncertain result', () => {
+  const unknown = book({ id: 'unknown-author', title: 'The Witch', author: 'Unknown Author' });
+  const found = rank([unknown], parseQuery('Freida McFadden', '', true, 'author'), 10);
+  assert.equal(found.length, 1);
+  assert.equal(found[0].id, unknown.id);
 });
 
 test('market-report spam and "study guide" editions rank far down unless asked for', () => {

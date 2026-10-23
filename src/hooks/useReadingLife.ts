@@ -9,11 +9,12 @@ import { applyHistoryEdit, applyRating, stampProgress, stampStatus, type History
 import { applyAddBook, type AddDestination, type AddStatus } from '../services/library';
 import { clearableCacheKeys } from '../services/books/cache';
 import { exportCoverPicks, restoreCoverPicksFromBackup } from '../services/books/covers';
-import { displayBook, refreshNames } from '../services/books/englishTitle';
+import { displayBook, refreshNames, subscribeNames } from '../services/books/englishTitle';
 import { mapPool } from '../services/books/http';
 import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
 import { applyMerge, findDuplicateGroups, idMapOf, remapCollections } from '../services/mergeDuplicates';
 import { exportCollections, loadCollections, restoreCollectionsFromBackup, saveCollections } from '../services/libraryCollections';
+import { markPersonalAnnotationDeleted, markPersonalBookDeleted } from '../services/librarySync';
 
 // Small helper lists that are not persistentCache instances but can be rebuilt (never user data)
 export const EXTRA_CLEARABLE = ['readlife.preload', 'readlife.loaded', 'readlife.phoneticTried'];
@@ -190,6 +191,7 @@ export function useReadingLife() {
   }, [state.profile.theme]);
 
   const [namesTick, setNamesTick] = useState(0);
+  useEffect(() => subscribeNames(() => setNamesTick(n => n + 1)), []); // an owner's title/author choice redraws the lists
 
   // Merge default books + custom books with overrides
   const allBooks = useMemo<Book[]>(() => {
@@ -330,6 +332,7 @@ export function useReadingLife() {
   const mergeDuplicates = useCallback((): number => {
     const groups = findDuplicateGroups(latestState.current);
     if (!groups.length) return 0;
+    groups.forEach(group => group.otherIds.forEach(markPersonalBookDeleted));
     setState(prev => applyMerge(prev, findDuplicateGroups(prev)));
     saveCollections(remapCollections(loadCollections(), idMapOf(groups))); // your own tags and shelves follow the kept copy
     return groups.length;
@@ -361,6 +364,7 @@ export function useReadingLife() {
 
   const removeBook = useCallback((bookId: string | number) => {
     const idKey = String(bookId);
+    markPersonalBookDeleted(idKey);
     setState(prev => {
       const isCustom = prev.customBooks.some(b => String(b.id) === idKey);
       if (!isCustom) {
@@ -395,6 +399,7 @@ export function useReadingLife() {
 
   const updateBookNote = useCallback((bookId: string | number, note: string) => {
     const idKey = String(bookId);
+    if (!note.trim()) markPersonalAnnotationDeleted(idKey, 'note');
     setState(prev => ({
       ...prev,
       notes: {
@@ -423,6 +428,7 @@ export function useReadingLife() {
 
   const deleteHighlight = useCallback((bookId: string | number, highlightId: string) => {
     const idKey = String(bookId);
+    markPersonalAnnotationDeleted(idKey, highlightId);
     setState(prev => ({
       ...prev,
       highlights: {
@@ -504,6 +510,8 @@ export function useReadingLife() {
 
   /** Remove every book from the library (catalog books are only hidden, so "Restore hidden books" can bring them back). */
   const clearLibrary = useCallback(() => {
+    const ids = new Set([...latestState.current.customBooks.map(book => String(book.id)), ...Object.keys(latestState.current.status), ...Object.keys(latestState.current.currentPage), ...Object.keys(latestState.current.totalPages), ...Object.keys(latestState.current.notes), ...Object.keys(latestState.current.highlights), ...Object.keys(latestState.current.history), ...Object.keys(latestState.current.ratings), ...Object.keys(latestState.current.onDeviceOverrides)]);
+    ids.forEach(markPersonalBookDeleted);
     setState(prev => ({
       ...prev,
       customBooks: [],
@@ -556,6 +564,17 @@ export function useReadingLife() {
   const importBackup = useCallback((jsonStr: string) => {
     const restored = parseBackup(jsonStr, buildDefaultState());
     if (!restored) return false;
+    const before = latestState.current;
+    const oldIds = new Set([...before.customBooks.map(book => String(book.id)), ...Object.keys(before.status), ...Object.keys(before.currentPage), ...Object.keys(before.notes), ...Object.keys(before.highlights), ...Object.keys(before.history), ...Object.keys(before.ratings)]);
+    const restoredIds = new Set([...restored.customBooks.map(book => String(book.id)), ...Object.keys(restored.status), ...Object.keys(restored.currentPage), ...Object.keys(restored.notes), ...Object.keys(restored.highlights), ...Object.keys(restored.history), ...Object.keys(restored.ratings)]);
+    for (const id of oldIds) {
+      if (!restoredIds.has(id)) markPersonalBookDeleted(id);
+      else {
+        if (before.notes[id] && !restored.notes[id]) markPersonalAnnotationDeleted(id, 'note');
+        const nextHighlights = new Set((restored.highlights[id] || []).map(item => item.id));
+        for (const item of before.highlights[id] || []) if (!nextHighlights.has(item.id)) markPersonalAnnotationDeleted(id, item.id);
+      }
+    }
     restoreCoverPicksFromBackup(jsonStr); // a backup made before picks existed leaves the current picks alone
     restoreNookLook(jsonStr); // likewise for a backup made before the nook look was saved
     restoreCollectionsFromBackup(jsonStr); // and for one made before shelves and tags were saved
@@ -569,6 +588,8 @@ export function useReadingLife() {
     setState({ ...restored, garden });
     return true;
   }, []);
+
+  const applySyncedState = useCallback((change: (prev: ReadingState) => ReadingState) => setState(prev => change(prev)), []);
 
   return {
     state,
@@ -604,6 +625,7 @@ export function useReadingLife() {
     deleteWord,
     exportBackup,
     importBackup,
+    applySyncedState,
     clearLibrary,
     clearOnDevice,
     resetEverything,

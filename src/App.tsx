@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, useSyncExternalStore, lazy, Suspense } from 'react';
 import { Book, TabType, WordItem } from './types';
 import { useReadingLife } from './hooks/useReadingLife';
-import { bookKey, getCoverPick, getCoverUrl, sameWork, withKnownRating, isCoverAdminOn, subscribeCoverAdmin, tapSecret, syncSharedCovers } from './services/books';
+import { syncCatalog } from './services/catalog';
+import { autoBackup } from './services/cloudSync';
+import { authVersion, consumeAuthRedirect, checkAdmin, currentUser, isAdminKnown, subscribeAuth } from './services/supabase';
+import { usePersonalLibrarySync } from './hooks/usePersonalLibrarySync';
+import { initCapture, maybeBackfill } from './services/captureDevice';
+import { bookKey, getCoverPick, ownCoverUrl, sameWork, withKnownRating, isCoverAdminOn, subscribeCoverAdmin, tapSecret, syncSharedCovers } from './services/books';
 import { milestone } from './services/books/perf';
 import { formatRating, prettyDate, readingNowOrder } from './services/bookHistory';
 import { makeCollection, setBookMembership } from './services/libraryCollections';
@@ -66,6 +71,7 @@ const AppleLookUpModal = lazyModal<typeof import('./components/AppleLookUpModal'
 const AddBookModal = lazyModal<typeof import('./components/AddBookModal').AddBookModal>(() => import('./components/AddBookModal'), 'AddBookModal');
 const HighlightsModal = lazyModal<typeof import('./components/HighlightsModal').HighlightsModal>(() => import('./components/HighlightsModal'), 'HighlightsModal');
 const ProfileModal = lazyModal<typeof import('./components/ProfileModal').ProfileModal>(() => import('./components/ProfileModal'), 'ProfileModal');
+const CatalogReviewModal = lazyModal<typeof import('./components/CatalogReviewModal').CatalogReviewModal>(() => import('./components/CatalogReviewModal'), 'CatalogReviewModal');
 const CoverPublishModal = lazyModal<typeof import('./components/CoverPublishModal').CoverPublishModal>(() => import('./components/CoverPublishModal'), 'CoverPublishModal');
 const BackupModal = lazyModal<typeof import('./components/BackupModal').BackupModal>(() => import('./components/BackupModal'), 'BackupModal');
 const WordPracticeModal = lazyModal<typeof import('./components/WordPracticeModal').WordPracticeModal>(() => import('./components/WordPracticeModal'), 'WordPracticeModal');
@@ -108,6 +114,7 @@ export default function App() {
     deleteWord,
     exportBackup,
     importBackup,
+    applySyncedState,
     clearLibrary,
     clearOnDevice,
     resetEverything,
@@ -145,6 +152,7 @@ export default function App() {
   }>({ open: false });
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showCoverPublish, setShowCoverPublish] = useState(false);
+  const [showCatalogReview, setShowCatalogReview] = useState(false);
 
   // Developer mode (the owner's hidden tools): five taps on the greeting switch it on or off. Everyone else never sees it.
   const coverTools = useSyncExternalStore(subscribeCoverAdmin, isCoverAdminOn, isCoverAdminOn);
@@ -161,16 +169,40 @@ export default function App() {
   // Covers published for everyone: one quiet check shortly after launch and when the app comes back to the front.
   // It is throttled inside (10 min, ETag), never blocks drawing, and a failure just keeps the saved copy.
   useEffect(() => {
-    const t = setTimeout(() => void syncSharedCovers(), 3000);
-    const onShow = () => { if (document.visibilityState === 'visible') void syncSharedCovers(); };
+    consumeAuthRedirect();
+    if (currentUser()) void checkAdmin(); // asked of the database; only decides whether the owner's tools show
+    const t = setTimeout(() => { void syncSharedCovers(); void syncCatalog(); }, 3000);
+    const onShow = () => { if (document.visibilityState === 'visible') { void syncSharedCovers(); void syncCatalog(); } };
     document.addEventListener('visibilitychange', onShow);
     return () => { clearTimeout(t); document.removeEventListener('visibilitychange', onShow); };
+  }, []);
+  // Owner only: what the app fetches is also kept in the catalog as hidden candidates (to review, publish or reject), and what this device already has is sent once.
+  useSyncExternalStore(subscribeAuth, authVersion, authVersion);
+  const ownerSignedIn = !!currentUser() && isAdminKnown() === true;
+  const booksRef = useRef(allBooks);
+  booksRef.current = allBooks;
+  useEffect(() => { initCapture(); }, []);
+  useEffect(() => {
+    if (!ownerSignedIn) return;
+    const t = setTimeout(() => maybeBackfill(booksRef.current), 8000);
+    return () => clearTimeout(t);
+  }, [ownerSignedIn]);
+  // Cloud backup (only if turned on in Backup & Restore and signed in): a quiet upload every few minutes and when the app goes to the background.
+  const exportRef = useRef(exportBackup);
+  exportRef.current = exportBackup;
+  useEffect(() => {
+    const run = () => void autoBackup(() => exportRef.current());
+    const t = setInterval(run, 5 * 60 * 1000);
+    const onHide = () => { if (document.visibilityState === 'hidden') run(); };
+    document.addEventListener('visibilitychange', onHide);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onHide); };
   }, []);
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [libAddMenuOpen, setLibAddMenuOpen] = useState(false); // the + in the Library header: Add book / Add shelf
   const [newShelfRequest, setNewShelfRequest] = useState(0);
   const { collections, update: updateCollections, reload: reloadCollections } = useLibraryCollections(); // your own shelves and tags
+  usePersonalLibrarySync({ state, books: allBooks, collections, applyState: applySyncedState, replaceCollections: next => updateCollections(() => next) });
   const [sheetBook, setSheetBook] = useState<Book | null>(null); // the Add to My Library sheet (status, shelves, tags)
   const [showWordPracticeModal, setShowWordPracticeModal] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState<{ open: boolean; type: 'books' | 'words' }>({
@@ -269,7 +301,7 @@ export default function App() {
   useEffect(() => {
     try {
       const urls = [...nowReadingBooks, ...upNextBooks, ...sceneBooks]
-        .map(b => getCoverPick(b, 'M') || getCoverUrl(b.coverId, 'M', b.coverUrl))
+        .map(b => getCoverPick(b, 'M') || ownCoverUrl(b, 'M'))
         .filter((u, i, a) => !!u && a.indexOf(u) === i)
         .slice(0, 60);
       localStorage.setItem('readlife.preload', JSON.stringify(urls));
@@ -317,7 +349,7 @@ export default function App() {
               style={tab === 'today' ? { touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' } : undefined}
               onClick={tab === 'today' ? () => void tapSecret() : undefined}
             >
-              {tab === 'today' ? `Hello${state.profile.name ? `, ${state.profile.name}` : ''}` : TAB_TITLES[tab] || 'My reading life'}
+              {tab === 'today' ? `Hello${state.profile.name ? `, ${state.profile.name}` : ''}` : TAB_TITLES[tab] || 'GreatReads'}
             </h1>
             <span className="sr-only" role="status" aria-live="polite">{toolsNote}</span>
             {toolsNote && <span className="inline-block mt-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#e8efe7] dark:bg-[#243422] text-[#2e5934] dark:text-[#86b880]" aria-hidden="true">{toolsNote}</span>}
@@ -736,10 +768,13 @@ export default function App() {
           onImportBackup={importBackup}
           onOpenBackupModal={() => setShowBackupModal(true)}
           onOpenCoverPublish={coverTools ? () => setShowCoverPublish(true) : undefined}
+          libraryBooks={allBooks}
+          onOpenCatalogReview={() => setShowCatalogReview(true)}
         />
       )}
 
       {coverTools && showCoverPublish && <CoverPublishModal onClose={() => setShowCoverPublish(false)} />}
+      {showCatalogReview && <CatalogReviewModal onClose={() => setShowCatalogReview(false)} />}
 
       {/* Modal 6: Word Practice / Quiz Modal */}
       {showWordPracticeModal && (

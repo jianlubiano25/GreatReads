@@ -19,6 +19,9 @@ import {
 } from '../services/books';
 import { buildDraft, countChanges, draftStatus, publishCovers, type PublishResult } from '../services/books/covers';
 import { CoverPickerModal } from './CoverPickerModal';
+import { CatalogReviewModal } from './CatalogReviewModal';
+import { publishCoverToCatalog, syncCatalog } from '../services/catalog';
+import { authVersion, checkAdmin, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
 
 /**
  * The owner's "Publish book covers" screen: every cover you starred (and what is already published), each with ✕ (take it off) and
@@ -52,6 +55,11 @@ export function CoverPublishModal({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [editing, setEditing] = useState<Book | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  useSyncExternalStore(subscribeAuth, authVersion, authVersion);
+  const signedIn = !!currentUser();
+  const isOwner = isAdminKnown();
+  useEffect(() => { if (signedIn && isOwner === undefined) void checkAdmin(); }, [signedIn, isOwner]);
 
   // The latest published set first, so a publish is always "published + your changes" and never overwrites with something stale
   useEffect(() => {
@@ -103,6 +111,21 @@ export function CoverPublishModal({ onClose }: { onClose: () => void }) {
       if (r.reason === 'unauthorized') setCoverToken('');
       setMessage({ ok: false, text: WHY[r.reason] });
     }
+  };
+
+  // Owner only (signed in and on the admin list): add every cover in the list to the catalog and publish it, one safe step each.
+  const publishToCatalog = async () => {
+    setBusy(true);
+    setMessage(null);
+    let ok = 0;
+    const failed: string[] = [];
+    for (const r of rows) {
+      const res = await publishCoverToCatalog({ title: r.title, author: r.author }, r.rec.url);
+      if (res.ok) ok++; else failed.push(`${r.title}: ${res.error}`);
+    }
+    await syncCatalog({ force: true });
+    setBusy(false);
+    setMessage({ ok: failed.length === 0, text: `Catalog: ${ok} published${failed.length ? `, ${failed.length} not (${failed.slice(0, 2).join('; ')}${failed.length > 2 ? '; …' : ''})` : '.'}` });
   };
 
   return (
@@ -194,6 +217,22 @@ export function CoverPublishModal({ onClose }: { onClose: () => void }) {
             >
               {busy ? 'Publishing…' : pending ? `Publish ${pending} ${pending === 1 ? 'change' : 'changes'} for everyone` : 'Everything is published'}
             </button>
+            {isOwner && (
+              <button
+                type="button"
+                onClick={publishToCatalog}
+                disabled={busy || !ready || rows.length === 0}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold border border-[#2e5934] dark:border-[#86b880] text-[#2e5934] dark:text-[#86b880] disabled:opacity-40 active:scale-[0.98] transition-all"
+              >
+                {busy ? 'Working…' : `Publish ${rows.length} to the catalog (Supabase)`}
+              </button>
+            )}
+            {isOwner && (
+              <button type="button" onClick={() => setReviewing(true)} className="w-full py-2.5 rounded-xl text-sm font-semibold border border-[#e3d7c3] dark:border-[#382f25] active:scale-[0.98] transition-all">Review catalog (browse, publish, reject)</button>
+            )}
+            {!isOwner && (
+              <p className="text-[11px] text-[#706256] dark:text-[#a89a8a]">To publish to the new catalog, sign in as the owner in Profile → Account.</p>
+            )}
             <div className="flex items-center justify-between text-[11px] text-[#706256] dark:text-[#a89a8a]">
               {getCoverToken() ? <button type="button" onClick={() => { setCoverToken(''); setToken(''); setMessage(null); }} className="underline">Forget token on this device</button> : <span />}
               <button type="button" onClick={() => { setCoverAdmin(false); onClose(); }} className="underline">Turn developer mode off</button>
@@ -201,6 +240,7 @@ export function CoverPublishModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>
+      {reviewing && <CatalogReviewModal onClose={() => setReviewing(false)} />}
       {editing && <CoverPickerModal book={editing} onClose={() => setEditing(null)} />}
     </>
   );

@@ -19,22 +19,22 @@ test('a title in another script keeps a key, so its own listing matches (変な�
   assert.equal(titleKey('The Fruit Fly: A Novel'), 'fruit fly'); // Latin titles key exactly as before
 });
 
-test('Nettle & Bone: names the catalogues say are one author are one author, and the jacket name is shown, whichever record arrives first', () => {
+test('Nettle & Bone: a shared work ID does not override conflicting author metadata', () => {
   assert.ok(titlesMatch('Nettle and Bone', 'Nettle & Bone'));
   assert.ok(!authorsCompatible('T. Kingfisher', 'Ursula Vernon'), 'nothing is known yet: no hard-coded pen names');
   const apple: any = { id: 'a1', title: 'Nettle & Bone', author: 'T. Kingfisher', source: 'apple', identity: { olWork: 'OL1W' } };
   const ol: any = { id: 'o1', title: 'Nettle & Bone', author: 'Ursula Vernon', source: 'openlibrary', identity: { olWork: 'OL1W' } };
-  assert.equal(mergeBooks(ol, apple).author, 'T. Kingfisher');
+  assert.equal(mergeBooks(ol, apple).author, 'Ursula Vernon');
   assert.equal(mergeBooks(apple, ol).author, 'T. Kingfisher');
-  // ...and the merge taught the two names are one author, so matching and display follow
-  assert.ok(authorsCompatible('T. Kingfisher', 'Ursula Vernon'));
-  assert.equal(displayBook({ ...ol, id: 'saved' }).author, 'T. Kingfisher');
+  // The ID conflict cannot teach a new author alias. Open Library alternate-name evidence is tested below.
+  assert.equal(authorsCompatible('T. Kingfisher', 'Ursula Vernon'), false);
+  assert.equal(displayBook({ ...ol, id: 'saved' }).author, 'Ursula Vernon');
   assert.equal(displayBook({ ...apple }).author, 'T. Kingfisher');
   assert.ok(!authorsCompatible('Stephen King', 'Ursula Vernon'));
-  // re-adding the saved book keeps the author already saved
+  // Conflicting author metadata is not silently folded into an existing personal record.
   const state: any = { customBooks: [{ ...apple }], hiddenBookIds: {}, status: {}, ratings: {}, onDeviceOverrides: {}, history: {}, highlights: {}, notes: {}, currentPage: {}, totalPages: {} };
   const next = applyAddBook(state, { ...ol, id: 'o2' }, 'library');
-  assert.equal(next.customBooks.find((b: any) => /nettle/i.test(b.title))?.author, 'T. Kingfisher');
+  assert.equal(next.customBooks.filter((b: any) => /nettle/i.test(b.title)).length, 2);
 });
 
 test('Open Library listing an author\'s other names teaches the group (a saved Ursula Vernon book then shows the jacket name once Apple prints it)', async () => {
