@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { authVersion, currentUser, subscribeAuth } from '../services/supabase';
 import { backUpNow, cloudStatus, fetchCloudBackup, getSafetyCopy, isAutoBackup, lastSynced, markRestored, saveSafetyCopy, setAutoBackup, type CloudStatus } from '../services/cloudSync';
+import { hasLibrarySyncConflicts, hasPendingLibrarySync, librarySyncAccountAllowed, resolveLibraryConflictsToLocal } from '../services/librarySync';
 
 /** Cloud backup, inside Backup & Restore. Needs an account (Profile → Account). Restoring always saves the current library aside first. */
 export const CloudBackupSection: React.FC<{ onExportBackup: () => string; onImportBackup: (json: string) => boolean }> = ({ onExportBackup, onImportBackup }) => {
@@ -11,7 +12,17 @@ export const CloudBackupSection: React.FC<{ onExportBackup: () => string; onImpo
   const [auto, setAuto] = useState(isAutoBackup());
   const [confirm, setConfirm] = useState<'restore' | 'replace' | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [, refreshSync] = useState(0);
   const conflict = lastSynced().conflict;
+
+  useEffect(() => {
+    const refresh = () => refreshSync(v => v + 1);
+    window.addEventListener('greatreads-library-sync-status', refresh);
+    return () => window.removeEventListener('greatreads-library-sync-status', refresh);
+  }, []);
+  const libraryConflict = !!user && hasLibrarySyncConflicts(user.id);
+  const libraryPending = !!user && hasPendingLibrarySync(user.id);
+  const libraryAccountBlocked = !!user && !librarySyncAccountAllowed(user.id);
 
   const refresh = async () => { const r = await cloudStatus(); if (r.ok) setStatus(r.status); };
   useEffect(() => { if (user) void refresh(); }, [user?.id]);
@@ -50,6 +61,10 @@ export const CloudBackupSection: React.FC<{ onExportBackup: () => string; onImpo
         {status === undefined ? 'Checking…' : status ? `Latest backup: ${new Date(status.updatedAt).toLocaleString()}` : 'No backup in your account yet.'}
       </p>
       {conflict && <p role="alert" className="text-xs text-amber-800 dark:text-amber-300">Your account has a newer backup (from another device). Restore it, or choose Replace to overwrite it with this device.</p>}
+      {libraryConflict && <p role="alert" className="text-xs text-amber-800 dark:text-amber-300">Some library records changed on both this device and the cloud. Those records are paused to protect both copies; JSON backup and restore are still available.</p>}
+      {libraryConflict && <button type="button" className={btn} disabled={busy} onClick={() => { if (window.confirm('Use this device’s values for conflicted library records? This replaces those records in your cloud library. Download a JSON backup first if you may need both versions.')) resolveLibraryConflictsToLocal(user!.id); }}>Use this device for conflicts</button>}
+      {libraryAccountBlocked && <p role="alert" className="text-xs text-amber-800 dark:text-amber-300">This device’s library is linked to another account. Sign back into that account to sync it; this account’s cloud library was not loaded.</p>}
+      {!libraryAccountBlocked && !libraryConflict && libraryPending && <p role="status" className="text-xs text-[#706256] dark:text-[#a89a8a]">Library changes are waiting to sync when the connection is available.</p>}
       <div className="grid grid-cols-2 gap-2">
         <button type="button" className={btn} disabled={busy} onClick={() => void upload(false)}>Back up now</button>
         <button type="button" className={btn} disabled={busy || !status} onClick={() => setConfirm('restore')}>Restore from cloud</button>

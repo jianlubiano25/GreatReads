@@ -166,6 +166,57 @@ export async function rest<T = unknown>(path: string, init: { method?: string; b
 }
 export const rpc = <T = unknown>(fn: string, args: Record<string, unknown> = {}) => rest<T>(`rpc/${fn}`, { method: 'POST', body: args });
 
+/** Subscribe to the authenticated user's personal tables using Supabase Realtime's Phoenix websocket protocol. */
+export function subscribeLibraryRealtime(userId: string, onChange: (table: string) => void): () => void {
+  let stopped = false;
+  let socket: WebSocket | undefined;
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
+  let retry: ReturnType<typeof setTimeout> | undefined;
+  let delay = 1000;
+  const unAuth = subscribeAuth(() => {
+    if (currentUser()?.id !== userId) { socket?.close(); return; }
+    if (socket?.readyState === WebSocket.OPEN) socket.close();
+  });
+  const tables = ['user_library_books', 'user_book_annotations', 'user_shelves', 'user_shelf_books', 'user_reading_sessions', 'user_library_preferences'];
+  const topic = `realtime:greatreads:${userId}`;
+  const connect = async () => {
+    if (stopped || currentUser()?.id !== userId || typeof WebSocket === 'undefined') return;
+    const token = await accessToken();
+    if (!token || stopped || currentUser()?.id !== userId) return;
+    const base = URL_.replace(/^http/, 'ws');
+    const ws = new WebSocket(`${base}/realtime/v1/websocket?apikey=${encodeURIComponent(KEY_)}&vsn=1.0.0`);
+    socket = ws;
+    ws.onopen = () => {
+      delay = 1000;
+      const postgres_changes = tables.map(table => ({ event: '*', schema: 'public', table, filter: `user_id=eq.${userId}` }));
+      ws.send(JSON.stringify([null, '1', topic, 'phx_join', { config: { broadcast: { ack: false, self: false }, presence: { key: '' }, postgres_changes }, access_token: token }]));
+      heartbeat = setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify([null, String(Date.now()), 'phoenix', 'heartbeat', {}])); }, 25_000);
+    };
+    ws.onmessage = event => {
+      try {
+        const message = JSON.parse(String(event.data));
+        if (!Array.isArray(message) || message[3] !== 'postgres_changes') return;
+        const payload = message[4];
+        const table = payload?.data?.table || payload?.table;
+        if (typeof table === 'string' && tables.includes(table) && currentUser()?.id === userId) onChange(table);
+      } catch {}
+    };
+    ws.onclose = ws.onerror = () => {
+      if (heartbeat) clearInterval(heartbeat);
+      heartbeat = undefined;
+      if (!stopped && currentUser()?.id === userId) { retry = setTimeout(connect, delay); delay = Math.min(30_000, delay * 2); }
+    };
+  };
+  void connect();
+  return () => {
+    stopped = true;
+    if (retry) clearTimeout(retry);
+    if (heartbeat) clearInterval(heartbeat);
+    socket?.close();
+    unAuth();
+  };
+}
+
 /** Is the signed-in user on the admin list? Asked of the database, never decided in the app. */
 export async function checkAdmin(): Promise<boolean> {
   if (!currentUser()) { admin = false; return false; }
