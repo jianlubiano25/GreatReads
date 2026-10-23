@@ -111,10 +111,18 @@ export function getCatalogWork(book: { title?: string; author?: string; isbn13?:
   for (const isbn of [ids.isbn13, ids.isbn10]) if (isbn) add(byIsbn!.get(isbn.replace(/[^0-9Xx]/g, '').toUpperCase()));
   const title = titleKey(book.title || ''), author = authorKey(book.author || '');
   if (title && author) add(byInfo!.get(`${title}|${author}`));
-  return [...candidates.values()].find(w => {
-    const status = matchIdentity(query, catalogIdentity(w)).status;
-    return status === 'confirmed' || status === 'probable';
+  const matches = [...candidates.values()].flatMap(work => {
+    const result = matchIdentity(query, catalogIdentity(work));
+    if (result.status === 'confirmed') return [{ work, strength: 2 }];
+    if (result.status === 'probable') return [{ work, strength: 1 }];
+    return [];
   });
+  if (!matches.length) return undefined;
+  const strongest = Math.max(...matches.map(match => match.strength));
+  const best = matches.filter(match => match.strength === strongest);
+  // Duplicate catalog works are possible while the owner reviews or reconciles records.
+  // Never let storage order choose which approved description or cover a reader sees.
+  return best.length === 1 ? best[0].work : undefined;
 }
 
 /** The catalog's cover is selected from the same validated work match as its Book Info metadata. */
