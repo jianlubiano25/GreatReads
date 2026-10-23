@@ -8,7 +8,7 @@ import { englishEditionQueries, isUnknownAuthor, sameWork, titleKey } from './id
 import { isBlocked } from './quality';
 import { titleLooksForeign } from './language';
 import { rememberExcluded } from './eligibility';
-import { localMatches, rememberSeen } from './localIndex';
+import { catalogMatches, localMatches, rememberSeen } from './localIndex';
 import { contentTokens, normQ, parseQuery, tokenHits, type ParsedQuery, type SearchScope } from './query';
 import { keywordGroups, keywordPhrases, stem } from './keywords';
 import { coverBonus } from './covers';
@@ -386,7 +386,7 @@ const RECENT_MAX = 40;
 export function searchLocal(title: string, author = '', limit = 10, known?: readonly Book[], scope: SearchScope = 'all'): Book[] {
   const q = parseQuery(title, author, true, scope);
   const mine = known?.length ? localMatches(q, limit, known) : [];
-  return rank([...mine, ...localMatches(q, limit)], q, limit, mine);
+  return rank([...mine, ...localMatches(q, limit), ...catalogMatches(q, limit)], q, limit, mine);
 }
 
 /**
@@ -411,7 +411,8 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
 
   const mine = useLocal && o.known?.length ? localMatches(q, limit, o.known) : [];
   const seenHere = useLocal ? localMatches(q, limit) : [];
-  const local = [...mine, ...seenHere];
+  const catalogHere = useLocal ? catalogMatches(q, limit) : [];
+  const local = [...mine, ...seenHere, ...catalogHere];
   if (local.length) emit(rank(local, q, limit, mine), 'local', false, 0);
 
   const memoKey = q.key;

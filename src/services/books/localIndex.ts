@@ -2,7 +2,10 @@ import type { Book } from '../../types';
 import { persistentCache } from './cache';
 import { bookKey, titleKey, authorKey } from './identity';
 import { isBlocked } from './quality';
+import { isRememberedExcluded } from './eligibility';
 import { contentTokens, normQ, tokenHits, type ParsedQuery } from './query';
+import { CURATED_SHELVES } from '../../data/storeCatalog';
+import { getCachedCurated, seedPlaceholders } from '../store/curated';
 
 /**
  * Instant matches: books the app has already fetched for earlier searches, kept on this device (a few hundred, newest last, oldest dropped).
@@ -30,7 +33,15 @@ const wordsOf = (b: Book) => {
 
 /** The in-memory list, newest search answers last */
 let list: Book[] | null = null;
+let catalog: Book[] | null = null;
 const KEY = (b: Book) => `${bookKey(b)}|${titleKey(b.title)}|${authorKey(b.author)}`;
+
+function discoverBooks(): Book[] {
+  if (!catalog) catalog = [
+    ...CURATED_SHELVES.flatMap(shelf => getCachedCurated(shelf) ?? seedPlaceholders(shelf)),
+  ];
+  return catalog;
+}
 
 function load(): Book[] {
   if (list) return list;
@@ -75,6 +86,11 @@ export function localMatches(q: ParsedQuery, limit = 8, known?: readonly Book[])
   }
   if (known) return out.slice(0, Math.max(limit * 3, 24));
   return out.slice(-Math.max(limit * 3, 24)).reverse(); // newest first; ranking decides the order shown
+}
+
+/** Hand-picked and bundled Discover books are searched locally too, even when neither live catalog returns them. */
+export function catalogMatches(q: ParsedQuery, limit = 10): Book[] {
+  return localMatches(q, limit, discoverBooks()).filter(b => !isBlocked(b.title) && !isRememberedExcluded(b));
 }
 
 /** Tests only */

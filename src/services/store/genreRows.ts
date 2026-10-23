@@ -92,13 +92,18 @@ export function genreRowSource(g: SearchGenre, row: Row): ShelfSource {
   const cut = (pool: readonly Book[]) => (row === 'new' ? newReleases(pool, g.kind) : hiddenGems(pool, g.kind));
   const showable = (pool: readonly Book[]) => {
     const books = cut(pool);
-    return books.length >= MIN_ROW ? books : null;
+    return books.length >= (row === 'gems' ? 1 : MIN_ROW) ? books : null;
   };
   src = {
     id: `genre-${row}-${g.label}`,
     cached: () => {
       const fresh = pools.get(g.query);
-      if (fresh) return showable(fresh);
+      if (fresh) {
+        const current = showable(fresh);
+        const previous = row === 'gems' ? gemShelves.peek(g.query)?.value : undefined;
+        const lastGood = previous && showable(previous);
+        return lastGood && lastGood.length > (current?.length ?? 0) ? lastGood : current;
+      }
       const oldPool = pools.peek(g.query)?.value;
       const oldGems = row === 'gems' ? gemShelves.peek(g.query)?.value : undefined;
       return (oldPool && showable(oldPool)) || (oldGems && showable(oldGems)) || null;
@@ -107,16 +112,17 @@ export function genreRowSource(g: SearchGenre, row: Row): ShelfSource {
       const result = await genrePool(g);
       const books = showable(result.books);
       if (!books) {
+        const lastGood = row === 'gems' ? gemShelves.peek(g.query)?.value : undefined;
+        if (lastGood && showable(lastGood)) return showable(lastGood)!;
         if (result.failed) {
-          const lastGood = row === 'gems' ? gemShelves.peek(g.query)?.value : undefined;
-          if (lastGood && showable(lastGood)) return showable(lastGood)!;
           throw new Error('genre provider refresh failed');
         }
         throw new InsufficientShelfError();
       }
       if (row === 'gems') {
         const lastGood = gemShelves.peek(g.query)?.value;
-        if (result.failed && lastGood && showable(lastGood)) return showable(lastGood)!;
+        const previous = lastGood && showable(lastGood);
+        if (previous && (result.failed || previous.length > books.length)) return previous;
         gemShelves.set(g.query, books);
       }
       fillMissingCovers(books, onUpdate, undefined, { upgradeWeak: ROW_SIZE }); // a modern flat front in place of an old scan, as the covers are found

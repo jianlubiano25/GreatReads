@@ -152,6 +152,8 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
             Try again
           </button>
         </div>
+      ) : insufficient ? (
+        <p className="text-sm text-[#706256] dark:text-[#a89a8a]">No books meet the Hidden Gems criteria yet.</p>
       ) : !books ? (
         <ShelfSkeleton pulse={visible} />
       ) : (
