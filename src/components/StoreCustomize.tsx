@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Check, Eye, EyeOff, GripVertical, RefreshCw } from 'lucide-react';
 import { SHELF_BY_ID } from '../services/store/registry';
 import { cooldownLeft, formatUpdated, manualRefresh, waitLabel, type ManualResult } from '../services/store/refresh';
+import { RESULT_MESSAGE, startRefreshAll, useRefreshAll } from '../services/store/refreshAll';
 import { moveItem } from '../services/store/prefs';
 
 interface Props {
@@ -15,14 +16,6 @@ interface Props {
 }
 
 const KIND_DOT: Record<string, string> = { official: 'bg-emerald-600', fallback: 'bg-amber-500', generated: 'bg-sky-500', curated: 'bg-stone-400' };
-
-const MESSAGE: Record<ManualResult, string> = {
-  updated: 'Updated with new books',
-  unchanged: 'Checked: already up to date',
-  failed: 'Could not update; your saved list is kept',
-  cooldown: 'Just checked; try again in a few minutes',
-  unsupported: '',
-};
 
 const iconBtn = 'w-9 h-9 shrink-0 rounded-full flex items-center justify-center border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] active:scale-95 transition-all disabled:opacity-40';
 
@@ -70,37 +63,19 @@ export function StoreCustomize({ order, hidden, onReorder, onToggle, onDone, onR
     const result = await manualRefresh(source);
     if (alive.current) {
       setBusy(b => { const next = new Set(b); next.delete(id); return next; });
-      setNotes(n => ({ ...n, [id]: MESSAGE[result] }));
+      setNotes(n => ({ ...n, [id]: RESULT_MESSAGE[result] }));
       redraw(x => x + 1);
     }
     return result;
   };
 
-  // Refresh all: the shelves that are showing, ONE AT A TIME, each through the same rate-limited manualRefresh as its own button
-  // (so a shelf checked in the last few minutes is skipped, and no source gets more than one request at a time from here).
-  const [all, setAll] = useState<{ done: number; total: number } | null>(null);
-  const [allNote, setAllNote] = useState('');
-  const refreshAll = async () => {
+  // Refresh all runs in the app, not in this panel (services/store/refreshAll.ts): Done does not stop it, and its progress is shown here and on Discover
+  const ra = useRefreshAll();
+  const all = ra.running ? { done: ra.done, total: ra.total } : null;
+  const allNote = ra.note;
+  const refreshAll = () => {
     const ids = order.filter(id => !hidden.includes(id) && SHELF_BY_ID[id]?.source?.refresh);
-    if (!ids.length || all) return;
-    const tally = { changed: 0, current: 0, failed: 0, skipped: 0 };
-    setAllNote('');
-    setAll({ done: 0, total: ids.length });
-    for (const [i, id] of ids.entries()) {
-      if (!alive.current) return;
-      const r = await refresh(id);
-      if (r === 'updated') tally.changed++;
-      else if (r === 'unchanged') tally.current++;
-      else if (r === 'failed') tally.failed++;
-      else tally.skipped++;
-      if (alive.current) setAll({ done: i + 1, total: ids.length });
-    }
-    if (!alive.current) return;
-    setAll(null);
-    const parts = [`${tally.changed} updated`, `${tally.current} already up to date`];
-    if (tally.skipped) parts.push(`${tally.skipped} checked recently`);
-    if (tally.failed) parts.push(`${tally.failed} could not update (saved lists kept)`);
-    setAllNote(`${parts.join(', ')}.${hidden.length ? ' Hidden shelves were not refreshed.' : ''}`);
+    void startRefreshAll(ids, hidden.length);
   };
 
   const key = (e: React.KeyboardEvent, id: string) => {
@@ -175,7 +150,7 @@ export function StoreCustomize({ order, hidden, onReorder, onToggle, onDone, onR
                 </div>
                 {info && <div className="text-[10px] text-[#706256]/80 dark:text-[#a89a8a]/80 leading-snug">{info.source}</div>}
                 {info?.handle && <div className="text-[10px] text-[#706256]/80 dark:text-[#a89a8a]/80 leading-snug">handle: <code className="font-mono">{info.handle}</code></div>}
-                {notes[id] && <div className="text-[11px] text-[#2e5934] dark:text-[#86b880]" role="status">{notes[id]}</div>}
+                {(notes[id] || ra.notes[id]) && <div className="text-[11px] text-[#2e5934] dark:text-[#86b880]" role="status">{notes[id] || ra.notes[id]}</div>}
               </div>
 
               <button type="button" onClick={() => onToggle(id)} className={iconBtn} aria-label={isHidden ? `Show ${def.title}` : `Hide ${def.title}`} aria-pressed={isHidden} title={isHidden ? 'Show this shelf' : 'Hide this shelf'}>
@@ -185,12 +160,12 @@ export function StoreCustomize({ order, hidden, onReorder, onToggle, onDone, onR
                 <button
                   type="button"
                   onClick={() => refresh(id)}
-                  disabled={busy.has(id)}
+                  disabled={busy.has(id) || ra.currentId === id}
                   className={iconBtn}
                   aria-label={`Refresh ${def.title}`}
                   title={wait > 0 ? `Checked recently. Try again in ${waitLabel(wait)}.` : 'Refresh this shelf now'}
                 >
-                  <RefreshCw className={`w-4 h-4 ${busy.has(id) ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-4 h-4 ${busy.has(id) || ra.currentId === id ? 'animate-spin' : ''}`} />
                 </button>
               ) : (
                 <span className="w-9 shrink-0" aria-hidden="true" />
