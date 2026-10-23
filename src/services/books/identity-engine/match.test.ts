@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { ExternalIdentifier, IdentityRecord, TitleAlias } from './model';
 import { fromLegacyBook, isSearchCandidate, legacySameWork, matchIdentity, mayAutoMerge, normalizeIdentityText, validIsbn10, validIsbn13 } from './match';
+import { sameWork, authorListMatches } from './compat';
 
 const olWork = (value: string): ExternalIdentifier => ({ source: 'openlibrary', kind: 'work', value });
 const base = (title: string, author: string, identifiers: ExternalIdentifier[] = []): IdentityRecord => ({ title, author, identifiers, work: { identifiers: identifiers.filter(i => i.kind === 'work'), canonicalTitle: title, relatedWorkIds: [], titleAliases: [] } });
@@ -106,6 +107,21 @@ test('a translation title requires an explicit evidence link; title resemblance 
   assert.equal(result.status, 'probable');
   assert.equal(result.evidence[0]?.basis, 'catalog-link');
   assert.equal(matchIdentity(base('The Outsider', 'Albert Camus'), base('The Stranger', 'Albert Camus')).status, 'distinct-work');
+});
+
+test('a known English-title link plus the same author is safe for Library duplicate detection', () => {
+  const japanese = { id: 'personal-jp', title: '変な絵', author: 'Uketsu' };
+  const english = { id: 'personal-en', title: 'Strange Pictures', author: 'Uketsu' };
+  assert.equal(sameWork(japanese as any, english as any), true);
+  assert.equal(sameWork(japanese as any, english as any, true), true);
+});
+
+test('short author-name variants are Search evidence, not Library merge evidence', () => {
+  const full = { id: 'full', title: 'The Discomfort of Evening', author: 'Marieke Lucas Rijneveld' };
+  const short = { id: 'short', title: 'The Discomfort of Evening', author: 'Lucas Rijneveld' };
+  assert.equal(authorListMatches(full.author, short.author), true);
+  assert.equal(sameWork(full as any, short as any), true);
+  assert.equal(sameWork(full as any, short as any, true), false);
 });
 
 test('legacy adapter preserves personal IDs and recognizes only well-formed embedded provider IDs', () => {

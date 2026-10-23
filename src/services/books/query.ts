@@ -1,4 +1,5 @@
 import { cleanIsbn } from './identity';
+import { normalizeIdentityText } from './identity-engine/match';
 import { isMoodQuery } from './keywords';
 
 /**
@@ -16,9 +17,8 @@ import { isMoodQuery } from './keywords';
  * A separate Author box (Add Book) is merged in as the author.
  */
 
-/** Lower-case, accent-free, letters and digits only: "Brontë!" and "bronte" compare equal. */
-export const normQ = (s: string) =>
-  s.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/&/g, ' and ').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+/** Shared identity normalization for query text; Latin accents fold while other scripts remain searchable. */
+export const normQ = (s: string) => normalizeIdentityText(s);
 
 const STOP = new Set(['a', 'an', 'the', 'of', 'and', 'or', 'in', 'on', 'to', 'for', 'by', 'with', 'at', 'is', 'it']);
 

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 const store = new Map<string, string>();
 (globalThis as any).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
 
-import { searchBooksLive, searchLocal, searchRelevance, forgetRecentSearchesForTests } from './search';
+import { searchBooksLive, searchLocal, searchRelevance, forgetRecentSearchesForTests, rank } from './search';
 import { forgetSeenForTests } from './localIndex';
 import { applySearchView, genreOptions, DEFAULT_SEARCH_VIEW } from './searchView';
 
@@ -179,6 +179,28 @@ test('a well-rated book that merely starts with the word does not pass an exact 
   const exact = book({ title: 'Verity', author: 'Colleen Hoover' });
   const famous = book({ title: 'Verity Lambert: A Life in Television', author: 'Verity Lambert', ratingAverage: 4.8, ratingCount: 50000, coverUrl: 'https://example.test/c.jpg' });
   assert.ok(searchRelevance(exact, 'verity', '', true) > searchRelevance(famous, 'verity', '', true));
+});
+
+test('both same-title Witch books remain visible, and metadata cannot lift a subtitle above either exact title', () => {
+  const freida = book({ id: 'freida', title: 'The Witch', author: 'Freida McFadden', ratingCount: 20, ratingAverage: 3.8 });
+  const marie = book({ id: 'marie', title: 'The Witch', author: 'Marie Ndiaye', ratingCount: 10, ratingAverage: 3.7 });
+  const subtitle = book({ id: 'subtitle', title: 'The Witch: A Novel', author: 'Another Author', ratingCount: 50000, ratingAverage: 4.9, coverUrl: 'https://example.test/c.jpg', pageCount: 500, year: '2025' });
+  const found = rank([subtitle, marie, freida], parseQuery('The Witch'), 10);
+  assert.deepEqual(new Set(found.slice(0, 2).map(b => b.id)), new Set(['freida', 'marie']));
+  assert.ok(found.indexOf(subtitle) > found.indexOf(freida));
+  assert.ok(found.indexOf(subtitle) > found.indexOf(marie));
+});
+
+test('title search normalization keeps non-Latin text usable through the shared identity normalizer', () => {
+  const japanese = book({ id: 'jp', title: '変な絵', author: 'Uketsu' });
+  assert.deepEqual(searchLocal('変な絵', '', 10, [japanese], 'title').map(b => b.id), ['jp']);
+});
+
+test('Author scope keeps a provider candidate with missing author metadata as an uncertain result', () => {
+  const unknown = book({ id: 'unknown-author', title: 'The Witch', author: 'Unknown Author' });
+  const found = rank([unknown], parseQuery('Freida McFadden', '', true, 'author'), 10);
+  assert.equal(found.length, 1);
+  assert.equal(found[0].id, unknown.id);
 });
 
 test('market-report spam and "study guide" editions rank far down unless asked for', () => {

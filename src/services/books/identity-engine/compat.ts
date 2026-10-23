@@ -1,0 +1,278 @@
+import type { Book, BookIdentity } from '../../../types';
+import { authorNames } from '../authorAliases';
+import { authorNamesAreSearchVariants, fromLegacyBook, matchIdentity, mayAutoMerge, normalizeAuthorIdentity, normalizeIdentityText } from './match';
+import type { IdentityRecord, TitleAlias } from './model';
+
+/**
+ * The single source of truth for "which book is this?".
+ *
+ * - `Book.id` is GreatReads' own record id. It is never derived from, or changed by, anything here.
+ * - WORK identity: the book as a creation. Open Library work id, or (when there is none) normalised title + author.
+ * - EDITION identity: one publication. ISBN-13/10, Open Library edition id, Google Books volume id.
+ */
+
+const strip = normalizeIdentityText;
+
+/** "The Fruit Fly: A Novel" -> "fruit fly". Subtitles, brackets and leading articles never block a match. */
+export function titleKey(title = ''): string {
+  let t = title.normalize('NFKC');
+  t = t.replace(/\(.*?\)|\[.*?\]/g, ' ').split(/\s*[:–—]\s+|\s+-\s+/)[0];
+  t = strip(t);
+  return t.replace(/^(the|a|an) /, '');
+}
+
+/** Subtitles that only describe the kind of book, so they never make two titles different books. */
+const GENERIC_SUBTITLE = /^(an? |the )?(novel|memoir|story|stories|thriller|mystery|romance|true story|short stories|collection|essays|biography|play|poems?)( of .*)?$/;
+
+/** Publisher / club / retailer wording ("A Reese's Book Club Pick", "Special Edition", "Now a Major Film"): marketing, not part of the title. */
+const MARKETING_SUBTITLE = /\b(book club|club pick|pick|edition|bestsell\w*|best seller|winner|award|prize|booker|pulitzer|oprah|reese|now a|major (motion )?picture|netflix|tv series|movie tie|illustrated|annotated|with a new|new (foreword|introduction|afterword)|signed|deluxe|collector)\b/;
+
+/**
+ * A subtitle that describes the book rather than names a volume of a series ("Love, Loss, and Liberation"; "How to ..."). Series
+ * volumes ("Mistborn: The Final Empire") are short and have no list commas, so they stay distinct. Judged on the raw text, because
+ * the commas are gone once it is normalised.
+ */
+function isDescriptiveSubtitle(raw: string, norm: string): boolean {
+  if (MARKETING_SUBTITLE.test(norm)) return true;
+  if (/,/.test(raw)) return true; // a list: "Love, Loss, and Liberation"
+  if (/^(how|why|what|when|where|who|a |an )/.test(norm)) return true;
+  return norm.split(' ').filter(Boolean).length >= 6;
+}
+
+/** "Mistborn: The Final Empire" -> "final empire". Empty when there is no subtitle or it only describes / markets the book ("A Novel"). */
+export function subtitleKey(title = ''): string {
+  const t = strip(title).replace(/&/g, ' and ').replace(/\(.*?\)|\[.*?\]/g, ' ');
+  const parts = t.split(/\s*[:–—]\s+|\s+-\s+/);
+  if (parts.length < 2) return '';
+  const rawSub = parts.slice(1).join(' ');
+  const sub = strip(rawSub).replace(/^(the|a|an) /, '');
+  return !sub || GENERIC_SUBTITLE.test(sub) || /^(a |an |the )?novel\b/.test(sub) || isDescriptiveSubtitle(rawSub, sub) ? '' : sub;
+}
+
+/** First author only: "Neil Gaiman & Terry Pratchett" -> "Neil Gaiman"; "King, Lily" -> "Lily King". */
+export function primaryAuthor(author = ''): string {
+  const parts = author.split(/\s*(?:&|;|\/|\band\b)\s*/i).filter(Boolean);
+  const first = parts[0] || '';
+  if (parts.length === 1 && /^[^,]+,[^,]+$/.test(first)) {
+    const [last, given] = first.split(',');
+    return `${given.trim()} ${last.trim()}`;
+  }
+  return first.trim();
+}
+
+/** Normalised full name of the first author: "lily king". */
+export function authorKey(author = ''): string {
+  return normalizeAuthorIdentity(primaryAuthor(author));
+}
+
+/** "All the Way to the River: Love, Loss, and Liberation" -> "All the Way to the River". The title as a search engine most often has it. */
+export const mainTitle = (title = ''): string => title.split(/\s*[:–—]\s+|\s+-\s+/)[0].trim() || title;
+
+/**
+ * "The Discomfort of Evening, De avond is ongemak" is one book under two titles (English, original). When the main title is
+ * exactly two comma-separated halves of at least two words each, both halves are returned; otherwise [] ("Hello, Goodbye" and
+ * "Shine, Shine, Shine" are single titles).
+ */
+export function dualTitleParts(title = ''): string[] {
+  const parts = mainTitle(title).replace(/\(.*?\)|\[.*?\]/g, ' ').split(/\s*,\s+/).map(p => p.trim()).filter(Boolean);
+  if (parts.length !== 2) return [];
+  return parts.every(p => titleKey(p).split(' ').filter(Boolean).length >= 2) ? parts : [];
+}
+
+/**
+ * Narrow English aliases of a famous title catalogued under another language's name (Camus: "L'Etranger" is "The Stranger" / "The Outsider").
+ * One-way on purpose: the foreign title also answers to its English names, but the English names do not answer to each other
+ * ("The Outsider" by Stephen King must never match "The Stranger"). Authors are still compared by every caller.
+ */
+const TITLE_ALIASES: Record<string, string[]> = {
+  'l etranger': ['stranger', 'outsider'],
+  'etranger': ['stranger', 'outsider'],
+};
+
+/**
+ * The other way round, for searching: what to ask the catalogues so that a search for the ORIGINAL title also brings up the English translation
+ * ("L'Étranger" -> "The Stranger"). Each entry is a plain "Title Author" query; a title that is not listed adds nothing.
+ */
+const ENGLISH_EDITIONS: Record<string, string[]> = {
+  'l etranger': ['The Stranger Albert Camus', 'The Outsider Albert Camus'],
+  'etranger': ['The Stranger Albert Camus', 'The Outsider Albert Camus'],
+};
+/**
+ * The English title of a few books whose catalogues do not link the translation to the original, so no lookup can find it ("変な絵" -> "Strange Pictures").
+ * Only the fallback: a catalogue's own English edition title (resolve.ts) is used first.
+ */
+const ENGLISH_TITLES: Record<string, string> = { '変な絵': 'Strange Pictures', 'l etranger': 'The Stranger' };
+export const knownEnglishTitle = (title = ''): string => {
+  // the title as written, in compatibility form (full-width letters, ...), and each half of a dual title ("Strange Pictures, 変な絵")
+  for (const k of [titleKey(title), titleKey(title.normalize('NFKC')), ...dualTitleParts(title).map(titleKey)]) if (ENGLISH_TITLES[k]) return ENGLISH_TITLES[k];
+  return '';
+};
+export const englishEditionQueries = (title = ''): string[] => ENGLISH_EDITIONS[titleKey(title)] || [];
+
+/** Every main-title key a title answers to: the whole main title, plus each half of a dual title, plus any narrow alias. */
+export function titleKeys(title = ''): string[] {
+  // a title on the known-English list is the same book as its English title ("変な絵" / "Strange Pictures"): the saved record and the copy drawn with the English title stay ONE book
+  const en = knownEnglishTitle(title);
+  const keys = [titleKey(title), ...dualTitleParts(title).map(titleKey), ...(en ? [titleKey(en)] : [])].filter(Boolean);
+  return [...new Set([...keys, ...keys.flatMap(k => TITLE_ALIASES[k] || [])])];
+}
+
+/**
+ * What to type into a catalogue search for this book, best first: the title as given, without its subtitle, then each half of a
+ * dual title. Searches stop at the first form that finds the book, so a book listed under a shorter or translated title is still found.
+ */
+export function titleVariants(title = ''): string[] {
+  const t = title.trim();
+  return [...new Set([t, mainTitle(t), ...dualTitleParts(t)].map(x => x.trim()).filter(x => x.length > 1))];
+}
+
+/**
+ * The ways one author's name is written, for a search that must find the book however the catalogue spells it:
+ * as given, with a hyphen closed up ("al-Harthi" -> "alHarthi": catalogues write Jokha Alharthi), and with it as a space.
+ */
+export function authorVariants(author = ''): string[] {
+  const out = [author.trim()];
+  if (/[-\u2010\u2011\u2013]/.test(author)) out.push(author.replace(/[-\u2010\u2011\u2013]/g, '').trim(), author.replace(/[-\u2010\u2011\u2013]/g, ' ').replace(/\s+/g, ' ').trim());
+  // A name with a middle name ("Marieke Lucas Rijneveld") is often catalogued without it ("Marieke Rijneveld") or by its last two parts ("Lucas Rijneveld")
+  const parts = author.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 3 && !/[,;&]| and /.test(author)) out.push(`${parts[0]} ${parts[parts.length - 1]}`, parts.slice(-2).join(' '));
+  return [...new Set(out.filter(Boolean))];
+}
+
+export const isUnknownAuthor = (author = '') => {
+  const k = authorKey(author);
+  return !k || /^(unknown|featured)( author)?$/.test(k);
+};
+
+/* ---------------- ISBN ---------------- */
+
+export function cleanIsbn(raw = ''): string {
+  const s = String(raw).replace(/[^0-9xX]/g, '').toUpperCase();
+  return s.length === 10 || s.length === 13 ? s : '';
+}
+
+export function isbn10to13(isbn10: string): string {
+  const core = `978${isbn10.slice(0, 9)}`;
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += Number(core[i]) * (i % 2 ? 3 : 1);
+  return core + String((10 - (sum % 10)) % 10);
+}
+
+export function isbn13to10(isbn13: string): string {
+  if (!isbn13.startsWith('978')) return '';
+  const core = isbn13.slice(3, 12);
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += Number(core[i]) * (10 - i);
+  const check = (11 - (sum % 11)) % 11;
+  return core + (check === 10 ? 'X' : String(check));
+}
+
+/** Any ISBN-looking string -> both forms where possible. */
+export function isbnPair(raw?: string): Pick<BookIdentity, 'isbn10' | 'isbn13'> {
+  const s = cleanIsbn(raw);
+  if (!s) return {};
+  if (s.length === 13) return { isbn13: s, isbn10: isbn13to10(s) || undefined };
+  return { isbn10: s, isbn13: isbn10to13(s) };
+}
+
+/* ---------------- ids ---------------- */
+
+export const workIdFromKey = (key?: string): string | undefined => key?.match(/OL\d+W/)?.[0];
+
+/**
+ * Everything we know about a book's outside identity: what is saved on it, plus what its (legacy) record id reveals.
+ * Books saved before identity existed still carry "ol_/works/OL123W"-style or "gb_<volume>" ids, so they get an identity too.
+ */
+export function identityOf(b: Pick<Book, 'id' | 'identity'>): BookIdentity {
+  const out: BookIdentity = { ...(b.identity || {}) };
+  const id = String(b.id);
+  if (!out.olWork) out.olWork = id.startsWith('ol_') ? id.match(/OL\d+W/)?.[0] : undefined;
+  if (!out.gbVolume && id.startsWith('gb_')) out.gbVolume = id.slice(3);
+  if (!out.isbn13 && id.startsWith('isbn_')) Object.assign(out, isbnPair(id.slice(5)));
+  Object.keys(out).forEach(k => (out as any)[k] === undefined && delete (out as any)[k]);
+  return out;
+}
+
+export function mergeIdentity(a?: BookIdentity, b?: BookIdentity): BookIdentity | undefined {
+  if (!a && !b) return undefined;
+  const out: BookIdentity = { ...(b || {}), ...Object.fromEntries(Object.entries(a || {}).filter(([, v]) => v)) };
+  return Object.keys(out).length ? out : undefined;
+}
+
+/* ---------------- matching ---------------- */
+
+function identityRecord(b: Pick<Book, 'id' | 'identity' | 'title' | 'author'> & Partial<Pick<Book, 'originalTitle'>>): IdentityRecord {
+  const base = fromLegacyBook({ id: b.id, title: b.title, author: b.author, identity: identityOf(b) });
+  const verifiedNames = authorNames(b.author || '').filter(n => authorKey(n) !== authorKey(b.author || ''));
+  if (verifiedNames.length) base.authors = [{
+    identifiers: [], canonicalName: b.author,
+    aliases: verifiedNames.map(name => ({ name, evidence: { basis: 'legacy-verified-alias' } })),
+  }];
+  const aliases = new Map<string, TitleAlias>();
+  const addAlias = (title: string, kind: TitleAlias['kind'] = 'alternate-title') => {
+    const key = normalizeIdentityText(title);
+    if (key && key !== normalizeIdentityText(b.title)) aliases.set(key, { title, kind, evidence: { basis: 'known-title-map' } });
+  };
+  for (const title of dualTitleParts(b.title)) addAlias(title, 'dual-title');
+  if (b.originalTitle) addAlias(b.originalTitle, 'translation');
+  const english = knownEnglishTitle(b.title);
+  if (english) addAlias(english, 'translation');
+  const aliasDisplay: Record<string, string> = { stranger: 'The Stranger', outsider: 'The Outsider' };
+  for (const key of [titleKey(b.title), ...dualTitleParts(b.title).map(titleKey)]) {
+    for (const alias of TITLE_ALIASES[key] || []) if (aliasDisplay[alias]) addAlias(aliasDisplay[alias], 'translation');
+  }
+  if (base.work) base.work.titleAliases = [...aliases.values()];
+  return base;
+}
+
+export function authorsCompatible(a = '', b = ''): boolean {
+  const ka = authorKey(a), kb = authorKey(b);
+  if (!ka || !kb) return false;
+  const left = identityRecord({ id: '', title: 'author identity', author: a });
+  const right = identityRecord({ id: '', title: 'author identity', author: b });
+  const result = matchIdentity(left, right);
+  return (result.status === 'probable' || result.status === 'confirmed') && !result.evidence.some(e => e.basis === 'author-name-variant');
+}
+
+/** Does a result's author (or author list) include the wanted author? Unknown wanted author matches anything. */
+export function authorListMatches(candidate: string | string[] | undefined, want: string): boolean {
+  if (isUnknownAuthor(want)) return true;
+  const list = Array.isArray(candidate) ? candidate : candidate ? [candidate] : [];
+  return list.some(c => authorsCompatible(c, want) || authorNamesAreSearchVariants(c, want));
+}
+
+/**
+ * Same title? The main title must match (either half of an "English, Original" dual title counts). Subtitles only matter when BOTH
+ * titles have a series-style one and they clearly differ ("Mistborn: The Final Empire" vs "Mistborn: The Well of Ascension"), so
+ * "The Fruit Fly: A Novel", a club or edition subtitle, or a one-sided subtitle still match, and a shortened subtitle still matches the full one.
+ */
+export const titlesMatch = (a = '', b = ''): boolean => {
+  const left = identityRecord({ id: '', title: a, author: '__title_query__' });
+  const right = identityRecord({ id: '', title: b, author: '__title_query__' });
+  const result = matchIdentity(left, right);
+  return result.status === 'confirmed' || result.status === 'probable' || result.status === 'ambiguous';
+};
+
+/** Same publication: a shared ISBN or edition/volume id. */
+export function sameEdition(a: Pick<Book, 'id' | 'identity'> & Partial<Pick<Book, 'title' | 'author'>>, b: Pick<Book, 'id' | 'identity'> & Partial<Pick<Book, 'title' | 'author'>>): boolean {
+  const left = identityRecord({ ...a, title: a.title || '', author: a.author || '' });
+  const right = identityRecord({ ...b, title: b.title || '', author: b.author || '' });
+  const result = matchIdentity(left, right);
+  return result.status === 'confirmed' && result.evidence.some(e => e.basis === 'same-edition');
+}
+
+/**
+ * Same book (any edition)? Shared work or edition ids win; otherwise the titles must match and the authors must not
+ * contradict each other. `strict` is the personal-record policy: it accepts confirmed IDs or exact normalized title
+ * and author evidence; Search and read-only enrichment may also use a probable match.
+ */
+export function sameWork(a: Pick<Book, 'id' | 'identity' | 'title' | 'author'> & Partial<Pick<Book, 'originalTitle'>>, b: Pick<Book, 'id' | 'identity' | 'title' | 'author'> & Partial<Pick<Book, 'originalTitle'>>, strict = false): boolean {
+  const result = matchIdentity(identityRecord(a), identityRecord(b));
+  return mayAutoMerge(result, strict ? 'library-merge' : 'search');
+}
+
+/** A stable key for caches: the exact edition if known, else the work, else title + author. */
+export function bookKey(b: Pick<Book, 'id' | 'identity' | 'title' | 'author'>): string {
+  const i = identityOf(b);
+  return i.isbn13 ? `isbn:${i.isbn13}` : i.olWork ? `work:${i.olWork}` : `ta:${titleKey(b.title)}|${authorKey(b.author)}`;
+}

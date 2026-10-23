@@ -13,7 +13,7 @@ export interface ExternalIdentifier {
   scheme?: 'isbn10' | 'isbn13' | 'provider-id';
 }
 
-export type EvidenceBasis = 'provider-link' | 'same-edition' | 'author-authority' | 'owner-confirmed' | 'catalog-link' | 'known-title-map' | 'legacy-verified-alias' | 'author-initial' | 'exact-title-author';
+export type EvidenceBasis = 'provider-link' | 'same-edition' | 'author-authority' | 'owner-confirmed' | 'catalog-link' | 'known-title-map' | 'legacy-verified-alias' | 'author-initial' | 'author-name-variant' | 'explicit-title-author' | 'exact-title-author';
 export interface IdentityEvidence {
   basis: EvidenceBasis;
   source?: IdentitySource;

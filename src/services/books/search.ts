@@ -34,8 +34,8 @@ const classicish = (b: Book): boolean => {
 };
 
 /** An exact title match is worth more than anything else can add on top of a weaker title match (popularity, rating, metadata, cover, keywords: at most ~50). */
-const EXACT_TITLE = 130;
-const EXACT_TITLE_KEY = 125; // the same title once a subtitle / edition note is dropped ("Verity: Special Edition" -> "Verity")
+const EXACT_TITLE = 190;
+const EXACT_TITLE_KEY = 125; // a title after its subtitle / edition note is dropped: useful evidence, but weaker than the full exact title
 /** A full author name (two or more words, all whole words of the author) must stay above an exact title match by somebody else ("jane austen" -> her books before "Jane Austen: A Life"). */
 const AUTHOR_FULL_NAME = 170;
 /** One word of an author's name: only counts when the title did not already match, otherwise a title that merely CONTAINS the word and an author who has it stack up above the exact title. */
@@ -44,8 +44,8 @@ const AUTHOR_PARTIAL = 60;
 /**
  * How well a result fits what was typed, in this order of importance:
  * exact / strong title match -> author match -> keyword match -> popularity (rating count) -> rating quality -> metadata completeness -> cover -> a small recency nudge.
- * The title tier is worth up to 130 (an exact title); everything after it adds only a few points each, so a better title match nearly always
- * wins, and among similar title matches the established, well-documented book comes first. One author word never stacks on a title match.
+ * An exact title normally starts at 190 so secondary bonuses cannot displace it with a weaker title match. Broad popular searches scale it down to 130 before
+ * popularity weighting, so an obscure title hit does not crowd out widely read books about a topic. One author word never stacks on a title match.
  *
  * `partial` says the last word typed may be only a beginning ("harry pot"): it then matches the start of a word, a little below a whole word.
  */
@@ -78,7 +78,7 @@ export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial =
     // books about the subject are not buried under a shelf of obscure titles that merely contain the word.
     // A topic / genre search ("fantasy", "psychology") asks what a book is ABOUT: a title that merely contains the word ("The Psychology of Fantasy") counts for much less
     const titleWeight = (popular ? 0.45 + 0.55 * established(b) : 1) * (topic ? 0.35 : 1);
-    if (tier >= 0) score += tier * titleWeight;
+    if (tier >= 0) score += (popular && tier === EXACT_TITLE ? 130 : tier) * titleWeight;
     else {
       const hits = need.reduce((n, w) => n + tokenHits(w, tWords, partial && w === lastNeed), 0);
       score += need.length ? (42 * hits) / need.length : 0;
@@ -167,6 +167,7 @@ function inScope(b: Book, q: ParsedQuery): boolean {
     return need.every((w, i) => tokenHits(w, words, q.partial && i === need.length - 1) > 0);
   }
   if (q.scope === 'author') {
+    if (isUnknownAuthor(b.author)) return true; // a provider may have returned the right book without its author metadata; keep it separate as uncertain
     const qa = q.author.split(' ').filter(Boolean);
     const words = normQ(b.author).split(' ').filter(Boolean);
     return qa.every((w, i) => tokenHits(w, words, i === qa.length - 1) > 0);
