@@ -206,7 +206,11 @@ export function mergeRemoteLibrary(local: ReadingState, collections: Collection[
     }
   }
   const mergedCollections = new Map(collections.map(item => [item.id, { ...item, bookIds: [...item.bookIds] }]));
-  if (preferRemote) for (const collection of mergedCollections.values()) collection.bookIds = [];
+  // Applying the cloud copy removes only what the cloud explicitly marks as removed; entries it has no record of stay (they are not deletions).
+  if (preferRemote) {
+    const removed = new Set(remote.memberships.filter(row => row.deleted_at).map(row => `${String(row.membership_data?.local_shelf_id || '')}|${String(row.membership_data?.local_book_id || bookIdByCloud.get(row.library_book_id) || '')}`));
+    for (const collection of mergedCollections.values()) collection.bookIds = collection.bookIds.filter(id => !removed.has(`${collection.id}|${id}`));
+  }
   const coverPicks = { ...localCoverPicks };
   for (const row of remote.books) {
     if (row.deleted_at || !row.personal_cover || !row.book_snapshot) continue;
@@ -509,8 +513,10 @@ function stableJson(value: unknown): string {
 }
 
 function buildSnapshotWithIds(snapshot: LibrarySyncSnapshot, libraryIds: Map<string, string>, shelfIds: Map<string, string>): LibrarySyncSnapshot {
-  const annotations = snapshot.annotations.map(row => ({ ...row, library_book_id: libraryIds.get(String(row.extra_data.local_book_id)) || row.library_book_id }));
-  const memberships = snapshot.memberships.map(row => ({ ...row, library_book_id: libraryIds.get(String(row.membership_data.local_book_id)) || row.library_book_id, shelf_id: shelfIds.get(String(row.membership_data.local_shelf_id)) || row.shelf_id }));
+  // A note or shelf entry for a book that has no cloud row (hidden or removed from the library) cannot be filed: the database requires a real book id,
+  // and one such row would make the whole sync fail every time. It is skipped; everything else still syncs.
+  const annotations = snapshot.annotations.map(row => ({ ...row, library_book_id: libraryIds.get(String(row.extra_data.local_book_id)) || row.library_book_id })).filter(row => !!row.library_book_id);
+  const memberships = snapshot.memberships.map(row => ({ ...row, library_book_id: libraryIds.get(String(row.membership_data.local_book_id)) || row.library_book_id, shelf_id: shelfIds.get(String(row.membership_data.local_shelf_id)) || row.shelf_id })).filter(row => !!row.library_book_id && !!row.shelf_id);
   return { ...snapshot, annotations, memberships };
 }
 
