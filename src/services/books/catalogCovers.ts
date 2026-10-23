@@ -73,23 +73,39 @@ const index = (): Map<string, string> => {
 export const getCatalogCover = (key: string): string | undefined => index().get(key);
 
 /* ---- the whole work (description, bio, facts, rating) for Book Info ---- */
-let byInfo: Map<string, CatalogWork> | undefined;
-let byIsbn: Map<string, CatalogWork> | undefined;
+let byInfo: Map<string, CatalogWork[]> | undefined;
+let byIsbn: Map<string, CatalogWork[]> | undefined;
 let infoIndexVersion = -1;
 const buildInfoIndex = () => {
   if (infoIndexVersion === version && byInfo && byIsbn) return;
   byInfo = new Map(); byIsbn = new Map();
+  const add = (map: Map<string, CatalogWork[]>, key: string, work: CatalogWork) => {
+    const list = map.get(key) || [];
+    if (!list.some(x => x.id === work.id)) list.push(work);
+    map.set(key, list);
+  };
   for (const w of Object.values(catalogCopy().works)) {
     for (const t of [w.title, ...(w.aliases || [])]) {
-      for (const a of [w.author, ...(w.authorAliases || [])]) { const k = `${titleKey(t)}|${authorKey(a || '')}`; if (!byInfo.has(k)) byInfo.set(k, w); }
+      for (const a of [w.author, ...(w.authorAliases || [])]) add(byInfo, `${titleKey(t)}|${authorKey(a || '')}`, w);
     }
-    for (const e of w.editions || []) for (const i of [e.isbn13, e.isbn10]) if (i && !byIsbn.has(i)) byIsbn.set(i, w);
+    for (const e of w.editions || []) for (const i of [e.isbn13, e.isbn10]) if (i) add(byIsbn, i.replace(/[^0-9Xx]/g, '').toUpperCase(), w);
   }
   infoIndexVersion = version;
 };
-/** The catalog's published work for a book: by ISBN when the book has one, else by title + author (aliases included). */
+/**
+ * The catalog's published work for a book: by ISBN when the book has one, else by title + author (aliases included).
+ * When two published works fit equally well (duplicates while the owner is still reconciling records), none is chosen:
+ * storage order must never decide which description or cover a reader sees.
+ */
 export function getCatalogWork(book: { title?: string; author?: string; isbn13?: string; isbn10?: string }): CatalogWork | undefined {
   buildInfoIndex();
-  const isbn = [book.isbn13, book.isbn10].map(i => (i || '').replace(/[^0-9Xx]/g, '')).find(i => i && byIsbn!.has(i));
-  return (isbn && byIsbn!.get(isbn)) || byInfo!.get(`${titleKey(book.title || '')}|${authorKey(book.author || '')}`);
+  const isbns = [book.isbn13, book.isbn10].map(i => (i || '').replace(/[^0-9Xx]/g, '').toUpperCase()).filter(i => i && byIsbn!.has(i));
+  if (isbns.length) {
+    const hits = new Map<string, CatalogWork>();
+    for (const i of isbns) for (const w of byIsbn!.get(i) || []) hits.set(w.id, w);
+    if (hits.size === 1) return [...hits.values()][0];
+    if (hits.size > 1) return undefined;
+  }
+  const named = byInfo!.get(`${titleKey(book.title || '')}|${authorKey(book.author || '')}`) || [];
+  return named.length === 1 ? named[0] : undefined;
 }
