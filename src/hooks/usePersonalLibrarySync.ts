@@ -4,7 +4,7 @@ import { currentUser, subscribeLibraryRealtime } from '../services/supabase';
 import { exportCoverPicks, restoreCoverPicks } from '../services/books/covers';
 import { loadCollections, type Collection } from '../services/libraryCollections';
 import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
-import { claimLibrarySyncAccount, hasLibrarySyncConflicts, hasPendingLibrarySync, librarySyncAccountAllowed, loadRemoteLibrary, markPersonalCollectionDeleted, markPersonalMembershipDeleted, mergeRemoteLibrary, syncLocalLibrary } from '../services/librarySync';
+import { claimLibrarySyncAccount, hasPendingLibrarySync, librarySyncAccountAllowed, loadRemoteLibrary, markPersonalCollectionDeleted, markPersonalMembershipDeleted, mergeRemoteLibrary, pausedLibraryKeys, resolveLibraryConflictsToCloud, syncLocalLibrary } from '../services/librarySync';
 
 export function usePersonalLibrarySync(args: {
   state: ReadingState; books: Book[]; collections: Collection[];
@@ -35,7 +35,8 @@ export function usePersonalLibrarySync(args: {
     const applyRemote = (remote: Awaited<ReturnType<typeof loadRemoteLibrary>>, preferRemote: boolean) => {
       if (!remote) return null;
       const localCollections = loadCollections();
-      const merged = mergeRemoteLibrary(stateRef.current, localCollections, remote, exportCoverPicks(), preferRemote);
+      // Records paused by a conflict stay exactly as they are here; everything else keeps refreshing.
+      const merged = mergeRemoteLibrary(stateRef.current, localCollections, remote, exportCoverPicks(), preferRemote, pausedLibraryKeys(userId));
       const stateJson = JSON.stringify(merged.state);
       if (stateJson !== JSON.stringify(stateRef.current)) {
         ignoreState.current = stateJson;
@@ -66,7 +67,7 @@ export function usePersonalLibrarySync(args: {
         ready.current = userId;
         retryDelay.current = 1500;
         cancelRealtime = subscribeLibraryRealtime(userId, async () => {
-          if (stopped.current || currentUser()?.id !== userId || hasPendingLibrarySync(userId) || hasLibrarySyncConflicts(userId)) return;
+          if (stopped.current || currentUser()?.id !== userId || hasPendingLibrarySync(userId)) return;
           const latest = await loadRemoteLibrary(userId);
           if (latest) applyRemote(latest, true);
         });
@@ -88,7 +89,7 @@ export function usePersonalLibrarySync(args: {
           retryDelay.current = Math.min(60_000, retryDelay.current * 2);
         } else {
           retryDelay.current = 1500;
-          if (ok && !hasLibrarySyncConflicts(userId)) {
+          if (ok) {
             const latest = await loadRemoteLibrary(userId);
             if (latest && !stopped.current && currentUser()?.id === userId) applyRemote(latest, true);
           }
@@ -96,12 +97,27 @@ export function usePersonalLibrarySync(args: {
       } finally { running.current = false; }
     };
 
+    /** "Use cloud": push this device's unconflicted edits first, then take the cloud copy of the paused records only. */
+    const useCloud = async () => {
+      if (stopped.current || ready.current !== userId || running.current || currentUser()?.id !== userId) return;
+      running.current = true;
+      try {
+        await syncLocalLibrary(userId, { state: stateRef.current, books: booksRef.current, collections: collectionsRef.current, coverPicks: exportCoverPicks() });
+        const remote = await loadRemoteLibrary(userId);
+        if (!remote || stopped.current || currentUser()?.id !== userId) return;
+        resolveLibraryConflictsToCloud(userId, remote);
+        applyRemote(remote, true);
+      } finally { running.current = false; }
+    };
+
     void bootstrap();
     const onOnline = () => { if (ready.current !== userId) void bootstrap(); else void flush(); };
+    const onUseCloud = () => void useCloud();
     const onManualSync = () => void flush();
     const onHide = () => void flush();
     window.addEventListener('online', onOnline);
     window.addEventListener('greatreads-library-sync-request', onManualSync);
+    window.addEventListener('greatreads-library-use-cloud', onUseCloud);
     window.addEventListener('pagehide', onHide);
     document.addEventListener('visibilitychange', onHide);
     const poll = setInterval(() => { if (ready.current === userId && hasPendingLibrarySync(userId)) void flush(); }, 20_000);
@@ -109,6 +125,7 @@ export function usePersonalLibrarySync(args: {
       stopped.current = true;
       window.removeEventListener('online', onOnline);
       window.removeEventListener('greatreads-library-sync-request', onManualSync);
+      window.removeEventListener('greatreads-library-use-cloud', onUseCloud);
       window.removeEventListener('pagehide', onHide);
       document.removeEventListener('visibilitychange', onHide);
       clearInterval(poll);
