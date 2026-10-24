@@ -4,7 +4,8 @@ import { currentUser, subscribeLibraryRealtime } from '../services/supabase';
 import { exportCoverPicks, restoreCoverPicks } from '../services/books/covers';
 import { loadCollections, type Collection } from '../services/libraryCollections';
 import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
-import { claimLibrarySyncAccount, hasPendingLibrarySync, librarySyncAccountAllowed, loadRemoteLibrary, markPersonalCollectionDeleted, markPersonalMembershipDeleted, mergeRemoteLibrary, syncLocalLibrary } from '../services/librarySync';
+import { claimLibrarySyncAccount, librarySyncAccountAllowed, loadRemoteLibrary, markPersonalCollectionDeleted, markPersonalMembershipDeleted, mergeRemoteLibrary, syncLocalLibraryDetailed } from '../services/librarySync';
+import { createLibrarySyncController, type SyncController } from '../services/librarySyncController';
 
 export function usePersonalLibrarySync(args: {
   state: ReadingState; books: Book[]; collections: Collection[];
@@ -21,6 +22,7 @@ export function usePersonalLibrarySync(args: {
   const stopped = useRef(false);
   const running = useRef(false);
   const retryDelay = useRef(1500);
+  const controller = useRef<SyncController | null>(null);
   const ignoreState = useRef('');
   const ignoreCollections = useRef('');
   const previousCollections = useRef(args.collections);
@@ -61,15 +63,20 @@ export function usePersonalLibrarySync(args: {
         if (!remote) throw new Error('incomplete cloud snapshot');
         const merged = applyRemote(remote, false);
         if (!merged) throw new Error('incomplete cloud snapshot');
-        const ok = await syncLocalLibrary(userId, { state: merged.state, books: booksRef.current, collections: merged.collections, coverPicks: merged.coverPicks });
-        if (!ok) throw new Error('cloud write deferred');
+        // the cloud was read a moment ago: no need to read it again before writing
+        const sent = await syncLocalLibraryDetailed(userId, { state: merged.state, books: booksRef.current, collections: merged.collections, coverPicks: merged.coverPicks }, { maxAgeMs: 30_000 });
+        if (!sent.ok) throw new Error('cloud write deferred');
         ready.current = userId;
         retryDelay.current = 1500;
-        cancelRealtime = subscribeLibraryRealtime(userId, async () => {
-          if (stopped.current || currentUser()?.id !== userId || hasPendingLibrarySync(userId)) return;
-          const latest = await loadRemoteLibrary(userId);
-          if (latest) applyRemote(latest, true);
+        const sync = createLibrarySyncController({
+          userId,
+          getArgs: () => ({ state: stateRef.current, books: booksRef.current, collections: collectionsRef.current, coverPicks: exportCoverPicks() }),
+          applyRemote: latest => void applyRemote(latest, true),
+          isCurrentUser: () => !stopped.current && currentUser()?.id === userId,
         });
+        controller.current = sync;
+        sync.noteSynced();
+        cancelRealtime = subscribeLibraryRealtime(userId, table => sync.realtime(table as Parameters<SyncController['realtime']>[0]), () => sync.connected());
       } catch {
         if (!stopped.current) {
           retryTimer = setTimeout(() => void bootstrap(), retryDelay.current);
@@ -78,42 +85,27 @@ export function usePersonalLibrarySync(args: {
       } finally { running.current = false; }
     };
 
-    const flush = async () => {
-      if (stopped.current || ready.current !== userId || running.current || currentUser()?.id !== userId) return;
-      running.current = true;
-      try {
-        const ok = await syncLocalLibrary(userId, { state: stateRef.current, books: booksRef.current, collections: collectionsRef.current, coverPicks: exportCoverPicks() });
-        if (!ok && !stopped.current) {
-          retryTimer = setTimeout(() => void flush(), retryDelay.current);
-          retryDelay.current = Math.min(60_000, retryDelay.current * 2);
-        } else {
-          retryDelay.current = 1500;
-          if (ok) {
-            const latest = await loadRemoteLibrary(userId);
-            if (latest && !stopped.current && currentUser()?.id === userId) applyRemote(latest, true);
-          }
-        }
-      } finally { running.current = false; }
-    };
-
     void bootstrap();
-    const onOnline = () => { if (ready.current !== userId) void bootstrap(); else void flush(); };
-    const onManualSync = () => void flush();
-    const onHide = () => void flush();
+    const onOnline = () => { if (ready.current !== userId) void bootstrap(); else controller.current?.resume(); };
+    const onManualSync = () => controller.current?.manual();
+    const onPageHide = () => controller.current?.hidden();
+    const onVisibility = () => { if (document.visibilityState === 'hidden') controller.current?.hidden(); else controller.current?.resume(); };
     window.addEventListener('online', onOnline);
     window.addEventListener('greatreads-library-sync-request', onManualSync);
-    window.addEventListener('pagehide', onHide);
-    document.addEventListener('visibilitychange', onHide);
-    const poll = setInterval(() => { if (ready.current === userId && hasPendingLibrarySync(userId)) void flush(); }, 20_000);
+    window.addEventListener('pagehide', onPageHide);
+    document.addEventListener('visibilitychange', onVisibility);
+    const poll = setInterval(() => { if (ready.current === userId) controller.current?.hidden(); }, 20_000); // sends anything still waiting
     return () => {
       stopped.current = true;
       window.removeEventListener('online', onOnline);
       window.removeEventListener('greatreads-library-sync-request', onManualSync);
-      window.removeEventListener('pagehide', onHide);
-      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', onPageHide);
+      document.removeEventListener('visibilitychange', onVisibility);
       clearInterval(poll);
       if (retryTimer) clearTimeout(retryTimer);
       cancelRealtime?.();
+      controller.current?.dispose();
+      controller.current = null;
     };
   }, [userId]);
 
@@ -121,10 +113,7 @@ export function usePersonalLibrarySync(args: {
     if (!userId || ready.current !== userId) return;
     const current = JSON.stringify(args.state);
     if (ignoreState.current && ignoreState.current === current) { ignoreState.current = ''; return; }
-    const timer = setTimeout(() => {
-      if (currentUser()?.id === userId && ready.current === userId) void syncLocalLibrary(userId, { state: stateRef.current, books: booksRef.current, collections: collectionsRef.current, coverPicks: exportCoverPicks() });
-    }, 500);
-    return () => clearTimeout(timer);
+    controller.current?.edited(); // stamped now, sent after a short pause
   }, [args.state, userId]);
 
   useEffect(() => {
@@ -138,9 +127,6 @@ export function usePersonalLibrarySync(args: {
       else for (const bookId of collection.bookIds) if (!next.bookIds.includes(bookId)) markPersonalMembershipDeleted(collection.id, bookId, userId);
     }
     previousCollections.current = args.collections;
-    const timer = setTimeout(() => {
-      if (currentUser()?.id === userId && ready.current === userId) void syncLocalLibrary(userId, { state: stateRef.current, books: booksRef.current, collections: collectionsRef.current, coverPicks: exportCoverPicks() });
-    }, 500);
-    return () => clearTimeout(timer);
+    controller.current?.edited();
   }, [args.collections, userId]);
 }

@@ -396,7 +396,7 @@ const setPendingLibrarySync = (userId: string, pending: boolean) => {
 /** Call the moment the person changes something, so the time of the change is known and a pull cannot overwrite it before it is pushed. */
 export const markLibraryDirty = (userId: string): void => setPendingLibrarySync(userId, true);
 
-type SyncArgs = { state: ReadingState; books: Book[]; collections: Collection[]; coverPicks: Record<string, CoverPick> };
+export type SyncArgs = { state: ReadingState; books: Book[]; collections: Collection[]; coverPicks: Record<string, CoverPick> };
 /** `stale`: the cloud holds newer values for some rows this device did not change; they were left alone and should be pulled. */
 export async function syncLocalLibraryDetailed(userId: string, args: SyncArgs, opts: { maxAgeMs?: number } = {}): Promise<{ ok: boolean; stale: boolean }> {
   if (currentUser()?.id !== userId || !librarySyncAccountAllowed(userId) || (typeof navigator !== 'undefined' && navigator.onLine === false)) { setPendingLibrarySync(userId, true); return { ok: false, stale: false }; }
