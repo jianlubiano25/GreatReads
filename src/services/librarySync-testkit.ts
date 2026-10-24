@@ -1,6 +1,7 @@
 // Test helpers only (never imported by the app): an in-memory stand-in for the six personal tables with the behaviours the sync relies on
 // (eq / gte filters, order, limit, offset, unique keys, PATCH returning rows, and the database trigger that bumps revision and updated_at on every update).
 import type { ReadingState, Book } from '../types';
+import { forgetRemoteLibraryCache } from './librarySync';
 
 export const USER = '5b2c0f6e-0000-4000-8000-000000000001';
 export const blankState = (): ReadingState => ({
@@ -10,19 +11,21 @@ export const blankState = (): ReadingState => ({
 });
 export const mkBook = (id: string, title = `Book ${id}`): Book => ({ id, title, author: 'A. Writer', shelf: 'mine', difficulty: 0, isOnDevice: false, year: '', genre: '', summary: '', authorBio: '', pageCount: 0 });
 
-export type FakeServer = { tables: Map<string, any[]>; requests: string[]; rows: Record<string, number>; fetch: typeof fetch; reset(): void; setClock(ms: number): void };
+export type FakeServer = { tables: Map<string, any[]>; requests: string[]; rows: Record<string, number>; fetch: typeof fetch; reset(): void; setClock(ms: number): void; failTable(table: string | null): void };
 export function makeServer(): FakeServer {
   const tables = new Map<string, any[]>();
   const requests: string[] = [];
   const rows: Record<string, number> = {};
+  let failing: string | null = null;
   let seq = 0; let clock = Date.now() - 3_600_000; // saves are timestamped an hour ago unless a test says otherwise
-  const tick = () => new Date((clock += 1000)).toISOString();
+  const tick = () => new Date((clock += 10_000)).toISOString(); // saves are 10 s apart
   const keyOf = (table: string, r: any) => (table === 'user_library_preferences' ? r.user_id : r.id);
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
   const CONTROL = new Set(['select', 'order', 'limit', 'offset']);
   const handler = (async (input: any, init: RequestInit = {}) => {
     const url = new URL(String(input)); const table = url.pathname.split('/').pop()!; const method = init.method || 'GET';
     requests.push(`${method} ${table}`);
+    if (failing && table === failing) return json({ message: 'boom' }, 500);
     const list = tables.get(table) || [];
     const match = (r: any) => [...url.searchParams].every(([k, v]) => {
       if (CONTROL.has(k)) return true;
@@ -32,7 +35,7 @@ export function makeServer(): FakeServer {
     });
     if (method === 'GET') {
       let out = list.filter(match);
-      const order = url.searchParams.get('order') || 'id.asc'; const [col, dir] = order.split('.');
+      const [col, dir] = (url.searchParams.get('order') || 'id.asc').split(',')[0].split('.'); // first sort term; ties keep insertion order
       out = [...out].sort((a, b) => (String(a[col]) < String(b[col]) ? -1 : String(a[col]) > String(b[col]) ? 1 : 0) * (dir === 'desc' ? -1 : 1));
       const offset = Number(url.searchParams.get('offset') || 0); const limit = Number(url.searchParams.get('limit') || out.length);
       out = out.slice(offset, offset + limit);
@@ -54,15 +57,15 @@ export function makeServer(): FakeServer {
     }
     return json([]);
   }) as unknown as typeof globalThis.fetch;
-  return { tables, requests, rows, fetch: handler, reset() { requests.length = 0; for (const k of Object.keys(rows)) delete rows[k]; }, setClock(ms: number) { clock = ms; } };
+  return { tables, requests, rows, fetch: handler, reset() { requests.length = 0; for (const k of Object.keys(rows)) delete rows[k]; }, setClock(ms: number) { clock = ms; }, failTable(table: string | null) { failing = table; } };
 }
 
 export type Device = { storage: Map<string, string> };
 export const makeDevice = (): Device => { const storage = new Map<string, string>(); storage.set('readlife.sb1', JSON.stringify({ access: 'a', refresh: 'r', exp: Date.now() + 3_600_000, user: { id: USER } })); return { storage }; };
-/** Make `device` the one whose storage the app code reads (one process stands in for several phones). */
-export function useDevice(device: Device, forget?: () => void): void {
+/** Make `device` the one whose storage the app code reads (one process stands in for several phones, each with its own in-memory picture of the cloud). */
+export function useDevice(device: Device, forget: () => void = () => forgetRemoteLibraryCache()): void {
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: (k: string) => device.storage.get(k) ?? null, setItem: (k: string, v: string) => void device.storage.set(k, v), removeItem: (k: string) => void device.storage.delete(k) } });
-  forget?.();
+  forget();
 }
 export function installNetwork(server: FakeServer): () => void {
   const oldFetch = globalThis.fetch; const nav = Object.getOwnPropertyDescriptor(globalThis, 'navigator'); const ls = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');

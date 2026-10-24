@@ -139,27 +139,78 @@ export function mergeInitialLibrarySnapshot(local: ReadingState, rows: LibraryBo
 
 export type RemoteLibrarySnapshot = { books: LibraryBookRow[]; annotations: AnnotationRow[]; shelves: ShelfRow[]; memberships: ShelfBookRow[]; preferences: LibraryPreferencesRow[]; sessions: Record<string, unknown>[] };
 const PAGE_SIZE = 500;
-async function readOwned<T>(table: string, userId: string, order = 'id.asc'): Promise<T[] | null> {
+export type RemoteTable = 'user_library_books' | 'user_book_annotations' | 'user_shelves' | 'user_shelf_books' | 'user_library_preferences' | 'user_reading_sessions';
+const ALL_TABLES: RemoteTable[] = ['user_library_books', 'user_book_annotations', 'user_shelves', 'user_shelf_books', 'user_library_preferences', 'user_reading_sessions'];
+/** Reading sessions are never written by the app, so they are read in full reads only, not in "what changed" reads. */
+const CHANGE_TABLES: RemoteTable[] = ALL_TABLES.filter(table => table !== 'user_reading_sessions');
+/** A "changed since" read cannot see a row removed outright (the app only ever marks rows removed), so everything is re-read in full now and then. */
+const FULL_REREAD_MS = 15 * 60_000;
+const rowKey = (table: RemoteTable, row: any): string => String(table === 'user_library_preferences' ? row.user_id : row.id);
+
+async function readPages<T>(url: (offset: number) => string): Promise<T[] | null> {
   const all: T[] = [];
   for (let offset = 0; offset < 10000; offset += PAGE_SIZE) {
-    const r = await rest<T[]>(`${table}?user_id=eq.${encodeURIComponent(userId)}&select=*&order=${order}&limit=${PAGE_SIZE}&offset=${offset}`);
+    const r = await rest<T[]>(url(offset));
     if (!r.ok || !Array.isArray(r.data)) return null;
     all.push(...r.data);
     if (r.data.length < PAGE_SIZE) return all;
   }
   return null;
 }
+const orderFor = (table: RemoteTable) => (table === 'user_library_preferences' ? 'user_id.asc' : 'id.asc');
+const readAll = <T,>(table: RemoteTable, userId: string) => readPages<T>(offset => `${table}?user_id=eq.${encodeURIComponent(userId)}&select=*&order=${orderFor(table)}&limit=${PAGE_SIZE}&offset=${offset}`);
+/** Rows saved at or after `since` (two seconds earlier, so a save that committed a moment late is not missed; reading a row twice is harmless). */
+const readChanged = <T,>(table: RemoteTable, userId: string, since?: string) => {
+  const from = since && Number.isFinite(Date.parse(since)) ? `&updated_at=gte.${encodeURIComponent(new Date(Date.parse(since) - 2000).toISOString())}` : '';
+  const order = table === 'user_library_preferences' ? 'updated_at.asc' : 'updated_at.asc,id.asc';
+  return readPages<T>(offset => `${table}?user_id=eq.${encodeURIComponent(userId)}${from}&select=*&order=${order}&limit=${PAGE_SIZE}&offset=${offset}`);
+};
 
-export async function loadRemoteLibrary(userId: string): Promise<RemoteLibrarySnapshot | null> {
-  const [books, annotations, shelves, memberships, preferences, sessions] = await Promise.all([
-    readOwned<LibraryBookRow>('user_library_books', userId), readOwned<AnnotationRow>('user_book_annotations', userId),
-    readOwned<ShelfRow>('user_shelves', userId), readOwned<ShelfBookRow>('user_shelf_books', userId),
-    readOwned<LibraryPreferencesRow>('user_library_preferences', userId, 'user_id.asc'),
-    // Reading sessions are read for a complete bootstrap, but not synthesized from daily page totals.
-    readOwned<Record<string, unknown>>('user_reading_sessions', userId),
-  ]);
-  if (!books || !annotations || !shelves || !memberships || !preferences || !sessions) return null;
-  return { books, annotations, shelves, memberships, preferences, sessions };
+/** The last complete picture of this account's cloud rows, kept in memory and brought up to date with changes only (also by this device's own writes). */
+type RemoteCache = { rows: Record<RemoteTable, Map<string, any>>; cursor: Partial<Record<RemoteTable, string>>; fullAt: number; pulledAt: number };
+const remoteCaches = new Map<string, RemoteCache>();
+export function forgetRemoteLibraryCache(userId?: string): void { if (userId) remoteCaches.delete(userId); else remoteCaches.clear(); }
+const emptyRows = () => Object.fromEntries(ALL_TABLES.map(table => [table, new Map<string, any>()])) as Record<RemoteTable, Map<string, any>>;
+function absorb(cache: RemoteCache, table: RemoteTable, rows: any[]): void {
+  for (const row of rows) {
+    cache.rows[table].set(rowKey(table, row), row);
+    if (typeof row.updated_at === 'string' && (!cache.cursor[table] || row.updated_at > cache.cursor[table]!)) cache.cursor[table] = row.updated_at;
+  }
+}
+/** This device's own successful writes bring the picture up to date without a read. */
+function rememberWritten(userId: string, table: RemoteTable, rows: unknown): void {
+  const cache = remoteCaches.get(userId);
+  if (cache && Array.isArray(rows)) absorb(cache, table, rows);
+}
+const sorted = (cache: RemoteCache, table: RemoteTable) => [...cache.rows[table].entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, row]) => row);
+const snapshotOf = (cache: RemoteCache): RemoteLibrarySnapshot => ({
+  books: sorted(cache, 'user_library_books'), annotations: sorted(cache, 'user_book_annotations'), shelves: sorted(cache, 'user_shelves'),
+  memberships: sorted(cache, 'user_shelf_books'), preferences: sorted(cache, 'user_library_preferences'), sessions: sorted(cache, 'user_reading_sessions'),
+});
+
+/**
+ * The cloud copy of this account. The first call (and one every 15 minutes, or with `full`) reads everything; the others read only rows saved since the last read.
+ * `tables` narrows a read to the tables an event named; `maxAgeMs` accepts the picture as it is when it was brought up to date that recently.
+ * A failed read returns null and the next read starts again from a full read: a partial answer never replaces what is known.
+ */
+export async function loadRemoteLibrary(userId: string, opts: { full?: boolean; tables?: RemoteTable[]; maxAgeMs?: number } = {}): Promise<RemoteLibrarySnapshot | null> {
+  const now = Date.now();
+  const cache = remoteCaches.get(userId);
+  if (cache && !opts.full && now - cache.fullAt <= FULL_REREAD_MS) {
+    if (opts.maxAgeMs && now - cache.pulledAt < opts.maxAgeMs) return snapshotOf(cache);
+    const tables = opts.tables?.length ? opts.tables.filter(table => CHANGE_TABLES.includes(table)) : CHANGE_TABLES;
+    const changed = await Promise.all(tables.map(table => readChanged<any>(table, userId, cache.cursor[table])));
+    if (changed.some(rows => !rows)) { remoteCaches.delete(userId); return null; }
+    tables.forEach((table, i) => absorb(cache, table, changed[i]!));
+    if (tables.length === CHANGE_TABLES.length) cache.pulledAt = now;
+    return snapshotOf(cache);
+  }
+  const all = await Promise.all(ALL_TABLES.map(table => readAll<any>(table, userId)));
+  if (all.some(rows => !rows)) { remoteCaches.delete(userId); return null; }
+  const fresh: RemoteCache = { rows: emptyRows(), cursor: {}, fullAt: now, pulledAt: now };
+  ALL_TABLES.forEach((table, i) => absorb(fresh, table, all[i]!));
+  remoteCaches.set(userId, fresh);
+  return snapshotOf(fresh);
 }
 
 /** Fill empty local fields from cloud during bootstrap; local values and IDs always survive. */
@@ -347,10 +398,10 @@ export const markLibraryDirty = (userId: string): void => setPendingLibrarySync(
 
 type SyncArgs = { state: ReadingState; books: Book[]; collections: Collection[]; coverPicks: Record<string, CoverPick> };
 /** `stale`: the cloud holds newer values for some rows this device did not change; they were left alone and should be pulled. */
-export async function syncLocalLibraryDetailed(userId: string, args: SyncArgs): Promise<{ ok: boolean; stale: boolean }> {
+export async function syncLocalLibraryDetailed(userId: string, args: SyncArgs, opts: { maxAgeMs?: number } = {}): Promise<{ ok: boolean; stale: boolean }> {
   if (currentUser()?.id !== userId || !librarySyncAccountAllowed(userId) || (typeof navigator !== 'undefined' && navigator.onLine === false)) { setPendingLibrarySync(userId, true); return { ok: false, stale: false }; }
   setPendingLibrarySync(userId, true);
-  const remote = await loadRemoteLibrary(userId);
+  const remote = await loadRemoteLibrary(userId, { maxAgeMs: opts.maxAgeMs });
   if (!remote || currentUser()?.id !== userId) return { ok: false, stale: false };
   const libraryIds = new Map(remote.books.map(row => [row.local_book_id, row.id]));
   const shelfIds = new Map(remote.shelves.map(row => [String(row.shelf_data?.local_id || ''), row.id]));
@@ -358,6 +409,7 @@ export async function syncLocalLibraryDetailed(userId: string, args: SyncArgs): 
   const snapshot = buildLibrarySyncSnapshot({ userId, ...args, state: safeState, libraryIds, shelfIds });
   const result = await writeRemoteLibrary(userId, snapshot, remote);
   setPendingLibrarySync(userId, !result.ok);
+  if (!result.ok && result.conflict) { const cache = remoteCaches.get(userId); if (cache) cache.pulledAt = 0; } // a refused write means the picture was out of date: read before the next try
   if (result.ok && !result.conflict) clearPersonalDeletionMarkers(userId);
   if (result.ok) claimLibrarySyncAccount(userId);
   return { ok: result.ok, stale: !!result.stale };
@@ -367,7 +419,9 @@ export async function syncLocalLibrary(userId: string, args: SyncArgs): Promise<
 async function casUpdate(table: string, userId: string, filter: string, revision: number, body: Record<string, unknown>): Promise<boolean> {
   const extra = filter ? `&${filter}` : '';
   const r = await rest<unknown[]>(`${table}?${qUser(userId)}${extra}&revision=eq.${revision}`, { method: 'PATCH', prefer: 'return=representation', body: { ...body, revision: revision + 1 } });
-  return r.ok && Array.isArray(r.data) && r.data.length === 1;
+  const ok = r.ok && Array.isArray(r.data) && r.data.length === 1;
+  if (ok) rememberWritten(userId, table as RemoteTable, r.data);
+  return ok;
 }
 
 /** Write one complete, already-reconciled local snapshot. CAS revisions prevent silently overwriting a simultaneous device edit. */
@@ -403,6 +457,7 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
       const made = await rest<LibraryBookRow[]>('user_library_books', { method: 'POST', prefer: 'return=representation', body: { ...item, revision: 1 } });
       if (!made.ok) return { ok: false, conflict: made.status === 409 };
       if (!made.data?.[0]) return { ok: false, conflict: true };
+      rememberWritten(userId, 'user_library_books', made.data);
       libraryIds.set(item.local_book_id, made.data[0].id);
       markWritten(key, Number(made.data[0].revision) || 1, fieldsHash(item as unknown as Record<string, unknown>, BOOK_FIELDS));
       continue;
@@ -426,6 +481,7 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
       const made = await rest<ShelfRow[]>('user_shelves', { method: 'POST', prefer: 'return=representation', body: { ...item, revision: 1 } });
       if (!made.ok) return { ok: false, conflict: made.status === 409 };
       if (!made.data?.[0]) return { ok: false, conflict: true };
+      rememberWritten(userId, 'user_shelves', made.data);
       shelfIds.set(localId, made.data[0].id);
       markWritten(key, Number(made.data[0].revision) || 1, fieldsHash(item as unknown as Record<string, unknown>, SHELF_FIELDS));
     } else {
@@ -448,6 +504,7 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
       const key = `annotation:${row.id}`;
       const made = await rest('user_book_annotations', { method: 'POST', prefer: 'return=representation', body: { ...row, revision: 1 } });
       if (!made.ok) return { ok: false, conflict: made.status === 409 };
+      rememberWritten(userId, 'user_book_annotations', made.data);
       markWritten(key, 1, fieldsHash(row as unknown as Record<string, unknown>, ANNOTATION_FIELDS));
     } else {
       const key = `annotation:${row.id}`;
@@ -473,6 +530,7 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
       const key = `membership:${row.id}`;
       const made = await rest('user_shelf_books', { method: 'POST', prefer: 'return=representation', body: { ...row, revision: 1 } });
       if (!made.ok) return { ok: false, conflict: made.status === 409 };
+      rememberWritten(userId, 'user_shelf_books', made.data);
       markWritten(key, 1, fieldsHash(row as unknown as Record<string, unknown>, MEMBERSHIP_FIELDS));
     } else {
       const key = `membership:${row.id}`;
@@ -510,6 +568,7 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
   if (!currentPrefs) {
     const made = await rest('user_library_preferences', { method: 'POST', prefer: 'return=representation', body: { ...pref, revision: 1 } });
     if (!made.ok) return { ok: false, conflict: made.status === 409 };
+    rememberWritten(userId, 'user_library_preferences', made.data);
     markWritten('preferences', 1, fnv(stableJson(pref.preferences)));
   } else if (mayWrite('preferences', currentPrefs.revision, stableJson(currentPrefs.preferences) === stableJson(pref.preferences), fnv(stableJson(pref.preferences)), currentPrefs.updated_at)) {
     if (!await casUpdate('user_library_preferences', userId, '', currentPrefs.revision, pref)) return { ok: false, conflict: true };
