@@ -139,14 +139,16 @@ test('authenticated sync is account-scoped, retries offline work, and propagates
     assert.equal(await syncLocalLibrary('user-a', { state: local, books: [book], collections, coverPicks: {} }), true);
     assert.equal(hasPendingLibrarySync('user-a'), false);
 
-    cloudBook.status = 'done'; cloudBook.revision += 1;
+    // another device saved 'done' AFTER this device's unsynced change began: the newer cloud value is kept (and will be pulled); nothing is parked or blocked
+    cloudBook.status = 'done'; cloudBook.revision += 1; cloudBook.updated_at = new Date(Date.now() + 60_000).toISOString();
     const competingLocal = { ...local, status: { ...local.status, [String(book.id)]: 'next' as const } };
     assert.equal(await syncLocalLibrary('user-a', { state: competingLocal, books: [book], collections, coverPicks: {} }), true);
-    assert.equal(hasLibrarySyncConflicts('user-a'), true);
-    assert.equal(cloudBook.status, 'done'); // both edits are preserved until a person resolves the conflict
-    resolveLibraryConflictsToLocal('user-a');
+    assert.equal(hasLibrarySyncConflicts('user-a'), false);
+    assert.equal(cloudBook.status, 'done');
+    // another device saved 'done' BEFORE this device's change: this device's later change is written
+    cloudBook.revision += 1; cloudBook.updated_at = new Date(Date.now() - 3_600_000).toISOString();
     assert.equal(await syncLocalLibrary('user-a', { state: competingLocal, books: [book], collections, coverPicks: {} }), true);
-    assert.equal(cloudBook.status, 'next'); // explicit resolution permits this device's value
+    assert.equal(cloudBook.status, 'next');
     assert.equal(hasLibrarySyncConflicts('user-a'), false);
 
     markPersonalBookDeleted(String(book.id));

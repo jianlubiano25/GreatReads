@@ -4,7 +4,7 @@ import { currentUser, subscribeLibraryRealtime } from '../services/supabase';
 import { exportCoverPicks, restoreCoverPicks } from '../services/books/covers';
 import { loadCollections, type Collection } from '../services/libraryCollections';
 import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
-import { claimLibrarySyncAccount, hasLibrarySyncConflicts, hasPendingLibrarySync, librarySyncAccountAllowed, loadRemoteLibrary, markPersonalCollectionDeleted, markPersonalMembershipDeleted, mergeRemoteLibrary, syncLocalLibrary } from '../services/librarySync';
+import { claimLibrarySyncAccount, hasPendingLibrarySync, librarySyncAccountAllowed, loadRemoteLibrary, markPersonalCollectionDeleted, markPersonalMembershipDeleted, mergeRemoteLibrary, syncLocalLibrary } from '../services/librarySync';
 
 export function usePersonalLibrarySync(args: {
   state: ReadingState; books: Book[]; collections: Collection[];
@@ -66,7 +66,7 @@ export function usePersonalLibrarySync(args: {
         ready.current = userId;
         retryDelay.current = 1500;
         cancelRealtime = subscribeLibraryRealtime(userId, async () => {
-          if (stopped.current || currentUser()?.id !== userId || hasPendingLibrarySync(userId) || hasLibrarySyncConflicts(userId)) return;
+          if (stopped.current || currentUser()?.id !== userId || hasPendingLibrarySync(userId)) return;
           const latest = await loadRemoteLibrary(userId);
           if (latest) applyRemote(latest, true);
         });
@@ -88,7 +88,7 @@ export function usePersonalLibrarySync(args: {
           retryDelay.current = Math.min(60_000, retryDelay.current * 2);
         } else {
           retryDelay.current = 1500;
-          if (ok && !hasLibrarySyncConflicts(userId)) {
+          if (ok) {
             const latest = await loadRemoteLibrary(userId);
             if (latest && !stopped.current && currentUser()?.id === userId) applyRemote(latest, true);
           }

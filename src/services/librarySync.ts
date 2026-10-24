@@ -288,10 +288,10 @@ const OWNER_KEY = 'readlife.librarySyncOwner1';
 export function librarySyncAccountAllowed(userId: string): boolean { try { const owner = localStorage.getItem(OWNER_KEY); return !owner || owner === userId; } catch { return false; } }
 export function claimLibrarySyncAccount(userId: string): void { try { if (!localStorage.getItem(OWNER_KEY)) localStorage.setItem(OWNER_KEY, userId); } catch {} }
 const VERSION_PREFIX = 'readlife.librarySyncVersions1.';
-type SyncVersions = { revisions: Record<string, number>; conflicts: string[] };
+type SyncVersions = { revisions: Record<string, number>; hashes: Record<string, string>; conflicts: string[] };
 const versionsKey = (userId: string) => `${VERSION_PREFIX}${encodeURIComponent(userId)}`;
 function getVersions(userId: string): SyncVersions {
-  try { const raw = JSON.parse(localStorage.getItem(versionsKey(userId)) || 'null'); return { revisions: raw?.revisions || {}, conflicts: Array.isArray(raw?.conflicts) ? raw.conflicts : [] }; } catch { return { revisions: {}, conflicts: [] }; }
+  try { const raw = JSON.parse(localStorage.getItem(versionsKey(userId)) || 'null'); return { revisions: raw?.revisions || {}, hashes: raw?.hashes || {}, conflicts: Array.isArray(raw?.conflicts) ? raw.conflicts : [] }; } catch { return { revisions: {}, hashes: {}, conflicts: [] }; }
 }
 function saveVersions(userId: string, versions: SyncVersions) {
   try { localStorage.setItem(versionsKey(userId), JSON.stringify(versions)); } catch {}
@@ -331,17 +331,27 @@ export function markPersonalMembershipDeleted(localCollectionId: string, localBo
 export function clearPersonalDeletionMarkers(userId: string): void { saveDeletionSet(userId, new Set()); }
 const isDeletedLocally = (userId: string, localId: string) => localDeletionSet(userId).has(localId);
 
-export const hasPendingLibrarySync = (userId: string): boolean => { try { return localStorage.getItem(`${PENDING_PREFIX}${encodeURIComponent(userId)}`) === '1'; } catch { return false; } };
+const pendingKey = (userId: string) => `${PENDING_PREFIX}${encodeURIComponent(userId)}`;
+export const hasPendingLibrarySync = (userId: string): boolean => { try { return !!localStorage.getItem(pendingKey(userId)); } catch { return false; } };
+/** When this device's oldest unsynced change was made (the flag stores the time; an older build stored "1", read as "long ago"). */
+const pendingSince = (userId: string): number => { try { const n = Number(localStorage.getItem(pendingKey(userId))); return Number.isFinite(n) && n > 0 ? n : Date.now(); } catch { return Date.now(); } };
 const setPendingLibrarySync = (userId: string, pending: boolean) => {
-  try { pending ? localStorage.setItem(`${PENDING_PREFIX}${encodeURIComponent(userId)}`, '1') : localStorage.removeItem(`${PENDING_PREFIX}${encodeURIComponent(userId)}`); } catch {}
+  try {
+    if (!pending) localStorage.removeItem(pendingKey(userId));
+    else if (!localStorage.getItem(pendingKey(userId))) localStorage.setItem(pendingKey(userId), String(Date.now())); // keeps the OLDEST unsynced change
+  } catch {}
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('greatreads-library-sync-status'));
 };
+/** Call the moment the person changes something, so the time of the change is known and a pull cannot overwrite it before it is pushed. */
+export const markLibraryDirty = (userId: string): void => setPendingLibrarySync(userId, true);
 
-export async function syncLocalLibrary(userId: string, args: { state: ReadingState; books: Book[]; collections: Collection[]; coverPicks: Record<string, CoverPick> }): Promise<boolean> {
-  if (currentUser()?.id !== userId || !librarySyncAccountAllowed(userId) || (typeof navigator !== 'undefined' && navigator.onLine === false)) { setPendingLibrarySync(userId, true); return false; }
+type SyncArgs = { state: ReadingState; books: Book[]; collections: Collection[]; coverPicks: Record<string, CoverPick> };
+/** `stale`: the cloud holds newer values for some rows this device did not change; they were left alone and should be pulled. */
+export async function syncLocalLibraryDetailed(userId: string, args: SyncArgs): Promise<{ ok: boolean; stale: boolean }> {
+  if (currentUser()?.id !== userId || !librarySyncAccountAllowed(userId) || (typeof navigator !== 'undefined' && navigator.onLine === false)) { setPendingLibrarySync(userId, true); return { ok: false, stale: false }; }
   setPendingLibrarySync(userId, true);
   const remote = await loadRemoteLibrary(userId);
-  if (!remote || currentUser()?.id !== userId) return false;
+  if (!remote || currentUser()?.id !== userId) return { ok: false, stale: false };
   const libraryIds = new Map(remote.books.map(row => [row.local_book_id, row.id]));
   const shelfIds = new Map(remote.shelves.map(row => [String(row.shelf_data?.local_id || ''), row.id]));
   const safeState = { ...args.state, customBooks: args.state.customBooks.filter(book => !isDeletedLocally(userId, String(book.id))) };
@@ -350,8 +360,9 @@ export async function syncLocalLibrary(userId: string, args: { state: ReadingSta
   setPendingLibrarySync(userId, !result.ok);
   if (result.ok && !result.conflict) clearPersonalDeletionMarkers(userId);
   if (result.ok) claimLibrarySyncAccount(userId);
-  return result.ok;
+  return { ok: result.ok, stale: !!result.stale };
 }
+export async function syncLocalLibrary(userId: string, args: SyncArgs): Promise<boolean> { return (await syncLocalLibraryDetailed(userId, args)).ok; }
 
 async function casUpdate(table: string, userId: string, filter: string, revision: number, body: Record<string, unknown>): Promise<boolean> {
   const extra = filter ? `&${filter}` : '';
@@ -360,42 +371,50 @@ async function casUpdate(table: string, userId: string, filter: string, revision
 }
 
 /** Write one complete, already-reconciled local snapshot. CAS revisions prevent silently overwriting a simultaneous device edit. */
-export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSnapshot, remote: RemoteLibrarySnapshot): Promise<{ ok: boolean; conflict?: boolean; libraryIds?: Map<string, string>; shelfIds?: Map<string, string> }> {
+export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSnapshot, remote: RemoteLibrarySnapshot): Promise<{ ok: boolean; conflict?: boolean; stale?: boolean; libraryIds?: Map<string, string>; shelfIds?: Map<string, string> }> {
   if (currentUser()?.id !== userId || (typeof navigator !== 'undefined' && navigator.onLine === false)) return { ok: false };
   const versions = getVersions(userId);
-  const mayWrite = (key: string, revision: number, equal: boolean): boolean => {
-    if (versions.conflicts.includes(key)) return false;
-    if (equal) { versions.revisions[key] = revision; return false; }
+  versions.conflicts = []; // earlier builds parked rows as "conflicts" and then stopped applying cloud changes; nothing is parked any more
+  let stale = false;
+  /**
+   * Whether this device may write a row that differs from the cloud's. `revision` is the cloud row's current revision, `hash` fingerprints this device's values.
+   *  - never seen before (the sign-in merge already folded the cloud copy into this device) or the cloud row is the one this device last saw: an ordinary edit, write it;
+   *  - the cloud row moved on and this device's values are exactly what it last synced: the other device's newer values must not be overwritten, so skip and report `stale`;
+   *  - both moved: whichever was saved last wins. A cloud value saved after this device's unsynced change began is kept (and pulled); an older one is overwritten
+   *    (compare-and-set on the cloud row's current revision). Syncing is never blocked. A cloud row with no timestamp counts as older.
+   */
+  const editedSince = pendingSince(userId);
+  const mayWrite = (key: string, revision: number, equal: boolean, hash: string, cloudSavedAt?: string | null): boolean => {
+    if (equal) { versions.revisions[key] = revision; versions.hashes[key] = hash; return false; }
     const baseline = versions.revisions[key];
-    if (baseline === undefined || baseline !== revision) {
-      versions.revisions[key] = revision;
-      versions.conflicts.push(key);
-      return false;
-    }
+    if (baseline === undefined || baseline === revision) return true;
+    if (versions.hashes[key] === hash) { stale = true; return false; }
+    const cloudTime = cloudSavedAt ? Date.parse(cloudSavedAt) : NaN;
+    if (Number.isFinite(cloudTime) && cloudTime > editedSince) { stale = true; return false; }
     return true;
   };
-  const markWritten = (key: string, revision: number) => { versions.revisions[key] = revision; saveVersions(userId, versions); };
+  const markWritten = (key: string, revision: number, hash: string) => { versions.revisions[key] = revision; versions.hashes[key] = hash; saveVersions(userId, versions); };
   const bookRows = new Map(remote.books.map(row => [row.local_book_id, row]));
   const libraryIds = new Map(remote.books.map(row => [row.local_book_id, row.id]));
   for (const item of snapshot.books) {
     const old = bookRows.get(item.local_book_id);
     if (!old) {
       const key = `book:${item.local_book_id}`;
-      if (versions.revisions[key] !== undefined || versions.conflicts.includes(key)) { versions.conflicts.push(key); saveVersions(userId, versions); continue; }
       const made = await rest<LibraryBookRow[]>('user_library_books', { method: 'POST', prefer: 'return=representation', body: { ...item, revision: 1 } });
       if (!made.ok) return { ok: false, conflict: made.status === 409 };
       if (!made.data?.[0]) return { ok: false, conflict: true };
       libraryIds.set(item.local_book_id, made.data[0].id);
-      markWritten(key, Number(made.data[0].revision) || 1);
+      markWritten(key, Number(made.data[0].revision) || 1, fieldsHash(item as unknown as Record<string, unknown>, BOOK_FIELDS));
       continue;
     }
     libraryIds.set(item.local_book_id, old.id);
     const body = { ...item, id: old.id, catalog_work_id: old.catalog_work_id, catalog_edition_id: old.catalog_edition_id } as Record<string, unknown>;
     const key = `book:${item.local_book_id}`;
-    if (!mayWrite(key, old.revision, equalSyncRecord(old, body))) continue;
+    const hash = fieldsHash(body, BOOK_FIELDS);
+    if (!mayWrite(key, old.revision, equalSyncRecord(old, body), hash, old.updated_at)) continue;
     const ok = await casUpdate('user_library_books', userId, `local_book_id=eq.${encodeURIComponent(item.local_book_id)}`, old.revision, body);
     if (!ok) return { ok: false, conflict: true };
-    markWritten(key, old.revision + 1);
+    markWritten(key, old.revision + 1, hash);
   }
   const shelfRows = new Map(remote.shelves.map(row => [String(row.shelf_data?.local_id || ''), row]));
   const shelfIds = new Map(remote.shelves.map(row => [String(row.shelf_data?.local_id || ''), row.id]));
@@ -404,20 +423,20 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
     const old = shelfRows.get(localId);
     if (!old) {
       const key = `shelf:${localId}`;
-      if (versions.revisions[key] !== undefined || versions.conflicts.includes(key)) { versions.conflicts.push(key); saveVersions(userId, versions); continue; }
       const made = await rest<ShelfRow[]>('user_shelves', { method: 'POST', prefer: 'return=representation', body: { ...item, revision: 1 } });
       if (!made.ok) return { ok: false, conflict: made.status === 409 };
       if (!made.data?.[0]) return { ok: false, conflict: true };
       shelfIds.set(localId, made.data[0].id);
-      markWritten(key, Number(made.data[0].revision) || 1);
+      markWritten(key, Number(made.data[0].revision) || 1, fieldsHash(item as unknown as Record<string, unknown>, SHELF_FIELDS));
     } else {
       shelfIds.set(localId, old.id);
       const key = `shelf:${localId}`;
       const body = { name: item.name, description: item.description, sort_order: item.sort_order, shelf_data: item.shelf_data, deleted_at: null };
       const equal = old.name === item.name && old.description === item.description && old.sort_order === item.sort_order && stableJson(old.shelf_data) === stableJson(item.shelf_data) && !old.deleted_at;
-      if (mayWrite(key, old.revision, equal)) {
+      const hash = fieldsHash(body, SHELF_FIELDS);
+      if (mayWrite(key, old.revision, equal, hash, old.updated_at)) {
         if (!await casUpdate('user_shelves', userId, `id=eq.${old.id}`, old.revision, body)) return { ok: false, conflict: true };
-        markWritten(key, old.revision + 1);
+        markWritten(key, old.revision + 1, hash);
       }
     }
   }
@@ -427,16 +446,16 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
     const old = remote.annotations.find(item => item.id === row.id);
     if (!old) {
       const key = `annotation:${row.id}`;
-      if (versions.revisions[key] !== undefined || versions.conflicts.includes(key)) { versions.conflicts.push(key); saveVersions(userId, versions); continue; }
       const made = await rest('user_book_annotations', { method: 'POST', prefer: 'return=representation', body: { ...row, revision: 1 } });
       if (!made.ok) return { ok: false, conflict: made.status === 409 };
-      markWritten(key, 1);
+      markWritten(key, 1, fieldsHash(row as unknown as Record<string, unknown>, ANNOTATION_FIELDS));
     } else {
       const key = `annotation:${row.id}`;
       const equal = old.content === row.content && old.quote_text === row.quote_text && old.page_reference === row.page_reference && old.deleted_at === row.deleted_at && stableJson(old.location_data) === stableJson(row.location_data) && stableJson(old.extra_data) === stableJson(row.extra_data);
-      if (mayWrite(key, old.revision, equal)) {
+      const hash = fieldsHash(row as unknown as Record<string, unknown>, ANNOTATION_FIELDS);
+      if (mayWrite(key, old.revision, equal, hash, old.updated_at)) {
         if (!await casUpdate('user_book_annotations', userId, `id=eq.${row.id}`, old.revision, row as unknown as Record<string, unknown>)) return { ok: false, conflict: true };
-        markWritten(key, old.revision + 1);
+        markWritten(key, old.revision + 1, hash);
       }
     }
   }
@@ -446,22 +465,22 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
     const localAnnotationId = String(old.extra_data?.local_annotation_id || (old.annotation_type === 'note' ? 'note' : old.id));
     if (!isDeletedLocally(userId, localBookId) && !isDeletedLocally(userId, `annotation:${localBookId}:${localAnnotationId}`)) continue;
     if (!await casUpdate('user_book_annotations', userId, `id=eq.${old.id}`, old.revision, { deleted_at: new Date().toISOString() })) return { ok: false, conflict: true };
-    markWritten(`annotation:${old.id}`, old.revision + 1);
+    markWritten(`annotation:${old.id}`, old.revision + 1, DELETED_HASH);
   }
   for (const row of snapshotWithIds.memberships) {
     const old = remote.memberships.find(item => item.id === row.id);
     if (!old) {
       const key = `membership:${row.id}`;
-      if (versions.revisions[key] !== undefined || versions.conflicts.includes(key)) { versions.conflicts.push(key); saveVersions(userId, versions); continue; }
       const made = await rest('user_shelf_books', { method: 'POST', prefer: 'return=representation', body: { ...row, revision: 1 } });
       if (!made.ok) return { ok: false, conflict: made.status === 409 };
-      markWritten(key, 1);
+      markWritten(key, 1, fieldsHash(row as unknown as Record<string, unknown>, MEMBERSHIP_FIELDS));
     } else {
       const key = `membership:${row.id}`;
       const equal = old.deleted_at === row.deleted_at && old.sort_order === row.sort_order && old.shelf_id === row.shelf_id && old.library_book_id === row.library_book_id && stableJson(old.membership_data) === stableJson(row.membership_data);
-      if (mayWrite(key, old.revision, equal)) {
+      const hash = fieldsHash(row as unknown as Record<string, unknown>, MEMBERSHIP_FIELDS);
+      if (mayWrite(key, old.revision, equal, hash, old.updated_at)) {
         if (!await casUpdate('user_shelf_books', userId, `id=eq.${row.id}`, old.revision, row as unknown as Record<string, unknown>)) return { ok: false, conflict: true };
-        markWritten(key, old.revision + 1);
+        markWritten(key, old.revision + 1, hash);
       }
     }
   }
@@ -471,40 +490,52 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
     const [localCollectionId, localBookId] = localId.split('|');
     if (!isDeletedLocally(userId, `collection:${localCollectionId}`) && !isDeletedLocally(userId, `membership:${localCollectionId}:${localBookId}`) && !isDeletedLocally(userId, localBookId)) continue;
     if (!await casUpdate('user_shelf_books', userId, `id=eq.${old.id}`, old.revision, { deleted_at: new Date().toISOString() })) return { ok: false, conflict: true };
-    markWritten(`membership:${old.id}`, old.revision + 1);
+    markWritten(`membership:${old.id}`, old.revision + 1, DELETED_HASH);
   }
   const desiredShelves = new Set(snapshotWithIds.shelves.map(row => String(row.shelf_data.local_id || '')));
   for (const old of remote.shelves) if (!old.deleted_at && !desiredShelves.has(String(old.shelf_data?.local_id || ''))) {
     const localId = String(old.shelf_data?.local_id || '');
     if (!isDeletedLocally(userId, `collection:${localId}`)) continue;
     if (!await casUpdate('user_shelves', userId, `id=eq.${old.id}`, old.revision, { deleted_at: new Date().toISOString() })) return { ok: false, conflict: true };
-    markWritten(`shelf:${localId}`, old.revision + 1);
+    markWritten(`shelf:${localId}`, old.revision + 1, DELETED_HASH);
   }
   const desiredBooks = new Set(snapshot.books.map(row => row.local_book_id));
   for (const old of remote.books) if (!old.deleted_at && !desiredBooks.has(old.local_book_id)) {
     if (!isDeletedLocally(userId, old.local_book_id)) continue;
     if (!await casUpdate('user_library_books', userId, `local_book_id=eq.${encodeURIComponent(old.local_book_id)}`, old.revision, { deleted_at: new Date().toISOString() })) return { ok: false, conflict: true };
-    markWritten(`book:${old.local_book_id}`, old.revision + 1);
+    markWritten(`book:${old.local_book_id}`, old.revision + 1, DELETED_HASH);
   }
   const currentPrefs = remote.preferences[0];
   const pref = { user_id: userId, preferences: snapshot.preferences };
   if (!currentPrefs) {
-    if (versions.revisions.preferences !== undefined || versions.conflicts.includes('preferences')) { versions.conflicts.push('preferences'); saveVersions(userId, versions); return { ok: true, conflict: true, libraryIds, shelfIds }; }
     const made = await rest('user_library_preferences', { method: 'POST', prefer: 'return=representation', body: { ...pref, revision: 1 } });
     if (!made.ok) return { ok: false, conflict: made.status === 409 };
-    markWritten('preferences', 1);
-  } else if (mayWrite('preferences', currentPrefs.revision, stableJson(currentPrefs.preferences) === stableJson(pref.preferences))) {
+    markWritten('preferences', 1, fnv(stableJson(pref.preferences)));
+  } else if (mayWrite('preferences', currentPrefs.revision, stableJson(currentPrefs.preferences) === stableJson(pref.preferences), fnv(stableJson(pref.preferences)), currentPrefs.updated_at)) {
     if (!await casUpdate('user_library_preferences', userId, '', currentPrefs.revision, pref)) return { ok: false, conflict: true };
-    markWritten('preferences', currentPrefs.revision + 1);
+    markWritten('preferences', currentPrefs.revision + 1, fnv(stableJson(pref.preferences)));
   }
   saveVersions(userId, versions);
-  return { ok: true, conflict: versions.conflicts.length > 0, libraryIds, shelfIds };
+  return { ok: true, conflict: false, stale, libraryIds, shelfIds };
 }
 
 function equalSyncRecord(old: LibraryBookRow, next: Record<string, unknown>): boolean {
   const fields: (keyof LibraryBookRow)[] = ['status', 'reading_progress', 'personal_cover', 'book_snapshot', 'personal_data', 'deleted_at'];
   return fields.every(field => stableJson(old[field] ?? null) === stableJson(next[field] ?? null));
 }
+
+/** A short fingerprint of the values this device last synced for a row (to tell "this device did not change it" from "it did"). Not a security hash. */
+function fnv(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, '0');
+}
+const BOOK_FIELDS = ['status', 'reading_progress', 'personal_cover', 'book_snapshot', 'personal_data', 'deleted_at'];
+const SHELF_FIELDS = ['name', 'description', 'sort_order', 'shelf_data'];
+const ANNOTATION_FIELDS = ['content', 'quote_text', 'page_reference', 'deleted_at', 'location_data', 'extra_data'];
+const MEMBERSHIP_FIELDS = ['deleted_at', 'sort_order', 'shelf_id', 'library_book_id', 'membership_data'];
+const DELETED_HASH = fnv('deleted');
+const fieldsHash = (row: Record<string, unknown>, fields: string[]): string => fnv(stableJson(fields.map(field => row[field] ?? null)));
 
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
