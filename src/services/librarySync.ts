@@ -4,6 +4,7 @@ import { cleanPicks, type CoverPick } from './books/coverPicks';
 import { coverKey } from './books/coverAnalysis';
 import { currentUser, rest } from './supabase';
 import { exportNookLook } from './nookPrefs';
+import { mergeAnnotationFirstSync, mergeBookFirstSync, mergeGarden, mergeMembershipFirstSync, mergePreferencesFirstSync, mergeShelfFirstSync, sameFields, stableJson } from './librarySyncMerge';
 
 export type LibraryBookRow = {
   id: string; user_id: string; local_book_id: string; catalog_work_id: string | null; catalog_edition_id: string | null;
@@ -162,13 +163,14 @@ export async function loadRemoteLibrary(userId: string): Promise<RemoteLibrarySn
   return { books, annotations, shelves, memberships, preferences, sessions };
 }
 
-/** Fill empty local fields from cloud during bootstrap; local values and IDs always survive. */
-export function mergeRemoteLibrary(local: ReadingState, collections: Collection[], remote: RemoteLibrarySnapshot, localCoverPicks: Record<string, CoverPick> = {}, preferRemote = false): { state: ReadingState; collections: Collection[]; coverPicks: Record<string, CoverPick>; nookLook: unknown } {
+/** Fill empty local fields from cloud during bootstrap; local values and IDs always survive. Records named in `paused` (conflicted, awaiting the user's choice) are left exactly as they are on this device. */
+export function mergeRemoteLibrary(local: ReadingState, collections: Collection[], remote: RemoteLibrarySnapshot, localCoverPicks: Record<string, CoverPick> = {}, preferRemote = false, paused: ReadonlySet<string> = new Set()): { state: ReadingState; collections: Collection[]; coverPicks: Record<string, CoverPick>; nookLook: unknown } {
   const userId = remote.preferences[0]?.user_id || remote.books[0]?.user_id || '';
   const deleted = userId ? localDeletionSet(userId) : new Set<string>();
-  const acceptedBooks = remote.books.filter(row => !deleted.has(row.local_book_id));
+  const applyBooks = remote.books.filter(row => !paused.has(`book:${row.local_book_id}`));
+  const acceptedBooks = applyBooks.filter(row => !deleted.has(row.local_book_id));
   const state = mergeInitialLibrarySnapshot(local, acceptedBooks, preferRemote);
-  if (preferRemote) for (const row of remote.books) if (row.deleted_at) {
+  if (preferRemote) for (const row of applyBooks) if (row.deleted_at) {
     const id = row.local_book_id;
     state.customBooks = state.customBooks.filter(book => String(book.id) !== id);
     for (const field of ['status', 'currentPage', 'totalPages', 'notes', 'highlights', 'history', 'ratings', 'onDeviceOverrides'] as const) {
@@ -182,7 +184,7 @@ export function mergeRemoteLibrary(local: ReadingState, collections: Collection[
   for (const row of remote.annotations) {
     const bookId = String(row.extra_data?.local_book_id || bookIdByCloud.get(row.library_book_id) || '');
     const annotationId = String(row.extra_data?.local_annotation_id || (row.annotation_type === 'note' ? 'note' : row.id));
-    if (deleted.has(bookId) || deleted.has(`annotation:${bookId}:${annotationId}`)) continue;
+    if (paused.has(`annotation:${row.id}`) || deleted.has(bookId) || deleted.has(`annotation:${bookId}:${annotationId}`)) continue;
     if (row.deleted_at) {
       if (preferRemote && row.annotation_type === 'note') delete state.notes[bookId];
       if (preferRemote && (row.annotation_type === 'highlight' || row.annotation_type === 'quote')) state.highlights[bookId] = (state.highlights[bookId] || []).filter(item => item.id !== annotationId);
@@ -208,11 +210,11 @@ export function mergeRemoteLibrary(local: ReadingState, collections: Collection[
   const mergedCollections = new Map(collections.map(item => [item.id, { ...item, bookIds: [...item.bookIds] }]));
   // Applying the cloud copy removes only what the cloud explicitly marks as removed; entries it has no record of stay (they are not deletions).
   if (preferRemote) {
-    const removed = new Set(remote.memberships.filter(row => row.deleted_at).map(row => `${String(row.membership_data?.local_shelf_id || '')}|${String(row.membership_data?.local_book_id || bookIdByCloud.get(row.library_book_id) || '')}`));
+    const removed = new Set(remote.memberships.filter(row => row.deleted_at && !paused.has(`membership:${row.id}`)).map(row => `${String(row.membership_data?.local_shelf_id || '')}|${String(row.membership_data?.local_book_id || bookIdByCloud.get(row.library_book_id) || '')}`));
     for (const collection of mergedCollections.values()) collection.bookIds = collection.bookIds.filter(id => !removed.has(`${collection.id}|${id}`));
   }
   const coverPicks = { ...localCoverPicks };
-  for (const row of remote.books) {
+  for (const row of applyBooks) {
     if (row.deleted_at || !row.personal_cover || !row.book_snapshot) continue;
     const key = coverKey(row.book_snapshot);
     if (key && (preferRemote || !coverPicks[key])) coverPicks[key] = row.personal_cover;
@@ -220,21 +222,21 @@ export function mergeRemoteLibrary(local: ReadingState, collections: Collection[
   const localByShelf = new Map(remote.shelves.filter(row => !row.deleted_at).map(row => [row.id, String(row.shelf_data?.local_id || row.id)]));
   for (const row of remote.shelves) {
     const id = String(row.shelf_data?.local_id || '');
-    if (!id || deleted.has(`collection:${id}`)) continue;
+    if (!id || deleted.has(`collection:${id}`) || paused.has(`shelf:${id}`)) continue;
     if (row.deleted_at) { if (preferRemote) mergedCollections.delete(id); continue; }
     const existing = mergedCollections.get(id);
     if (!existing || preferRemote) mergedCollections.set(id, { id, name: row.name, kind: row.shelf_data?.kind === 'tag' ? 'tag' : 'shelf', bookIds: existing?.bookIds || [] });
   }
   const collectionById = mergedCollections;
   for (const row of remote.memberships) {
-    if (row.deleted_at) continue;
+    if (row.deleted_at || paused.has(`membership:${row.id}`)) continue;
     const collectionId = localByShelf.get(row.shelf_id);
     if (collectionId && deleted.has(`collection:${collectionId}`)) continue;
     const localBookId = bookIdByCloud.get(row.library_book_id);
     const collection = collectionId && collectionById.get(collectionId);
     if (collection && localBookId && !collection.bookIds.includes(localBookId)) collection.bookIds.push(localBookId);
   }
-  const pref = remote.preferences.find(row => row.user_id && row.preferences && typeof row.preferences === 'object')?.preferences;
+  const pref = paused.has('preferences') ? undefined : remote.preferences.find(row => row.user_id && row.preferences && typeof row.preferences === 'object')?.preferences;
   let nookLook: unknown = exportNookLook() || null;
   if (pref) {
     if (pref.coverPicks && typeof pref.coverPicks === 'object') {
@@ -265,23 +267,6 @@ export function mergeRemoteLibrary(local: ReadingState, collections: Collection[
   return { state, collections: [...mergedCollections.values()], coverPicks, nookLook };
 }
 
-function mergeGarden(local: ReadingState['garden'], remote: ReadingState['garden']): ReadingState['garden'] {
-  const peaks = { ...local.peaks };
-  for (const key of Object.keys(peaks) as (keyof typeof peaks)[]) peaks[key] = Math.max(peaks[key], remote.peaks?.[key] || 0);
-  const plants = { ...remote.plants, ...local.plants };
-  for (const [id, cloud] of Object.entries(remote.plants || {})) {
-    const mine = local.plants[id];
-    if (mine) plants[id] = { ...cloud, ...mine, earnedAt: Math.min(cloud.earnedAt, mine.earnedAt), growth: Math.max(cloud.growth, mine.growth), completedAt: mine.completedAt || cloud.completedAt };
-  }
-  return {
-    ...remote, ...local, v: 1, peaks, plants,
-    achievements: { ...remote.achievements, ...local.achievements },
-    placements: { ...remote.placements, ...local.placements },
-    celebrated: { ...remote.celebrated, ...local.celebrated },
-    vine: Math.max(local.vine || 0, remote.vine || 0),
-  };
-}
-
 const qUser = (userId: string) => `user_id=eq.${encodeURIComponent(userId)}`;
 const PENDING_PREFIX = 'readlife.librarySyncPending1.';
 const OWNER_KEY = 'readlife.librarySyncOwner1';
@@ -298,6 +283,35 @@ function saveVersions(userId: string, versions: SyncVersions) {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('greatreads-library-sync-status'));
 }
 export function hasLibrarySyncConflicts(userId: string): boolean { return getVersions(userId).conflicts.length > 0; }
+/** Record keys paused on this device (they changed on both sides). Cloud refreshes must leave these alone. */
+export function pausedLibraryKeys(userId: string): Set<string> { return new Set(getVersions(userId).conflicts); }
+function cloudRevisionOfKey(remote: RemoteLibrarySnapshot, key: string): number | undefined {
+  const [kind, ...rest] = key.split(':'); const id = rest.join(':');
+  if (kind === 'preferences') return remote.preferences[0]?.revision;
+  if (kind === 'book') return remote.books.find(row => row.local_book_id === id)?.revision;
+  if (kind === 'shelf') return remote.shelves.find(row => String(row.shelf_data?.local_id || '') === id)?.revision;
+  if (kind === 'annotation') return remote.annotations.find(row => row.id === id)?.revision;
+  if (kind === 'membership') return remote.memberships.find(row => row.id === id)?.revision;
+  return undefined;
+}
+/**
+ * "Use cloud": accept the cloud copy of every paused record. Each paused record's baseline becomes the cloud revision it now matches,
+ * so nothing is re-flagged. The caller then applies the cloud copy to this device (and should save a JSON backup before this).
+ */
+export function resolveLibraryConflictsToCloud(userId: string, remote: RemoteLibrarySnapshot): void {
+  if (currentUser()?.id !== userId) return;
+  const versions = getVersions(userId);
+  for (const key of versions.conflicts) {
+    const revision = cloudRevisionOfKey(remote, key);
+    if (revision === undefined) delete versions.revisions[key]; else versions.revisions[key] = revision;
+  }
+  versions.conflicts = [];
+  saveVersions(userId, versions);
+}
+export function requestLibraryUseCloud(userId: string): void {
+  if (currentUser()?.id !== userId || typeof window === 'undefined') return;
+  window.dispatchEvent(new Event('greatreads-library-use-cloud'));
+}
 export function resolveLibraryConflictsToLocal(userId: string): void {
   if (currentUser()?.id !== userId) return;
   const versions = getVersions(userId);
@@ -363,16 +377,26 @@ async function casUpdate(table: string, userId: string, filter: string, revision
 export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSnapshot, remote: RemoteLibrarySnapshot): Promise<{ ok: boolean; conflict?: boolean; libraryIds?: Map<string, string>; shelfIds?: Map<string, string> }> {
   if (currentUser()?.id !== userId || (typeof navigator !== 'undefined' && navigator.onLine === false)) return { ok: false };
   const versions = getVersions(userId);
-  const mayWrite = (key: string, revision: number, equal: boolean): boolean => {
-    if (versions.conflicts.includes(key)) return false;
-    if (equal) { versions.revisions[key] = revision; return false; }
+  /**
+   * Decides whether a record is written. A record this device has never synced (no baseline) is merged field by field with the
+   * cloud copy instead of being flagged: only two different non-empty values in the same field are a real conflict, and
+   * then just this record pauses. A record that changed in the cloud after this device's baseline is still a conflict.
+   */
+  const gate = (key: string, revision: number, equal: boolean, merge?: () => Record<string, unknown> | null, sameAsCloud?: (merged: Record<string, unknown>) => boolean): { write: boolean; merged?: Record<string, unknown> } => {
+    if (versions.conflicts.includes(key)) return { write: false };
+    if (equal) { versions.revisions[key] = revision; return { write: false }; }
     const baseline = versions.revisions[key];
-    if (baseline === undefined || baseline !== revision) {
-      versions.revisions[key] = revision;
-      versions.conflicts.push(key);
-      return false;
+    if (baseline === revision) return { write: true };
+    if (baseline === undefined && merge) {
+      const merged = merge();
+      if (merged) {
+        versions.revisions[key] = revision; // the write below is a compare-and-swap against exactly this revision
+        return sameAsCloud?.(merged) ? { write: false } : { write: true, merged };
+      }
     }
-    return true;
+    versions.revisions[key] = revision;
+    versions.conflicts.push(key);
+    return { write: false };
   };
   const markWritten = (key: string, revision: number) => { versions.revisions[key] = revision; saveVersions(userId, versions); };
   const bookRows = new Map(remote.books.map(row => [row.local_book_id, row]));
@@ -392,8 +416,9 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
     libraryIds.set(item.local_book_id, old.id);
     const body = { ...item, id: old.id, catalog_work_id: old.catalog_work_id, catalog_edition_id: old.catalog_edition_id } as Record<string, unknown>;
     const key = `book:${item.local_book_id}`;
-    if (!mayWrite(key, old.revision, equalSyncRecord(old, body))) continue;
-    const ok = await casUpdate('user_library_books', userId, `local_book_id=eq.${encodeURIComponent(item.local_book_id)}`, old.revision, body);
+    const gated = gate(key, old.revision, equalSyncRecord(old, body), () => mergeBookFirstSync(old, item), merged => equalSyncRecord(old, { ...body, ...merged }));
+    if (!gated.write) continue;
+    const ok = await casUpdate('user_library_books', userId, `local_book_id=eq.${encodeURIComponent(item.local_book_id)}`, old.revision, gated.merged ? { ...body, ...gated.merged } : body);
     if (!ok) return { ok: false, conflict: true };
     markWritten(key, old.revision + 1);
   }
@@ -415,8 +440,9 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
       const key = `shelf:${localId}`;
       const body = { name: item.name, description: item.description, sort_order: item.sort_order, shelf_data: item.shelf_data, deleted_at: null };
       const equal = old.name === item.name && old.description === item.description && old.sort_order === item.sort_order && stableJson(old.shelf_data) === stableJson(item.shelf_data) && !old.deleted_at;
-      if (mayWrite(key, old.revision, equal)) {
-        if (!await casUpdate('user_shelves', userId, `id=eq.${old.id}`, old.revision, body)) return { ok: false, conflict: true };
+      const gated = gate(key, old.revision, equal, () => mergeShelfFirstSync(old, item), merged => sameFields(old, merged, SHELF_FIELDS));
+      if (gated.write) {
+        if (!await casUpdate('user_shelves', userId, `id=eq.${old.id}`, old.revision, gated.merged ? { ...body, ...gated.merged } : body)) return { ok: false, conflict: true };
         markWritten(key, old.revision + 1);
       }
     }
@@ -434,8 +460,9 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
     } else {
       const key = `annotation:${row.id}`;
       const equal = old.content === row.content && old.quote_text === row.quote_text && old.page_reference === row.page_reference && old.deleted_at === row.deleted_at && stableJson(old.location_data) === stableJson(row.location_data) && stableJson(old.extra_data) === stableJson(row.extra_data);
-      if (mayWrite(key, old.revision, equal)) {
-        if (!await casUpdate('user_book_annotations', userId, `id=eq.${row.id}`, old.revision, row as unknown as Record<string, unknown>)) return { ok: false, conflict: true };
+      const gated = gate(key, old.revision, equal, () => mergeAnnotationFirstSync(old, row), merged => sameFields(old, merged, ANNOTATION_FIELDS));
+      if (gated.write) {
+        if (!await casUpdate('user_book_annotations', userId, `id=eq.${row.id}`, old.revision, gated.merged ?? row as unknown as Record<string, unknown>)) return { ok: false, conflict: true };
         markWritten(key, old.revision + 1);
       }
     }
@@ -459,8 +486,9 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
     } else {
       const key = `membership:${row.id}`;
       const equal = old.deleted_at === row.deleted_at && old.sort_order === row.sort_order && old.shelf_id === row.shelf_id && old.library_book_id === row.library_book_id && stableJson(old.membership_data) === stableJson(row.membership_data);
-      if (mayWrite(key, old.revision, equal)) {
-        if (!await casUpdate('user_shelf_books', userId, `id=eq.${row.id}`, old.revision, row as unknown as Record<string, unknown>)) return { ok: false, conflict: true };
+      const gated = gate(key, old.revision, equal, () => mergeMembershipFirstSync(old, row), merged => sameFields(old, merged, MEMBERSHIP_FIELDS));
+      if (gated.write) {
+        if (!await casUpdate('user_shelf_books', userId, `id=eq.${row.id}`, old.revision, gated.merged ?? row as unknown as Record<string, unknown>)) return { ok: false, conflict: true };
         markWritten(key, old.revision + 1);
       }
     }
@@ -493,23 +521,25 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
     const made = await rest('user_library_preferences', { method: 'POST', prefer: 'return=representation', body: { ...pref, revision: 1 } });
     if (!made.ok) return { ok: false, conflict: made.status === 409 };
     markWritten('preferences', 1);
-  } else if (mayWrite('preferences', currentPrefs.revision, stableJson(currentPrefs.preferences) === stableJson(pref.preferences))) {
-    if (!await casUpdate('user_library_preferences', userId, '', currentPrefs.revision, pref)) return { ok: false, conflict: true };
+  } else {
+    const gated = gate('preferences', currentPrefs.revision, stableJson(currentPrefs.preferences) === stableJson(pref.preferences),
+      () => mergePreferencesFirstSync(currentPrefs.preferences, pref.preferences), merged => stableJson(currentPrefs.preferences) === stableJson(merged));
+    if (gated.write) {
+    if (!await casUpdate('user_library_preferences', userId, '', currentPrefs.revision, gated.merged ? { ...pref, preferences: gated.merged } : pref)) return { ok: false, conflict: true };
     markWritten('preferences', currentPrefs.revision + 1);
+    }
   }
   saveVersions(userId, versions);
   return { ok: true, conflict: versions.conflicts.length > 0, libraryIds, shelfIds };
 }
 
+const SHELF_FIELDS = ['name', 'description', 'sort_order', 'shelf_data', 'deleted_at'];
+const ANNOTATION_FIELDS = ['content', 'quote_text', 'page_reference', 'location_data', 'extra_data', 'deleted_at'];
+const MEMBERSHIP_FIELDS = ['deleted_at', 'sort_order', 'shelf_id', 'library_book_id', 'membership_data'];
+
 function equalSyncRecord(old: LibraryBookRow, next: Record<string, unknown>): boolean {
   const fields: (keyof LibraryBookRow)[] = ['status', 'reading_progress', 'personal_cover', 'book_snapshot', 'personal_data', 'deleted_at'];
   return fields.every(field => stableJson(old[field] ?? null) === stableJson(next[field] ?? null));
-}
-
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
-  if (value && typeof value === 'object') return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`).join(',')}}`;
-  return JSON.stringify(value) ?? 'null';
 }
 
 function buildSnapshotWithIds(snapshot: LibrarySyncSnapshot, libraryIds: Map<string, string>, shelfIds: Map<string, string>): LibrarySyncSnapshot {

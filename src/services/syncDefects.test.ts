@@ -11,7 +11,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { ReadingState } from '../types';
-import { hasLibrarySyncConflicts, loadRemoteLibrary, mergeRemoteLibrary, syncLocalLibrary } from './librarySync';
+import { hasLibrarySyncConflicts, hasPendingLibrarySync, loadRemoteLibrary, mergeRemoteLibrary, pausedLibraryKeys, resolveLibraryConflictsToCloud, resolveLibraryConflictsToLocal, syncLocalLibrary, type RemoteLibrarySnapshot } from './librarySync';
+import { mergePreferencesFirstSync } from './librarySyncMerge';
 
 const defect = (name: string, fn: () => Promise<void> | void) => test(name, { todo: 'known sync defect (see sync audit)' }, fn);
 
@@ -66,24 +67,36 @@ function world() {
       const ok = await syncLocalLibrary(USER, { state: merged, books, collections: [], coverPicks: {} });
       return { state: merged, ok };
     };
-    /** What the app does after a local edit: push, then (when nothing is paused) take the cloud copy back. */
+    /** What the app does after a local edit: push, then take the cloud copy back. Records paused by a conflict are left alone; the rest keep refreshing. */
     const edit = async (state: ReadingState, books: any[] = []) => {
       use();
       const ok = await syncLocalLibrary(USER, { state, books, collections: [], coverPicks: {} });
       let after = state;
-      if (ok && !hasLibrarySyncConflicts(USER)) { const remote = await loadRemoteLibrary(USER); if (remote) after = mergeRemoteLibrary(state, [], remote, {}, true).state; }
+      if (ok) { const remote = await loadRemoteLibrary(USER); if (remote) after = mergeRemoteLibrary(state, [], remote, {}, true, pausedLibraryKeys(USER)).state; }
       return { state: after, ok };
     };
     const conflicts = () => { use(); return hasLibrarySyncConflicts(USER); };
-    return { open, edit, conflicts };
+    const paused = () => { use(); return [...pausedLibraryKeys(USER)].sort(); };
+    const pending = () => { use(); return hasPendingLibrarySync(USER); };
+    /** "Use cloud": push unconflicted edits, accept the cloud copy of the paused records, apply it here. */
+    const useCloud = async (state: ReadingState, books: any[] = []) => {
+      use();
+      await syncLocalLibrary(USER, { state, books, collections: [], coverPicks: {} });
+      const remote = await loadRemoteLibrary(USER);
+      resolveLibraryConflictsToCloud(USER, remote!);
+      return mergeRemoteLibrary(state, [], remote!, {}, true).state;
+    };
+    const useDevice = () => { use(); resolveLibraryConflictsToLocal(USER); };
+    return { open, edit, conflicts, paused, pending, useCloud, useDevice };
   };
   const prefs = () => tables.get('user_library_preferences')![0]?.preferences as any;
+  const setOnline = (onLine: boolean) => Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine } });
   const done = () => {
     globalThis.fetch = realFetch;
     if (realStorage) Object.defineProperty(globalThis, 'localStorage', realStorage); else delete (globalThis as any).localStorage;
     if (realNavigator) Object.defineProperty(globalThis, 'navigator', realNavigator);
   };
-  return { device, prefs, tables, done };
+  return { device, prefs, tables, setOnline, done };
 }
 
 /* ---------- regression guards: these work today and must keep working ---------- */
@@ -116,7 +129,7 @@ test('guard: a device that is the only writer keeps all of its data across push 
 
 /* ---------- known defects: desired behaviour, failing today ---------- */
 
-defect('second device first sync does not pause its own edits as a conflict', async () => {
+test('second device first sync does not pause its own edits as a conflict', async () => {
   const w = world();
   try {
     const a = w.device(); const b = w.device();
@@ -125,6 +138,7 @@ defect('second device first sync does not pause its own edits as a conflict', as
     const sb = blank(); sb.dailyLog = { '2026-10-21': 7 };
     await b.open(sb);
     assert.equal(b.conflicts(), false, 'first sync of a second device must not be flagged as a conflict');
+    assert.deepEqual(w.prefs().dailyLog, { '2026-10-20': 10, '2026-10-21': 7 }, 'both devices\' days are in the cloud');
   } finally { w.done(); }
 });
 
@@ -221,4 +235,139 @@ defect('a book un-hidden on one device is not re-hidden by a second device that 
 /* Contract for Phase 2 (not testable until the per-day records exist): written here so it is not forgotten. */
 defect('an exact-timestamp tie on a day with different pages is reported for the user to choose', () => {
   assert.fail('needs per-day timestamps (Phase 2)');
+});
+
+/* ---------- Phase 1: second-device first sync, per-record conflicts, use cloud, reconnect ---------- */
+
+test('first sync fills gaps in both directions: cloud status and this device\'s rating both end up in the cloud, with no conflict', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const bk = book('b1');
+    const sa = blank(); sa.customBooks = [bk as any]; sa.status = { b1: 'now' };
+    await a.open(sa, [bk]);
+    const sb = blank(); sb.customBooks = [bk as any]; sb.ratings = { b1: 5 };
+    const opened = await b.open(sb, [bk]);
+    assert.equal(b.conflicts(), false);
+    assert.equal(opened.state.status.b1, 'now');
+    const row = w.tables.get('user_library_books')![0];
+    assert.equal(row.status, 'now');
+    assert.equal(row.personal_data.rating, 5);
+  } finally { w.done(); }
+});
+
+test('a real field conflict on first sync pauses only that book; other records still sync and nothing is overwritten', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const b1 = book('b1'), b2 = book('b2');
+    const sa = blank(); sa.customBooks = [b1 as any]; sa.status = { b1: 'now' };
+    await a.open(sa, [b1]);
+    const sb = blank(); sb.customBooks = [b1 as any, b2 as any]; sb.status = { b1: 'done', b2: 'next' }; sb.words = [word('w9')];
+    await b.open(sb, [b1, b2]);
+    assert.equal(b.conflicts(), true);
+    assert.deepEqual(b.paused(), ['book:b1'], 'only the disagreeing book is paused');
+    const rows = w.tables.get('user_library_books')!;
+    assert.equal(rows.find(r => r.local_book_id === 'b1')!.status, 'now', 'the cloud value was not overwritten');
+    assert.equal(rows.find(r => r.local_book_id === 'b2')!.status, 'next', 'the other book still synced');
+    assert.deepEqual((w.prefs().words as any[]).map(x => x.id), ['w9'], 'preferences still synced');
+  } finally { w.done(); }
+});
+
+test('a cloud refresh leaves paused records as they are here and keeps updating the rest', () => {
+  const local = blank(); local.status = { b1: 'now' }; local.customBooks = [book('b1') as any, book('b2') as any];
+  const row = (id: string, status: string) => ({ id: `id-${id}`, user_id: USER, local_book_id: id, catalog_work_id: null, catalog_edition_id: null, status, reading_progress: {}, personal_cover: null, book_snapshot: book(id), personal_data: { isCustomBook: true }, revision: 2, deleted_at: null });
+  const remote: RemoteLibrarySnapshot = { books: [row('b1', 'done'), row('b2', 'now')] as any, annotations: [], shelves: [], memberships: [], preferences: [{ user_id: USER, preferences: { goal: 30 }, revision: 2 }], sessions: [] };
+  const merged = mergeRemoteLibrary(local, [], remote, {}, true, new Set(['book:b1'])).state;
+  assert.equal(merged.status.b1, 'now', 'paused book keeps this device\'s value');
+  assert.equal(merged.status.b2, 'now', 'unpaused book takes the cloud value');
+  assert.equal(merged.goal, 30, 'preferences still refresh');
+  assert.equal(mergeRemoteLibrary(local, [], remote, {}, true, new Set(['preferences'])).state.goal, 10, 'paused preferences stay put');
+});
+
+test('use cloud: the paused record takes the cloud value, is not re-flagged, and the cloud is not overwritten afterwards', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const b1 = book('b1');
+    const sa = blank(); sa.customBooks = [b1 as any]; sa.status = { b1: 'now' };
+    await a.open(sa, [b1]);
+    const sb = blank(); sb.customBooks = [b1 as any]; sb.status = { b1: 'done' };
+    await b.open(sb, [b1]);
+    assert.equal(b.conflicts(), true);
+    const after = await b.useCloud(sb, [b1]);
+    assert.equal(after.status.b1, 'now');
+    assert.equal(b.conflicts(), false);
+    const next = await b.edit(after, [b1]);
+    assert.equal(next.ok, true);
+    assert.equal(b.conflicts(), false, 'not flagged again');
+    assert.equal(w.tables.get('user_library_books')![0].status, 'now');
+  } finally { w.done(); }
+});
+
+test('use this device: the paused record is written to the cloud afterwards', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const b1 = book('b1');
+    const sa = blank(); sa.customBooks = [b1 as any]; sa.status = { b1: 'now' };
+    await a.open(sa, [b1]);
+    const sb = blank(); sb.customBooks = [b1 as any]; sb.status = { b1: 'done' };
+    await b.open(sb, [b1]);
+    b.useDevice();
+    await b.edit(sb, [b1]);
+    assert.equal(b.conflicts(), false);
+    assert.equal(w.tables.get('user_library_books')![0].status, 'done');
+  } finally { w.done(); }
+});
+
+test('a cloud tombstone against live local data on first sync is a conflict: the book is not resurrected', async () => {
+  const w = world();
+  try {
+    const b = w.device();
+    const b1 = book('b1');
+    w.tables.get('user_library_books')!.push({ id: 'cloud-b1', user_id: USER, local_book_id: 'b1', status: 'now', reading_progress: {}, personal_cover: null, book_snapshot: b1, personal_data: { isCustomBook: true }, revision: 3, deleted_at: '2026-10-01T00:00:00Z' });
+    const sb = blank(); sb.customBooks = [b1 as any]; sb.status = { b1: 'now' };
+    await b.open(sb, [b1]);
+    assert.deepEqual(b.paused(), ['book:b1']);
+    assert.ok(w.tables.get('user_library_books')![0].deleted_at, 'the cloud tombstone is untouched');
+  } finally { w.done(); }
+});
+
+test('offline edits stay pending, then upload on reconnect without a conflict', async () => {
+  const w = world();
+  try {
+    const a = w.device();
+    const b1 = book('b1');
+    let s = blank(); s.customBooks = [b1 as any];
+    s = (await a.open(s, [b1])).state;
+    w.setOnline(false);
+    s = { ...s, status: { b1: 'now' } };
+    const offline = await a.edit(s, [b1]);
+    assert.equal(offline.ok, false);
+    assert.equal(a.pending(), true, 'the edit is remembered');
+    assert.equal(w.tables.get('user_library_books')!.some(r => r.status === 'now'), false);
+    w.setOnline(true);
+    const back = await a.edit(s, [b1]);
+    assert.equal(back.ok, true);
+    assert.equal(a.pending(), false);
+    assert.equal(a.conflicts(), false);
+    assert.equal(w.tables.get('user_library_books')![0].status, 'now');
+  } finally { w.done(); }
+});
+
+test('first-sync preferences merge: gaps filled, collections unioned, only two different non-empty values conflict', () => {
+  const base = { goal: 10, readingIntention: '', profile: { name: '', photo: '', theme: 'auto' }, dailyLog: {}, words: [], hiddenBookIds: {}, onDeviceOverrides: {}, coverPicks: {}, nookLook: null };
+  const merged = mergePreferencesFirstSync(
+    { ...base, goal: 12, dailyLog: { d1: 5, d2: 9 }, words: [word('w1')], hiddenBookIds: { x: true } },
+    { ...base, goal: 10, readingIntention: 'read daily', dailyLog: { d2: 4, d3: 2 }, words: [word('w1', true), word('w2')], hiddenBookIds: { y: true } },
+  ) as any;
+  assert.equal(merged.goal, 12, 'a default goal never beats a chosen one');
+  assert.equal(merged.readingIntention, 'read daily');
+  assert.deepEqual(merged.dailyLog, { d1: 5, d2: 9, d3: 2 });
+  assert.deepEqual(merged.words.map((x: any) => [x.id, x.isLearned]).sort(), [['w1', true], ['w2', false]]);
+  assert.deepEqual(Object.keys(merged.hiddenBookIds).sort(), ['x', 'y']);
+  assert.equal(mergePreferencesFirstSync({ ...base, goal: 12 }, { ...base, goal: 15 }), null, 'two chosen goals disagree');
+  assert.equal(mergePreferencesFirstSync({ ...base, profile: { name: 'Ana', photo: '', theme: 'auto' } }, { ...base, profile: { name: 'Bea', photo: '', theme: 'auto' } }), null, 'two profile names disagree');
+  assert.equal(mergePreferencesFirstSync({ ...base, nookLook: { a: 1 } }, { ...base, nookLook: { a: 2 } }), null);
 });
