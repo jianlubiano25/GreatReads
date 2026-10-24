@@ -31,7 +31,9 @@ const clearableKeys = new Set<string>();
 export const registerClearableKey = (key: string) => { clearableKeys.add(key); };
 
 /** Keys that are safe to clear: registered caches plus the old cache keys older versions used. */
-export const clearableCacheKeys = (): string[] => [...new Set([...clearableKeys, ...LEGACY_BOOK_CACHE_KEYS, 'readlife.curated1', 'readlife.curated2'])];
+/** Saved with persistentCache but a choice of the reader, not a download: no cleanup or refresh may ever clear it. */
+export const NEVER_CLEAR: readonly string[] = ['readlife.nameChoices1'];
+export const clearableCacheKeys = (): string[] => [...new Set([...clearableKeys, ...LEGACY_BOOK_CACHE_KEYS, 'readlife.curated1', 'readlife.curated2'])].filter(k => !NEVER_CLEAR.includes(k));
 
 export function persistentCache<T>(storageKey: string, opts: {
   ttl: number;

@@ -1,0 +1,7 @@
+-- Applied to the GreatReads Supabase project (amvkwwqcepmxxkfeqjox) on 2026-10-22 through the dashboard connection; kept here as a record.
+-- 1. catalog_work_json / catalog_changes also carry the cover addresses the owner rejected (so no device shows or uses them);
+--    a book with rejected covers is sent even when it is not published (with nothing else in it).
+-- 2. trigger catalog_cover_rejected_touch: a newly rejected cover marks the book as changed so every device hears about it.
+-- 3. catalog_publish_defaults(uuid[]): owner only; publishes the best stored candidate wherever nothing is published yet.
+--    Never replaces a published value, never uses a rejected one, skips archived books.
+-- The full function bodies live in the database; see `select pg_get_functiondef('public.catalog_publish_defaults(uuid[])'::regprocedure);`.

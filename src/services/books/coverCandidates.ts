@@ -8,6 +8,7 @@ import { isEnglishLanguage, titleIsNonLatin } from './language';
 import { olCoverById, olCoverByIsbn, openLibraryEditionCovers, openLibraryEnglishCoverFor, findOpenLibrary, BUNDLE_TITLE } from './sources/openLibrary';
 import { coverKey, flatKey, probeImage } from './coverAnalysis';
 import { COVER_SOURCE_LABEL, type CoverSource } from './coverPicks';
+import { isCoverRejected } from './rejectedCovers';
 
 /* ======================================================================================================
  * the covers offered in the cover viewer  (was coverCandidates.ts)
@@ -115,6 +116,7 @@ function startRun(book: Pick<Book, 'title' | 'author' | 'id' | 'identity' | 'cov
       // A lookup that was disturbed by a network failure is not remembered as "this book has these covers".
       // A short list is not remembered either (one source may simply have been slow or empty today): the picker asks again next time. A fast (shelf) lookup is partial by design, so it is never saved as the list.
       if (!fast && transientFailureCount() === trouble && run.found.length >= 2) cache.set(key, run.found);
+      try { if (run.found.length) candidateSink?.(book, [...run.found]); } catch { /* capture must never disturb a lookup */ }
       return run.found;
     })
     .finally(() => { runs.delete(key + (fast ? '|fast' : '')); });
@@ -127,9 +129,20 @@ function startRun(book: Pick<Book, 'title' | 'author' | 'id' | 'identity' | 'cov
  * final list. `signal` only stops the callbacks: a lookup other callers share keeps running and is remembered.
  */
 /** Instant, no network: the best saved English cover for a book that has no link of its own (from a list the cover viewer or an earlier lookup already kept), or ''. */
+/** Instant, no network: every cover a finished lookup kept for this book (empty when none). */
+export const peekCoverCandidates = (book: { title?: string; author?: string }): CoverCandidate[] => { const saved = cache.get(coverKey(book)); return saved ? [...saved] : []; };
+
+/** The list without the covers the owner rejected (for every device). */
+const allowed = (book: { title?: string; author?: string }, list: CoverCandidate[]): CoverCandidate[] => list.filter(c => !isCoverRejected(book, c.url));
+
+/** Told what a lookup found (the owner's quiet catalog capture listens here). Never throws into the lookup. */
+type CandidateSink = (book: { title: string; author?: string }, list: CoverCandidate[]) => void;
+let candidateSink: CandidateSink | undefined;
+export const setCandidateSink = (f?: CandidateSink) => { candidateSink = f; };
+
 export function peekCoverCandidate(book: { title?: string; author?: string }): string {
   const saved = cache.get(coverKey(book));
-  const best = saved ? rankCandidates(saved).find(c => !c.foreign) : undefined;
+  const best = saved ? rankCandidates(allowed(book, saved)).find(c => !c.foreign) : undefined;
   return best ? (best.source === 'openlibrary' ? best.url.replace(/-L\.jpg/, '-M.jpg') : best.url) : '';
 }
 
@@ -137,15 +150,16 @@ export function loadCoverCandidates(book: Pick<Book, 'title' | 'author' | 'id' |
   const key = coverKey(book);
   const saved = cache.get(key);
   if (saved) {
-    if (!signal?.aborted) onUpdate([...saved]);
-    return Promise.resolve([...saved]);
+    const clean = allowed(book, saved);
+    if (!signal?.aborted) onUpdate(clean);
+    return Promise.resolve(clean);
   }
   const fast = !!opts.fast;
   const runKey = key + (fast ? '|fast' : '');
   // A full run already going answers a fast request too
   const run = runs.get(key) || (fast ? runs.get(runKey) : undefined) || startRun(book, key, fast);
-  const sub = (list: CoverCandidate[]) => { if (!signal?.aborted) onUpdate(list); };
+  const sub = (list: CoverCandidate[]) => { if (!signal?.aborted) onUpdate(allowed(book, list)); };
   run.subs.add(sub);
   if (run.found.length) sub([...run.found]);
-  return run.done.finally(() => { run.subs.delete(sub); });
+  return run.done.then(list => allowed(book, list)).finally(() => { run.subs.delete(sub); });
 }

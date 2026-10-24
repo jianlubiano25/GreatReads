@@ -101,12 +101,18 @@ const ENGLISH_EDITIONS: Record<string, string[]> = {
  * Only the fallback: a catalogue's own English edition title (resolve.ts) is used first.
  */
 const ENGLISH_TITLES: Record<string, string> = { '変な絵': 'Strange Pictures', 'l etranger': 'The Stranger' };
-export const knownEnglishTitle = (title = ''): string => ENGLISH_TITLES[titleKey(title)] || '';
+export const knownEnglishTitle = (title = ''): string => {
+  // the title as written, in compatibility form (full-width letters, ...), and each half of a dual title ("Strange Pictures, 変な絵")
+  for (const k of [titleKey(title), titleKey(title.normalize('NFKC')), ...dualTitleParts(title).map(titleKey)]) if (ENGLISH_TITLES[k]) return ENGLISH_TITLES[k];
+  return '';
+};
 export const englishEditionQueries = (title = ''): string[] => ENGLISH_EDITIONS[titleKey(title)] || [];
 
 /** Every main-title key a title answers to: the whole main title, plus each half of a dual title, plus any narrow alias. */
 export function titleKeys(title = ''): string[] {
-  const keys = [titleKey(title), ...dualTitleParts(title).map(titleKey)].filter(Boolean);
+  // a title on the known-English list is the same book as its English title ("変な絵" / "Strange Pictures"): the saved record and the copy drawn with the English title stay ONE book
+  const en = knownEnglishTitle(title);
+  const keys = [titleKey(title), ...dualTitleParts(title).map(titleKey), ...(en ? [titleKey(en)] : [])].filter(Boolean);
   return [...new Set([...keys, ...keys.flatMap(k => TITLE_ALIASES[k] || [])])];
 }
 
@@ -234,7 +240,16 @@ export const titlesMatch = (a = '', b = ''): boolean => {
 export function sameEdition(a: Pick<Book, 'id' | 'identity'>, b: Pick<Book, 'id' | 'identity'>): boolean {
   const x = identityOf(a);
   const y = identityOf(b);
-  return !!((x.isbn13 && x.isbn13 === y.isbn13) || (x.isbn10 && x.isbn10 === y.isbn10) || (x.olEdition && x.olEdition === y.olEdition) || (x.gbVolume && x.gbVolume === y.gbVolume));
+  // A shared ISBN only counts when it is a real one (check digit correct); a mistyped or made-up number must not join two different books
+  return !!((x.isbn13 && x.isbn13 === y.isbn13 && validIsbn(x.isbn13)) || (x.isbn10 && x.isbn10 === y.isbn10 && validIsbn(x.isbn10)) || (x.olEdition && x.olEdition === y.olEdition) || (x.gbVolume && x.gbVolume === y.gbVolume));
+}
+
+/** ISBN-10 / ISBN-13 check digit. */
+export function validIsbn(isbn = ''): boolean {
+  const s = isbn.replace(/[\s-]/g, '').toUpperCase();
+  if (/^\d{13}$/.test(s)) return (10 - [...s.slice(0, 12)].reduce((n, c, i) => n + Number(c) * (i % 2 ? 3 : 1), 0) % 10) % 10 === Number(s[12]);
+  if (/^\d{9}[\dX]$/.test(s)) return [...s].reduce((n, c, i) => n + (c === 'X' ? 10 : Number(c)) * (10 - i), 0) % 11 === 0;
+  return false;
 }
 
 /**

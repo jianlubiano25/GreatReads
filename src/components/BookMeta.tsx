@@ -6,7 +6,7 @@ import { externalRating, isNytCoverUrl, ratingOf, starFills } from '../services/
 import { infoKey, infoVersion, shownRating, subscribeInfo } from '../services/books/infoStore';
 import { placeholderStyleFor, titleSizeCqw, isFrontCoverShape } from '../services/books/placeholderCover';
 import { inspectCover } from '../services/books/covers';
-import { coverKey, getCoverUrl, sizedCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, isCoverSettled, markCoverSettled, reportMissingCover, clearMissingCover, getCoverPickInfo, pickSizedUrl, markCoverPickFailed, peekCoverCandidate } from '../services/books';
+import { coverKey, ownCoverUrl, sizedCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, isCoverSettled, markCoverSettled, reportMissingCover, clearMissingCover, getCoverPickInfo, pickSizedUrl, markCoverPickFailed, peekCoverCandidate } from '../services/books';
 
 export type AwardKind = 'w' | 's' | 'c'; // winner, shortlist, other pick (book club, series...)
 
@@ -216,7 +216,7 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
   // (Apple's 600x900) and the book's updated link (360x540) were two URLs for one picture, so the cover loaded twice and visibly swapped.
   const fix = pick ? '' : getCoverFix(book);
   // Whatever is already known is drawn at once (pick, repair, the book's own link, else a cover kept from an earlier lookup): nothing here waits on a lookup or a measurement.
-  const own = pick ? '' : getCoverUrl(book.coverId, imgSize, book.coverUrl);
+  const own = pick ? '' : ownCoverUrl(book, imgSize);
   const kept = pick || fix || own ? '' : peekCoverCandidate(book);
   const baseUrl = pick ? pickSizedUrl(pick.url, imgSize) : fix ? sizedCoverUrl(fix, imgSize) : own || (kept ? sizedCoverUrl(kept, imgSize) : '');
   type St = { base: string; tries: number; alt: string; dead: boolean };

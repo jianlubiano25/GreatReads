@@ -1,0 +1,131 @@
+/**
+ * Field-level merge for a record this device has never synced before (no baseline revision).
+ *
+ * Rule: fill gaps from both sides, take the larger of monotonic values, union collections, and treat a field as a TRUE
+ * conflict only when both sides hold different non-empty values (there are no timestamps to say which is newer, so
+ * nothing is guessed and nothing is overwritten). A merge function returns null for a true conflict, and the caller
+ * then pauses just that record. Pure functions: no storage, no network.
+ */
+import type { ReadingState } from '../types';
+import type { AnnotationRow, LibraryBookRow, LibrarySyncSnapshot, ShelfBookRow, ShelfRow } from './librarySync';
+
+export function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value && typeof value === 'object') return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`).join(',')}}`;
+  return JSON.stringify(value) ?? 'null';
+}
+
+export function mergeGarden(local: ReadingState['garden'], remote: ReadingState['garden']): ReadingState['garden'] {
+  const peaks = { ...local.peaks };
+  for (const key of Object.keys(peaks) as (keyof typeof peaks)[]) peaks[key] = Math.max(peaks[key], remote.peaks?.[key] || 0);
+  const plants = { ...remote.plants, ...local.plants };
+  for (const [id, cloud] of Object.entries(remote.plants || {})) {
+    const mine = local.plants[id];
+    if (mine) plants[id] = { ...cloud, ...mine, earnedAt: Math.min(cloud.earnedAt, mine.earnedAt), growth: Math.max(cloud.growth, mine.growth), completedAt: mine.completedAt || cloud.completedAt };
+  }
+  return {
+    ...remote, ...local, v: 1, peaks, plants,
+    achievements: { ...remote.achievements, ...local.achievements },
+    placements: { ...remote.placements, ...local.placements },
+    celebrated: { ...remote.celebrated, ...local.celebrated },
+    vine: Math.max(local.vine || 0, remote.vine || 0),
+  };
+}
+
+class FieldConflict extends Error {}
+const isSet = (value: unknown): boolean => value !== null && value !== undefined && value !== '' && !(typeof value === 'object' && Object.keys(value as object).length === 0);
+/** One of two values: the set one, or the shared one. Two different set values are a true conflict. */
+function pick<T>(remote: T, local: T): T {
+  if (!isSet(local)) return remote;
+  if (!isSet(remote)) return local;
+  if (stableJson(remote) === stableJson(local)) return remote;
+  throw new FieldConflict();
+}
+const guard = <T>(build: () => T): T | null => { try { return build(); } catch (error) { if (error instanceof FieldConflict) return null; throw error; } };
+const obj = (value: unknown): Record<string, unknown> => (value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {});
+
+/** True when every listed field matches (null and undefined count as equal). */
+export const sameFields = (a: object, b: object, fields: string[]): boolean =>
+  fields.every(field => stableJson((a as Record<string, unknown>)[field] ?? null) === stableJson((b as Record<string, unknown>)[field] ?? null));
+
+/** A cloud tombstone against live local data is never resolved by guessing: null means the user must choose. */
+export function mergeBookFirstSync(old: LibraryBookRow, item: LibrarySyncSnapshot['books'][number]): Record<string, unknown> | null {
+  if (old.deleted_at) return null;
+  return guard(() => {
+    const cloudProgress = obj(old.reading_progress), localProgress = obj(item.reading_progress);
+    const cloudData = obj(old.personal_data), localData = obj(item.personal_data);
+    const isCustom = !!cloudData.isCustomBook || !!localData.isCustomBook;
+    return {
+      status: pick(old.status, item.status),
+      reading_progress: {
+        currentPage: Math.max(Number(cloudProgress.currentPage) || 0, Number(localProgress.currentPage) || 0),
+        totalPages: Number(cloudProgress.totalPages) > 0 ? Number(cloudProgress.totalPages) : Number(localProgress.totalPages) || 0,
+        history: pick(cloudProgress.history ?? null, localProgress.history ?? null),
+      },
+      personal_cover: pick(old.personal_cover, item.personal_cover),
+      // A catalogue snapshot is not a user edit, so the cloud copy stands. A custom book's snapshot IS the user's own data.
+      book_snapshot: isCustom ? pick(old.book_snapshot, item.book_snapshot) : (old.book_snapshot ?? item.book_snapshot),
+      personal_data: { rating: pick(cloudData.rating ?? null, localData.rating ?? null), onDevice: cloudData.onDevice ?? localData.onDevice ?? null, isCustomBook: isCustom },
+      deleted_at: null,
+    };
+  });
+}
+
+export function mergeAnnotationFirstSync(old: AnnotationRow, row: LibrarySyncSnapshot['annotations'][number]): Record<string, unknown> | null {
+  if (old.deleted_at) return null;
+  return guard(() => ({
+    ...row,
+    content: pick(old.content, row.content),
+    quote_text: old.quote_text ?? row.quote_text,
+    page_reference: old.page_reference ?? row.page_reference,
+    location_data: { ...row.location_data, ...old.location_data },
+    extra_data: { ...row.extra_data, ...old.extra_data },
+    deleted_at: null,
+  }));
+}
+
+export function mergeShelfFirstSync(old: ShelfRow, item: LibrarySyncSnapshot['shelves'][number]): Record<string, unknown> | null {
+  if (old.deleted_at) return null;
+  // Shelf order is not applied on read yet (Phase 5), so the cloud order is kept rather than guessed.
+  return guard(() => ({ name: pick(old.name, item.name), description: old.description ?? item.description, sort_order: old.sort_order, shelf_data: { ...item.shelf_data, ...old.shelf_data }, deleted_at: null }));
+}
+
+export function mergeMembershipFirstSync(old: ShelfBookRow, row: LibrarySyncSnapshot['memberships'][number]): Record<string, unknown> | null {
+  if (old.deleted_at) return null;
+  return { ...row, sort_order: old.sort_order, membership_data: { ...row.membership_data, ...old.membership_data }, deleted_at: null };
+}
+
+const DEFAULT_GOAL = 10;
+/** The single preferences JSON. Until it is split (Phase 4) one true conflict in any field pauses the whole record. */
+export function mergePreferencesFirstSync(remote: Record<string, unknown>, local: Record<string, unknown>): Record<string, unknown> | null {
+  return guard(() => {
+    const out: Record<string, unknown> = { ...local, ...remote };
+    const cloudGoal = Number(remote.goal) || 0, localGoal = Number(local.goal) || 0;
+    if (!cloudGoal) out.goal = localGoal || undefined;
+    else if (!localGoal || cloudGoal === localGoal || localGoal === DEFAULT_GOAL) out.goal = cloudGoal;
+    else if (cloudGoal === DEFAULT_GOAL) out.goal = localGoal;
+    else throw new FieldConflict();
+    if (out.goal === undefined) delete out.goal;
+    out.readingIntention = pick(remote.readingIntention ?? '', local.readingIntention ?? '');
+    const cloudProfile = obj(remote.profile), localProfile = obj(local.profile);
+    if (isSet(remote.profile) || isSet(local.profile)) {
+      const theme = (value: unknown) => (value === 'auto' ? '' : value);
+      out.profile = { name: pick(cloudProfile.name ?? '', localProfile.name ?? ''), photo: pick(cloudProfile.photo ?? '', localProfile.photo ?? ''), theme: pick(theme(cloudProfile.theme) ?? '', theme(localProfile.theme) ?? '') || 'auto' };
+    }
+    const days: Record<string, number> = { ...obj(local.dailyLog) as Record<string, number> };
+    for (const [day, pages] of Object.entries(obj(remote.dailyLog))) days[day] = Math.max(Number(days[day]) || 0, Number(pages) || 0);
+    out.dailyLog = days;
+    const words = new Map<string, Record<string, unknown>>();
+    for (const word of (Array.isArray(local.words) ? local.words : []) as Record<string, unknown>[]) words.set(String(word.id), word);
+    for (const word of (Array.isArray(remote.words) ? remote.words : []) as Record<string, unknown>[]) { const mine = words.get(String(word.id)); words.set(String(word.id), mine ? { ...mine, ...word, isLearned: !!(mine.isLearned || word.isLearned) } : word); }
+    out.words = [...words.values()];
+    if (isSet(remote.garden) && isSet(local.garden)) out.garden = mergeGarden(local.garden as ReadingState['garden'], remote.garden as ReadingState['garden']);
+    out.hiddenBookIds = { ...obj(remote.hiddenBookIds), ...obj(local.hiddenBookIds) };
+    out.onDeviceOverrides = { ...obj(remote.onDeviceOverrides), ...obj(local.onDeviceOverrides) };
+    const picks: Record<string, unknown> = { ...obj(local.coverPicks) };
+    for (const [key, value] of Object.entries(obj(remote.coverPicks))) picks[key] = key in picks ? pick(value, picks[key]) : value;
+    out.coverPicks = picks;
+    out.nookLook = pick(remote.nookLook ?? null, local.nookLook ?? null);
+    return out;
+  });
+}

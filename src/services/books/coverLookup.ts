@@ -9,6 +9,7 @@ import { olCoverById } from './sources/openLibrary';
 import { coverKey, inspectCover, isWeakCover, probeImage } from './coverAnalysis';
 import { imageKey, loadCoverCandidates, rankCandidates, type CoverCandidate } from './coverCandidates';
 import { syncSharedCovers } from './coverPicks';
+import { isCoverRejected } from './rejectedCovers';
 
 /* ======================================================================================================
  * finding, repairing and showing a cover  (was covers.ts)
@@ -47,6 +48,12 @@ export function getCoverUrl(coverId?: number, size: CoverSize = 'M', customUrl?:
   if (customUrl) return sizedCoverUrl(customUrl, size);
   if (!coverId || coverId <= 0) return '';
   return olCoverById(coverId, size);
+}
+
+/** The book's own cover link at this size, or '' when the owner rejected that picture. */
+export function ownCoverUrl(book: { title?: string; author?: string; coverId?: number; coverUrl?: string }, size: CoverSize = 'M'): string {
+  const u = getCoverUrl(book.coverId, size, book.coverUrl);
+  return u && isCoverRejected(book, u) ? '' : u;
 }
 
 /* ---------------- stores: repaired covers (rare) and the missing list (for the button) ---------------- */
@@ -114,7 +121,7 @@ const ownLinkOf = (b: { coverId?: number; coverUrl?: string }): string => b.cove
  * A newer bundled cover therefore wins over an old repair, and repairs saved before this check (no `own`) are ignored whenever
  * the book has its own cover. Nothing is deleted here; a stale entry is simply not used and is replaced if a new repair is needed.
  */
-export const getCoverFix = (book: CoverLinks): string => {
+const rawCoverFix = (book: CoverLinks): string => {
   const key = coverKey(book);
   const f = fixes[key];
   if (!f?.url) return '';
@@ -126,6 +133,12 @@ export const getCoverFix = (book: CoverLinks): string => {
   // (A repair recorded for a DIFFERENT own link is left alone: another copy of the same title may still be using it.)
   if (f.own === undefined || !fresh || !current) scheduleFixPrune(key);
   return f.own === own && fresh && current ? f.url : '';
+};
+
+/** The repaired cover, unless the owner rejected that picture (then it is as if there were none). */
+export const getCoverFix = (book: CoverLinks): string => {
+  const u = rawCoverFix(book);
+  return u && isCoverRejected(book, u) ? '' : u;
 };
 
 const stalePrune = new Set<string>();
@@ -314,6 +327,8 @@ export function resolveCover(b: MissingBook, opts: { force?: boolean; background
     let url = '';
     const trouble = transientFailureCount();
     try { url = await search(b); } catch {}
+    // The owner rejected this picture for every reader: take the best other cover instead of it
+    if (url && isCoverRejected(b, url)) url = (await loadCoverCandidates(b, () => {}).catch(() => [] as CoverCandidate[])).find(c => !c.foreign)?.url || '';
     if (url) {
       saveFix(key, url, ownLinkOf(b));
       emitFixes();

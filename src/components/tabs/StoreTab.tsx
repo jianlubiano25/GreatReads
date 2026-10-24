@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Award } from 'lucide-react';
+import { Award, RefreshCw } from 'lucide-react';
 import type { Book } from '../../types';
 import { BOOK_AWARDS } from '../../data/defaultBooks';
 import { useKnownBooks } from '../../hooks/useKnownBooks';
@@ -10,6 +10,7 @@ import type { SearchScope } from '../../services/books';
 import { BookSearch } from '../BookSearch';
 import { StoreShelf } from '../StoreShelf';
 import { StoreCustomize } from '../StoreCustomize';
+import { useRefreshAll } from '../../services/store/refreshAll';
 import { StoreNav } from '../StoreNav';
 import { TabPane } from './TabPane';
 
@@ -42,6 +43,7 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
   const reorderShelves = useCallback((order: string[]) => updateStorePrefs({ ...storePrefs, order }), [storePrefs, updateStorePrefs]);
 
   useEffect(() => { milestone('store-mounted'); }, []); // measurement only
+  const refreshAll = useRefreshAll(); // "Refresh all shelves" keeps running after Customize Shelves is closed; its progress shows here
 
   // The search box is the same one the Search tab has (components/BookSearch.tsx); this tab only keeps what is typed
   const [query, setQuery] = useState('');
@@ -71,6 +73,15 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
           />
         ) : (
           <>
+          {refreshAll.running ? (
+            <p className="text-xs text-[#2e5934] dark:text-[#86b880] flex items-center gap-1.5" role="status" aria-live="polite">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+              Refreshing {Math.min(refreshAll.done + 1, refreshAll.total)} of {refreshAll.total}…
+            </p>
+          ) : refreshAll.noteFresh && refreshAll.note ? (
+            <p className="text-xs text-[#2e5934] dark:text-[#86b880]" role="status">{refreshAll.note}</p>
+          ) : null}
+
           <BookSearch active={active} known={known} query={query} setQuery={setQuery} scope={scope} setScope={setScope} handleOpenCover={handleOpenCover} backLabel="Back to the Store" />
 
           {/* Sticky icon bar (not while searching: results take over the page, and BookSearch has its own sticky header) */}

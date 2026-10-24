@@ -20,6 +20,8 @@ import {
   subscribeCovers,
   type CoverSource,
 } from '../services/books';
+import { rejectCoverForBook, rejectedCovers } from '../services/catalog';
+import { authVersion, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
 
 /**
  * The cover viewer: swipe through every cover the sources have for this book, tap the star to use one everywhere in the app.
@@ -68,6 +70,16 @@ export function CoverPickerModal({ book, onClose }: Props) {
   });
   const [loading, setLoading] = useState(true);
   const [bad, setBad] = useState<Record<string, true>>({});
+  useSyncExternalStore(subscribeAuth, authVersion, authVersion);
+  const owner = !!currentUser() && isAdminKnown() === true;
+  // covers the owner already rejected for this book never show up again in the viewer
+  useEffect(() => {
+    if (!owner) return;
+    let live = true;
+    rejectedCovers(book).then(urls => { if (live && urls.length) setBad(prev => { const n = { ...prev }; urls.forEach(u => { n[imageKey(u)] = true; }); return n; }); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [owner, book.title, book.author]);
   const [dims, setDims] = useState<Record<string, string>>({});
   const [active, setActive] = useState(0);
 
@@ -112,6 +124,17 @@ export function CoverPickerModal({ book, onClose }: Props) {
     if (!starred) setCoverPick(book, { url: current.url, source: current.source });
     else if (mine) clearCoverPick(book);
     else setNote('Published for everyone. To take it off, use the ✕ in Profile › Publish book covers.'); // nothing of yours to unstar
+  };
+
+  // ✕ = do not use this cover: it leaves the viewer now; for the owner it is also stored as rejected in the catalog (it never comes back), and a pick of it is dropped
+  const dontUse = async () => {
+    if (!current) return;
+    const { url, key } = current;
+    setBad(prev => ({ ...prev, [key]: true }));
+    if (mine && imageKey(mine.url) === key) clearCoverPick(book);
+    if (!owner) { setNote('Hidden here. Sign in as the owner (Profile → Account) to reject it for everyone.'); return; }
+    const r = await rejectCoverForBook(book, url);
+    setNote(r.ok ? 'Rejected: this cover will not be used.' : `Hidden here, but not saved to the catalog: ${r.error}`);
   };
 
   const tip = current ? `${coverSourceLabel(current.source)}${current.key === autoKey ? ' · default cover' : ''}${dims[current.key] ? ` · ${dims[current.key]}` : ''}` : '';
@@ -201,6 +224,15 @@ export function CoverPickerModal({ book, onClose }: Props) {
             className={`w-14 h-14 rounded-full flex items-center justify-center transition-transform active:scale-95 disabled:opacity-30 ${starred ? 'bg-amber-400/20 ring-2 ring-amber-400' : 'bg-white/10 hover:bg-white/20'}`}
           >
             <Star className={`w-7 h-7 ${starred ? 'fill-amber-400 text-amber-400' : 'text-white'}`} />
+          </button>
+          <button
+            onClick={() => void dontUse()}
+            disabled={!current}
+            aria-label="Do not use this cover"
+            title="Do not use this cover"
+            className="w-11 h-11 rounded-full flex items-center justify-center bg-white/10 hover:bg-red-500/30 active:scale-95 transition disabled:opacity-30"
+          >
+            <X className="w-5 h-5 text-red-300" />
           </button>
           <button onClick={() => go(1)} disabled={at >= visible.length - 1} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 flex items-center justify-center" aria-label="Next cover">
             <ChevronRight className="w-5 h-5" />

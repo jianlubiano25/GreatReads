@@ -11,7 +11,7 @@ import { genreForQuery, moreLikeThis } from './genreRank';
 import { applySearchView, activeFilterCount, DEFAULT_SEARCH_VIEW } from './searchView';
 import { newReleases, hiddenGems, MIN_ROW } from '../store/genreRows';
 
-const book = (o: any) => ({ id: o.title, title: 'T', author: 'A B', shelf: 'mine', difficulty: 2, isOnDevice: false, year: '2015', genre: 'Fantasy', summary: '', authorBio: '', pageCount: 300, ratingCount: 500, ratingAverage: 4.2, coverUrl: 'x', ...o }) as any;
+const book = (o: any) => ({ id: o.title, title: 'T', author: 'A B', shelf: 'mine', difficulty: 2, isOnDevice: false, year: '2015', genre: 'Fantasy', summary: '', authorBio: '', pageCount: 300, ratingCount: 500, ratingAverage: 4.2, coverUrl: 'https://covers.example/cover.jpg', ...o }) as any;
 
 test('did you mean: a typo one letter off a known word is put right, an unknown word is left alone', () => {
   const v = suggestionVocab([]);
@@ -100,6 +100,20 @@ test('new releases: this year and last, with a cover, newest first; hidden gems:
   ], 'fiction');
   assert.deepEqual(gems.map(b => b.id), ['gem1', 'gem2']);
   assert.ok(MIN_ROW >= 3);
+});
+
+test('hidden gems require a usable cover, the requested book kind, and ratings within the published bounds', () => {
+  const valid = (title: string, overrides = {}) => book({ title, ratingAverage: 4.1, ratingCount: 40, ...overrides });
+  assert.deepEqual(hiddenGems([
+    valid('valid'),
+    valid('no cover', { coverUrl: undefined, coverId: 0 }),
+    valid('unsafe cover', { coverUrl: 'javascript:alert(1)' }),
+    valid('low rating', { ratingAverage: 4.09 }),
+    valid('invalid rating', { ratingAverage: Infinity }),
+    valid('few ratings', { ratingCount: 39 }),
+    valid('too many ratings', { ratingCount: 5001 }),
+    valid('wrong kind', { genre: 'Psychology' }),
+  ], 'fiction').map(b => b.title), ['valid']);
 });
 
 test('a book filed under Sports, Computers or Games is non-fiction, so a Fantasy search pushes it down', async () => {

@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { displayBooks, refreshNames, subscribeNames } from '../services/books/englishTitle';
+import { mapPool } from '../services/books/http';
 import { Book } from '../types';
-import type { ShelfSource } from '../services/store/shelves';
+import { InsufficientShelfError, type ShelfSource } from '../services/store/shelves';
 import { CoverFace, RatingLine, AwardBadges } from './BookMeta';
 import { rememberHonor } from '../services/store/honors';
 import { withKnownRating } from '../services/books';
@@ -65,6 +67,7 @@ function ShelfSkeleton({ pulse }: { pulse: boolean }) {
 export const StoreShelf = React.memo(function StoreShelf({ id, title, source, books: fixedBooks, ranked, lazy, hideIfUnavailable, hideWhileLoading, known, priority, mine, onOpen }: Props) {
   const [loaded, setLoaded] = useState<Book[] | null>(() => (fixedBooks || !source || lazy ? null : source.cached()));
   const [failed, setFailed] = useState(false);
+  const [insufficient, setInsufficient] = useState(false);
   const [attempt, setAttempt] = useState(0); // "Try again" reloads the shelf
   const [visible, setVisible] = useState(!lazy);
   const holder = useRef<HTMLDivElement>(null);
@@ -76,6 +79,17 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
   // The same book must show the same rating on every screen: reuse the one you already have (ratings policy, step 1)
   const pool = useMemo(() => poolFor(known), [known]);
   const books = useMemo(() => (raw ? raw.map(b => withKnownRating(b, pool)) : raw), [raw, pool]);
+  // The names drawn are the English title and jacket author (displayBook, same as the library, search and Book Info); `books` stays as the catalogue gave it, and is what opens
+  const [namesTick, setNamesTick] = useState(0);
+  useEffect(() => subscribeNames(() => setNamesTick(n => n + 1)), []);
+  const view = useMemo(() => (books ? displayBooks(books) : books), [books, namesTick]);
+  // Shelf books learn their English title and jacket author name like saved books do (once a month per book, a few at a time, only for a shelf on screen), and are redrawn when one is learned
+  useEffect(() => {
+    if (!visible || !books?.length) return;
+    let live = true;
+    const t = setTimeout(() => { void mapPool(books.slice(0, 8), 2, async b => { if (live && (await refreshNames(b).catch(() => false)) && live) setNamesTick(n => n + 1); }); }, 1500);
+    return () => { live = false; clearTimeout(t); };
+  }, [books, visible]);
 
   useEffect(() => {
     if (fixedBooks || !lazy || visible) return;
@@ -92,6 +106,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
     if (fixedBooks || !visible || !source) return;
     let live = true;
     setFailed(false);
+    setInsufficient(false);
     // A shelf reports after EVERY book it resolves; drawing the whole shelf each time is wasted work, so the newest list is drawn at most every 100 ms
     let latest: Book[] | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -104,7 +119,13 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
       // The answer replaces what was drawn first (a saved list shown while this loaded), unless a newer update already arrived
       .then(b => { if (live && !latest) setLoaded(prev => { const cur = prev ?? shown.current; return cur && sameShelf(cur, b) ? prev ?? cur : b; }); })
       // A failed refresh never takes away a list that is already on screen
-      .catch(() => { if (live && !shown.current) setFailed(true); });
+      .catch(error => {
+        if (!live) return;
+        if (error instanceof InsufficientShelfError) {
+          setLoaded(null);
+          setInsufficient(true);
+        } else if (!shown.current) setFailed(true);
+      });
     return () => { live = false; clearTimeout(timer); };
   }, [id, visible, source, fixedBooks, attempt]);
 
@@ -117,6 +138,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
   useEffect(() => { if (!fixedBooks) (loaded ?? saved)?.forEach(rememberHonor); }, [loaded, saved, fixedBooks]);
 
   if (fixedBooks && fixedBooks.length === 0) return null;
+  if (insufficient && hideIfUnavailable) return null;
   if (failed && hideIfUnavailable) return null;
   if (hideWhileLoading && !books && !failed) return null;
 
@@ -130,11 +152,13 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
             Try again
           </button>
         </div>
+      ) : insufficient ? (
+        <p className="text-sm text-[#706256] dark:text-[#a89a8a]">No books meet the Hidden Gems criteria yet.</p>
       ) : !books ? (
         <ShelfSkeleton pulse={visible} />
       ) : (
         <div className="flex gap-4 overflow-x-auto pb-3 no-scrollbar">
-          {books.map((b, i) => (
+          {view!.map((b, i) => (
             <div key={`${b.id}|${b.title}`} className="w-[138px] sm:w-[154px] shrink-0 flex flex-col gap-1.5">
               <div className="relative">
                 {ranked && (
@@ -144,7 +168,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
                 )}
                 <button
                   type="button"
-                  onClick={() => onOpen(b)}
+                  onClick={() => onOpen(books![i])}
                   className="book-cover-3d w-full h-[200px] sm:h-[222px] text-left p-3 flex flex-col justify-between text-white overflow-hidden"
                   style={{ backgroundColor: b.spineColor || '#6b6f80' }}
                   aria-label={`${b.title} by ${b.author}`}
@@ -154,7 +178,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
               </div>
               {/* Title, author and rating lines have a fixed height so cards line up; the honors below are shown in full (never cut off) */}
               <h4 className="font-serif-display text-xs sm:text-sm font-semibold leading-tight line-clamp-2 min-h-[2.5em]">
-                <button type="button" onClick={() => onOpen(b)} className="text-left hover:underline focus-visible:underline focus:outline-none">
+                <button type="button" onClick={() => onOpen(books![i])} className="text-left hover:underline focus-visible:underline focus:outline-none">
                   {b.title}
                 </button>
               </h4>

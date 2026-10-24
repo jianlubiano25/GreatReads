@@ -34,6 +34,7 @@ export interface BookSearchState {
   stale: boolean;
   /** Every source has answered for the current query and nothing matched */
   empty: boolean;
+  failedSources: string[];
   /** Search now, without the typing delay (Enter / the Find button) */
   searchNow: () => void;
   /** How many books the catalog says match in all (0 until a source has said); results holds the best of them loaded so far */
@@ -65,6 +66,7 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
   const [loading, setLoading] = useState(false);
   const [stale, setStale] = useState(false);
   const [empty, setEmpty] = useState(false);
+  const [failedSources, setFailedSources] = useState<string[]>([]);
   const [nudge, setNudge] = useState(0);
   const forced = useRef(false);
 
@@ -75,12 +77,13 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
     gen.current++; page.current = 1; inFlight.current = false;
     moreRef.current = []; setMore([]); setExhausted(false); setLoadingMore(false);
     if (!enabled || (!q && !author.trim())) {
-      setResults([]); setLoading(false); setStale(false); setEmpty(false); setTotal(0);
+      setResults([]); setLoading(false); setStale(false); setEmpty(false); setTotal(0); setFailedSources([]);
       return;
     }
     const final = forced.current;
     forced.current = false;
     const controller = new AbortController();
+    setFailedSources([]);
     const live = (raw: Book[]) => { const books = withPicks(raw).map(displayBook); if (!controller.signal.aborted) { setResults(books); latest.current = books; setStale(false); setEmpty(false); } };
 
     // Instant: books already on this device. With none, the old list stays (dimmed) until the first answer.
@@ -104,6 +107,7 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
           signal: controller.signal,
           onUpdate: (books, p) => {
             if (!controller.signal.aborted && p.total) setTotal(p.total);
+            if (!controller.signal.aborted) setFailedSources(p.failedSources || []);
             if (books.length) live(books);
             if (!earlyCovers && books.length && !controller.signal.aborted) { // covers for the first screen start now; the lookups are shared and remembered, so the list is not held up
               earlyCovers = true;
@@ -150,5 +154,5 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
     }
   }, [query, author, scope, limit, enabled, known]);
 
-  return { results, loading, stale, empty, searchNow, total, hasMore, loadingMore, loadMore };
+  return { results, loading, stale, empty, failedSources, searchNow, total, hasMore, loadingMore, loadMore };
 }
