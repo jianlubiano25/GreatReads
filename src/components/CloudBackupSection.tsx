@@ -3,6 +3,21 @@ import { authVersion, currentUser, subscribeAuth } from '../services/supabase';
 import { backUpNow, cloudStatus, fetchCloudBackup, getSafetyCopy, isAutoBackup, lastSynced, markRestored, saveSafetyCopy, setAutoBackup, type CloudStatus } from '../services/cloudSync';
 import { hasLibrarySyncConflicts, hasPendingLibrarySync, librarySyncAccountAllowed, resolveLibraryConflictsToLocal } from '../services/librarySync';
 
+/** Saves backup text as a file (Files app on iPhone/iPad, Downloads on a computer). Returns false when the device refused. */
+function saveBackupFile(json: string): boolean {
+  try {
+    const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `greatreads-backup-before-conflict-${new Date().toLocaleDateString('en-CA')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    return true;
+  } catch { return false; }
+}
+
 /** Cloud backup, inside Backup & Restore. Needs an account (Profile → Account). Restoring always saves the current library aside first. */
 export const CloudBackupSection: React.FC<{ onExportBackup: () => string; onImportBackup: (json: string) => boolean }> = ({ onExportBackup, onImportBackup }) => {
   useSyncExternalStore(subscribeAuth, authVersion, authVersion);
@@ -62,7 +77,11 @@ export const CloudBackupSection: React.FC<{ onExportBackup: () => string; onImpo
       </p>
       {conflict && <p role="alert" className="text-xs text-amber-800 dark:text-amber-300">Your account has a newer backup (from another device). Restore it, or choose Replace to overwrite it with this device.</p>}
       {libraryConflict && <p role="alert" className="text-xs text-amber-800 dark:text-amber-300">Some library records changed on both this device and the cloud. Those records are paused to protect both copies; JSON backup and restore are still available.</p>}
-      {libraryConflict && <button type="button" className={btn} disabled={busy} onClick={() => { if (window.confirm('Use this device’s values for conflicted library records? This replaces those records in your cloud library. Download a JSON backup first if you may need both versions.')) resolveLibraryConflictsToLocal(user!.id); }}>Use this device for conflicts</button>}
+      {libraryConflict && <button type="button" className={btn} disabled={busy} onClick={() => {
+        if (!window.confirm('Use this device’s values for conflicted library records? This replaces those records in your cloud library. A JSON backup file of this device is saved first.')) return;
+        if (!saveBackupFile(onExportBackup())) { setMsg({ ok: false, text: 'The backup file could not be saved, so nothing was changed. Try again, or use Download backup above first.' }); return; }
+        resolveLibraryConflictsToLocal(user!.id);
+      }}>Use this device for conflicts</button>}
       {libraryAccountBlocked && <p role="alert" className="text-xs text-amber-800 dark:text-amber-300">This device’s library is linked to another account. Sign back into that account to sync it; this account’s cloud library was not loaded.</p>}
       {!libraryAccountBlocked && !libraryConflict && libraryPending && <p role="status" className="text-xs text-[#706256] dark:text-[#a89a8a]">Library changes are waiting to sync when the connection is available.</p>}
       <div className="grid grid-cols-2 gap-2">
