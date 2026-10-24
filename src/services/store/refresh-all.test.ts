@@ -6,7 +6,7 @@ const store = new Map<string, string>();
 (globalThis as any).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k), key: (i: number) => [...store.keys()][i] ?? null, get length() { return store.size; } };
 
 import { getRefreshAllState, startRefreshAll, resetRefreshAllForTests } from './refreshAll';
-import { refreshDataForNewBuild } from '../refreshApp';
+import { DATA_VERSION, refreshDataForNewBuild } from '../refreshApp';
 import type { ManualResult } from './refresh';
 
 test('Refresh all shelves is a job of the app: progress is readable at any time and a second start joins it', async () => {
@@ -42,16 +42,31 @@ test('a shelf that throws is counted as failed and the run goes on', async () =>
   assert.equal(getRefreshAllState().done, 2);
 });
 
-test('a new build forgets the old build\'s downloads once, never loops, and never touches your data', () => {
+test('a new build keeps what the old build downloaded; only a data-version change forgets it, once, and never touches your data', async () => {
+  await import('../books/localIndex'); await import('./genreRows'); // register their caches as re-downloadable
+  store.clear();
   store.set('readlife.v2', '{"customBooks":[1]}');
   store.set('readlife.resolved3', '{"x":1}');
+  store.set('readlife.genregems1', '{"pop":1}');
+  store.set('readlife.seen1', '{"a":1}');
   assert.equal(refreshDataForNewBuild('dev'), false);
   assert.equal(store.has('readlife.resolved3'), true);
-  assert.equal(refreshDataForNewBuild('build-aaa'), true);
+  // a device with no marker (fresh install) or an old build id (written by earlier builds): nothing was saved under another data version
+  assert.equal(refreshDataForNewBuild('build-aaa'), false);
+  assert.equal(store.get('readlife.dataBuild1'), `data:${DATA_VERSION}`);
+  store.set('readlife.dataBuild1', 'build-old');
+  assert.equal(refreshDataForNewBuild('build-aaa'), false);
+  assert.equal(store.get('readlife.dataBuild1'), `data:${DATA_VERSION}`);
+  // new deploys: everything downloaded stays, including the Hidden Gems lists and the on-device search index
+  for (const build of ['build-bbb', 'build-ccc', 'build-ddd']) assert.equal(refreshDataForNewBuild(build), false);
+  for (const key of ['readlife.resolved3', 'readlife.genregems1', 'readlife.seen1']) assert.equal(store.has(key), true, key);
+  // a rule changed (data version bumped): forgotten once, never your own data
+  store.set('readlife.dataBuild1', `data:${DATA_VERSION - 1}`);
+  assert.equal(refreshDataForNewBuild('build-eee'), true);
   assert.equal(store.has('readlife.resolved3'), false);
+  assert.equal(store.has('readlife.genregems1'), false);
   assert.equal(store.get('readlife.v2'), '{"customBooks":[1]}');
-  store.set('readlife.resolved3', '{"y":1}'); // downloaded again by the new build
-  assert.equal(refreshDataForNewBuild('build-aaa'), false); // same build: nothing
+  store.set('readlife.resolved3', '{"y":1}'); // downloaded again
+  assert.equal(refreshDataForNewBuild('build-eee'), false); // same version: nothing, never a loop
   assert.equal(store.has('readlife.resolved3'), true);
-  assert.equal(refreshDataForNewBuild('build-bbb'), true); // the next build: once more
 });

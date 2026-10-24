@@ -8,7 +8,7 @@ import { milestone } from './services/books/perf.ts';
 import { applyFontPrefs } from './services/fontPrefs.ts';
 
 milestone('main-start');
-refreshDataForNewBuild(APP_BUILD); // a new build forgets what the old one downloaded, once, before anything reads it
+refreshDataForNewBuild(APP_BUILD); // forgets saved downloads only when DATA_VERSION changed (a rule changed), never on an ordinary deploy
 applyFontPrefs(); // a font chosen in developer mode (nothing changes for everyone else)
 
 createRoot(document.getElementById('root')!).render(
