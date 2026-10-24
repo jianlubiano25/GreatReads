@@ -167,51 +167,91 @@ export async function rest<T = unknown>(path: string, init: { method?: string; b
 export const rpc = <T = unknown>(fn: string, args: Record<string, unknown> = {}) => rest<T>(`rpc/${fn}`, { method: 'POST', body: args });
 
 /** Subscribe to the authenticated user's personal tables using Supabase Realtime's Phoenix websocket protocol. */
-export function subscribeLibraryRealtime(userId: string, onChange: (table: string) => void): () => void {
+/**
+ * Live changes to this person's personal tables. One socket at a time. `onConnected` runs each time the cloud confirms the subscription, so the caller can read
+ * what was missed while it was down (events are not replayed). A rejected subscription, a silent connection and a failed attempt all end in a reconnect with a
+ * growing gap; nothing is attempted while offline or hidden, and coming back online / visible reconnects at once.
+ */
+export function subscribeLibraryRealtime(userId: string, onChange: (table: string) => void, onConnected?: () => void, opts: { retryBaseMs?: number } = {}): () => void {
+  const base = opts.retryBaseMs ?? 1000;
   let stopped = false;
   let socket: WebSocket | undefined;
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   let retry: ReturnType<typeof setTimeout> | undefined;
-  let delay = 1000;
+  let delay = base;
+  let lastSeen = 0;
+  const canRun = () => !stopped && currentUser()?.id === userId && typeof WebSocket !== 'undefined';
+  const idle = () => (typeof navigator !== 'undefined' && navigator.onLine === false) || (typeof document !== 'undefined' && document.visibilityState === 'hidden');
   const unAuth = subscribeAuth(() => {
     if (currentUser()?.id !== userId) { socket?.close(); return; }
-    if (socket?.readyState === WebSocket.OPEN) socket.close();
+    if (socket?.readyState === WebSocket.OPEN) socket.close(); // reconnects with the refreshed token and catches up
   });
   const tables = ['user_library_books', 'user_book_annotations', 'user_shelves', 'user_shelf_books', 'user_reading_sessions', 'user_library_preferences'];
   const topic = `realtime:greatreads:${userId}`;
+  const scheduleReconnect = () => {
+    if (!canRun() || retry || idle()) return; // idle: the 'online' / 'visible' events reconnect
+    retry = setTimeout(() => { retry = undefined; void connect(); }, delay);
+    delay = Math.min(30_000, delay * 2);
+  };
   const connect = async () => {
-    if (stopped || currentUser()?.id !== userId || typeof WebSocket === 'undefined') return;
+    if (!canRun() || (socket && socket.readyState <= 1)) return; // never a second socket beside a live or opening one
     const token = await accessToken();
-    if (!token || stopped || currentUser()?.id !== userId) return;
-    const base = URL_.replace(/^http/, 'ws');
-    const ws = new WebSocket(`${base}/realtime/v1/websocket?apikey=${encodeURIComponent(KEY_)}&vsn=1.0.0`);
+    if (!token || !canRun() || (socket && socket.readyState <= 1)) return;
+    const wsBase = URL_.replace(/^http/, 'ws');
+    const ws = new WebSocket(`${wsBase}/realtime/v1/websocket?apikey=${encodeURIComponent(KEY_)}&vsn=1.0.0`);
     socket = ws;
+    const closed = () => { // the error and the close of one socket both land here; only the first counts
+      if (ws !== socket) return;
+      socket = undefined;
+      if (heartbeat) clearInterval(heartbeat);
+      heartbeat = undefined;
+      scheduleReconnect();
+    };
     ws.onopen = () => {
-      delay = 1000;
+      lastSeen = Date.now();
       const postgres_changes = tables.map(table => ({ event: '*', schema: 'public', table, filter: `user_id=eq.${userId}` }));
       ws.send(JSON.stringify([null, '1', topic, 'phx_join', { config: { broadcast: { ack: false, self: false }, presence: { key: '' }, postgres_changes }, access_token: token }]));
-      heartbeat = setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify([null, String(Date.now()), 'phoenix', 'heartbeat', {}])); }, 25_000);
+      heartbeat = setInterval(() => {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        if (Date.now() - lastSeen > 70_000) { ws.close(); return; } // nothing heard (not even the heartbeat reply): the connection is dead
+        ws.send(JSON.stringify([null, String(Date.now()), 'phoenix', 'heartbeat', {}]));
+      }, 25_000);
     };
     ws.onmessage = event => {
       try {
+        lastSeen = Date.now();
         const message = JSON.parse(String(event.data));
-        if (!Array.isArray(message) || message[3] !== 'postgres_changes') return;
+        if (!Array.isArray(message)) return;
+        if (message[3] === 'phx_reply' && message[2] === topic) {
+          if (message[4]?.status === 'ok') { delay = base; onConnected?.(); } else { ws.close(); } // the cloud refused the subscription
+          return;
+        }
+        if (message[3] === 'system' && message[4]?.status === 'error') { ws.close(); return; } // e.g. "unable to subscribe to changes"
+        if (message[3] !== 'postgres_changes') return;
         const payload = message[4];
         const table = payload?.data?.table || payload?.table;
         if (typeof table === 'string' && tables.includes(table) && currentUser()?.id === userId) onChange(table);
       } catch {}
     };
-    ws.onclose = ws.onerror = () => {
-      if (heartbeat) clearInterval(heartbeat);
-      heartbeat = undefined;
-      if (!stopped && currentUser()?.id === userId) { retry = setTimeout(connect, delay); delay = Math.min(30_000, delay * 2); }
-    };
+    ws.onclose = closed;
+    ws.onerror = closed;
   };
+  const kick = () => { // back online / visible again
+    if (!canRun() || (socket && socket.readyState <= 1)) return;
+    if (retry) { clearTimeout(retry); retry = undefined; }
+    delay = base;
+    void connect();
+  };
+  const onVisible = () => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') kick(); };
+  if (typeof window !== 'undefined') window.addEventListener('online', kick);
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible);
   void connect();
   return () => {
     stopped = true;
     if (retry) clearTimeout(retry);
     if (heartbeat) clearInterval(heartbeat);
+    if (typeof window !== 'undefined') window.removeEventListener('online', kick);
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible);
     socket?.close();
     unAuth();
   };
