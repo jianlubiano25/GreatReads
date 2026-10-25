@@ -27,8 +27,11 @@ test('Realtime subscribes only to this user’s personal tables and forwards tab
   await new Promise(resolve => setTimeout(resolve, 0));
   const socket = FakeWebSocket.last!;
   assert.match(socket.url, /realtime\/v1\/websocket/);
+  assert.match(socket.url, /vsn=2\.0\.0/, 'array messages are serializer 2.0.0; 1.0.0 makes the server reject every join');
   socket.onopen?.();
   const join = JSON.parse(socket.sent[0]);
+  assert.equal(join[0], '1', 'join_ref');
+  assert.equal(join[3], 'phx_join');
   assert.equal(join[4].access_token, 'valid-token');
   assert.ok(join[4].config.postgres_changes.every((change: any) => change.filter === 'user_id=eq.user-a'));
   socket.onmessage?.({ data: JSON.stringify([null, '2', join[2], 'postgres_changes', { data: { table: 'user_library_books' } }]) });

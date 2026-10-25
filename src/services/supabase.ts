@@ -180,7 +180,11 @@ export async function rest<T = unknown>(path: string, init: { method?: string; b
 }
 export const rpc = <T = unknown>(fn: string, args: Record<string, unknown> = {}) => rest<T>(`rpc/${fn}`, { method: 'POST', body: args });
 
-/** Subscribe to the authenticated user's personal tables using Supabase Realtime's Phoenix websocket protocol. */
+/**
+ * Subscribe to the authenticated user's personal tables using Supabase Realtime's Phoenix websocket protocol.
+ * The messages are arrays [join_ref, ref, topic, event, payload], which is serializer version 2.0.0. Asking for 1.0.0 (object messages)
+ * made the server reject every join and heartbeat ("V1 JSON Serializer expected a map"), so live updates never arrived.
+ */
 import { createLinkHealth } from './linkHealth';
 import { createProbeWatcher, probeFingerprint, type ProbeRest } from './changeProbe';
 
@@ -208,7 +212,7 @@ export function subscribeLibraryRealtime(userId: string, onChange: (table: strin
     if (!token || stopped || currentUser()?.id !== userId) return;
     if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
     const base = URL_.replace(/^http/, 'ws');
-    const ws = new WebSocket(`${base}/realtime/v1/websocket?apikey=${encodeURIComponent(KEY_)}&vsn=1.0.0`);
+    const ws = new WebSocket(`${base}/realtime/v1/websocket?apikey=${encodeURIComponent(KEY_)}&vsn=2.0.0`);
     socket = ws;
     let closed = false;
     ws.onopen = () => {
@@ -218,7 +222,7 @@ export function subscribeLibraryRealtime(userId: string, onChange: (table: strin
       // Anything that changed while the socket was down was never delivered: after a RE-connect, ask the app to pull everything once.
       if (hasConnected) onChange('resync'); hasConnected = true;
       const postgres_changes = tables.map(table => ({ event: '*', schema: 'public', table, filter: `user_id=eq.${userId}` }));
-      ws.send(JSON.stringify([null, '1', topic, 'phx_join', { config: { broadcast: { ack: false, self: false }, presence: { key: '' }, postgres_changes }, access_token: token }]));
+      ws.send(JSON.stringify(['1', '1', topic, 'phx_join', { config: { broadcast: { ack: false, self: false }, presence: { key: '' }, postgres_changes }, access_token: token }]));
       heartbeat = setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify([null, String(Date.now()), 'phoenix', 'heartbeat', {}])); }, 20_000);
     };
     ws.onmessage = event => {
