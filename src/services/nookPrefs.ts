@@ -78,6 +78,8 @@ export const subscribeClockTheme = (cb: () => void) => {
     clockSubs.delete(cb);
   };
 };
+/** Tells the cloud sync that a synced preference changed on this device, so it uploads soon instead of waiting for the next other edit. */
+const announceLocalChange = () => { try { if (typeof window !== 'undefined') window.dispatchEvent(new Event('greatreads-library-local-change')); } catch {} };
 export const getClockTheme = () => clockTheme;
 export function cycleClockTheme() {
   clockTheme = (clockTheme + 1) % CLOCK_THEME_COUNT;
@@ -85,6 +87,7 @@ export function cycleClockTheme() {
     localStorage.setItem(CLOCK_KEY, String(clockTheme));
   } catch {}
   clockSubs.forEach(f => f());
+  announceLocalChange();
 }
 
 /* ---- Vine look: the wraparound nook vine (default), the classic window vine, or a seasonal / lit variant (remembered on this device) ---- */
@@ -113,6 +116,7 @@ export function setVineStyle(style: VineStyle) {
     else localStorage.setItem(VINE_KEY, style);
   } catch {}
   vineSubs.forEach(f => f());
+  announceLocalChange();
 }
 
 /* ---- Nook decorations: what hangs on the wall above the shelves and what sits on the garden shelf ---- */
@@ -192,6 +196,7 @@ export function setNookDecor(next: NookDecor) {
     else localStorage.setItem(DECOR_KEY, JSON.stringify(decor));
   } catch {}
   decorSubs.forEach(f => f());
+  announceLocalChange();
 }
 
 /** Decorations that are up, in order, for an area */

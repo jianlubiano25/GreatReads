@@ -177,7 +177,8 @@ export function subscribeLibraryRealtime(userId: string, onChange: (table: strin
     if (currentUser()?.id !== userId) { socket?.close(); return; }
     if (socket?.readyState === WebSocket.OPEN) socket.close();
   });
-  const tables = ['user_library_books', 'user_book_annotations', 'user_shelves', 'user_shelf_books', 'user_reading_sessions', 'user_library_preferences'];
+  const tables = ['user_library_books', 'user_book_annotations', 'user_shelves', 'user_shelf_books', 'user_reading_sessions', 'user_library_preferences', 'user_daily_pages'];
+  let hasConnected = false;
   const topic = `realtime:greatreads:${userId}`;
   const connect = async () => {
     if (stopped || currentUser()?.id !== userId || typeof WebSocket === 'undefined') return;
@@ -188,6 +189,8 @@ export function subscribeLibraryRealtime(userId: string, onChange: (table: strin
     socket = ws;
     ws.onopen = () => {
       delay = 1000;
+      // Anything that changed while the socket was down was never delivered: after a RE-connect, ask the app to pull everything once.
+      if (hasConnected) onChange('resync'); hasConnected = true;
       const postgres_changes = tables.map(table => ({ event: '*', schema: 'public', table, filter: `user_id=eq.${userId}` }));
       ws.send(JSON.stringify([null, '1', topic, 'phx_join', { config: { broadcast: { ack: false, self: false }, presence: { key: '' }, postgres_changes }, access_token: token }]));
       heartbeat = setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify([null, String(Date.now()), 'phoenix', 'heartbeat', {}])); }, 25_000);

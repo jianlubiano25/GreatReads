@@ -167,7 +167,11 @@ const all = (): Record<string, CoverPick> => {
   }
   return picks;
 };
-const persistPicks = () => { try { localStorage.setItem(PICKS_KEY, JSON.stringify(all())); } catch {} };
+const persistPicks = () => {
+  try { localStorage.setItem(PICKS_KEY, JSON.stringify(all())); } catch {}
+  // Tells the cloud sync a synced preference changed on this device, so it uploads soon instead of waiting for the next other edit.
+  try { if (typeof window !== 'undefined') window.dispatchEvent(new Event('greatreads-library-local-change')); } catch {}
+};
 
 /** Picks that failed to load during this session (not saved). */
 const failed = new Set<string>();

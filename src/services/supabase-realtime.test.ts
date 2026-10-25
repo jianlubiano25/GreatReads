@@ -36,3 +36,23 @@ test('Realtime subscribes only to this user’s personal tables and forwards tab
   assert.deepEqual(changed, ['user_library_books']);
   stop();
 });
+
+test('Realtime forwards daily-page changes and asks for one catch-up pull after a reconnect, not on the first connect', async () => {
+  const changed: string[] = [];
+  const stop = subscribeLibraryRealtime('user-a', table => changed.push(table));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const first = FakeWebSocket.last!;
+  first.onopen?.();
+  assert.deepEqual(changed, [], 'no resync on the first connect (the app bootstraps itself)');
+  const join = JSON.parse(first.sent[0]);
+  assert.ok(join[4].config.postgres_changes.some((change: any) => change.table === 'user_daily_pages'));
+  first.onmessage?.({ data: JSON.stringify([null, '2', join[2], 'postgres_changes', { data: { table: 'user_daily_pages' } }]) });
+  assert.deepEqual(changed, ['user_daily_pages']);
+  first.onclose?.(); // the connection drops (phone asleep, network gone) ...
+  await new Promise(resolve => setTimeout(resolve, 1200));
+  const second = FakeWebSocket.last!;
+  assert.notEqual(second, first, 'it reconnects by itself');
+  second.onopen?.();
+  assert.deepEqual(changed, ['user_daily_pages', 'resync'], 'and pulls what it missed');
+  stop();
+});
