@@ -8,6 +8,7 @@ import { applyDeviceSettings } from '../services/deviceSettings';
 import { acknowledgeCloudCopy, claimLibrarySyncAccount, hasPendingLibrarySync, librarySyncAccountAllowed, loadRemoteLibrary, markPersonalCollectionDeleted, markPersonalMembershipDeleted, mergeRemoteLibrary, pausedLibraryKeys, resolveLibraryConflictsToCloud, syncLocalLibrary } from '../services/librarySync';
 import { resolveSettingTie, syncSettingsRecords, type SettingKey } from '../services/settingsRecordsSync';
 import { settingsRecordsSyncEnabled } from '../services/settingsRecordsFlag';
+import { createRunGate } from '../services/runGate';
 import { keepDeviceDay, loadDailyTies, syncDailyPages, takeCloudDay } from '../services/dailyPagesSync';
 
 export function usePersonalLibrarySync(args: {
@@ -23,11 +24,12 @@ export function usePersonalLibrarySync(args: {
   const userId = currentUser()?.id;
   const ready = useRef('');
   const stopped = useRef(false);
-  const running = useRef(false);
-  const daysRunning = useRef(false);
   const daysAgain = useRef(false);
-  const settingsRunning = useRef(false);
   const settingsAgain = useRef(false);
+  // One-at-a-time locks that give up on a request that never answers (a suspended phone), so sync can never freeze
+  const running = useRef(createRunGate(90_000));
+  const daysRunning = useRef(createRunGate(60_000));
+  const settingsRunning = useRef(createRunGate(60_000));
   const retryDelay = useRef(1500);
   const ignoreState = useRef('');
   const ignoreCollections = useRef('');
@@ -66,8 +68,8 @@ export function usePersonalLibrarySync(args: {
     /** Per-day pages: pull the cloud's days, apply the newer ones, upload this device's newer ones. Never runs twice at once; a request that arrives meanwhile runs once more after. */
     const syncDays = async (): Promise<boolean> => {
       if (stopped.current || ready.current !== userId || currentUser()?.id !== userId) return true;
-      if (daysRunning.current) { daysAgain.current = true; return true; }
-      daysRunning.current = true;
+      const ticket = daysRunning.current.enter();
+      if (!ticket) { daysAgain.current = true; return true; }
       try {
         let ok = true;
         do {
@@ -75,15 +77,15 @@ export function usePersonalLibrarySync(args: {
           ok = await syncDailyPages(userId, { getState: () => stateRef.current, apply: change => applyRef.current(change) }) && ok;
         } while (daysAgain.current && !stopped.current);
         return ok;
-      } catch { return false; } finally { daysRunning.current = false; }
+      } catch { return false; } finally { daysRunning.current.leave(ticket); }
     };
 
     /** Phase 4 per-setting and per-word records. Does nothing (returns true) while the switch is off. Never runs twice at once; a request that arrives meanwhile runs once more after. */
     const syncSettings = async (): Promise<boolean> => {
       if (!settingsRecordsSyncEnabled()) return true;
       if (stopped.current || ready.current !== userId || currentUser()?.id !== userId) return true;
-      if (settingsRunning.current) { settingsAgain.current = true; return true; }
-      settingsRunning.current = true;
+      const ticket = settingsRunning.current.enter();
+      if (!ticket) { settingsAgain.current = true; return true; }
       try {
         let ok = true;
         do {
@@ -91,13 +93,14 @@ export function usePersonalLibrarySync(args: {
           ok = await syncSettingsRecords(userId, { getState: () => stateRef.current, apply: change => applyRef.current(change) }) && ok;
         } while (settingsAgain.current && !stopped.current);
         return ok;
-      } catch { return false; } finally { settingsRunning.current = false; }
+      } catch { return false; } finally { settingsRunning.current.leave(ticket); }
     };
 
     const bootstrap = async () => {
-      if (stopped.current || running.current || !librarySyncAccountAllowed(userId) || (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
+      if (stopped.current || !librarySyncAccountAllowed(userId) || (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
+      const ticket = running.current.enter();
+      if (!ticket) return;
       claimLibrarySyncAccount(userId);
-      running.current = true;
       try {
         const remote = await loadRemoteLibrary(userId);
         if (stopped.current || currentUser()?.id !== userId) return;
@@ -114,22 +117,25 @@ export function usePersonalLibrarySync(args: {
           if (stopped.current || currentUser()?.id !== userId) return;
           if (table === 'user_daily_pages') { void syncDays(); return; }
           if (table === 'user_settings' || table === 'user_words') { void syncSettings(); return; }
+          // After a reconnect or a "something changed" check, anything may have changed: days and settings are always refreshed, even
+          // while this device has its own change waiting to upload (they never wait on the shared library record).
+          if (table === 'resync') { void syncDays(); void syncSettings(); }
           if (hasPendingLibrarySync(userId)) return;
           const latest = await loadRemoteLibrary(userId);
           if (latest) applyRemote(latest, true);
-          if (table === 'resync') { void syncDays(); void syncSettings(); } // after a reconnect, anything may have changed
         });
       } catch {
         if (!stopped.current) {
           retryTimer = setTimeout(() => void bootstrap(), retryDelay.current);
           retryDelay.current = Math.min(60_000, retryDelay.current * 2);
         }
-      } finally { running.current = false; }
+      } finally { running.current.leave(ticket); }
     };
 
     const flush = async () => {
-      if (stopped.current || ready.current !== userId || running.current || currentUser()?.id !== userId) return;
-      running.current = true;
+      if (stopped.current || ready.current !== userId || currentUser()?.id !== userId) return;
+      const ticket = running.current.enter();
+      if (!ticket) return;
       try {
         const ok = await syncLocalLibrary(userId, { state: stateRef.current, books: booksRef.current, collections: collectionsRef.current, coverPicks: exportCoverPicks() });
         const daysOk = await syncDays();
@@ -144,20 +150,21 @@ export function usePersonalLibrarySync(args: {
             if (latest && !stopped.current && currentUser()?.id === userId) applyRemote(latest, true);
           }
         }
-      } finally { running.current = false; }
+      } finally { running.current.leave(ticket); }
     };
 
     /** "Use cloud": push this device's unconflicted edits first, then take the cloud copy of the paused records only. */
     const useCloud = async () => {
-      if (stopped.current || ready.current !== userId || running.current || currentUser()?.id !== userId) return;
-      running.current = true;
+      if (stopped.current || ready.current !== userId || currentUser()?.id !== userId) return;
+      const ticket = running.current.enter();
+      if (!ticket) return;
       try {
         await syncLocalLibrary(userId, { state: stateRef.current, books: booksRef.current, collections: collectionsRef.current, coverPicks: exportCoverPicks() });
         const remote = await loadRemoteLibrary(userId);
         if (!remote || stopped.current || currentUser()?.id !== userId) return;
         resolveLibraryConflictsToCloud(userId, remote);
         applyRemote(remote, true);
-      } finally { running.current = false; }
+      } finally { running.current.leave(ticket); }
     };
 
     /** The owner chose a value for a day where two devices made different edits at the very same moment. */

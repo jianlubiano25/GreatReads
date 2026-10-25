@@ -11,6 +11,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { ReadingState } from '../types';
+import { syncSettingsRecords } from './settingsRecordsSync';
 import { acknowledgeCloudCopy, markPersonalAnnotationDeleted, hasLibrarySyncConflicts, hasPendingLibrarySync, loadRemoteLibrary, mergeRemoteLibrary, pausedLibraryKeys, resolveLibraryConflictsToCloud, resolveLibraryConflictsToLocal, syncLocalLibrary, type RemoteLibrarySnapshot } from './librarySync';
 import { mergePreferencesFirstSync } from './librarySyncMerge';
 import { withEdits, withWordsDeleted } from './editTimes';
@@ -24,7 +25,7 @@ import { decideDay, keepDeviceDay, loadDailyTies, setDailyPagesSyncOverride, sta
 const defect = (name: string, fn: () => Promise<void> | void) => test(name, { todo: 'known sync defect (see sync audit)' }, fn);
 
 const USER = 'user-1';
-const TABLES = ['user_library_books', 'user_book_annotations', 'user_shelves', 'user_shelf_books', 'user_reading_sessions', 'user_library_preferences', 'user_daily_pages'];
+const TABLES = ['user_library_books', 'user_book_annotations', 'user_shelves', 'user_shelf_books', 'user_reading_sessions', 'user_library_preferences', 'user_daily_pages', 'user_settings', 'user_words'];
 
 const blank = (): ReadingState => ({
   status: {}, currentPage: {}, totalPages: {}, dailyLog: {}, notes: {}, highlights: {}, goal: 10, readingIntention: '',
@@ -63,6 +64,8 @@ function world() {
         && (!url.searchParams.has('local_book_id') || r.local_book_id === eq(url, 'local_book_id'))
         && (!url.searchParams.has('id') || r.id === eq(url, 'id'))
         && (!url.searchParams.has('day') || r.day === eq(url, 'day'))
+        && (!url.searchParams.has('key') || r.key === eq(url, 'key'))
+        && (!url.searchParams.has('word_id') || r.word_id === eq(url, 'word_id'))
         && r.revision === Number(eq(url, 'revision')));
       if (!row) return reply([]);
       Object.assign(row, payload, { updated_at: new Date().toISOString() }); return reply([row]);
@@ -103,6 +106,13 @@ function world() {
     };
     /** What the app does when the cloud tells it something changed: take the cloud copy, skipping paused records. */
     const refresh = async (state: ReadingState) => { use(); const remote = await loadRemoteLibrary(USER); if (!remote) return state; const m2 = mergeRemoteLibrary(state, [], remote, {}, true, pausedLibraryKeys(USER)); applyDeviceSettings(m2.deviceSettings); acknowledgeCloudCopy(USER, remote); return m2.state; };
+    /** What the app does for per-setting and per-word records. */
+    const settings = async (state: ReadingState): Promise<{ state: ReadingState; ok: boolean }> => {
+      use();
+      let holder = state;
+      const ok = await syncSettingsRecords(USER, { getState: () => holder, apply: change => { holder = change(holder); } });
+      return { state: holder, ok };
+    };
     const conflicts = () => { use(); return hasLibrarySyncConflicts(USER); };
     const paused = () => { use(); return [...pausedLibraryKeys(USER)].sort(); };
     const pending = () => { use(); return hasPendingLibrarySync(USER); };
@@ -120,7 +130,7 @@ function world() {
     const markDeleted = (bookId: string, annotationId: string) => { use(); markPersonalAnnotationDeleted(bookId, annotationId); };
     /** Run something as this device (its own localStorage), like a setting being changed in the app. */
     const run = <T,>(fn: () => T): T => { use(); return fn(); };
-    return { open, edit, refresh, days, ties, conflicts, paused, pending, useCloud, useDevice, markDeleted, run };
+    return { open, edit, refresh, settings, days, ties, conflicts, paused, pending, useCloud, useDevice, markDeleted, run };
   };
   const prefs = () => tables.get('user_library_preferences')![0]?.preferences as any;
   const setOnline = (onLine: boolean) => Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine } });
@@ -965,5 +975,54 @@ test('"on this device" stays on the device: never uploaded, never applied, and t
     assert.deepEqual(opened.onDeviceOverrides, { b1: false, b2: true }, 'this device keeps its own flags (the cloud\'s true is not applied)');
     await a.edit({ ...opened, status: { b1: 'done' } }, [bk]);
     assert.equal(w.tables.get('user_library_books')![0].personal_data.onDevice, true);
+  } finally { w.done(); }
+});
+
+/* ---------- The real-device report: change theme, move a plant, add pages on one device; the other device must show them ---------- */
+
+test('theme, a moved plant and added pages made on one device show up on the other', async () => {
+  const w = world();
+  try {
+    const phone = w.device(); const ipad = w.device();
+    let sp = blank(); let si = blank();
+    sp.garden = { ...sp.garden, peaks: { ...sp.garden.peaks, totalPages: 5 }, placements: {} } as any; si.garden = { ...sp.garden } as any;
+    // both signed in, both have synced once
+    sp = (await phone.open(sp)).state; si = (await ipad.open(si)).state;
+    sp = (await phone.settings(sp)).state; si = (await ipad.settings(si)).state;
+    // on the phone: Parchment theme, move a plant, read 20 pages today
+    sp = { ...sp, profile: { ...sp.profile, theme: 'light' }, garden: { ...sp.garden, placements: { plantA: { area: 'shelf', index: 2 } } } as any };
+    sp = { ...sp, dailyLog: { ...sp.dailyLog, '2026-10-25': 20 }, dailyLogMeta: stampDayEdit(sp.dailyLogMeta, '2026-10-25') };
+    sp = (await phone.settings(sp)).state;
+    sp = (await phone.days(sp)).state;
+    // the iPad hears about it (live event, a foreground return, or the safety-net check: all run these same rounds)
+    si = (await ipad.settings(si)).state;
+    si = (await ipad.days(si)).state;
+    assert.equal(si.profile.theme, 'light', 'theme');
+    assert.deepEqual((si.garden as any).placements, { plantA: { area: 'shelf', index: 2 } }, 'moved plant');
+    assert.equal(si.dailyLog['2026-10-25'], 20, 'pages');
+  } finally { w.done(); }
+});
+
+test('the safety-net check notices each of those changes in the cloud', async () => {
+  const w = world();
+  try {
+    const phone = w.device(); const ipad = w.device();
+    const { probeFingerprint, createProbeWatcher } = await import('./changeProbe');
+    const { rest } = await import('./supabase');
+    let sp = blank(); sp.garden = { ...sp.garden, peaks: { ...sp.garden.peaks, totalPages: 5 } } as any;
+    sp = (await phone.open(sp)).state; sp = (await phone.settings(sp)).state;
+    const watcher = createProbeWatcher();
+    const probe = async () => ipad.run(async () => watcher.changed(await probeFingerprint(USER, rest as any)));
+    await probe(); // baseline on the iPad
+    assert.equal(await probe(), false, 'nothing changed yet');
+    sp = { ...sp, profile: { ...sp.profile, theme: 'light' } };
+    await phone.settings(sp);
+    assert.equal(await probe(), true, 'theme change noticed');
+    sp = { ...sp, dailyLog: { '2026-10-25': 20 }, dailyLogMeta: stampDayEdit(sp.dailyLogMeta, '2026-10-25') };
+    await phone.days(sp);
+    assert.equal(await probe(), true, 'page change noticed');
+    sp = { ...sp, garden: { ...sp.garden, placements: { p: { area: 'a', index: 1 } } } as any };
+    await phone.settings(sp);
+    assert.equal(await probe(), true, 'plant move noticed');
   } finally { w.done(); }
 });
