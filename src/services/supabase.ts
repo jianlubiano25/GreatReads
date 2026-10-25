@@ -4,6 +4,7 @@
  * The session is kept on this device only and is never part of a backup.
  */
 
+import { settingsRecordsSyncEnabled } from './settingsRecordsFlag';
 const URL_ = ((import.meta as any).env?.VITE_SUPABASE_URL as string) || 'https://amvkwwqcepmxxkfeqjox.supabase.co';
 const KEY_ = ((import.meta as any).env?.VITE_SUPABASE_KEY as string) || 'sb_publishable_s-atrWTsjqEYhAyM2moavQ_D0UQRZ51';
 const SESSION_KEY = 'readlife.sb1';
@@ -177,7 +178,7 @@ export function subscribeLibraryRealtime(userId: string, onChange: (table: strin
     if (currentUser()?.id !== userId) { socket?.close(); return; }
     if (socket?.readyState === WebSocket.OPEN) socket.close();
   });
-  const tables = ['user_library_books', 'user_book_annotations', 'user_shelves', 'user_shelf_books', 'user_reading_sessions', 'user_library_preferences', 'user_daily_pages'];
+  const tables = ['user_library_books', 'user_book_annotations', 'user_shelves', 'user_shelf_books', 'user_reading_sessions', 'user_library_preferences', 'user_daily_pages', ...(settingsRecordsSyncEnabled() ? ['user_settings', 'user_words'] : [])]; // the two Phase 4 tables exist only once the migrations are applied and the switch is on
   let hasConnected = false;
   const topic = `realtime:greatreads:${userId}`;
   const connect = async () => {

@@ -8,6 +8,7 @@
  */
 import type { ReadingState } from '../types';
 import { dailyPagesSyncEnabled } from './dailyPagesSync';
+import { settingsRecordsSyncEnabled } from './settingsRecordsFlag';
 import { maxTimes, mergeHiddenByTime, mergeWordsByTime, newer } from './editTimes';
 import { mergeDeviceSettings, type DeviceSettings } from './deviceSettings';
 import type { AnnotationRow, LibraryBookRow, LibrarySyncSnapshot, ShelfBookRow, ShelfRow } from './librarySync';
@@ -116,17 +117,19 @@ const DEFAULT_GOAL = 10;
 export function mergePreferencesFirstSync(remote: Record<string, unknown>, local: Record<string, unknown>): Record<string, unknown> | null {
   return guard(() => {
     const out: Record<string, unknown> = { ...local, ...remote };
+    const owned = settingsRecordsSyncEnabled(); // Phase 4 on: goal, intention, profile name/theme and nook look are their own records, so a difference here is not a conflict
     const cloudGoal = Number(remote.goal) || 0, localGoal = Number(local.goal) || 0;
-    if (!cloudGoal) out.goal = localGoal || undefined;
+    if (owned) out.goal = cloudGoal || localGoal || undefined;
+    else if (!cloudGoal) out.goal = localGoal || undefined;
     else if (!localGoal || cloudGoal === localGoal || localGoal === DEFAULT_GOAL) out.goal = cloudGoal;
     else if (cloudGoal === DEFAULT_GOAL) out.goal = localGoal;
     else throw new FieldConflict();
     if (out.goal === undefined) delete out.goal;
-    out.readingIntention = pick(remote.readingIntention ?? '', local.readingIntention ?? '');
+    out.readingIntention = owned ? (remote.readingIntention || local.readingIntention || '') : pick(remote.readingIntention ?? '', local.readingIntention ?? '');
     const cloudProfile = obj(remote.profile), localProfile = obj(local.profile);
     if (isSet(remote.profile) || isSet(local.profile)) {
       const theme = (value: unknown) => (value === 'auto' ? '' : value);
-      out.profile = { name: pick(cloudProfile.name ?? '', localProfile.name ?? ''), photo: pick(cloudProfile.photo ?? '', localProfile.photo ?? ''), theme: pick(theme(cloudProfile.theme) ?? '', theme(localProfile.theme) ?? '') || 'auto' };
+      out.profile = { name: owned ? (cloudProfile.name || localProfile.name || '') : pick(cloudProfile.name ?? '', localProfile.name ?? ''), photo: pick(cloudProfile.photo ?? '', localProfile.photo ?? ''), theme: (owned ? (theme(cloudProfile.theme) || theme(localProfile.theme) || '') : pick(theme(cloudProfile.theme) ?? '', theme(localProfile.theme) ?? '')) || 'auto' };
     }
     const days: Record<string, number> = { ...obj(local.dailyLog) as Record<string, number> };
     for (const [day, pages] of Object.entries(obj(remote.dailyLog))) days[day] = Math.max(Number(days[day]) || 0, Number(pages) || 0);
@@ -150,7 +153,7 @@ export function mergePreferencesFirstSync(remote: Record<string, unknown>, local
     const picks: Record<string, unknown> = { ...obj(local.coverPicks) };
     for (const [key, value] of Object.entries(obj(remote.coverPicks))) picks[key] = key in picks ? pick(value, picks[key]) : value;
     out.coverPicks = picks;
-    out.nookLook = pick(remote.nookLook ?? null, local.nookLook ?? null);
+    out.nookLook = owned ? (remote.nookLook ?? local.nookLook ?? null) : pick(remote.nookLook ?? null, local.nookLook ?? null);
     // Phase 5: the later change wins per group; on a tie the cloud copy stands (a first sync never overwrites the cloud with an equal-age value)
     const settings = mergeDeviceSettings(local.deviceSettings as DeviceSettings | undefined, remote.deviceSettings, true);
     out.deviceSettings = settings ?? null;

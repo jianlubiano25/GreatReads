@@ -6,6 +6,8 @@ import { loadCollections, type Collection } from '../services/libraryCollections
 import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
 import { applyDeviceSettings } from '../services/deviceSettings';
 import { acknowledgeCloudCopy, claimLibrarySyncAccount, hasPendingLibrarySync, librarySyncAccountAllowed, loadRemoteLibrary, markPersonalCollectionDeleted, markPersonalMembershipDeleted, mergeRemoteLibrary, pausedLibraryKeys, resolveLibraryConflictsToCloud, syncLocalLibrary } from '../services/librarySync';
+import { resolveSettingTie, syncSettingsRecords, type SettingKey } from '../services/settingsRecordsSync';
+import { settingsRecordsSyncEnabled } from '../services/settingsRecordsFlag';
 import { keepDeviceDay, loadDailyTies, syncDailyPages, takeCloudDay } from '../services/dailyPagesSync';
 
 export function usePersonalLibrarySync(args: {
@@ -24,6 +26,8 @@ export function usePersonalLibrarySync(args: {
   const running = useRef(false);
   const daysRunning = useRef(false);
   const daysAgain = useRef(false);
+  const settingsRunning = useRef(false);
+  const settingsAgain = useRef(false);
   const retryDelay = useRef(1500);
   const ignoreState = useRef('');
   const ignoreCollections = useRef('');
@@ -74,6 +78,22 @@ export function usePersonalLibrarySync(args: {
       } catch { return false; } finally { daysRunning.current = false; }
     };
 
+    /** Phase 4 per-setting and per-word records. Does nothing (returns true) while the switch is off. Never runs twice at once; a request that arrives meanwhile runs once more after. */
+    const syncSettings = async (): Promise<boolean> => {
+      if (!settingsRecordsSyncEnabled()) return true;
+      if (stopped.current || ready.current !== userId || currentUser()?.id !== userId) return true;
+      if (settingsRunning.current) { settingsAgain.current = true; return true; }
+      settingsRunning.current = true;
+      try {
+        let ok = true;
+        do {
+          settingsAgain.current = false;
+          ok = await syncSettingsRecords(userId, { getState: () => stateRef.current, apply: change => applyRef.current(change) }) && ok;
+        } while (settingsAgain.current && !stopped.current);
+        return ok;
+      } catch { return false; } finally { settingsRunning.current = false; }
+    };
+
     const bootstrap = async () => {
       if (stopped.current || running.current || !librarySyncAccountAllowed(userId) || (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
       claimLibrarySyncAccount(userId);
@@ -89,13 +109,15 @@ export function usePersonalLibrarySync(args: {
         ready.current = userId;
         retryDelay.current = 1500;
         if (!await syncDays()) throw new Error('daily pages deferred');
+        if (!await syncSettings()) throw new Error('settings records deferred');
         cancelRealtime = subscribeLibraryRealtime(userId, async table => {
           if (stopped.current || currentUser()?.id !== userId) return;
           if (table === 'user_daily_pages') { void syncDays(); return; }
+          if (table === 'user_settings' || table === 'user_words') { void syncSettings(); return; }
           if (hasPendingLibrarySync(userId)) return;
           const latest = await loadRemoteLibrary(userId);
           if (latest) applyRemote(latest, true);
-          if (table === 'resync') void syncDays(); // after a reconnect, anything may have changed
+          if (table === 'resync') { void syncDays(); void syncSettings(); } // after a reconnect, anything may have changed
         });
       } catch {
         if (!stopped.current) {
@@ -111,7 +133,8 @@ export function usePersonalLibrarySync(args: {
       try {
         const ok = await syncLocalLibrary(userId, { state: stateRef.current, books: booksRef.current, collections: collectionsRef.current, coverPicks: exportCoverPicks() });
         const daysOk = await syncDays();
-        if ((!ok || !daysOk) && !stopped.current) {
+        const settingsOk = await syncSettings();
+        if ((!ok || !daysOk || !settingsOk) && !stopped.current) {
           retryTimer = setTimeout(() => void flush(), retryDelay.current);
           retryDelay.current = Math.min(60_000, retryDelay.current * 2);
         } else {
@@ -146,6 +169,13 @@ export function usePersonalLibrarySync(args: {
       setTimeout(() => void syncDays(), 0);
     };
 
+    /** The owner chose a value for a setting where two devices made different edits at the very same moment. (No screen asks yet: see the Phase 4 report.) */
+    const onSettingTie = (event: Event) => {
+      const { key, choice } = (event as CustomEvent<{ key: SettingKey; choice: 'device' | 'cloud' }>).detail || {};
+      resolveSettingTie(userId, key, choice);
+      setTimeout(() => void syncSettings(), 0);
+    };
+
     void bootstrap();
     const onOnline = () => { if (ready.current !== userId) void bootstrap(); else void flush(); };
     const onUseCloud = () => void useCloud();
@@ -159,6 +189,7 @@ export function usePersonalLibrarySync(args: {
     window.addEventListener('greatreads-library-use-cloud', onUseCloud);
     window.addEventListener('greatreads-daily-tie', onDailyTie);
     window.addEventListener('greatreads-daily-pages-run', onDaysRun);
+    window.addEventListener('greatreads-setting-tie', onSettingTie);
     window.addEventListener('greatreads-library-local-change', onLocalChange);
     window.addEventListener('pagehide', onHide);
     document.addEventListener('visibilitychange', onHide);
@@ -170,6 +201,7 @@ export function usePersonalLibrarySync(args: {
       window.removeEventListener('greatreads-library-use-cloud', onUseCloud);
       window.removeEventListener('greatreads-daily-tie', onDailyTie);
       window.removeEventListener('greatreads-daily-pages-run', onDaysRun);
+      window.removeEventListener('greatreads-setting-tie', onSettingTie);
       window.removeEventListener('greatreads-library-local-change', onLocalChange);
       if (localChangeTimer) clearTimeout(localChangeTimer);
       window.removeEventListener('pagehide', onHide);
@@ -187,11 +219,12 @@ export function usePersonalLibrarySync(args: {
     lastDays.current = { log: args.state.dailyLog, meta: args.state.dailyLogMeta };
     // Day edits upload on their own short timer, so a quick page tap never waits for the slower library sync.
     const daysTimer = daysChanged ? setTimeout(() => window.dispatchEvent(new Event('greatreads-daily-pages-run')), 300) : undefined;
-    if (ignoreState.current && ignoreState.current === current) { ignoreState.current = ''; return () => { if (daysTimer) clearTimeout(daysTimer); }; }
+    const settingsTimer = settingsRecordsSyncEnabled() ? setTimeout(() => window.dispatchEvent(new Event('greatreads-library-local-change')), 1200) : undefined; // a goal, name, words... changed: upload them as their own records
+    if (ignoreState.current && ignoreState.current === current) { ignoreState.current = ''; return () => { if (daysTimer) clearTimeout(daysTimer); if (settingsTimer) clearTimeout(settingsTimer); }; }
     const timer = setTimeout(() => {
       if (currentUser()?.id === userId && ready.current === userId) void syncLocalLibrary(userId, { state: stateRef.current, books: booksRef.current, collections: collectionsRef.current, coverPicks: exportCoverPicks() });
     }, 500);
-    return () => { clearTimeout(timer); if (daysTimer) clearTimeout(daysTimer); };
+    return () => { clearTimeout(timer); if (daysTimer) clearTimeout(daysTimer); if (settingsTimer) clearTimeout(settingsTimer); };
   }, [args.state, userId]);
 
   useEffect(() => {

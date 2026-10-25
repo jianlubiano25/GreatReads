@@ -16,6 +16,6 @@ c. Dry run (tests + a script on your two devices' data shapes), you review, then
 d. Existing preferences.* stays read-only for two releases and is never deleted by this phase.
 
 ## 3. Rollback
-- App: set the switch off (`readlife.settingsRecordsSync1` = `0`, or `VITE_SETTINGS_RECORDS_SYNC=0`). The app goes back to preferences.*.
+- App: set the switch off (`readlife.settingsRecordsSync1` = `0`, and remove `VITE_SETTINGS_RECORDS_SYNC=1` from the build). It is OFF unless one of them is `1`. The app goes back to preferences.*.
 - Database: run the two files in supabase/rollbacks/ (`...000005_user_words.rollback.sql` then `...000004_user_settings.rollback.sql`).
 - Data: restore the JSON backup from step 1 in the app if anything looks wrong. preferences.* was never modified, so it is still correct.
