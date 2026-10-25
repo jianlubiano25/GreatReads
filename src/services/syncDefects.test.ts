@@ -518,7 +518,7 @@ test('legacy notes and highlights (no edit times) behave exactly as before: two 
 const LAYOUT = { order: ['trending', 'fiction'], hidden: ['prizes'], shown: [] as string[] };
 
 test('a second device gets the first device\'s store layout, fonts and nook toggles on its first sync', async () => {
-  const w = world();
+  const w = world(); setSettingsRecordsOverride(false); // these tests cover the legacy shared record on its own (per-setting records are tested in settingsRecordsSync.test.ts)
   try {
     const a = w.device(); const b = w.device();
     a.run(() => { saveStorePrefs(LAYOUT); setFontPrefs({ title: 'Lora' }); setNookMatchesTheme(true); setWindowFollowsTime(false); });
@@ -529,11 +529,11 @@ test('a second device gets the first device\'s store layout, fonts and nook togg
     assert.equal(b.run(() => getNookMatchesTheme()), true);
     assert.equal(b.run(() => getWindowFollowsTime()), false);
     assert.equal(b.conflicts(), false);
-  } finally { w.done(); }
+  } finally { setSettingsRecordsOverride(undefined); w.done(); }
 });
 
 test('a later settings change on one device reaches the other without a conflict, and a reset to default counts as a change', async () => {
-  const w = world();
+  const w = world(); setSettingsRecordsOverride(false); // these tests cover the legacy shared record on its own (per-setting records are tested in settingsRecordsSync.test.ts)
   try {
     const a = w.device(); const b = w.device();
     a.run(() => saveStorePrefs(LAYOUT));
@@ -547,11 +547,11 @@ test('a later settings change on one device reaches the other without a conflict
     await b.refresh(blank());
     assert.deepEqual(b.run(() => loadStorePrefs()), NO_PREFS);
     assert.equal(a.conflicts() || b.conflicts(), false);
-  } finally { w.done(); }
+  } finally { setSettingsRecordsOverride(undefined); w.done(); }
 });
 
 test('a layout this device never changed since before stamping (legacy) is replaced by a real, stamped change from the cloud', async () => {
-  const w = world();
+  const w = world(); setSettingsRecordsOverride(false); // these tests cover the legacy shared record on its own (per-setting records are tested in settingsRecordsSync.test.ts)
   try {
     const a = w.device(); const b = w.device();
     a.run(() => saveStorePrefs(LAYOUT));
@@ -559,7 +559,7 @@ test('a layout this device never changed since before stamping (legacy) is repla
     b.run(() => localStorage.setItem('readlife.storeprefs1', JSON.stringify({ order: ['other'], hidden: [], shown: [] }))); // old value, no stamp
     await b.open(blank());
     assert.deepEqual(b.run(() => loadStorePrefs()), LAYOUT);
-  } finally { w.done(); }
+  } finally { setSettingsRecordsOverride(undefined); w.done(); }
 });
 
 test('settings with nothing changed anywhere add nothing to the cloud or to a backup', async () => {

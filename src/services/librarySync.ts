@@ -299,7 +299,8 @@ export function mergeRemoteLibrary(local: ReadingState, collections: Collection[
   let nookLook: unknown = exportNookLook() || null;
   let deviceSettings: DeviceSettings | undefined;
   if (pref) {
-    if (pref.deviceSettings && typeof pref.deviceSettings === 'object') deviceSettings = mergeDeviceSettings(exportDeviceSettings(), pref.deviceSettings, preferRemote);
+    // Phase 4 on: store layout, fonts, nook options and name choices are their own per-setting records; the old shared copy no longer applies them
+    if (!settingsRecordsSyncEnabled() && pref.deviceSettings && typeof pref.deviceSettings === 'object') deviceSettings = mergeDeviceSettings(exportDeviceSettings(), pref.deviceSettings, preferRemote);
     if (pref.coverPicks && typeof pref.coverPicks === 'object') {
       const remotePicks = cleanPicks(pref.coverPicks);
       if (preferRemote) { for (const key of Object.keys(coverPicks)) delete coverPicks[key]; Object.assign(coverPicks, remotePicks); }
@@ -341,7 +342,8 @@ export function mergeRemoteLibrary(local: ReadingState, collections: Collection[
         state.editTimes = { ...Object.fromEntries(Object.entries(state.editTimes || {}).filter(([k]) => !k.startsWith('hidden:'))), ...merged.times };
       }
     }
-    if (pref.garden && typeof pref.garden === 'object') state.garden = mergeGarden(state.garden, pref.garden as ReadingState['garden']);
+    // Phase 4 on: the garden is its own per-setting record (moving a plant is an edit with a time); the old copy only fills a garden that is still empty here
+    if (pref.garden && typeof pref.garden === 'object' && (!settingsRecordsSyncEnabled() || !(Object.keys(state.garden?.plants || {}).length || Object.keys(state.garden?.achievements || {}).length))) state.garden = mergeGarden(state.garden, pref.garden as ReadingState['garden']);
   }
   return { state, collections: orderedCollections, coverPicks, nookLook, deviceSettings };
 }
