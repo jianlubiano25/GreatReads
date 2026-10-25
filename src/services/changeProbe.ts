@@ -10,7 +10,7 @@ export type ProbeRest = <T>(path: string) => Promise<{ ok: true; data: T } | { o
 const PROBES: { table: string; select: string; order?: string; limit?: number }[] = [
   { table: 'user_library_preferences', select: 'revision' },
   { table: 'user_settings', select: 'key,revision' },
-  { table: 'user_words', select: 'id,revision' },
+  { table: 'user_words', select: 'word_id,revision' },
   { table: 'user_daily_pages', select: 'day,revision', order: 'day.desc', limit: 60 },
   { table: 'user_library_books', select: 'local_book_id,revision' },
   { table: 'user_book_annotations', select: 'id,revision' },

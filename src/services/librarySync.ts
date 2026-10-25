@@ -495,8 +495,10 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
    * then just this record pauses. A record that changed in the cloud after this device's baseline is still a conflict.
    */
   const gate = (key: string, revision: number, equal: boolean, merge?: () => Record<string, unknown> | null, sameAsCloud?: (merged: Record<string, unknown>) => boolean): { write: boolean; merged?: Record<string, unknown> } => {
+    // Same as the cloud: nothing to protect and nothing to write. A record that was paused only because the copies differed (for example the
+    // catalogue details each device keeps for itself) is no longer in conflict, so it resumes by itself.
+    if (equal) { versions.revisions[key] = revision; versions.conflicts = versions.conflicts.filter(k => k !== key); return { write: false }; }
     if (versions.conflicts.includes(key)) return { write: false };
-    if (equal) { versions.revisions[key] = revision; return { write: false }; }
     const baseline = versions.revisions[key];
     if (baseline === revision) return { write: true };
     if (baseline === undefined && merge) {
@@ -526,7 +528,11 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
       continue;
     }
     libraryIds.set(item.local_book_id, old.id);
-    const body = { ...item, id: old.id, catalog_work_id: old.catalog_work_id, catalog_edition_id: old.catalog_edition_id, personal_data: { ...item.personal_data, onDevice: old.personal_data?.onDevice ?? null } } as Record<string, unknown>;
+    // A catalogue book's details (cover, summary, when this device first saw it) are not the reader's own edit and differ a little from device to
+    // device. Two devices used to keep rewriting each other's copy forever (a book rewritten 80+ times with nothing edited) and then paused each
+    // other as a conflict. The cloud's copy stands; only the reader's OWN custom books carry their details.
+    const isCustomBook = !!(item.personal_data?.isCustomBook || old.personal_data?.isCustomBook);
+    const body = { ...item, id: old.id, catalog_work_id: old.catalog_work_id, catalog_edition_id: old.catalog_edition_id, ...(!isCustomBook && old.book_snapshot ? { book_snapshot: old.book_snapshot } : {}), personal_data: { ...item.personal_data, onDevice: old.personal_data?.onDevice ?? null } } as Record<string, unknown>;
     const key = `book:${item.local_book_id}`;
     const gated = gate(key, old.revision, equalSyncRecord(old, body), () => mergeBookFirstSync(old, item), merged => equalSyncRecord(old, { ...body, ...merged }));
     if (!gated.write) continue;

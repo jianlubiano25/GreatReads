@@ -691,6 +691,44 @@ test('a page number changed on one device reaches the other, and the other can k
   } finally { w.done(); }
 });
 
+/* ---------- Catalogue book snapshots differ per device: they must not make the devices rewrite each other forever ---------- */
+
+test('two devices whose catalogue copy of the same book differs slightly do not keep rewriting it or pause it as a conflict', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const bookA = { ...book('nyt_1'), addedAt: 1000, summary: 'seen by A' } as any, bookB = { ...book('nyt_1'), addedAt: 2000, summary: 'seen by B' } as any;
+    let sa = blank(); sa = setStatus(sa, 'nyt_1', 'list', E1);
+    let sb = blank(); sb = setStatus(sb, 'nyt_1', 'list', E1);
+    sa = (await a.open(sa, [bookA])).state;
+    sb = (await b.open(sb, [bookB])).state;
+    const row = () => w.tables.get('user_library_books')!.find(r => r.local_book_id === 'nyt_1')!;
+    const afterOpen = row().revision;
+    for (let round = 0; round < 4; round++) {          // both devices keep syncing and pulling, as the app does all day
+      sa = (await a.edit(sa, [bookA])).state; sa = await a.refresh(sa);
+      sb = (await b.edit(sb, [bookB])).state; sb = await b.refresh(sb);
+    }
+    assert.ok(row().revision - afterOpen <= 1, `the row was rewritten ${row().revision - afterOpen} times with nothing edited`);
+    assert.equal(a.conflicts() || b.conflicts(), false);
+  } finally { w.done(); }
+});
+
+test('a record paused only because two devices\' catalogue copies differed resumes by itself once nothing real differs', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const bookA = { ...book('nyt_1'), addedAt: 1000 } as any, bookB = { ...book('nyt_1'), addedAt: 2000 } as any;
+    let sa = setStatus(blank(), 'nyt_1', 'list', E1);
+    sa = (await a.open(sa, [bookA])).state;
+    let sb = (await b.open(setStatus(blank(), 'nyt_1', 'list', E1), [bookB])).state;
+    // an old build left this record paused on B
+    b.run(() => { const k = 'readlife.librarySyncVersions1.' + encodeURIComponent(USER); const v = JSON.parse(localStorage.getItem(k) || '{"revisions":{},"conflicts":[]}'); v.conflicts = ['book:nyt_1']; localStorage.setItem(k, JSON.stringify(v)); });
+    assert.equal(b.conflicts(), true);
+    await b.edit(sb, [bookB]);
+    assert.equal(b.conflicts(), false);
+  } finally { w.done(); }
+});
+
 /* ---------- Phase 1: second-device first sync, per-record conflicts, use cloud, reconnect ---------- */
 
 test('first sync fills gaps in both directions: cloud status and this device\'s rating both end up in the cloud, with no conflict', async () => {
