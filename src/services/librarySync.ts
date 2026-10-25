@@ -42,6 +42,9 @@ const bookTimes = (state: ReadingState, id: string): { times?: Record<string, nu
   return status || rating ? { times: { ...(status ? { status } : {}), ...(rating ? { rating } : {}) } } : {};
 };
 
+/** When the user last edited a note or highlight (only if ever stamped); written into the annotation row's extra_data, so no schema change is needed. */
+const annoTime = (state: ReadingState, kind: 'note' | 'highlight', id: string): { edited_at?: number } => { const at = timeOf(state.editTimes, kind, id); return at ? { edited_at: at } : {}; };
+
 const hasOwnData = (state: ReadingState, id: string, collections: Collection[]) => !!(
   state.status[id] || state.currentPage[id] || state.totalPages[id] || state.notes[id] || state.highlights[id]?.length
   || state.history[id] || state.ratings[id] || state.customBooks.some(book => String(book.id) === id)
@@ -92,8 +95,8 @@ export function buildLibrarySyncSnapshot(args: {
     const libraryBookId = libraryIdByLocal.get(localId) || '';
     if (state.hiddenBookIds[localId]) continue;
     const note = state.notes[localId];
-    if (note?.trim()) annotations.push({ id: annotationUuid(userId, localId, 'note', 'note'), user_id: userId, library_book_id: libraryBookId, annotation_type: 'note', content: note, quote_text: null, page_reference: null, location_data: {}, extra_data: { local_book_id: localId, local_annotation_id: 'note' }, deleted_at: null });
-    for (const highlight of state.highlights[localId] || []) annotations.push({ id: annotationUuid(userId, localId, 'highlight', highlight.id), user_id: userId, library_book_id: libraryBookId, annotation_type: 'highlight', content: highlight.text, quote_text: highlight.text, page_reference: highlight.page == null ? null : String(highlight.page), location_data: highlight.page == null ? {} : { page: highlight.page }, extra_data: { local_book_id: localId, local_annotation_id: highlight.id, timestamp: highlight.timestamp }, deleted_at: null });
+    if (note?.trim()) annotations.push({ id: annotationUuid(userId, localId, 'note', 'note'), user_id: userId, library_book_id: libraryBookId, annotation_type: 'note', content: note, quote_text: null, page_reference: null, location_data: {}, extra_data: { local_book_id: localId, local_annotation_id: 'note', ...annoTime(state, 'note', localId) }, deleted_at: null });
+    for (const highlight of state.highlights[localId] || []) annotations.push({ id: annotationUuid(userId, localId, 'highlight', highlight.id), user_id: userId, library_book_id: libraryBookId, annotation_type: 'highlight', content: highlight.text, quote_text: highlight.text, page_reference: highlight.page == null ? null : String(highlight.page), location_data: highlight.page == null ? {} : { page: highlight.page }, extra_data: { local_book_id: localId, local_annotation_id: highlight.id, timestamp: highlight.timestamp, ...annoTime(state, 'highlight', `${localId}:${highlight.id}`) }, deleted_at: null });
   }
 
   const activeCollections = collections.filter(item => !isDeletedLocally(userId, `collection:${item.id}`));
@@ -206,8 +209,10 @@ export function mergeRemoteLibrary(local: ReadingState, collections: Collection[
     const annotationId = String(row.extra_data?.local_annotation_id || (row.annotation_type === 'note' ? 'note' : row.id));
     if (paused.has(`annotation:${row.id}`) || deleted.has(bookId) || deleted.has(`annotation:${bookId}:${annotationId}`)) continue;
     if (row.deleted_at) {
-      if (preferRemote && row.annotation_type === 'note') delete state.notes[bookId];
-      if (preferRemote && (row.annotation_type === 'highlight' || row.annotation_type === 'quote')) state.highlights[bookId] = (state.highlights[bookId] || []).filter(item => item.id !== annotationId);
+      // A delete applies only if this device has no LATER edit of the same note/highlight (a later edit brings it back instead)
+      const at = Number(row.extra_data?.edited_at) || 0;
+      if (preferRemote && row.annotation_type === 'note' && newer(timeOf(state.editTimes, 'note', bookId), at) !== 'local') delete state.notes[bookId];
+      if (preferRemote && (row.annotation_type === 'highlight' || row.annotation_type === 'quote') && newer(timeOf(state.editTimes, 'highlight', `${bookId}:${annotationId}`), at) !== 'local') state.highlights[bookId] = (state.highlights[bookId] || []).filter(item => item.id !== annotationId);
       continue;
     }
     const id = bookIdByCloud.get(row.library_book_id);
@@ -216,15 +221,23 @@ export function mergeRemoteLibrary(local: ReadingState, collections: Collection[
     list.push(row);
     annotationsByBook.set(id, list);
   }
+  const stampLocal = (kind: 'note' | 'highlight', key: string, at: number) => { if (at > 0) state.editTimes = { ...(state.editTimes || {}), [timeKey(kind, key)]: at }; };
   for (const [id, entries] of annotationsByBook) {
     for (const row of entries) {
-      if (row.annotation_type === 'note' && (preferRemote || !state.notes[id])) state.notes[id] = row.content;
+      const at = Number(row.extra_data?.edited_at) || 0;
+      if (row.annotation_type === 'note') {
+        const side = newer(timeOf(state.editTimes, 'note', id), at);
+        if (side === 'remote') { state.notes[id] = row.content; stampLocal('note', id, at); }
+        else if (side === 'same' && (preferRemote || !state.notes[id])) state.notes[id] = row.content;
+        continue;
+      }
       if (row.annotation_type !== 'highlight' && row.annotation_type !== 'quote') continue;
       const localId = String(row.extra_data?.local_annotation_id || row.id);
       const highlight = { id: localId, text: row.content, page: Number(row.page_reference) || undefined, timestamp: Number(row.extra_data?.timestamp) || 0 };
       const current = state.highlights[id] || [];
-      if (!current.some(item => item.id === localId)) state.highlights[id] = [...current, highlight];
-      else if (preferRemote) state.highlights[id] = current.map(item => item.id === localId ? highlight : item);
+      const side = newer(timeOf(state.editTimes, 'highlight', `${id}:${localId}`), at);
+      if (!current.some(item => item.id === localId)) { if (side !== 'local') { state.highlights[id] = [...current, highlight]; stampLocal('highlight', `${id}:${localId}`, at); } }
+      else if (side === 'remote' || (side === 'same' && preferRemote)) { state.highlights[id] = current.map(item => item.id === localId ? highlight : item); stampLocal('highlight', `${id}:${localId}`, at); }
     }
   }
   const mergedCollections = new Map(collections.map(item => [item.id, { ...item, bookIds: [...item.bookIds] }]));
@@ -392,6 +405,10 @@ export function markPersonalAnnotationDeleted(localBookId: string, localAnnotati
   const userId = currentUser()?.id; if (!userId) return;
   const deleted = localDeletionSet(userId); deleted.add(`annotation:${localBookId}:${localAnnotationId}`); saveDeletionSet(userId, deleted);
 }
+export function unmarkPersonalAnnotationDeleted(localBookId: string, localAnnotationId: string): void {
+  const userId = currentUser()?.id; if (!userId) return;
+  const deleted = localDeletionSet(userId); if (deleted.delete(`annotation:${localBookId}:${localAnnotationId}`)) saveDeletionSet(userId, deleted);
+}
 export function markPersonalCollectionDeleted(localId: string, userId = currentUser()?.id): void {
   if (!userId) return;
   const deleted = localDeletionSet(userId); deleted.add(`collection:${localId}`); saveDeletionSet(userId, deleted);
@@ -418,7 +435,7 @@ export async function syncLocalLibrary(userId: string, args: { state: ReadingSta
   const shelfIds = new Map(remote.shelves.map(row => [String(row.shelf_data?.local_id || ''), row.id]));
   const safeState = { ...args.state, customBooks: args.state.customBooks.filter(book => !isDeletedLocally(userId, String(book.id))) };
   const snapshot = buildLibrarySyncSnapshot({ userId, ...args, state: safeState, libraryIds, shelfIds });
-  const result = await writeRemoteLibrary(userId, snapshot, remote);
+  const result = await writeRemoteLibrary(userId, snapshot, remote, args.state.editTimes);
   setPendingLibrarySync(userId, !result.ok);
   if (result.ok && !result.conflict) clearPersonalDeletionMarkers(userId);
   if (result.ok) claimLibrarySyncAccount(userId);
@@ -432,7 +449,7 @@ async function casUpdate(table: string, userId: string, filter: string, revision
 }
 
 /** Write one complete, already-reconciled local snapshot. CAS revisions prevent silently overwriting a simultaneous device edit. */
-export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSnapshot, remote: RemoteLibrarySnapshot): Promise<{ ok: boolean; conflict?: boolean; libraryIds?: Map<string, string>; shelfIds?: Map<string, string> }> {
+export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSnapshot, remote: RemoteLibrarySnapshot, editTimes?: Record<string, number>): Promise<{ ok: boolean; conflict?: boolean; libraryIds?: Map<string, string>; shelfIds?: Map<string, string> }> {
   if (currentUser()?.id !== userId || (typeof navigator !== 'undefined' && navigator.onLine === false)) return { ok: false };
   const versions = getVersions(userId);
   /**
@@ -530,7 +547,8 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
     const localBookId = String(old.extra_data?.local_book_id || '');
     const localAnnotationId = String(old.extra_data?.local_annotation_id || (old.annotation_type === 'note' ? 'note' : old.id));
     if (!isDeletedLocally(userId, localBookId) && !isDeletedLocally(userId, `annotation:${localBookId}:${localAnnotationId}`)) continue;
-    if (!await casUpdate('user_book_annotations', userId, `id=eq.${old.id}`, old.revision, { deleted_at: new Date().toISOString() })) return { ok: false, conflict: true };
+    const deletedAt = timeOf(editTimes, old.annotation_type === 'note' ? 'note' : 'highlight', old.annotation_type === 'note' ? localBookId : `${localBookId}:${localAnnotationId}`);
+    if (!await casUpdate('user_book_annotations', userId, `id=eq.${old.id}`, old.revision, { deleted_at: new Date().toISOString(), ...(deletedAt ? { extra_data: { ...(old.extra_data || {}), edited_at: deletedAt } } : {}) })) return { ok: false, conflict: true };
     markWritten(`annotation:${old.id}`, old.revision + 1);
   }
   for (const row of snapshotWithIds.memberships) {

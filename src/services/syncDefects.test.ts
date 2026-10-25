@@ -11,7 +11,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { ReadingState } from '../types';
-import { acknowledgeCloudCopy, hasLibrarySyncConflicts, hasPendingLibrarySync, loadRemoteLibrary, mergeRemoteLibrary, pausedLibraryKeys, resolveLibraryConflictsToCloud, resolveLibraryConflictsToLocal, syncLocalLibrary, type RemoteLibrarySnapshot } from './librarySync';
+import { acknowledgeCloudCopy, markPersonalAnnotationDeleted, hasLibrarySyncConflicts, hasPendingLibrarySync, loadRemoteLibrary, mergeRemoteLibrary, pausedLibraryKeys, resolveLibraryConflictsToCloud, resolveLibraryConflictsToLocal, syncLocalLibrary, type RemoteLibrarySnapshot } from './librarySync';
 import { mergePreferencesFirstSync } from './librarySyncMerge';
 import { withEdits, withWordsDeleted } from './editTimes';
 import { decideDay, keepDeviceDay, loadDailyTies, setDailyPagesSyncOverride, stampDayEdit, syncDailyPages, takeCloudDay, type CloudDay } from './dailyPagesSync';
@@ -110,7 +110,9 @@ function world() {
     };
     const useDevice = () => { use(); resolveLibraryConflictsToLocal(USER); };
     const ties = () => { use(); return loadDailyTies(USER); };
-    return { open, edit, refresh, days, ties, conflicts, paused, pending, useCloud, useDevice };
+    /** What the app does when a note or highlight is deleted (markPersonalAnnotationDeleted), run as this device. */
+    const markDeleted = (bookId: string, annotationId: string) => { use(); markPersonalAnnotationDeleted(bookId, annotationId); };
+    return { open, edit, refresh, days, ties, conflicts, paused, pending, useCloud, useDevice, markDeleted };
   };
   const prefs = () => tables.get('user_library_preferences')![0]?.preferences as any;
   const setOnline = (onLine: boolean) => Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine } });
@@ -367,6 +369,129 @@ test('hiding a book later than another device\'s un-hide hides it again', async 
     sb = withEdits({ ...sb, hiddenBookIds: { b9: true } }, 'hidden', ['b9'], E2);
     await b.edit(sb);
     assert.equal((await a.refresh(unhidden)).hiddenBookIds.b9, true);
+  } finally { w.done(); }
+});
+
+/* ---------- Phase 3b: notes and highlights are timestamped edits too ---------- */
+
+const hl = (id: string, text: string, page?: number) => ({ id, text, page, timestamp: 1 });
+const setNote = (s: ReadingState, id: string, text: string, at: number): ReadingState => withEdits({ ...s, notes: { ...s.notes, [id]: text } }, 'note', [id], at);
+const clearNote = (s: ReadingState, id: string, at: number): ReadingState => { const { [id]: _gone, ...rest } = s.notes; return withEdits({ ...s, notes: rest }, 'note', [id], at); };
+const setHls = (s: ReadingState, id: string, list: any[], changed: string, at: number): ReadingState => withEdits({ ...s, highlights: { ...s.highlights, [id]: list } }, 'highlight', [`${id}:${changed}`], at);
+
+test('a note edited on one device shows the newer text on the other, with no conflict', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const bk = book('b1');
+    let sa = blank(); sa.customBooks = [bk as any]; sa = setNote(setStatus(sa, 'b1', 'now', E1), 'b1', 'first', E1);
+    await a.open(sa, [bk]);
+    let sb = (await b.open(blank(), [bk])).state;
+    assert.equal(sb.notes.b1, 'first');
+    sb = setNote(sb, 'b1', 'second', E2);
+    await b.edit(sb, [bk]);
+    assert.equal((await a.refresh(sa)).notes.b1, 'second');
+    assert.equal(a.conflicts(), false);
+  } finally { w.done(); }
+});
+
+test('a note cleared on one device is cleared on the other, and the cloud keeps when it was cleared', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const bk = book('b1');
+    let sa = blank(); sa.customBooks = [bk as any]; sa = setNote(setStatus(sa, 'b1', 'now', E1), 'b1', 'keep me?', E1);
+    await a.open(sa, [bk]);
+    let sb = (await b.open(blank(), [bk])).state;
+    sb = clearNote(sb, 'b1', E2); b.markDeleted('b1', 'note');
+    await b.edit(sb, [bk]);
+    const row = w.tables.get('user_book_annotations')!.find(r => r.annotation_type === 'note')!;
+    assert.ok(row.deleted_at);
+    assert.equal(row.extra_data.edited_at, E2);
+    assert.equal((await a.refresh(sa)).notes.b1, undefined);
+  } finally { w.done(); }
+});
+
+test('a note written again after another device cleared it comes back on both devices', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const bk = book('b1');
+    let sa = blank(); sa.customBooks = [bk as any]; sa = setNote(setStatus(sa, 'b1', 'now', E1), 'b1', 'old', E1);
+    await a.open(sa, [bk]);
+    let sb = (await b.open(blank(), [bk])).state;
+    sb = clearNote(sb, 'b1', E2); b.markDeleted('b1', 'note');
+    await b.edit(sb, [bk]);
+    sa = await a.refresh(sa);
+    assert.equal(sa.notes.b1, undefined);
+    sa = setNote(sa, 'b1', 'written again', E3);
+    await a.edit(sa, [bk]);
+    assert.equal((await b.refresh(sb)).notes.b1, 'written again');
+    assert.equal(a.conflicts(), false);
+  } finally { w.done(); }
+});
+
+test('a clear that is OLDER than another device\'s edit does not delete that edit', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const bk = book('b1');
+    let sa = blank(); sa.customBooks = [bk as any]; sa = setNote(setStatus(sa, 'b1', 'now', E1), 'b1', 'old', E1);
+    await a.open(sa, [bk]);
+    let sb = (await b.open(blank(), [bk])).state;
+    sb = clearNote(sb, 'b1', E2); b.markDeleted('b1', 'note');
+    await b.edit(sb, [bk]);
+    const editedLater = setNote(sa, 'b1', 'edited after the clear', E3); // A never saw the clear, edits later
+    assert.equal((await a.refresh(editedLater)).notes.b1, 'edited after the clear');
+  } finally { w.done(); }
+});
+
+test('an edited highlight shows the newer text on the other device; a deleted highlight is gone', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const bk = book('b1');
+    let sa = blank(); sa.customBooks = [bk as any]; sa = setHls(setStatus(sa, 'b1', 'now', E1), 'b1', [hl('h1', 'one', 3), hl('h2', 'two', 4)], 'h1', E1);
+    await a.open(sa, [bk]);
+    let sb = (await b.open(blank(), [bk])).state;
+    assert.equal(sb.highlights.b1.length, 2);
+    sb = setHls(sb, 'b1', [hl('h1', 'one, corrected', 3), hl('h2', 'two', 4)], 'h1', E2);
+    await b.edit(sb, [bk]);
+    let ra = await a.refresh(sa);
+    assert.equal(ra.highlights.b1.find(x => x.id === 'h1')?.text, 'one, corrected');
+    sb = setHls(sb, 'b1', [hl('h1', 'one, corrected', 3)], 'h2', E3); b.markDeleted('b1', 'h2');
+    await b.edit(sb, [bk]);
+    ra = await a.refresh(ra);
+    assert.deepEqual(ra.highlights.b1.map(x => x.id), ['h1']);
+  } finally { w.done(); }
+});
+
+test('first sync with a note on both devices: the later edit wins instead of pausing as a conflict', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const bk = book('b1');
+    let sa = blank(); sa.customBooks = [bk as any]; sa = setNote(setStatus(sa, 'b1', 'now', E1), 'b1', 'from A', E1);
+    await a.open(sa, [bk]);
+    let sb = blank(); sb.customBooks = [bk as any]; sb = setNote(setStatus(sb, 'b1', 'now', E1), 'b1', 'from B, later', E2);
+    const opened = await b.open(sb, [bk]);
+    assert.equal(opened.state.notes.b1, 'from B, later');
+    assert.equal(b.conflicts(), false);
+    assert.equal(w.tables.get('user_book_annotations')!.find(r => r.annotation_type === 'note')!.content, 'from B, later');
+  } finally { w.done(); }
+});
+
+test('legacy notes and highlights (no edit times) behave exactly as before: two different unstamped notes still pause as a real conflict', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const bk = book('b1');
+    const sa = blank(); sa.customBooks = [bk as any]; sa.status = { b1: 'now' }; sa.notes = { b1: 'from A' };
+    await a.open(sa, [bk]);
+    const sb = blank(); sb.customBooks = [bk as any]; sb.status = { b1: 'now' }; sb.notes = { b1: 'from B' };
+    await b.open(sb, [bk]);
+    assert.equal(b.conflicts(), true);
+    assert.equal(w.tables.get('user_book_annotations')!.find(r => r.annotation_type === 'note')!.content, 'from A', 'the cloud copy is not overwritten');
   } finally { w.done(); }
 });
 

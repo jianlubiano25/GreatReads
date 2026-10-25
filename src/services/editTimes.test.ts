@@ -86,3 +86,27 @@ test('the state sanitizer keeps edit times and delete markers, and drops junk', 
   assert.deepEqual(maxTimes({ 'status:a': 3, 'word:x': 9 }, { 'status:a': 5 }, ['status:']), { 'status:a': 5 });
   assert.equal(timeKey('rating', 4), 'rating:4');
 });
+
+/* ---------- Phase 3b: first-sync merge of a note or highlight row ---------- */
+import { mergeAnnotationFirstSync } from './librarySyncMerge';
+
+const annoRow = (content: string, at?: number, deleted: string | null = null): any => ({ id: 'a1', user_id: 'u', library_book_id: 'lb', annotation_type: 'note', content, quote_text: null, page_reference: null, location_data: {}, extra_data: { local_book_id: 'b1', local_annotation_id: 'note', ...(at ? { edited_at: at } : {}) }, deleted_at: deleted, revision: 3 });
+
+test('annotation merge: two different texts, the later edit wins and its time is kept', () => {
+  const merged = mergeAnnotationFirstSync(annoRow('cloud', 100), annoRow('device', 200));
+  assert.equal(merged?.content, 'device');
+  assert.equal((merged?.extra_data as any).edited_at, 200);
+  assert.equal(mergeAnnotationFirstSync(annoRow('cloud', 300), annoRow('device', 200))?.content, 'cloud');
+});
+
+test('annotation merge: two different legacy texts (no times) are still a real conflict', () => {
+  assert.equal(mergeAnnotationFirstSync(annoRow('cloud'), annoRow('device')), null);
+});
+
+test('annotation merge: a deleted cloud row comes back only for a LATER edit, stays deleted for an older one, and a tie is a conflict', () => {
+  const gone = '2026-10-25T00:00:00Z';
+  assert.equal(mergeAnnotationFirstSync(annoRow('x', 100, gone), annoRow('again', 200))?.deleted_at, null);
+  assert.equal(mergeAnnotationFirstSync(annoRow('x', 300, gone), annoRow('old', 200))?.deleted_at, gone);
+  assert.equal(mergeAnnotationFirstSync(annoRow('x', 200, gone), annoRow('same', 200)), null);
+  assert.equal(mergeAnnotationFirstSync(annoRow('x', undefined, gone), annoRow('legacy')), null);
+});

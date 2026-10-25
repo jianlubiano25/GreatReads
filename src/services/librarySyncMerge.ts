@@ -81,14 +81,20 @@ export function mergeBookFirstSync(old: LibraryBookRow, item: LibrarySyncSnapsho
 }
 
 export function mergeAnnotationFirstSync(old: AnnotationRow, row: LibrarySyncSnapshot['annotations'][number]): Record<string, unknown> | null {
-  if (old.deleted_at) return null;
+  const oldAt = Number(obj(old.extra_data).edited_at) || 0, rowAt = Number(obj(row.extra_data).edited_at) || 0;
+  if (old.deleted_at) {
+    if (rowAt > oldAt) return { ...row, deleted_at: null }; // an edit made after the delete brings the note/highlight back
+    if (oldAt > rowAt) return { content: old.content, quote_text: old.quote_text, page_reference: old.page_reference, location_data: old.location_data, extra_data: old.extra_data, deleted_at: old.deleted_at }; // the delete is newer: nothing to write
+    return null; // a tie or two legacy values: still a real conflict, kept paused
+  }
+  const rowWins = rowAt > oldAt;
   return guard(() => ({
     ...row,
-    content: pick(old.content, row.content),
-    quote_text: old.quote_text ?? row.quote_text,
-    page_reference: old.page_reference ?? row.page_reference,
-    location_data: { ...row.location_data, ...old.location_data },
-    extra_data: { ...row.extra_data, ...old.extra_data },
+    content: pickTimed(old.content, row.content, oldAt, rowAt),
+    quote_text: rowWins ? row.quote_text : old.quote_text ?? row.quote_text,
+    page_reference: rowWins ? row.page_reference : old.page_reference ?? row.page_reference,
+    location_data: rowWins ? { ...old.location_data, ...row.location_data } : { ...row.location_data, ...old.location_data },
+    extra_data: { ...row.extra_data, ...old.extra_data, ...(Math.max(oldAt, rowAt) > 0 ? { edited_at: Math.max(oldAt, rowAt) } : {}) },
     deleted_at: null,
   }));
 }

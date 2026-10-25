@@ -14,7 +14,7 @@ import { mapPool } from '../services/books/http';
 import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
 import { applyMerge, findDuplicateGroups, idMapOf, remapCollections } from '../services/mergeDuplicates';
 import { exportCollections, loadCollections, restoreCollectionsFromBackup, saveCollections } from '../services/libraryCollections';
-import { markPersonalAnnotationDeleted, markPersonalBookDeleted } from '../services/librarySync';
+import { markPersonalAnnotationDeleted, markPersonalBookDeleted, unmarkPersonalAnnotationDeleted } from '../services/librarySync';
 import { stampDayEdit } from '../services/dailyPagesSync';
 import { withEdits, withWordsDeleted } from '../services/editTimes';
 
@@ -404,14 +404,14 @@ export function useReadingLife() {
 
   const updateBookNote = useCallback((bookId: string | number, note: string) => {
     const idKey = String(bookId);
-    if (!note.trim()) markPersonalAnnotationDeleted(idKey, 'note');
-    setState(prev => ({
+    if (!note.trim()) markPersonalAnnotationDeleted(idKey, 'note'); else unmarkPersonalAnnotationDeleted(idKey, 'note'); // writing a note again after clearing it is a newer edit
+    setState(prev => prev.notes[idKey] === note ? prev : withEdits({
       ...prev,
       notes: {
         ...prev.notes,
         [idKey]: note,
       },
-    }));
+    }, 'note', [idKey]));
   }, []);
 
   const addHighlight = useCallback((bookId: string | number, text: string, page?: number) => {
@@ -422,30 +422,30 @@ export function useReadingLife() {
       page,
       timestamp: Date.now(),
     };
-    setState(prev => ({
+    setState(prev => withEdits({
       ...prev,
       highlights: {
         ...prev.highlights,
         [idKey]: [newHighlight, ...(prev.highlights[idKey] || [])],
       },
-    }));
+    }, 'highlight', [`${idKey}:${newHighlight.id}`]));
   }, []);
 
   const deleteHighlight = useCallback((bookId: string | number, highlightId: string) => {
     const idKey = String(bookId);
     markPersonalAnnotationDeleted(idKey, highlightId);
-    setState(prev => ({
+    setState(prev => withEdits({
       ...prev,
       highlights: {
         ...prev.highlights,
         [idKey]: (prev.highlights[idKey] || []).filter(h => h.id !== highlightId),
       },
-    }));
+    }, 'highlight', [`${idKey}:${highlightId}`])); // the stamp is the delete's time
   }, []);
 
   const updateHighlight = useCallback((bookId: string | number, highlightId: string, newText: string, newPage?: number) => {
     const idKey = String(bookId);
-    setState(prev => ({
+    setState(prev => withEdits({
       ...prev,
       highlights: {
         ...prev.highlights,
@@ -453,7 +453,7 @@ export function useReadingLife() {
           h.id === highlightId ? { ...h, text: newText.trim(), page: newPage } : h
         ),
       },
-    }));
+    }, 'highlight', [`${idKey}:${highlightId}`]));
   }, []);
 
   const updateIntention = useCallback((readingIntention: string) => {

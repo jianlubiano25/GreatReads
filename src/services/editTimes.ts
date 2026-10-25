@@ -10,7 +10,7 @@
  */
 import type { ReadingState, WordItem } from '../types';
 
-export type EditKind = 'status' | 'rating' | 'word' | 'hidden';
+export type EditKind = 'status' | 'rating' | 'word' | 'hidden' | 'note' | 'highlight';
 export type Times = Record<string, number>;
 
 export const timeKey = (kind: EditKind, id: string | number): string => `${kind}:${id}`;
