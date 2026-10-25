@@ -16,6 +16,7 @@ import { sanitizeHistory, sanitizeRatings } from './bookHistory';
 import { MILESTONE_BY_ID } from '../data/gardenCatalog';
 import { emptyGarden, seedGarden, todayKeyNow } from './garden';
 import { DATE_KEY_RE } from './dates';
+import { cleanTimes } from './editTimes';
 
 /**
  * Defensive normalisation for anything coming from localStorage or a pasted backup.
@@ -378,6 +379,8 @@ export function normalizeV2(parsed: Record<string, any>, base: ReadingState): Re
     totalPages: has('totalPages') ? sanitizeNumberRecord(parsed.totalPages) : base.totalPages,
     dailyLog: has('dailyLog') ? sanitizeDailyLog(parsed.dailyLog) : base.dailyLog,
     ...(has('dailyLogMeta') ? { dailyLogMeta: sanitizeDailyLogMeta(parsed.dailyLogMeta) } : base.dailyLogMeta ? { dailyLogMeta: base.dailyLogMeta } : {}),
+    ...(has('editTimes') ? { editTimes: cleanTimes(parsed.editTimes) } : base.editTimes ? { editTimes: base.editTimes } : {}),
+    ...(has('deletedWords') ? { deletedWords: cleanTimes(parsed.deletedWords) } : base.deletedWords ? { deletedWords: base.deletedWords } : {}),
     notes: has('notes') ? sanitizeNotes(parsed.notes) : base.notes,
     highlights: has('highlights') ? sanitizeHighlights(parsed.highlights) : base.highlights,
     goal: goal && goal > 0 ? goal : base.goal,

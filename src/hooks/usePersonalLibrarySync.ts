@@ -4,7 +4,7 @@ import { currentUser, subscribeLibraryRealtime } from '../services/supabase';
 import { exportCoverPicks, restoreCoverPicks } from '../services/books/covers';
 import { loadCollections, type Collection } from '../services/libraryCollections';
 import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
-import { claimLibrarySyncAccount, hasPendingLibrarySync, librarySyncAccountAllowed, loadRemoteLibrary, markPersonalCollectionDeleted, markPersonalMembershipDeleted, mergeRemoteLibrary, pausedLibraryKeys, resolveLibraryConflictsToCloud, syncLocalLibrary } from '../services/librarySync';
+import { acknowledgeCloudCopy, claimLibrarySyncAccount, hasPendingLibrarySync, librarySyncAccountAllowed, loadRemoteLibrary, markPersonalCollectionDeleted, markPersonalMembershipDeleted, mergeRemoteLibrary, pausedLibraryKeys, resolveLibraryConflictsToCloud, syncLocalLibrary } from '../services/librarySync';
 import { keepDeviceDay, loadDailyTies, syncDailyPages, takeCloudDay } from '../services/dailyPagesSync';
 
 export function usePersonalLibrarySync(args: {
@@ -41,6 +41,7 @@ export function usePersonalLibrarySync(args: {
       const localCollections = loadCollections();
       // Records paused by a conflict stay exactly as they are here; everything else keeps refreshing.
       const merged = mergeRemoteLibrary(stateRef.current, localCollections, remote, exportCoverPicks(), preferRemote, pausedLibraryKeys(userId));
+      if (preferRemote) acknowledgeCloudCopy(userId, remote); // this device has now taken the cloud's copy: its next edit is not a conflict
       const stateJson = JSON.stringify(merged.state);
       if (stateJson !== JSON.stringify(stateRef.current)) {
         ignoreState.current = stateJson;

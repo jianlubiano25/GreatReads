@@ -1,5 +1,6 @@
 import type { Book, BookHistory, BookStatus, ReadingState } from '../types';
 import { dateKey, dayNumber } from './dates';
+import { withEdits } from './editTimes';
 
 /** Is this a real calendar date written "YYYY-MM-DD"? */
 export const isDateKey = (s: unknown): s is string =>
@@ -103,9 +104,9 @@ export function applyRating(prev: ReadingState, id: string | number, stars: numb
   if (!n) {
     if (!(key in prev.ratings)) return prev;
     const { [key]: _gone, ...rest } = prev.ratings;
-    return { ...prev, ratings: rest };
+    return withEdits({ ...prev, ratings: rest }, 'rating', [key]); // clearing is an edit too, so it can reach other devices
   }
-  return prev.ratings[key] === n ? prev : { ...prev, ratings: { ...prev.ratings, [key]: n } };
+  return prev.ratings[key] === n ? prev : withEdits({ ...prev, ratings: { ...prev.ratings, [key]: n } }, 'rating', [key]);
 }
 
 /** Reading now, the book you read most recently first (then the one you started most recently); the rest keep their order. */

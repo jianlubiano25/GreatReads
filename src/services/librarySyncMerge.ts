@@ -8,6 +8,7 @@
  */
 import type { ReadingState } from '../types';
 import { dailyPagesSyncEnabled } from './dailyPagesSync';
+import { maxTimes, mergeHiddenByTime, mergeWordsByTime, newer } from './editTimes';
 import type { AnnotationRow, LibraryBookRow, LibrarySyncSnapshot, ShelfBookRow, ShelfRow } from './librarySync';
 
 export function stableJson(value: unknown): string {
@@ -43,6 +44,11 @@ function pick<T>(remote: T, local: T): T {
   throw new FieldConflict();
 }
 const guard = <T>(build: () => T): T | null => { try { return build(); } catch (error) { if (error instanceof FieldConflict) return null; throw error; } };
+/** Like pick(), but a later real edit settles it (even a clear): only two values with no time difference are a true conflict. */
+function pickTimed<T>(remote: T, local: T, remoteAt: number, localAt: number): T {
+  const side = newer(localAt, remoteAt);
+  return side === 'remote' ? remote : side === 'local' ? local : pick(remote, local);
+}
 const obj = (value: unknown): Record<string, unknown> => (value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {});
 
 /** True when every listed field matches (null and undefined count as equal). */
@@ -56,8 +62,10 @@ export function mergeBookFirstSync(old: LibraryBookRow, item: LibrarySyncSnapsho
     const cloudProgress = obj(old.reading_progress), localProgress = obj(item.reading_progress);
     const cloudData = obj(old.personal_data), localData = obj(item.personal_data);
     const isCustom = !!cloudData.isCustomBook || !!localData.isCustomBook;
+    const cloudTimes = obj(cloudData.times), localTimes = obj(localData.times);
+    const mergedTimes = maxTimes(cloudTimes as Record<string, number>, localTimes as Record<string, number>, ['status', 'rating']);
     return {
-      status: pick(old.status, item.status),
+      status: pickTimed(old.status, item.status, Number(cloudTimes.status) || 0, Number(localTimes.status) || 0),
       reading_progress: {
         currentPage: Math.max(Number(cloudProgress.currentPage) || 0, Number(localProgress.currentPage) || 0),
         totalPages: Number(cloudProgress.totalPages) > 0 ? Number(cloudProgress.totalPages) : Number(localProgress.totalPages) || 0,
@@ -66,7 +74,7 @@ export function mergeBookFirstSync(old: LibraryBookRow, item: LibrarySyncSnapsho
       personal_cover: pick(old.personal_cover, item.personal_cover),
       // A catalogue snapshot is not a user edit, so the cloud copy stands. A custom book's snapshot IS the user's own data.
       book_snapshot: isCustom ? pick(old.book_snapshot, item.book_snapshot) : (old.book_snapshot ?? item.book_snapshot),
-      personal_data: { rating: pick(cloudData.rating ?? null, localData.rating ?? null), onDevice: cloudData.onDevice ?? null, isCustomBook: isCustom },
+      personal_data: { rating: pickTimed(cloudData.rating ?? null, localData.rating ?? null, Number(cloudTimes.rating) || 0, Number(localTimes.rating) || 0), onDevice: cloudData.onDevice ?? null, isCustomBook: isCustom, ...(Object.keys(mergedTimes).length ? { times: mergedTimes } : {}) },
       deleted_at: null,
     };
   });
@@ -116,12 +124,20 @@ export function mergePreferencesFirstSync(remote: Record<string, unknown>, local
     const days: Record<string, number> = { ...obj(local.dailyLog) as Record<string, number> };
     for (const [day, pages] of Object.entries(obj(remote.dailyLog))) days[day] = Math.max(Number(days[day]) || 0, Number(pages) || 0);
     out.dailyLog = days;
-    const words = new Map<string, Record<string, unknown>>();
-    for (const word of (Array.isArray(local.words) ? local.words : []) as Record<string, unknown>[]) words.set(String(word.id), word);
-    for (const word of (Array.isArray(remote.words) ? remote.words : []) as Record<string, unknown>[]) { const mine = words.get(String(word.id)); words.set(String(word.id), mine ? { ...mine, ...word, isLearned: !!(mine.isLearned || word.isLearned) } : word); }
-    out.words = [...words.values()];
+    {
+      const asTimes = (v: unknown) => obj(v) as Record<string, number>;
+      const merged = mergeWordsByTime(
+        { words: (Array.isArray(local.words) ? local.words : []) as never, times: asTimes(local.editTimes), deleted: asTimes(local.deletedWords) },
+        { words: (Array.isArray(remote.words) ? remote.words : []) as never, times: asTimes(remote.editTimes), deleted: asTimes(remote.deletedWords) },
+      );
+      out.words = merged.words;
+      if (Object.keys(merged.deleted).length) out.deletedWords = merged.deleted; else delete out.deletedWords;
+      const hidden = mergeHiddenByTime({ hidden: obj(local.hiddenBookIds) as Record<string, boolean>, times: asTimes(local.editTimes) }, { hidden: obj(remote.hiddenBookIds) as Record<string, boolean>, times: asTimes(remote.editTimes) });
+      out.hiddenBookIds = hidden.hidden;
+      const times = { ...merged.times, ...hidden.times };
+      if (Object.keys(times).length) out.editTimes = times; else delete out.editTimes;
+    }
     if (isSet(remote.garden) && isSet(local.garden)) out.garden = mergeGarden(local.garden as ReadingState['garden'], remote.garden as ReadingState['garden']);
-    out.hiddenBookIds = { ...obj(remote.hiddenBookIds), ...obj(local.hiddenBookIds) };
     out.onDeviceOverrides = obj(remote.onDeviceOverrides); // device-local: never taken from this device
     if (dailyPagesSyncEnabled()) out.dailyLog = obj(remote.dailyLog); // per-day records own the days; the old copy is left exactly as the cloud has it
     const picks: Record<string, unknown> = { ...obj(local.coverPicks) };

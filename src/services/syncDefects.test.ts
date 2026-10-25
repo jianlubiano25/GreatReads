@@ -11,8 +11,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { ReadingState } from '../types';
-import { hasLibrarySyncConflicts, hasPendingLibrarySync, loadRemoteLibrary, mergeRemoteLibrary, pausedLibraryKeys, resolveLibraryConflictsToCloud, resolveLibraryConflictsToLocal, syncLocalLibrary, type RemoteLibrarySnapshot } from './librarySync';
+import { acknowledgeCloudCopy, hasLibrarySyncConflicts, hasPendingLibrarySync, loadRemoteLibrary, mergeRemoteLibrary, pausedLibraryKeys, resolveLibraryConflictsToCloud, resolveLibraryConflictsToLocal, syncLocalLibrary, type RemoteLibrarySnapshot } from './librarySync';
 import { mergePreferencesFirstSync } from './librarySyncMerge';
+import { withEdits, withWordsDeleted } from './editTimes';
 import { decideDay, keepDeviceDay, loadDailyTies, setDailyPagesSyncOverride, stampDayEdit, syncDailyPages, takeCloudDay, type CloudDay } from './dailyPagesSync';
 
 const defect = (name: string, fn: () => Promise<void> | void) => test(name, { todo: 'known sync defect (see sync audit)' }, fn);
@@ -94,6 +95,8 @@ function world() {
       const d = await days(after);
       return { state: d.state, ok };
     };
+    /** What the app does when the cloud tells it something changed: take the cloud copy, skipping paused records. */
+    const refresh = async (state: ReadingState) => { use(); const remote = await loadRemoteLibrary(USER); if (!remote) return state; const merged = mergeRemoteLibrary(state, [], remote, {}, true, pausedLibraryKeys(USER)).state; acknowledgeCloudCopy(USER, remote); return merged; };
     const conflicts = () => { use(); return hasLibrarySyncConflicts(USER); };
     const paused = () => { use(); return [...pausedLibraryKeys(USER)].sort(); };
     const pending = () => { use(); return hasPendingLibrarySync(USER); };
@@ -107,7 +110,7 @@ function world() {
     };
     const useDevice = () => { use(); resolveLibraryConflictsToLocal(USER); };
     const ties = () => { use(); return loadDailyTies(USER); };
-    return { open, edit, days, ties, conflicts, paused, pending, useCloud, useDevice };
+    return { open, edit, refresh, days, ties, conflicts, paused, pending, useCloud, useDevice };
   };
   const prefs = () => tables.get('user_library_preferences')![0]?.preferences as any;
   const setOnline = (onLine: boolean) => Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine } });
@@ -182,37 +185,99 @@ test('daily pages edited on two devices for different days both reach the cloud 
   } finally { w.done(); }
 });
 
-defect('a cleared status on one device is cleared on the other', async () => {
+/* ---------- Phase 3: a clear or a delete is a real, timestamped edit ---------- */
+
+const E1 = T0 + 1_000, E2 = T0 + 2_000, E3 = T0 + 3_000;
+const clearStatus = (s: ReadingState, id: string, at: number): ReadingState => { const { [id]: _gone, ...rest } = s.status; return withEdits({ ...s, status: rest }, 'status', [id], at); };
+const setStatus = (s: ReadingState, id: string, v: any, at: number): ReadingState => withEdits({ ...s, status: { ...s.status, [id]: v } }, 'status', [id], at);
+const setRating = (s: ReadingState, id: string, stars: number, at: number): ReadingState => {
+  const { [id]: _gone, ...rest } = s.ratings;
+  return withEdits({ ...s, ratings: stars ? { ...s.ratings, [id]: stars } : rest }, 'rating', [id], at);
+};
+
+test('a cleared status on one device is cleared on the other', async () => {
   const w = world();
   try {
     const a = w.device(); const b = w.device();
     const bk = book('b1');
-    const sa = blank(); sa.customBooks = [bk as any]; sa.status = { b1: 'now' };
+    let sa = blank(); sa.customBooks = [bk as any]; sa = setStatus(sa, 'b1', 'now', E1);
     await a.open(sa, [bk]);
-    const sb = (await b.open(blank(), [bk])).state;
+    let sb = (await b.open(blank(), [bk])).state;
     assert.equal(sb.status.b1, 'now');
-    const cleared = { ...sb, status: {} };
-    await b.edit(cleared, [bk]);
-    const refreshedA = (await a.edit(sa, [bk])).state; // A refreshes from the cloud
+    sb = clearStatus(sb, 'b1', E2);
+    await b.edit(sb, [bk]);
+    const refreshedA = await a.refresh(sa); // A hears about it from the cloud
     assert.equal(refreshedA.status.b1, undefined);
+    assert.equal(a.conflicts(), false);
   } finally { w.done(); }
 });
 
-defect('a cleared personal rating on one device is cleared on the other', async () => {
+test('a status set later than another device\'s clear brings the book back (latest edit wins)', async () => {
   const w = world();
   try {
     const a = w.device(); const b = w.device();
     const bk = book('b1');
-    const sa = blank(); sa.customBooks = [bk as any]; sa.status = { b1: 'done' }; sa.ratings = { b1: 4 };
+    let sa = blank(); sa.customBooks = [bk as any]; sa = setStatus(sa, 'b1', 'now', E1);
     await a.open(sa, [bk]);
-    const sb = (await b.open(blank(), [bk])).state;
-    await b.edit({ ...sb, ratings: {} }, [bk]);
-    const refreshedA = (await a.edit(sa, [bk])).state;
+    let sb = (await b.open(blank(), [bk])).state;
+    sb = clearStatus(sb, 'b1', E2);
+    await b.edit(sb, [bk]);
+    sa = setStatus((await a.refresh(sa)), 'b1', 'next', E3); // A, after the clear, chooses a new status
+    await a.edit(sa, [bk]);
+    const refreshedB = await b.refresh(sb);
+    assert.equal(refreshedB.status.b1, 'next');
+  } finally { w.done(); }
+});
+
+test('a cleared personal rating on one device is cleared on the other', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const bk = book('b1');
+    let sa = blank(); sa.customBooks = [bk as any]; sa = setRating(setStatus(sa, 'b1', 'done', E1), 'b1', 4, E1);
+    await a.open(sa, [bk]);
+    let sb = (await b.open(blank(), [bk])).state;
+    assert.equal(sb.ratings.b1, 4);
+    sb = setRating(sb, 'b1', 0, E2);
+    await b.edit(sb, [bk]);
+    const refreshedA = await a.refresh(sa);
     assert.equal(refreshedA.ratings.b1, undefined);
   } finally { w.done(); }
 });
 
-defect('a vocabulary word deleted on one device does not come back from a second device that still has it', async () => {
+test('a rating cleared on a book that has nothing else still reaches the cloud', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const bk = book('b1');
+    let sa = blank(); sa.customBooks = [bk as any]; sa = setRating(sa, 'b1', 5, E1);
+    await a.open(sa, [bk]);
+    let sb = (await b.open(blank(), [bk])).state;
+    sb = setRating(sb, 'b1', 0, E2);
+    await b.edit(sb, [bk]);
+    const row = w.tables.get('user_library_books')!.find(r => r.local_book_id === 'b1')!;
+    assert.equal(row.personal_data.rating, null);
+    assert.equal(row.personal_data.times.rating, E2);
+  } finally { w.done(); }
+});
+
+test('legacy values (no edit times anywhere) still merge exactly as before: nothing is cleared by a missing value', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const bk = book('b1');
+    const sa = blank(); sa.customBooks = [bk as any]; sa.status = { b1: 'now' }; sa.ratings = { b1: 3 };
+    await a.open(sa, [bk]);
+    const sb = (await b.open(blank(), [bk])).state;
+    assert.equal(sb.status.b1, 'now');
+    assert.equal(sb.ratings.b1, 3);
+    const keepA = await a.refresh(sa);
+    assert.equal(keepA.status.b1, 'now');
+    assert.equal(keepA.ratings.b1, 3);
+  } finally { w.done(); }
+});
+
+test('a vocabulary word deleted on one device does not come back from a second device that still has it', async () => {
   const w = world();
   try {
     const a = w.device(); const b = w.device();
@@ -220,27 +285,60 @@ defect('a vocabulary word deleted on one device does not come back from a second
     await a.open(sa);
     const sb = (await b.open(blank())).state; // B has both words and has synced them
     assert.equal(sb.words.length, 2);
-    await a.edit({ ...sa, words: sa.words.filter(x => x.id !== 'w1') }); // A deletes w1
+    const deleted = withWordsDeleted({ ...sa, words: sa.words.filter(x => x.id !== 'w1') }, ['w1'], E2); // A deletes w1
+    await a.edit(deleted);
     const reopenedB = (await b.open(sb)).state; // B opens again with its stale copy
     assert.deepEqual(reopenedB.words.map(x => x.id), ['w2']);
     assert.deepEqual((w.prefs().words as any[]).map(x => x.id), ['w2'], 'the cloud copy must not get the word back');
+    assert.equal(w.prefs().deletedWords.w1, E2);
   } finally { w.done(); }
 });
 
-defect('a word marked learned on one device is learned on the other', async () => {
+test('a word re-added after it was deleted comes back everywhere', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    let sa = blank(); sa.words = [word('w1')];
+    await a.open(sa);
+    let sb = (await b.open(blank())).state;
+    sa = withWordsDeleted({ ...sa, words: [] }, ['w1'], E1);
+    await a.edit(sa);
+    sb = await b.refresh(sb);
+    assert.equal(sb.words.length, 0);
+    sb = withEdits({ ...sb, words: [word('w1')] }, 'word', ['w1'], E2); // B adds it again, later
+    await b.edit(sb);
+    const refreshedA = await a.refresh(sa);
+    assert.deepEqual(refreshedA.words.map(x => x.id), ['w1']);
+  } finally { w.done(); }
+});
+
+test('a word marked learned on one device is learned on the other', async () => {
   const w = world();
   try {
     const a = w.device(); const b = w.device();
     const sa = blank(); sa.words = [word('w1')];
     await a.open(sa);
     const sb = (await b.open(blank())).state;
-    await b.edit({ ...sb, words: sb.words.map(x => ({ ...x, isLearned: true })) });
-    const refreshedA = (await a.edit(sa)).state;
+    await b.edit(withEdits({ ...sb, words: sb.words.map(x => ({ ...x, isLearned: true })) }, 'word', ['w1'], E2));
+    const refreshedA = await a.refresh(sa);
     assert.equal(refreshedA.words.find(x => x.id === 'w1')?.isLearned, true);
   } finally { w.done(); }
 });
 
-defect('a book un-hidden on one device is not re-hidden by a second device that still has it hidden', async () => {
+test('legacy words (no edit times) keep merging as before: a word is never dropped for being missing, and learned is kept if either side has it', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const sa = blank(); sa.words = [word('w1', true)];
+    await a.open(sa);
+    const sb = blank(); sb.words = [word('w1'), word('w2')];
+    const reopened = (await b.open(sb)).state;
+    assert.deepEqual(reopened.words.map(x => x.id).sort(), ['w1', 'w2']);
+    assert.equal(reopened.words.find(x => x.id === 'w1')?.isLearned, true);
+  } finally { w.done(); }
+});
+
+test('a book un-hidden on one device is not re-hidden by a second device that still has it hidden', async () => {
   const w = world();
   try {
     const a = w.device(); const b = w.device();
@@ -248,10 +346,27 @@ defect('a book un-hidden on one device is not re-hidden by a second device that 
     await a.open(sa);
     const sb = (await b.open(blank())).state;
     assert.equal(sb.hiddenBookIds.b9, true);
-    await a.edit({ ...sa, hiddenBookIds: {} }); // A un-hides
+    await a.edit(withEdits({ ...sa, hiddenBookIds: {} }, 'hidden', ['b9'], E2)); // A un-hides
     const reopenedB = (await b.open(sb)).state;
     assert.equal(reopenedB.hiddenBookIds.b9, undefined);
     assert.equal(w.prefs().hiddenBookIds.b9, undefined);
+  } finally { w.done(); }
+});
+
+test('hiding a book later than another device\'s un-hide hides it again', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const sa = blank(); sa.hiddenBookIds = { b9: true };
+    await a.open(sa);
+    let sb = (await b.open(blank())).state;
+    const unhidden = withEdits({ ...sa, hiddenBookIds: {} }, 'hidden', ['b9'], E1);
+    await a.edit(unhidden);
+    sb = await b.refresh(sb);
+    assert.equal(sb.hiddenBookIds.b9, undefined);
+    sb = withEdits({ ...sb, hiddenBookIds: { b9: true } }, 'hidden', ['b9'], E2);
+    await b.edit(sb);
+    assert.equal((await a.refresh(unhidden)).hiddenBookIds.b9, true);
   } finally { w.done(); }
 });
 

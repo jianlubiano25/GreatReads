@@ -5,6 +5,7 @@ import { coverKey } from './books/coverAnalysis';
 import { currentUser, rest } from './supabase';
 import { exportNookLook } from './nookPrefs';
 import { dailyPagesSyncEnabled } from './dailyPagesSync';
+import { maxTimes, mergeHiddenByTime, mergeWordsByTime, newer, timeKey, timeOf } from './editTimes';
 import { mergeAnnotationFirstSync, mergeBookFirstSync, mergeGarden, mergeMembershipFirstSync, mergePreferencesFirstSync, mergeShelfFirstSync, sameFields, stableJson } from './librarySyncMerge';
 
 export type LibraryBookRow = {
@@ -35,9 +36,16 @@ export interface LibrarySyncSnapshot {
   preferences: Record<string, unknown>;
 }
 
+/** When the user last edited this book's status and rating (only the ones that were ever edited), so a clear can win over an older value. */
+const bookTimes = (state: ReadingState, id: string): { times?: Record<string, number> } => {
+  const status = timeOf(state.editTimes, 'status', id), rating = timeOf(state.editTimes, 'rating', id);
+  return status || rating ? { times: { ...(status ? { status } : {}), ...(rating ? { rating } : {}) } } : {};
+};
+
 const hasOwnData = (state: ReadingState, id: string, collections: Collection[]) => !!(
   state.status[id] || state.currentPage[id] || state.totalPages[id] || state.notes[id] || state.highlights[id]?.length
   || state.history[id] || state.ratings[id] || state.customBooks.some(book => String(book.id) === id)
+  || timeOf(state.editTimes, 'status', id) > 0 || timeOf(state.editTimes, 'rating', id) > 0
   || collections.some(collection => collection.bookIds.includes(id))
 );
 
@@ -52,6 +60,7 @@ export function buildLibrarySyncSnapshot(args: {
   const candidateIds = new Set([
     ...Object.keys(state.status), ...Object.keys(state.currentPage), ...Object.keys(state.totalPages), ...Object.keys(state.notes),
     ...Object.keys(state.highlights), ...Object.keys(state.history), ...Object.keys(state.ratings),
+    ...Object.keys(state.editTimes || {}).filter(key => key.startsWith('status:') || key.startsWith('rating:')).map(key => key.slice(key.indexOf(':') + 1)),
     ...state.customBooks.map(book => String(book.id)),
     ...collections.flatMap(collection => collection.bookIds),
   ]);
@@ -72,7 +81,7 @@ export function buildLibrarySyncSnapshot(args: {
       personal_cover: coverPicks[coverKey(book)] || null,
       book_snapshot: customById.get(localId) || book,
       // "On this device" (downloaded for offline) is device-local and never synced; writeRemoteLibrary keeps whatever the cloud already holds here.
-      personal_data: { rating: state.ratings[localId] || null, onDevice: null, isCustomBook: customById.has(localId) },
+      personal_data: { rating: state.ratings[localId] || null, onDevice: null, isCustomBook: customById.has(localId), ...bookTimes(state, localId) },
       deleted_at: null,
     });
   }
@@ -109,6 +118,9 @@ export function buildLibrarySyncSnapshot(args: {
     goal: state.goal, readingIntention: state.readingIntention, profile: state.profile, dailyLog: state.dailyLog,
     words: state.words, garden: state.garden, hiddenBookIds: state.hiddenBookIds, onDeviceOverrides: {},
     coverPicks, nookLook: exportNookLook() || null,
+    // Phase 3: when words / hidden books were last edited, and which words were deleted (written only once something has been stamped)
+    ...(Object.keys(maxTimes(state.editTimes, undefined, ['word:', 'hidden:'])).length ? { editTimes: maxTimes(state.editTimes, undefined, ['word:', 'hidden:']) } : {}),
+    ...(state.deletedWords && Object.keys(state.deletedWords).length ? { deletedWords: state.deletedWords } : {}),
   };
   return { books: booksOut, annotations, shelves, memberships: membershipRows, preferences };
 }
@@ -124,14 +136,23 @@ export function mergeInitialLibrarySnapshot(local: ReadingState, rows: LibraryBo
     if (snapshot?.id != null && String(snapshot.id) === id && row.personal_data?.isCustomBook && (!custom.has(id) || preferRemote)) {
       custom.set(id, snapshot);
     }
-    if (row.status && (preferRemote || !next.status[id])) next.status[id] = row.status as ReadingState['status'][string];
+    const rowTimes = (row.personal_data?.times && typeof row.personal_data.times === 'object' ? row.personal_data.times : {}) as Record<string, number>;
+    const statusSide = newer(timeOf(next.editTimes, 'status', id), Number(rowTimes.status) || 0);
+    if (statusSide === 'remote') {
+      if (row.status) next.status[id] = row.status as ReadingState['status'][string]; else delete next.status[id]; // the cloud's clear is a real, newer edit
+      next.editTimes = { ...(next.editTimes || {}), [timeKey('status', id)]: Number(rowTimes.status) };
+    } else if (statusSide === 'same' && row.status && (preferRemote || !next.status[id])) next.status[id] = row.status as ReadingState['status'][string];
     const progress = row.reading_progress || {};
     if (preferRemote && progress.currentPage !== undefined) next.currentPage[id] = Number(progress.currentPage) || 0;
     else if (Number(progress.currentPage) > Number(next.currentPage[id] || 0)) next.currentPage[id] = Number(progress.currentPage);
     if (Number(progress.totalPages) > 0 && (preferRemote || !next.totalPages[id])) next.totalPages[id] = Number(progress.totalPages);
     if (progress.history && typeof progress.history === 'object' && (preferRemote || !next.history[id])) next.history[id] = progress.history as ReadingState['history'][string];
     const rating = Number(row.personal_data?.rating);
-    if ((preferRemote || !next.ratings[id]) && Number.isFinite(rating) && rating > 0) next.ratings[id] = rating;
+    const ratingSide = newer(timeOf(next.editTimes, 'rating', id), Number(rowTimes.rating) || 0);
+    if (ratingSide === 'remote') {
+      if (Number.isFinite(rating) && rating > 0) next.ratings[id] = rating; else delete next.ratings[id];
+      next.editTimes = { ...(next.editTimes || {}), [timeKey('rating', id)]: Number(rowTimes.rating) };
+    } else if (ratingSide === 'same' && (preferRemote || !next.ratings[id]) && Number.isFinite(rating) && rating > 0) next.ratings[id] = rating;
   }
   next.customBooks = [...custom.values()];
   return next;
@@ -262,13 +283,22 @@ export function mergeRemoteLibrary(local: ReadingState, collections: Collection[
       const profile = pref.profile as ReadingState['profile'];
       state.profile = { name: preferRemote || !state.profile.name ? profile.name : state.profile.name, photo: preferRemote || !state.profile.photo ? profile.photo : state.profile.photo, theme: preferRemote || state.profile.theme === 'auto' ? profile.theme : state.profile.theme };
     }
-    if (Array.isArray(pref.words)) {
-      const words = new Map(state.words.map(word => [word.id, word]));
-      for (const word of pref.words as ReadingState['words']) if (!words.has(word.id)) words.set(word.id, word);
-      state.words = [...words.values()];
+    {
+      const remoteTimes = (pref.editTimes && typeof pref.editTimes === 'object' ? pref.editTimes : {}) as Record<string, number>;
+      const remoteDeleted = (pref.deletedWords && typeof pref.deletedWords === 'object' ? pref.deletedWords : {}) as Record<string, number>;
+      if (Array.isArray(pref.words) || Object.keys(remoteDeleted).length) {
+        const merged = mergeWordsByTime({ words: state.words, times: state.editTimes, deleted: state.deletedWords }, { words: Array.isArray(pref.words) ? pref.words as ReadingState['words'] : [], times: remoteTimes, deleted: remoteDeleted });
+        state.words = merged.words;
+        state.deletedWords = merged.deleted;
+        state.editTimes = { ...(state.editTimes || {}), ...Object.fromEntries(Object.entries(state.editTimes || {}).filter(([k]) => !k.startsWith('word:'))), ...merged.times };
+      }
+      if ((pref.hiddenBookIds && typeof pref.hiddenBookIds === 'object') || Object.keys(remoteTimes).some(k => k.startsWith('hidden:'))) {
+        const merged = mergeHiddenByTime({ hidden: state.hiddenBookIds, times: state.editTimes }, { hidden: (pref.hiddenBookIds || {}) as ReadingState['hiddenBookIds'], times: remoteTimes });
+        state.hiddenBookIds = merged.hidden;
+        state.editTimes = { ...Object.fromEntries(Object.entries(state.editTimes || {}).filter(([k]) => !k.startsWith('hidden:'))), ...merged.times };
+      }
     }
     if (pref.garden && typeof pref.garden === 'object') state.garden = mergeGarden(state.garden, pref.garden as ReadingState['garden']);
-    if (pref.hiddenBookIds && typeof pref.hiddenBookIds === 'object') state.hiddenBookIds = { ...(pref.hiddenBookIds as ReadingState['hiddenBookIds']), ...state.hiddenBookIds };
   }
   return { state, collections: [...mergedCollections.values()], coverPicks, nookLook };
 }
@@ -299,6 +329,28 @@ function cloudRevisionOfKey(remote: RemoteLibrarySnapshot, key: string): number 
   if (kind === 'annotation') return remote.annotations.find(row => row.id === id)?.revision;
   if (kind === 'membership') return remote.memberships.find(row => row.id === id)?.revision;
   return undefined;
+}
+/**
+ * After this device has taken the cloud's copy of what changed (a refresh with the cloud winning), its baseline for each record it
+ * has synced before moves to the cloud's current revision. Without this, the next edit of such a record would look like a change on
+ * both sides and be paused as a conflict, although this device had already seen the cloud's change. Only records that already have a
+ * baseline move (a never-synced record is first merged and written, never assumed equal), and paused records are never touched.
+ */
+export function acknowledgeCloudCopy(userId: string, remote: RemoteLibrarySnapshot): void {
+  if (currentUser()?.id !== userId) return;
+  const versions = getVersions(userId);
+  const paused = new Set(versions.conflicts);
+  let changed = false;
+  const move = (key: string, revision: number | undefined) => {
+    if (revision === undefined || paused.has(key) || versions.revisions[key] === undefined || versions.revisions[key] === revision) return;
+    versions.revisions[key] = revision; changed = true;
+  };
+  for (const row of remote.books) move(`book:${row.local_book_id}`, row.revision);
+  for (const row of remote.annotations) move(`annotation:${row.id}`, row.revision);
+  for (const row of remote.shelves) move(`shelf:${String(row.shelf_data?.local_id || '')}`, row.revision);
+  for (const row of remote.memberships) move(`membership:${row.id}`, row.revision);
+  move('preferences', remote.preferences[0]?.revision);
+  if (changed) saveVersions(userId, versions);
 }
 /**
  * "Use cloud": accept the cloud copy of every paused record. Each paused record's baseline becomes the cloud revision it now matches,

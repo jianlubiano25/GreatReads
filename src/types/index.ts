@@ -139,6 +139,10 @@ export interface ReadingState {
   totalPages: Record<string, number>;
   dailyLog: Record<string, number>; // "YYYY-MM-DD" -> pages read
   dailyLogMeta?: Record<string, DayEdit>; // "YYYY-MM-DD" -> who/when last edited that day; set only by setDayPages and updateBookProgress
+  /** When the user last edited a field, by this device's clock (ms). Keys: "status:<book>", "rating:<book>", "word:<id>", "hidden:<book>". A missing key is a legacy value that any real edit beats. */
+  editTimes?: Record<string, number>;
+  /** Vocabulary words the user deleted: word id -> when. Lets a delete win over a device that still has the word. */
+  deletedWords?: Record<string, number>;
   notes: Record<string, string>;
   highlights: Record<string, HighlightItem[]>;
   goal: number;
