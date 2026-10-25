@@ -8,3 +8,5 @@ export function settingsRecordsSyncEnabled(): boolean {
   try { const flag = localStorage.getItem(SETTINGS_RECORDS_FLAG_KEY); if (flag === '0') return false; if (flag === '1') return true; } catch {}
   try { return (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_SETTINGS_RECORDS_SYNC === '1'; } catch { return false; }
 }
+/** The reader's own switch for THIS device (kept in this browser only). The page reloads afterwards so the live connection subscribes to the right tables. */
+export function setSettingsRecordsEnabled(on: boolean): void { try { localStorage.setItem(SETTINGS_RECORDS_FLAG_KEY, on ? '1' : '0'); } catch {} }

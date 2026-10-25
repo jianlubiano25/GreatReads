@@ -248,6 +248,15 @@ export function resolveSettingTie(userId: string, key: SettingKey, choice: 'devi
   return { value: tie.cloudValue, at: tie.cloudEditedAt, deviceId: tie.cloudDeviceId, editSeq: tie.cloudEditSeq };
 }
 
+/** The owner's choice for a tied setting (the app applies it and syncs). */
+export function requestSettingTieResolution(userId: string, key: SettingKey, choice: 'device' | 'cloud'): void {
+  if (currentUser()?.id !== userId || typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('greatreads-setting-tie', { detail: { key, choice } }));
+}
+/** Plain words for the tie screen. */
+export const SETTING_LABELS: Record<SettingKey, string> = { goal: 'Daily goal', reading_intention: 'Reading intention', profile_name: 'Name', theme: 'Theme', garden: 'Garden', nook_look: 'Nook look', store_layout: 'Store layout', fonts: 'Fonts', nook_toggles: 'Nook options', name_choices: 'Title/author choices' };
+export const describeSettingValue = (v: unknown): string => { const t = typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ? String(v) : JSON.stringify(v) ?? ''; return t.length > 40 ? `${t.slice(0, 37)}...` : t || '(empty)'; };
+
 /* ---------- one round ---------- */
 
 type Io = { getState: () => StateSlice & WordsSlice; apply: (change: (state: ReadingState) => ReadingState) => void };
