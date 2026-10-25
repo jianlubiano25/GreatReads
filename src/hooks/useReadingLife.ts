@@ -15,7 +15,7 @@ import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
 import { exportDeviceSettings, restoreDeviceSettings } from '../services/deviceSettings';
 import { applyMerge, findDuplicateGroups, idMapOf, remapCollections } from '../services/mergeDuplicates';
 import { exportCollections, loadCollections, restoreCollectionsFromBackup, saveCollections } from '../services/libraryCollections';
-import { markPersonalAnnotationDeleted, markPersonalBookDeleted, unmarkPersonalAnnotationDeleted } from '../services/librarySync';
+import { markPersonalAnnotationDeleted, markPersonalBookDeleted, unmarkPersonalAnnotationDeleted, unmarkPersonalBookDeleted } from '../services/librarySync';
 import { stampDayEdit } from '../services/dailyPagesSync';
 import { withEdits, withWordsDeleted } from '../services/editTimes';
 
@@ -367,6 +367,7 @@ export function useReadingLife() {
   }, []);
 
   const addBook = useCallback((incoming: Book, destination: AddDestination = 'library', status?: AddStatus) => {
+    unmarkPersonalBookDeleted(String(incoming.id));
     setState(prev => applyAddBook(prev, incoming, destination, status));
   }, []);
 

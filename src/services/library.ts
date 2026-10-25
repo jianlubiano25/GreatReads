@@ -73,5 +73,7 @@ export function applyAddBook(prev: ReadingState, incoming: Book, destination: Ad
   let stamped = next;
   if (prev.status[idKey] !== newStatus) stamped = withEdits(stamped, 'status', [idKey]);
   if (ratings !== prev.ratings) stamped = withEdits(stamped, 'rating', [idKey]);
+  // A removed catalog book is only hidden: adding it back must show it again (and upload it), not leave it hidden
+  if (stamped.hiddenBookIds?.[idKey]) { const { [idKey]: _shown, ...stillHidden } = stamped.hiddenBookIds; stamped = withEdits({ ...stamped, hiddenBookIds: stillHidden }, 'hidden', [idKey]); }
   return stamped;
 }

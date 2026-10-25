@@ -1,3 +1,4 @@
+import { settingsRecordsSyncEnabled } from './settingsRecordsFlag';
 import type { Book, ReadingState } from '../types';
 import type { Collection } from './libraryCollections';
 import { cleanPicks, type CoverPick } from './books/coverPicks';
@@ -198,6 +199,8 @@ export function mergeRemoteLibrary(local: ReadingState, collections: Collection[
   const state = mergeInitialLibrarySnapshot(local, acceptedBooks, preferRemote);
   if (preferRemote) for (const row of applyBooks) if (row.deleted_at) {
     const id = row.local_book_id;
+    // A book removed and then added back on this device after the cloud's delete stays: the add is the later edit (its upload clears the cloud's delete)
+    if (!state.hiddenBookIds[id] && timeOf(state.editTimes, 'hidden', id) > (Date.parse(row.updated_at || '') || 0)) continue;
     state.customBooks = state.customBooks.filter(book => String(book.id) !== id);
     for (const field of ['status', 'currentPage', 'totalPages', 'notes', 'highlights', 'history', 'ratings', 'onDeviceOverrides'] as const) {
       const { [id]: _removed, ...rest } = state[field];
@@ -302,7 +305,9 @@ export function mergeRemoteLibrary(local: ReadingState, collections: Collection[
       if (preferRemote) { for (const key of Object.keys(coverPicks)) delete coverPicks[key]; Object.assign(coverPicks, remotePicks); }
       else Object.assign(coverPicks, Object.fromEntries(Object.entries(remotePicks).filter(([key]) => !coverPicks[key])));
     }
-    if (pref.nookLook && (preferRemote || !nookLook)) nookLook = pref.nookLook;
+    // Phase 4 owns goal, intention, name, theme and nook look as their own records: the old shared copy may only FILL EMPTY values then, it must never overwrite what a newer per-setting record put on this device (that reverted the theme)
+    const takeShared = preferRemote && !settingsRecordsSyncEnabled();
+    if (pref.nookLook && (takeShared || !nookLook)) nookLook = pref.nookLook;
     if (pref.dailyLog && typeof pref.dailyLog === 'object') {
       const remoteLog = pref.dailyLog as ReadingState['dailyLog'];
       if (dailyPagesSyncEnabled()) {
@@ -315,11 +320,11 @@ export function mergeRemoteLibrary(local: ReadingState, collections: Collection[
         }
       } else for (const [day, pages] of Object.entries(remoteLog)) state.dailyLog[day] = preferRemote ? pages : Math.max(state.dailyLog[day] || 0, pages || 0);
     }
-    if ((preferRemote || state.goal === 10) && Number(pref.goal) > 0) state.goal = Number(pref.goal);
-    if ((preferRemote || !state.readingIntention) && typeof pref.readingIntention === 'string') state.readingIntention = pref.readingIntention;
+    if ((takeShared || state.goal === 10) && Number(pref.goal) > 0) state.goal = Number(pref.goal);
+    if ((takeShared || !state.readingIntention) && typeof pref.readingIntention === 'string') state.readingIntention = pref.readingIntention;
     if (pref.profile && typeof pref.profile === 'object') {
       const profile = pref.profile as ReadingState['profile'];
-      state.profile = { name: preferRemote || !state.profile.name ? profile.name : state.profile.name, photo: preferRemote || !state.profile.photo ? profile.photo : state.profile.photo, theme: preferRemote || state.profile.theme === 'auto' ? profile.theme : state.profile.theme };
+      state.profile = { name: takeShared || !state.profile.name ? profile.name : state.profile.name, photo: preferRemote || !state.profile.photo ? profile.photo : state.profile.photo, theme: takeShared || state.profile.theme === 'auto' ? profile.theme : state.profile.theme };
     }
     {
       const remoteTimes = (pref.editTimes && typeof pref.editTimes === 'object' ? pref.editTimes : {}) as Record<string, number>;
@@ -425,6 +430,11 @@ function saveDeletionSet(userId: string, set: Set<string>) { try { set.size ? lo
 export function markPersonalBookDeleted(localId: string): void {
   const userId = currentUser()?.id; if (!userId) return;
   const deleted = localDeletionSet(userId); deleted.add(localId); saveDeletionSet(userId, deleted);
+}
+/** A book that was removed and is added back: it is no longer deleted on this device, so it uploads again and the cloud's copy is accepted. */
+export function unmarkPersonalBookDeleted(localId: string): void {
+  const userId = currentUser()?.id; if (!userId) return;
+  const deleted = localDeletionSet(userId); if (deleted.delete(localId)) saveDeletionSet(userId, deleted);
 }
 export function markPersonalAnnotationDeleted(localBookId: string, localAnnotationId: string): void {
   const userId = currentUser()?.id; if (!userId) return;

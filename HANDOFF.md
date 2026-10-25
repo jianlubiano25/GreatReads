@@ -16,6 +16,17 @@ the realtime socket has a health watchdog (linkHealth.ts) that rebuilds a dead o
 a revision-only safety-net check (changeProbe.ts, every 30 s while visible, a few hundred bytes) pulls whenever anything changed; 'resync' is no longer dropped while an upload is pending.
 Still needs the owner's real-device test: change theme/plant/pages on one device with the other open, then with the other in the background and brought back.
 
+## Fixes after the second device test (iPhone + iPad)
+- Live channel: realtime used serializer 1.0.0 with array messages, so the server rejected every join (commit 2e7a579). Now 2.0.0.
+- Re-adding a removed book did nothing: removal left the book on this device's "deleted" list and hidden, and nothing cleared either. Adding a book back now clears both (and a cloud delete older than the re-add no longer hides it again).
+- Theme (Parchment/Night/System) was reverted by the old shared preferences copy, which still overwrote goal, intention, name, theme and nook look on every pull. With Phase 4 on it now only fills empty values.
+- Clock: always 12-hour (the owner's choice); the iPad followed its 24-hour region format.
+
+## Owner's requests, still open
+- SEARCH: book search in this branch must be as fast and as reliable as in Jldata2, or better (typing a title and getting the right book quickly). Last test: still not fast. Compare with Jldata2's search (src/hooks/useBookSearch.ts, src/components/BookSearch.tsx) before changing anything; keep the genre picks and "hidden gems" the owner likes.
+- "Reading now" page did not change on the second device after a change on the first: cause NOT found yet. Check on real devices after the fixes above; if it still fails, look at status sync (user_library_books) and the pull after a realtime event.
+- Owner always uses the 12-hour clock.
+
 ## Switch
 Always on while signed in. Kill switch only: localStorage `readlife.settingsRecordsSync1` = "0" (one device) or build var VITE_SETTINGS_RECORDS_SYNC=0.
 Rollback: set "0", then run rollbacks 000005 then 000004. preferences.* is never modified by Phase 4.
