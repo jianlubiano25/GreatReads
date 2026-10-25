@@ -9,6 +9,8 @@
  * shelf that precedes them by default, instead of piling up at the end or disappearing.
  */
 
+import { stampSetting } from '../settingsTimes';
+
 /**
  * `hidden` = shelves the reader hid; `shown` = shelves that are hidden by default (see registry.ts) which the reader turned on.
  * Only the reader's own choices are stored, so a shelf's default can change later without undoing anything they chose.
@@ -20,17 +22,26 @@ export const NO_PREFS: StorePrefs = { order: [], hidden: [], shown: [] };
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string'))] : []);
 
+/** Repairs anything read from storage, the cloud or a backup. */
+export function sanitizeStorePrefs(raw: unknown): StorePrefs {
+  const r = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
+  return r ? { order: strings(r.order), hidden: strings(r.hidden), shown: strings(r.shown) } : NO_PREFS;
+}
+
 export function loadStorePrefs(): StorePrefs {
-  try {
-    const raw = JSON.parse(localStorage.getItem(STORE_PREFS_KEY) || 'null');
-    if (raw && typeof raw === 'object') return { order: strings(raw.order), hidden: strings(raw.hidden), shown: strings(raw.shown) };
-  } catch {}
+  try { return sanitizeStorePrefs(JSON.parse(localStorage.getItem(STORE_PREFS_KEY) || 'null')); } catch {}
   return NO_PREFS;
 }
 
 /** Returns false when the device refused the write (the layout then lasts only until the app closes). */
 export function saveStorePrefs(p: StorePrefs): boolean {
-  try { localStorage.setItem(STORE_PREFS_KEY, JSON.stringify(p)); return true; } catch { return false; }
+  try { localStorage.setItem(STORE_PREFS_KEY, JSON.stringify(p)); stampSetting('storeLayout'); return true; } catch { return false; }
+}
+
+/** The cloud or a backup changed the layout: store it without counting it as a new edit, and tell an open Store tab to redraw. */
+export function applyStorePrefsFromSync(p: StorePrefs): void {
+  try { localStorage.setItem(STORE_PREFS_KEY, JSON.stringify(p)); } catch {}
+  try { if (typeof window !== 'undefined') window.dispatchEvent(new Event('greatreads-store-prefs-changed')); } catch {}
 }
 
 /** The full shelf order to show: the saved order, minus shelves that no longer exist, plus new shelves in their default place. */

@@ -12,6 +12,7 @@ import { exportCoverPicks, restoreCoverPicksFromBackup } from '../services/books
 import { displayBook, refreshNames, subscribeNames } from '../services/books/englishTitle';
 import { mapPool } from '../services/books/http';
 import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
+import { exportDeviceSettings, restoreDeviceSettings } from '../services/deviceSettings';
 import { applyMerge, findDuplicateGroups, idMapOf, remapCollections } from '../services/mergeDuplicates';
 import { exportCollections, loadCollections, restoreCollectionsFromBackup, saveCollections } from '../services/libraryCollections';
 import { markPersonalAnnotationDeleted, markPersonalBookDeleted, unmarkPersonalAnnotationDeleted } from '../services/librarySync';
@@ -563,7 +564,8 @@ export function useReadingLife() {
     const coverPicks = exportCoverPicks();
     const nookLook = exportNookLook(); // vine look, clock colours and nook decorations; absent when they are all default
     const libraryCollections = exportCollections(); // your own shelves and tags; absent when you have none
-    return JSON.stringify({ ...state, ...(Object.keys(coverPicks).length ? { coverPicks } : {}), ...(nookLook ? { nookLook } : {}), ...(libraryCollections ? { libraryCollections } : {}) }, null, 2);
+    const deviceSettings = exportDeviceSettings(); // store layout, fonts, nook toggles and name choices; absent when all are default and never changed
+    return JSON.stringify({ ...state, ...(Object.keys(coverPicks).length ? { coverPicks } : {}), ...(nookLook ? { nookLook } : {}), ...(deviceSettings ? { deviceSettings } : {}), ...(libraryCollections ? { libraryCollections } : {}) }, null, 2);
   }, [state]);
 
   const importBackup = useCallback((jsonStr: string) => {
@@ -582,6 +584,7 @@ export function useReadingLife() {
     }
     restoreCoverPicksFromBackup(jsonStr); // a backup made before picks existed leaves the current picks alone
     restoreNookLook(jsonStr); // likewise for a backup made before the nook look was saved
+    restoreDeviceSettings(jsonStr); // and for one made before store layout, fonts, nook toggles and name choices were saved
     restoreCollectionsFromBackup(jsonStr); // and for one made before shelves and tags were saved
     // A restore never shows "new plant" prompts: bring the garden up to date silently and mark everything as seen.
     const snap = computeSnapshot({

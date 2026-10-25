@@ -4,6 +4,7 @@ import { cleanPicks, type CoverPick } from './books/coverPicks';
 import { coverKey } from './books/coverAnalysis';
 import { currentUser, rest } from './supabase';
 import { exportNookLook } from './nookPrefs';
+import { exportDeviceSettings, mergeDeviceSettings, type DeviceSettings } from './deviceSettings';
 import { dailyPagesSyncEnabled } from './dailyPagesSync';
 import { maxTimes, mergeHiddenByTime, mergeWordsByTime, newer, timeKey, timeOf } from './editTimes';
 import { mergeAnnotationFirstSync, mergeBookFirstSync, mergeGarden, mergeMembershipFirstSync, mergePreferencesFirstSync, mergeShelfFirstSync, sameFields, stableJson } from './librarySyncMerge';
@@ -121,6 +122,8 @@ export function buildLibrarySyncSnapshot(args: {
     goal: state.goal, readingIntention: state.readingIntention, profile: state.profile, dailyLog: state.dailyLog,
     words: state.words, garden: state.garden, hiddenBookIds: state.hiddenBookIds, onDeviceOverrides: {},
     coverPicks, nookLook: exportNookLook() || null,
+    // Phase 5: store layout, fonts, nook toggles and name choices, each with the time it was last changed
+    deviceSettings: exportDeviceSettings() || null,
     // Phase 3: when words / hidden books were last edited, and which words were deleted (written only once something has been stamped)
     ...(Object.keys(maxTimes(state.editTimes, undefined, ['word:', 'hidden:'])).length ? { editTimes: maxTimes(state.editTimes, undefined, ['word:', 'hidden:']) } : {}),
     ...(state.deletedWords && Object.keys(state.deletedWords).length ? { deletedWords: state.deletedWords } : {}),
@@ -187,7 +190,7 @@ export async function loadRemoteLibrary(userId: string): Promise<RemoteLibrarySn
 }
 
 /** Fill empty local fields from cloud during bootstrap; local values and IDs always survive. Records named in `paused` (conflicted, awaiting the user's choice) are left exactly as they are on this device. */
-export function mergeRemoteLibrary(local: ReadingState, collections: Collection[], remote: RemoteLibrarySnapshot, localCoverPicks: Record<string, CoverPick> = {}, preferRemote = false, paused: ReadonlySet<string> = new Set()): { state: ReadingState; collections: Collection[]; coverPicks: Record<string, CoverPick>; nookLook: unknown } {
+export function mergeRemoteLibrary(local: ReadingState, collections: Collection[], remote: RemoteLibrarySnapshot, localCoverPicks: Record<string, CoverPick> = {}, preferRemote = false, paused: ReadonlySet<string> = new Set()): { state: ReadingState; collections: Collection[]; coverPicks: Record<string, CoverPick>; nookLook: unknown; deviceSettings?: DeviceSettings } {
   const userId = remote.preferences[0]?.user_id || remote.books[0]?.user_id || '';
   const deleted = userId ? localDeletionSet(userId) : new Set<string>();
   const applyBooks = remote.books.filter(row => !paused.has(`book:${row.local_book_id}`));
@@ -253,7 +256,8 @@ export function mergeRemoteLibrary(local: ReadingState, collections: Collection[
     if (key && (preferRemote || !coverPicks[key])) coverPicks[key] = row.personal_cover;
   }
   const localByShelf = new Map(remote.shelves.filter(row => !row.deleted_at).map(row => [row.id, String(row.shelf_data?.local_id || row.id)]));
-  for (const row of remote.shelves) {
+  const byOrder = <T extends { sort_order: number }>(rows: T[]): T[] => rows.map((row, i) => ({ row, i })).sort((a, b) => (Number(a.row.sort_order) || 0) - (Number(b.row.sort_order) || 0) || a.i - b.i).map(x => x.row);
+  for (const row of byOrder(remote.shelves)) {
     const id = String(row.shelf_data?.local_id || '');
     if (!id || deleted.has(`collection:${id}`) || paused.has(`shelf:${id}`)) continue;
     if (row.deleted_at) { if (preferRemote) mergedCollections.delete(id); continue; }
@@ -261,7 +265,7 @@ export function mergeRemoteLibrary(local: ReadingState, collections: Collection[
     if (!existing || preferRemote) mergedCollections.set(id, { id, name: row.name, kind: row.shelf_data?.kind === 'tag' ? 'tag' : 'shelf', bookIds: existing?.bookIds || [] });
   }
   const collectionById = mergedCollections;
-  for (const row of remote.memberships) {
+  for (const row of byOrder(remote.memberships)) {
     if (row.deleted_at || paused.has(`membership:${row.id}`)) continue;
     const collectionId = localByShelf.get(row.shelf_id);
     if (collectionId && deleted.has(`collection:${collectionId}`)) continue;
@@ -269,9 +273,30 @@ export function mergeRemoteLibrary(local: ReadingState, collections: Collection[
     const collection = collectionId && collectionById.get(collectionId);
     if (collection && localBookId && !collection.bookIds.includes(localBookId)) collection.bookIds.push(localBookId);
   }
+  // Phase 5: when the cloud copy is being taken, the cloud's order of shelves and of books inside a shelf is applied too.
+  // Anything the cloud has no order for (added here, not uploaded yet) stays after the ones it has; a shelf or book that is paused by a conflict keeps its place.
+  let orderedCollections = [...mergedCollections.values()];
+  if (preferRemote) {
+    const shelfRank = new Map(remote.shelves.filter(row => !row.deleted_at && !paused.has(`shelf:${String(row.shelf_data?.local_id || '')}`)).map(row => [String(row.shelf_data?.local_id || ''), Number(row.sort_order) || 0]));
+    const stable = <T,>(list: T[], rank: (item: T) => number | undefined): T[] => list.map((item, i) => ({ item, i, r: rank(item) })).sort((a, b) => (a.r ?? Infinity) - (b.r ?? Infinity) || a.i - b.i).map(x => x.item);
+    orderedCollections = stable(orderedCollections, c => shelfRank.get(c.id));
+    for (const collection of orderedCollections) {
+      const rank = new Map<string, number>();
+      let anyPaused = false;
+      for (const row of remote.memberships) {
+        if (row.deleted_at || localByShelf.get(row.shelf_id) !== collection.id) continue;
+        if (paused.has(`membership:${row.id}`)) { anyPaused = true; continue; }
+        const bookId = bookIdByCloud.get(row.library_book_id);
+        if (bookId) rank.set(bookId, Number(row.sort_order) || 0);
+      }
+      if (!anyPaused && rank.size) collection.bookIds = stable(collection.bookIds, id => rank.get(id));
+    }
+  }
   const pref = paused.has('preferences') ? undefined : remote.preferences.find(row => row.user_id && row.preferences && typeof row.preferences === 'object')?.preferences;
   let nookLook: unknown = exportNookLook() || null;
+  let deviceSettings: DeviceSettings | undefined;
   if (pref) {
+    if (pref.deviceSettings && typeof pref.deviceSettings === 'object') deviceSettings = mergeDeviceSettings(exportDeviceSettings(), pref.deviceSettings, preferRemote);
     if (pref.coverPicks && typeof pref.coverPicks === 'object') {
       const remotePicks = cleanPicks(pref.coverPicks);
       if (preferRemote) { for (const key of Object.keys(coverPicks)) delete coverPicks[key]; Object.assign(coverPicks, remotePicks); }
@@ -313,7 +338,7 @@ export function mergeRemoteLibrary(local: ReadingState, collections: Collection[
     }
     if (pref.garden && typeof pref.garden === 'object') state.garden = mergeGarden(state.garden, pref.garden as ReadingState['garden']);
   }
-  return { state, collections: [...mergedCollections.values()], coverPicks, nookLook };
+  return { state, collections: orderedCollections, coverPicks, nookLook, deviceSettings };
 }
 
 const qUser = (userId: string) => `user_id=eq.${encodeURIComponent(userId)}`;

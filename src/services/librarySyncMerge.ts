@@ -9,6 +9,7 @@
 import type { ReadingState } from '../types';
 import { dailyPagesSyncEnabled } from './dailyPagesSync';
 import { maxTimes, mergeHiddenByTime, mergeWordsByTime, newer } from './editTimes';
+import { mergeDeviceSettings, type DeviceSettings } from './deviceSettings';
 import type { AnnotationRow, LibraryBookRow, LibrarySyncSnapshot, ShelfBookRow, ShelfRow } from './librarySync';
 
 export function stableJson(value: unknown): string {
@@ -150,6 +151,9 @@ export function mergePreferencesFirstSync(remote: Record<string, unknown>, local
     for (const [key, value] of Object.entries(obj(remote.coverPicks))) picks[key] = key in picks ? pick(value, picks[key]) : value;
     out.coverPicks = picks;
     out.nookLook = pick(remote.nookLook ?? null, local.nookLook ?? null);
+    // Phase 5: the later change wins per group; on a tie the cloud copy stands (a first sync never overwrites the cloud with an equal-age value)
+    const settings = mergeDeviceSettings(local.deviceSettings as DeviceSettings | undefined, remote.deviceSettings, true);
+    out.deviceSettings = settings ?? null;
     return out;
   });
 }

@@ -14,6 +14,10 @@ import type { ReadingState } from '../types';
 import { acknowledgeCloudCopy, markPersonalAnnotationDeleted, hasLibrarySyncConflicts, hasPendingLibrarySync, loadRemoteLibrary, mergeRemoteLibrary, pausedLibraryKeys, resolveLibraryConflictsToCloud, resolveLibraryConflictsToLocal, syncLocalLibrary, type RemoteLibrarySnapshot } from './librarySync';
 import { mergePreferencesFirstSync } from './librarySyncMerge';
 import { withEdits, withWordsDeleted } from './editTimes';
+import { applyDeviceSettings, exportDeviceSettings, mergeDeviceSettings, mergeNameChoices, restoreDeviceSettings } from './deviceSettings';
+import { NO_PREFS, loadStorePrefs, saveStorePrefs } from './store/prefs';
+import { getFontPrefs, setFontPrefs } from './fontPrefs';
+import { getNookMatchesTheme, getWindowFollowsTime, setNookMatchesTheme, setWindowFollowsTime } from './nookPrefs';
 import { decideDay, keepDeviceDay, loadDailyTies, setDailyPagesSyncOverride, stampDayEdit, syncDailyPages, takeCloudDay, type CloudDay } from './dailyPagesSync';
 
 const defect = (name: string, fn: () => Promise<void> | void) => test(name, { todo: 'known sync defect (see sync audit)' }, fn);
@@ -81,7 +85,8 @@ function world() {
     const open = async (state: ReadingState, books: any[] = []) => {
       use();
       const remote = await loadRemoteLibrary(USER);
-      const merged = remote ? mergeRemoteLibrary(state, [], remote, {}, false).state : state;
+      const m0 = remote ? mergeRemoteLibrary(state, [], remote, {}, false) : undefined; if (m0) applyDeviceSettings(m0.deviceSettings);
+      const merged = m0 ? m0.state : state;
       const ok = await syncLocalLibrary(USER, { state: merged, books, collections: [], coverPicks: {} });
       const d = await days(merged);
       return { state: d.state, ok };
@@ -91,12 +96,12 @@ function world() {
       use();
       const ok = await syncLocalLibrary(USER, { state, books, collections: [], coverPicks: {} });
       let after = state;
-      if (ok) { const remote = await loadRemoteLibrary(USER); if (remote) after = mergeRemoteLibrary(state, [], remote, {}, true, pausedLibraryKeys(USER)).state; }
+      if (ok) { const remote = await loadRemoteLibrary(USER); if (remote) { const m1 = mergeRemoteLibrary(state, [], remote, {}, true, pausedLibraryKeys(USER)); applyDeviceSettings(m1.deviceSettings); after = m1.state; } }
       const d = await days(after);
       return { state: d.state, ok };
     };
     /** What the app does when the cloud tells it something changed: take the cloud copy, skipping paused records. */
-    const refresh = async (state: ReadingState) => { use(); const remote = await loadRemoteLibrary(USER); if (!remote) return state; const merged = mergeRemoteLibrary(state, [], remote, {}, true, pausedLibraryKeys(USER)).state; acknowledgeCloudCopy(USER, remote); return merged; };
+    const refresh = async (state: ReadingState) => { use(); const remote = await loadRemoteLibrary(USER); if (!remote) return state; const m2 = mergeRemoteLibrary(state, [], remote, {}, true, pausedLibraryKeys(USER)); applyDeviceSettings(m2.deviceSettings); acknowledgeCloudCopy(USER, remote); return m2.state; };
     const conflicts = () => { use(); return hasLibrarySyncConflicts(USER); };
     const paused = () => { use(); return [...pausedLibraryKeys(USER)].sort(); };
     const pending = () => { use(); return hasPendingLibrarySync(USER); };
@@ -112,7 +117,9 @@ function world() {
     const ties = () => { use(); return loadDailyTies(USER); };
     /** What the app does when a note or highlight is deleted (markPersonalAnnotationDeleted), run as this device. */
     const markDeleted = (bookId: string, annotationId: string) => { use(); markPersonalAnnotationDeleted(bookId, annotationId); };
-    return { open, edit, refresh, days, ties, conflicts, paused, pending, useCloud, useDevice, markDeleted };
+    /** Run something as this device (its own localStorage), like a setting being changed in the app. */
+    const run = <T,>(fn: () => T): T => { use(); return fn(); };
+    return { open, edit, refresh, days, ties, conflicts, paused, pending, useCloud, useDevice, markDeleted, run };
   };
   const prefs = () => tables.get('user_library_preferences')![0]?.preferences as any;
   const setOnline = (onLine: boolean) => Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine } });
@@ -493,6 +500,124 @@ test('legacy notes and highlights (no edit times) behave exactly as before: two 
     assert.equal(b.conflicts(), true);
     assert.equal(w.tables.get('user_book_annotations')!.find(r => r.annotation_type === 'note')!.content, 'from A', 'the cloud copy is not overwritten');
   } finally { w.done(); }
+});
+
+/* ---------- Phase 5: store layout, fonts, nook toggles and name choices sync; shelf order is applied ---------- */
+
+const LAYOUT = { order: ['trending', 'fiction'], hidden: ['prizes'], shown: [] as string[] };
+
+test('a second device gets the first device\'s store layout, fonts and nook toggles on its first sync', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    a.run(() => { saveStorePrefs(LAYOUT); setFontPrefs({ title: 'Lora' }); setNookMatchesTheme(true); setWindowFollowsTime(false); });
+    await a.open(blank());
+    await b.open(blank());
+    assert.deepEqual(b.run(() => loadStorePrefs()), LAYOUT);
+    assert.equal(b.run(() => getFontPrefs().title), 'Lora');
+    assert.equal(b.run(() => getNookMatchesTheme()), true);
+    assert.equal(b.run(() => getWindowFollowsTime()), false);
+    assert.equal(b.conflicts(), false);
+  } finally { w.done(); }
+});
+
+test('a later settings change on one device reaches the other without a conflict, and a reset to default counts as a change', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    a.run(() => saveStorePrefs(LAYOUT));
+    const sa = (await a.open(blank())).state; await b.open(blank());
+    b.run(() => saveStorePrefs({ ...LAYOUT, order: ['fiction', 'trending'] }));
+    await b.edit(blank());
+    await a.refresh(sa);
+    assert.deepEqual(a.run(() => loadStorePrefs().order), ['fiction', 'trending']);
+    a.run(() => saveStorePrefs(NO_PREFS)); // A resets the layout
+    await a.edit(sa);
+    await b.refresh(blank());
+    assert.deepEqual(b.run(() => loadStorePrefs()), NO_PREFS);
+    assert.equal(a.conflicts() || b.conflicts(), false);
+  } finally { w.done(); }
+});
+
+test('a layout this device never changed since before stamping (legacy) is replaced by a real, stamped change from the cloud', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    a.run(() => saveStorePrefs(LAYOUT));
+    await a.open(blank());
+    b.run(() => localStorage.setItem('readlife.storeprefs1', JSON.stringify({ order: ['other'], hidden: [], shown: [] }))); // old value, no stamp
+    await b.open(blank());
+    assert.deepEqual(b.run(() => loadStorePrefs()), LAYOUT);
+  } finally { w.done(); }
+});
+
+test('settings with nothing changed anywhere add nothing to the cloud or to a backup', async () => {
+  const w = world();
+  try {
+    const a = w.device();
+    await a.open(blank());
+    assert.equal(a.run(() => exportDeviceSettings()), undefined);
+    assert.equal(w.prefs().deviceSettings, null);
+  } finally { w.done(); }
+});
+
+test('settings travel in a JSON backup and a restore puts them back (and counts as a change made now)', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    a.run(() => { saveStorePrefs(LAYOUT); setFontPrefs({ text: 'Inter' }); setWindowFollowsTime(false); });
+    const json = JSON.stringify({ deviceSettings: a.run(() => exportDeviceSettings()) });
+    b.run(() => restoreDeviceSettings(json));
+    assert.deepEqual(b.run(() => loadStorePrefs()), LAYOUT);
+    assert.equal(b.run(() => getFontPrefs().text), 'Inter');
+    assert.equal(b.run(() => getWindowFollowsTime()), false);
+    assert.ok((b.run(() => exportDeviceSettings())!.storeLayout!.at) > 0);
+    b.run(() => restoreDeviceSettings(JSON.stringify({ goal: 5 }))); // an older backup leaves settings alone
+    assert.deepEqual(b.run(() => loadStorePrefs()), LAYOUT);
+  } finally { w.done(); }
+});
+
+test('mergeDeviceSettings: later change wins per group; a tie keeps this device unless the cloud copy is being taken', () => {
+  const local = { fonts: { value: { title: 'Lora', text: 'Inter' }, at: 5 }, storeLayout: { value: LAYOUT, at: 9 } };
+  const remote = { fonts: { value: { title: 'Fraunces', text: 'Lato' }, at: 7 }, storeLayout: { value: { order: [], hidden: [], shown: [] }, at: 9 } };
+  const merged = mergeDeviceSettings(local as any, remote)!;
+  assert.equal(merged.fonts!.value.title, 'Fraunces');
+  assert.deepEqual(merged.storeLayout!.value, LAYOUT); // tie: this device's
+  assert.deepEqual(mergeDeviceSettings(local as any, remote, true)!.storeLayout!.value, NO_PREFS); // tie, cloud taken
+  assert.deepEqual(mergeDeviceSettings(undefined, { fonts: { value: { title: 'not a font', text: 'x' }, at: 3 } })!.fonts!.value, { title: 'DM Serif Display', text: 'System (default)' }, 'junk from the cloud is repaired, never trusted');
+});
+
+test('name choices merge per book: newest wins, nothing is lost, and a clear after a choice removes it', () => {
+  const c = (author: string, t: number) => ({ v: { author }, t });
+  const local = { value: { a: c('A1', 10), b: c('B1', 20) }, at: 20 };
+  const remote = { value: { a: c('A2', 30), c: c('C1', 25) }, at: 30 };
+  const merged = mergeNameChoices(local, remote)!;
+  assert.equal(merged.value.a.v.author, 'A2');          // newer on the cloud
+  assert.equal(merged.value.c.v.author, 'C1');          // only on the cloud: kept
+  assert.equal(merged.value.b, undefined);              // the cloud changed its choices (at 30) after b was made (20) and has no b: cleared
+  const keepB = mergeNameChoices({ value: { b: c('B1', 40) }, at: 40 }, { value: {}, at: 30 })!;
+  assert.equal(keepB.value.b.v.author, 'B1');           // b was chosen AFTER the cloud's last change: kept
+});
+
+test('shelf and book order from the cloud is applied when the cloud copy is taken, and new shelves arrive in the cloud\'s order', () => {
+  const shelf = (id: string, local: string, order: number): any => ({ id, user_id: USER, name: local.toUpperCase(), description: null, sort_order: order, shelf_data: { local_id: local, kind: 'shelf' }, deleted_at: null, revision: 1 });
+  const lb = (id: string, local: string): any => ({ id, user_id: USER, local_book_id: local, status: null, reading_progress: {}, personal_data: {}, book_snapshot: null, personal_cover: null, deleted_at: null, revision: 1 });
+  const mem = (id: string, shelfId: string, bookId: string, local: string, shelfLocal: string, order: number): any => ({ id, user_id: USER, shelf_id: shelfId, library_book_id: bookId, sort_order: order, membership_data: { local_id: `${shelfLocal}|${local}`, local_shelf_id: shelfLocal, local_book_id: local }, deleted_at: null, revision: 1 });
+  const remote: RemoteLibrarySnapshot = {
+    books: [lb('l1', 'b1'), lb('l2', 'b2'), lb('l3', 'b3')], annotations: [], sessions: [], preferences: [],
+    shelves: [shelf('s1', 'one', 2), shelf('s2', 'two', 0), shelf('s3', 'three', 1)],
+    memberships: [mem('m1', 's1', 'l1', 'b1', 'one', 2), mem('m2', 's1', 'l2', 'b2', 'one', 0), mem('m3', 's1', 'l3', 'b3', 'one', 1)],
+  };
+  const fresh = mergeRemoteLibrary(blank(), [], remote, {}, false);          // a device that has nothing yet
+  assert.deepEqual(fresh.collections.map(x => x.id), ['two', 'three', 'one']);
+  assert.deepEqual(fresh.collections.find(x => x.id === 'one')!.bookIds, ['b2', 'b3', 'b1']);
+  const local = [{ id: 'one', name: 'ONE', kind: 'shelf' as const, bookIds: ['b1', 'b2', 'b3'] }, { id: 'two', name: 'TWO', kind: 'shelf' as const, bookIds: [] }, { id: 'mine', name: 'Only here', kind: 'shelf' as const, bookIds: ['b9'] }];
+  const kept = mergeRemoteLibrary(blank(), local, remote, {}, false);        // opening: this device's own order is not rearranged
+  assert.deepEqual(kept.collections.map(x => x.id).slice(0, 3), ['one', 'two', 'mine']);
+  const taken = mergeRemoteLibrary(blank(), local, remote, {}, true);        // the cloud copy: its order wins, local-only shelves stay after it
+  assert.deepEqual(taken.collections.map(x => x.id), ['two', 'three', 'one', 'mine']);
+  assert.deepEqual(taken.collections.find(x => x.id === 'one')!.bookIds, ['b2', 'b3', 'b1']);
+  assert.deepEqual(taken.collections.find(x => x.id === 'mine')!.bookIds, ['b9']);
 });
 
 /* ---------- Phase 1: second-device first sync, per-record conflicts, use cloud, reconnect ---------- */

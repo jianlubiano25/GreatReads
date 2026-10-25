@@ -4,6 +4,7 @@ import { currentUser, subscribeLibraryRealtime } from '../services/supabase';
 import { exportCoverPicks, restoreCoverPicks } from '../services/books/covers';
 import { loadCollections, type Collection } from '../services/libraryCollections';
 import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
+import { applyDeviceSettings } from '../services/deviceSettings';
 import { acknowledgeCloudCopy, claimLibrarySyncAccount, hasPendingLibrarySync, librarySyncAccountAllowed, loadRemoteLibrary, markPersonalCollectionDeleted, markPersonalMembershipDeleted, mergeRemoteLibrary, pausedLibraryKeys, resolveLibraryConflictsToCloud, syncLocalLibrary } from '../services/librarySync';
 import { keepDeviceDay, loadDailyTies, syncDailyPages, takeCloudDay } from '../services/dailyPagesSync';
 
@@ -54,6 +55,7 @@ export function usePersonalLibrarySync(args: {
       }
       if (JSON.stringify(merged.coverPicks) !== JSON.stringify(exportCoverPicks())) restoreCoverPicks(merged.coverPicks);
       if (merged.nookLook && JSON.stringify(merged.nookLook) !== JSON.stringify(exportNookLook() || null)) restoreNookLook(JSON.stringify({ nookLook: merged.nookLook }));
+      applyDeviceSettings(merged.deviceSettings); // store layout, fonts, nook toggles and name choices (touches only what differs)
       return merged;
     };
 
