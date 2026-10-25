@@ -340,6 +340,12 @@ export function sanitizeGarden(raw: unknown): GardenState | null {
     }
   }
 
+  if (isObj(raw.placementTimes)) {
+    const times: Record<string, number> = {};
+    for (const id of safeKeys(raw.placementTimes)) { const t = Number(raw.placementTimes[id]); if (g.placements[String(id)] && Number.isFinite(t) && t > 0) times[String(id)] = Math.round(t); }
+    if (Object.keys(times).length) g.placementTimes = times;
+  }
+
   if (isObj(raw.celebrated)) {
     for (const id of safeKeys(raw.celebrated)) if (raw.celebrated[id]) g.celebrated[String(id)] = true;
   } else {

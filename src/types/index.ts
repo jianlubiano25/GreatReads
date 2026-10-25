@@ -114,6 +114,8 @@ export interface GardenState {
   achievements: Record<string, { earnedAt: number; plantId: string }>; // milestoneId -> award (each milestone once)
   plants: Record<string, OwnedPlant>; // plantId -> owned plant
   placements: Record<string, PlantPlacement>; // plantId -> where it stands
+  /** When the reader last moved each plant (ms, this device's clock). Lets a move made on one device reach the other instead of the local spot always winning. A plant with no time has a legacy spot. */
+  placementTimes?: Record<string, number>;
   celebrated: Record<string, true>; // plantIds whose "new plant" prompt was already shown
   vine: number; // 0..1 window vine growth, high-water mark
 }

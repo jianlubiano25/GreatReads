@@ -19,6 +19,19 @@ export function stableJson(value: unknown): string {
   return JSON.stringify(value) ?? 'null';
 }
 
+/** Where each plant stands: the later move wins per plant (a plant with no move time keeps this device's spot, as before); a plant only one side has is kept. */
+export function mergePlacements(local: ReadingState['garden'], remote: ReadingState['garden']): Pick<ReadingState['garden'], 'placements'> & { placementTimes?: Record<string, number> } {
+  const lp = local.placements || {}, rp = remote.placements || {}, lt = local.placementTimes || {}, rt = remote.placementTimes || {};
+  const placements: ReadingState['garden']['placements'] = {}, times: Record<string, number> = {};
+  for (const id of new Set([...Object.keys(lp), ...Object.keys(rp)])) {
+    const l = lp[id], r = rp[id], takeRemote = !!r && (!l || (rt[id] ?? 0) > (lt[id] ?? 0));
+    const chosen = takeRemote ? r : l;
+    if (chosen) placements[id] = chosen;
+    const at = Math.max(lt[id] ?? 0, rt[id] ?? 0); if (at > 0) times[id] = at;
+  }
+  return { placements, ...(Object.keys(times).length ? { placementTimes: times } : {}) };
+}
+
 export function mergeGarden(local: ReadingState['garden'], remote: ReadingState['garden']): ReadingState['garden'] {
   const peaks = { ...local.peaks };
   for (const key of Object.keys(peaks) as (keyof typeof peaks)[]) peaks[key] = Math.max(peaks[key], remote.peaks?.[key] || 0);
@@ -30,7 +43,7 @@ export function mergeGarden(local: ReadingState['garden'], remote: ReadingState[
   return {
     ...remote, ...local, v: 1, peaks, plants,
     achievements: { ...remote.achievements, ...local.achievements },
-    placements: { ...remote.placements, ...local.placements },
+    ...mergePlacements(local, remote),
     celebrated: { ...remote.celebrated, ...local.celebrated },
     vine: Math.max(local.vine || 0, remote.vine || 0),
   };

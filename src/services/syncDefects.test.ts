@@ -631,6 +631,66 @@ test('shelf and book order from the cloud is applied when the cloud copy is take
   assert.deepEqual(taken.collections.find(x => x.id === 'mine')!.bookIds, ['b9']);
 });
 
+/* ---------- Two-device checks for what the owner saw on iPhone + iPad ---------- */
+
+const plant = { milestoneId: 'm1', earnedAt: 1, growth: 0.5 };
+const garden = (placements: Record<string, { areaId: string; slot: number }>, times?: Record<string, number>): ReadingState['garden'] => ({ ...blank().garden, plants: { p1: plant, p2: { ...plant, milestoneId: 'm2' } }, placements, ...(times ? { placementTimes: times } : {}) });
+
+test('plants rearranged on one device are rearranged on the other (the later move wins per plant)', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    let sa = blank(); sa.garden = garden({ p1: { areaId: 'shelf', slot: 0 }, p2: { areaId: 'shelf', slot: 1 } });
+    sa = (await a.settings(sa)).state;
+    let sb = (await b.settings(blank())).state;
+    assert.equal(sb.garden.placements.p1.slot, 0);
+    sa = { ...sa, garden: garden({ p1: { areaId: 'shelf', slot: 1 }, p2: { areaId: 'shelf', slot: 0 } }, { p1: E2, p2: E2 }) }; // A moved them
+    await a.settings(sa);
+    sb = (await b.settings(sb)).state;
+    assert.deepEqual(sb.garden.placements, { p1: { areaId: 'shelf', slot: 1 }, p2: { areaId: 'shelf', slot: 0 } });
+    sb = { ...sb, garden: garden({ p1: { areaId: 'shelf', slot: 0 }, p2: { areaId: 'shelf', slot: 1 } }, { p1: E3, p2: E3 }) }; // B moves them back, later
+    await b.settings(sb);
+    sa = (await a.settings(sa)).state;
+    assert.equal(sa.garden.placements.p1.slot, 0);
+  } finally { w.done(); }
+});
+
+test('a word deleted on one device disappears from the other through the per-word records', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    let sa = blank(); sa.words = [word('w1'), word('w2')];
+    sa = (await a.settings(sa)).state;
+    let sb = (await b.settings(blank())).state;
+    assert.equal(sb.words.length, 2);
+    sa = withWordsDeleted({ ...sa, words: sa.words.filter(x => x.id !== 'w1') }, ['w1'], E2);
+    assert.equal((await a.settings(sa)).ok, true);
+    sb = (await b.settings(sb)).state;
+    assert.deepEqual(sb.words.map(x => x.id), ['w2']);
+  } finally { w.done(); }
+});
+
+test('a page number changed on one device reaches the other, and the other can keep editing without a conflict', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const bk = book('b1');
+    let sa = blank(); sa.customBooks = [bk as any]; sa = setStatus(sa, 'b1', 'now', E1); sa.currentPage = { b1: 10 }; sa.totalPages = { b1: 100 };
+    await a.open(sa, [bk]);
+    let sb = (await b.open(blank(), [bk])).state;
+    assert.equal(sb.currentPage.b1, 10);
+    sa = { ...sa, currentPage: { b1: 25 } };
+    await a.edit(sa, [bk]);
+    sb = await b.refresh(sb);
+    assert.equal(sb.currentPage.b1, 25);
+    sb = { ...sb, currentPage: { b1: 40 } };            // now B reads on
+    assert.equal((await b.edit(sb, [bk])).ok, true);
+    sa = await a.refresh(sa);
+    assert.equal(sa.currentPage.b1, 40);
+    assert.equal(a.conflicts() || b.conflicts(), false);
+  } finally { w.done(); }
+});
+
 /* ---------- Phase 1: second-device first sync, per-record conflicts, use cloud, reconnect ---------- */
 
 test('first sync fills gaps in both directions: cloud status and this device\'s rating both end up in the cloud, with no conflict', async () => {
