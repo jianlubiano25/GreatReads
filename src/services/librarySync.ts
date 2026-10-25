@@ -4,6 +4,7 @@ import { cleanPicks, type CoverPick } from './books/coverPicks';
 import { coverKey } from './books/coverAnalysis';
 import { currentUser, rest } from './supabase';
 import { exportNookLook } from './nookPrefs';
+import { dailyPagesSyncEnabled } from './dailyPagesSync';
 import { mergeAnnotationFirstSync, mergeBookFirstSync, mergeGarden, mergeMembershipFirstSync, mergePreferencesFirstSync, mergeShelfFirstSync, sameFields, stableJson } from './librarySyncMerge';
 
 export type LibraryBookRow = {
@@ -38,7 +39,6 @@ const hasOwnData = (state: ReadingState, id: string, collections: Collection[]) 
   state.status[id] || state.currentPage[id] || state.totalPages[id] || state.notes[id] || state.highlights[id]?.length
   || state.history[id] || state.ratings[id] || state.customBooks.some(book => String(book.id) === id)
   || collections.some(collection => collection.bookIds.includes(id))
-  || Object.prototype.hasOwnProperty.call(state.onDeviceOverrides, id)
 );
 
 /** Shape personal data for the existing Supabase tables without changing GreatReads' text Book.id values. */
@@ -51,7 +51,7 @@ export function buildLibrarySyncSnapshot(args: {
   const customById = new Map(state.customBooks.map(book => [String(book.id), book]));
   const candidateIds = new Set([
     ...Object.keys(state.status), ...Object.keys(state.currentPage), ...Object.keys(state.totalPages), ...Object.keys(state.notes),
-    ...Object.keys(state.highlights), ...Object.keys(state.history), ...Object.keys(state.ratings), ...Object.keys(state.onDeviceOverrides),
+    ...Object.keys(state.highlights), ...Object.keys(state.history), ...Object.keys(state.ratings),
     ...state.customBooks.map(book => String(book.id)),
     ...collections.flatMap(collection => collection.bookIds),
   ]);
@@ -71,7 +71,8 @@ export function buildLibrarySyncSnapshot(args: {
       reading_progress: { currentPage: state.currentPage[localId] || 0, totalPages: state.totalPages[localId] || 0, history: state.history[localId] || null },
       personal_cover: coverPicks[coverKey(book)] || null,
       book_snapshot: customById.get(localId) || book,
-      personal_data: { rating: state.ratings[localId] || null, onDevice: state.onDeviceOverrides[localId] ?? null, isCustomBook: customById.has(localId) },
+      // "On this device" (downloaded for offline) is device-local and never synced; writeRemoteLibrary keeps whatever the cloud already holds here.
+      personal_data: { rating: state.ratings[localId] || null, onDevice: null, isCustomBook: customById.has(localId) },
       deleted_at: null,
     });
   }
@@ -106,7 +107,7 @@ export function buildLibrarySyncSnapshot(args: {
   // Keep every non-book-scoped backup field recoverable. Book-scoped fields are normalized into their own records above.
   const preferences = {
     goal: state.goal, readingIntention: state.readingIntention, profile: state.profile, dailyLog: state.dailyLog,
-    words: state.words, garden: state.garden, hiddenBookIds: state.hiddenBookIds, onDeviceOverrides: state.onDeviceOverrides,
+    words: state.words, garden: state.garden, hiddenBookIds: state.hiddenBookIds, onDeviceOverrides: {},
     coverPicks, nookLook: exportNookLook() || null,
   };
   return { books: booksOut, annotations, shelves, memberships: membershipRows, preferences };
@@ -131,8 +132,6 @@ export function mergeInitialLibrarySnapshot(local: ReadingState, rows: LibraryBo
     if (progress.history && typeof progress.history === 'object' && (preferRemote || !next.history[id])) next.history[id] = progress.history as ReadingState['history'][string];
     const rating = Number(row.personal_data?.rating);
     if ((preferRemote || !next.ratings[id]) && Number.isFinite(rating) && rating > 0) next.ratings[id] = rating;
-    const onDevice = row.personal_data?.onDevice;
-    if ((preferRemote || next.onDeviceOverrides[id] === undefined) && typeof onDevice === 'boolean') next.onDeviceOverrides[id] = onDevice;
   }
   next.customBooks = [...custom.values()];
   return next;
@@ -247,7 +246,15 @@ export function mergeRemoteLibrary(local: ReadingState, collections: Collection[
     if (pref.nookLook && (preferRemote || !nookLook)) nookLook = pref.nookLook;
     if (pref.dailyLog && typeof pref.dailyLog === 'object') {
       const remoteLog = pref.dailyLog as ReadingState['dailyLog'];
-      for (const [day, pages] of Object.entries(remoteLog)) state.dailyLog[day] = preferRemote ? pages : Math.max(state.dailyLog[day] || 0, pages || 0);
+      if (dailyPagesSyncEnabled()) {
+        // Per-day records own the days now. This old copy is only a one-time import: it fills days this device has none for, or raises a day nobody
+        // has ever edited (no stamp), as dailyLog has always merged. It never overwrites a stamped day, so a stale copy cannot undo an edit.
+        state.dailyLog = { ...state.dailyLog };
+        for (const [day, pages] of Object.entries(remoteLog)) {
+          const mine = state.dailyLog[day];
+          if (mine === undefined || (!state.dailyLogMeta?.[day] && Number(pages) > mine)) state.dailyLog[day] = Number(pages) || 0;
+        }
+      } else for (const [day, pages] of Object.entries(remoteLog)) state.dailyLog[day] = preferRemote ? pages : Math.max(state.dailyLog[day] || 0, pages || 0);
     }
     if ((preferRemote || state.goal === 10) && Number(pref.goal) > 0) state.goal = Number(pref.goal);
     if ((preferRemote || !state.readingIntention) && typeof pref.readingIntention === 'string') state.readingIntention = pref.readingIntention;
@@ -262,7 +269,6 @@ export function mergeRemoteLibrary(local: ReadingState, collections: Collection[
     }
     if (pref.garden && typeof pref.garden === 'object') state.garden = mergeGarden(state.garden, pref.garden as ReadingState['garden']);
     if (pref.hiddenBookIds && typeof pref.hiddenBookIds === 'object') state.hiddenBookIds = { ...(pref.hiddenBookIds as ReadingState['hiddenBookIds']), ...state.hiddenBookIds };
-    if (pref.onDeviceOverrides && typeof pref.onDeviceOverrides === 'object') state.onDeviceOverrides = { ...(pref.onDeviceOverrides as ReadingState['onDeviceOverrides']), ...state.onDeviceOverrides };
   }
   return { state, collections: [...mergedCollections.values()], coverPicks, nookLook };
 }
@@ -414,7 +420,7 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
       continue;
     }
     libraryIds.set(item.local_book_id, old.id);
-    const body = { ...item, id: old.id, catalog_work_id: old.catalog_work_id, catalog_edition_id: old.catalog_edition_id } as Record<string, unknown>;
+    const body = { ...item, id: old.id, catalog_work_id: old.catalog_work_id, catalog_edition_id: old.catalog_edition_id, personal_data: { ...item.personal_data, onDevice: old.personal_data?.onDevice ?? null } } as Record<string, unknown>;
     const key = `book:${item.local_book_id}`;
     const gated = gate(key, old.revision, equalSyncRecord(old, body), () => mergeBookFirstSync(old, item), merged => equalSyncRecord(old, { ...body, ...merged }));
     if (!gated.write) continue;
@@ -515,7 +521,13 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
     markWritten(`book:${old.local_book_id}`, old.revision + 1);
   }
   const currentPrefs = remote.preferences[0];
-  const pref = { user_id: userId, preferences: snapshot.preferences };
+  // Device-local state never leaves the device, and (with per-day pages on) the old dailyLog copy is left exactly as the cloud has it.
+  const outgoing: Record<string, unknown> = { ...snapshot.preferences };
+  if (currentPrefs) {
+    if ('onDeviceOverrides' in currentPrefs.preferences) outgoing.onDeviceOverrides = currentPrefs.preferences.onDeviceOverrides;
+    if (dailyPagesSyncEnabled() && 'dailyLog' in currentPrefs.preferences) outgoing.dailyLog = currentPrefs.preferences.dailyLog;
+  } else if (dailyPagesSyncEnabled()) outgoing.dailyLog = {};
+  const pref = { user_id: userId, preferences: outgoing };
   if (!currentPrefs) {
     if (versions.revisions.preferences !== undefined || versions.conflicts.includes('preferences')) { versions.conflicts.push('preferences'); saveVersions(userId, versions); return { ok: true, conflict: true, libraryIds, shelfIds }; }
     const made = await rest('user_library_preferences', { method: 'POST', prefer: 'return=representation', body: { ...pref, revision: 1 } });

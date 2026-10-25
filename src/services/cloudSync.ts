@@ -21,7 +21,7 @@ const AUTO_GAP = 5 * 60 * 1000;
 const get = (k: string) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
 const put = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch {} };
 const userKey = (base: string, userId: string) => `${base}.${encodeURIComponent(userId)}`;
-const deviceId = () => { let d = get(DEVICE_KEY); if (!d) { d = (crypto.randomUUID?.() || String(Date.now()) + Math.random().toString(16).slice(2)); put(DEVICE_KEY, d); } return d; };
+export const deviceId = () => { let d = get(DEVICE_KEY); if (!d) { d = (crypto.randomUUID?.() || String(Date.now()) + Math.random().toString(16).slice(2)); put(DEVICE_KEY, d); } return d; };
 const hash = (s: string): string => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return `${s.length}:${h}`; };
 
 export type CloudStatus = { revision: number; updatedAt: string; device: string } | null;

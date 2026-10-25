@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { authVersion, currentUser, subscribeAuth } from '../services/supabase';
 import { backUpNow, cloudStatus, fetchCloudBackup, getSafetyCopy, isAutoBackup, lastSynced, markRestored, saveSafetyCopy, setAutoBackup, type CloudStatus } from '../services/cloudSync';
+import { loadDailyTies, requestDailyTieResolution } from '../services/dailyPagesSync';
 import { hasLibrarySyncConflicts, hasPendingLibrarySync, librarySyncAccountAllowed, requestLibraryUseCloud, resolveLibraryConflictsToLocal } from '../services/librarySync';
 
 /** Saves backup text as a file (Files app on iPhone/iPad, Downloads on a computer). Returns false when the device refused. */
@@ -37,6 +38,7 @@ export const CloudBackupSection: React.FC<{ onExportBackup: () => string; onImpo
   }, []);
   const libraryConflict = !!user && hasLibrarySyncConflicts(user.id);
   const libraryPending = !!user && hasPendingLibrarySync(user.id);
+  const dayTies = user ? loadDailyTies(user.id) : [];
   const libraryAccountBlocked = !!user && !librarySyncAccountAllowed(user.id);
 
   const refresh = async () => { const r = await cloudStatus(); if (r.ok) setStatus(r.status); };
@@ -87,6 +89,15 @@ export const CloudBackupSection: React.FC<{ onExportBackup: () => string; onImpo
         if (!saveBackupFile(onExportBackup())) { setMsg({ ok: false, text: 'The backup file could not be saved, so nothing was changed. Try again, or use Download backup above first.' }); return; }
         requestLibraryUseCloud(user!.id);
       }}>Use cloud for conflicts</button>}
+      {dayTies.length > 0 && <div role="alert" className="space-y-2">
+        <p className="text-xs text-amber-800 dark:text-amber-300">Two devices set different page counts for the same day at the very same moment. Neither was overwritten; choose which one to keep.</p>
+        {dayTies.map(tie => (
+          <div key={tie.day} className="grid grid-cols-2 gap-2">
+            <button type="button" className={btn} disabled={busy} onClick={() => requestDailyTieResolution(user!.id, tie.day, 'device')}>{tie.day}: keep this device ({tie.localPages} pages)</button>
+            <button type="button" className={btn} disabled={busy} onClick={() => requestDailyTieResolution(user!.id, tie.day, 'cloud')}>{tie.day}: use cloud ({tie.cloudPages} pages)</button>
+          </div>
+        ))}
+      </div>}
       {libraryAccountBlocked && <p role="alert" className="text-xs text-amber-800 dark:text-amber-300">This device’s library is linked to another account. Sign back into that account to sync it; this account’s cloud library was not loaded.</p>}
       {!libraryAccountBlocked && !libraryConflict && libraryPending && <p role="status" className="text-xs text-[#706256] dark:text-[#a89a8a]">Library changes are waiting to sync when the connection is available.</p>}
       <div className="grid grid-cols-2 gap-2">

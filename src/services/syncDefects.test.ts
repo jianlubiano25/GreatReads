@@ -13,11 +13,12 @@ import assert from 'node:assert/strict';
 import type { ReadingState } from '../types';
 import { hasLibrarySyncConflicts, hasPendingLibrarySync, loadRemoteLibrary, mergeRemoteLibrary, pausedLibraryKeys, resolveLibraryConflictsToCloud, resolveLibraryConflictsToLocal, syncLocalLibrary, type RemoteLibrarySnapshot } from './librarySync';
 import { mergePreferencesFirstSync } from './librarySyncMerge';
+import { decideDay, keepDeviceDay, loadDailyTies, setDailyPagesSyncOverride, stampDayEdit, syncDailyPages, takeCloudDay, type CloudDay } from './dailyPagesSync';
 
 const defect = (name: string, fn: () => Promise<void> | void) => test(name, { todo: 'known sync defect (see sync audit)' }, fn);
 
 const USER = 'user-1';
-const TABLES = ['user_library_books', 'user_book_annotations', 'user_shelves', 'user_shelf_books', 'user_reading_sessions', 'user_library_preferences'];
+const TABLES = ['user_library_books', 'user_book_annotations', 'user_shelves', 'user_shelf_books', 'user_reading_sessions', 'user_library_preferences', 'user_daily_pages'];
 
 const blank = (): ReadingState => ({
   status: {}, currentPage: {}, totalPages: {}, dailyLog: {}, notes: {}, highlights: {}, goal: 10, readingIntention: '',
@@ -25,6 +26,11 @@ const blank = (): ReadingState => ({
   garden: { v: 1, peaks: { bestStreak: 0, tenPageDays: 0, maxPagesInDay: 0, bestWeekGoalDays: 0, booksFinished: 0, totalPages: 0, highlights: 0, wordsAdded: 0, wordsLearned: 0 }, achievements: {}, plants: {}, placements: {}, celebrated: {}, vine: 0 },
   history: {}, ratings: {},
 });
+const T0 = Date.now() - 3_600_000;
+/** A user edit of one day, stamped like the app does (setDayPages). */
+const setDay = (s: ReadingState, day: string, pages: number, at: number, dev = 'dev-a'): ReadingState => ({ ...s, dailyLog: { ...s.dailyLog, [day]: pages }, dailyLogMeta: stampDayEdit(s.dailyLogMeta, day, at, dev) });
+const cloudDays = (w: { dayRows: () => Record<string, any>[] }) => Object.fromEntries(w.dayRows().filter(r => !r.deleted_at).map(r => [r.day, r.pages]));
+const cloudRow = (day: string, pages: number, editedAt: number, extra: Partial<CloudDay> = {}): CloudDay => ({ user_id: USER, day, pages, edited_at: new Date(editedAt).toISOString(), device_id: 'x', edit_seq: 1, revision: 1, updated_at: new Date(Math.max(editedAt, Date.now())).toISOString(), deleted_at: null, ...extra });
 const word = (id: string, learned = false) => ({ id, word: id, definition: 'd', isLearned: learned, addedAt: 1 });
 const book = (id: string) => ({ id, title: `Book ${id}`, author: 'A', shelf: 'mine' as const, difficulty: 0, isOnDevice: false, year: '', genre: '', summary: '', authorBio: '', pageCount: 100 });
 
@@ -42,14 +48,18 @@ function world() {
     if (!rows) return reply({ message: 'unknown table' }, 404);
     if (method === 'GET') return reply(rows.filter(r => r.user_id === eq(url, 'user_id')));
     const payload = init.body ? JSON.parse(String(init.body)) : {};
-    if (method === 'POST') { const row = { ...payload, id: payload.id || crypto.randomUUID(), revision: payload.revision || 1 }; rows.push(row); return reply([row], 201); }
+    if (method === 'POST') {
+      const made = (Array.isArray(payload) ? payload : [payload]).map((p: any) => ({ ...p, id: p.id || crypto.randomUUID(), revision: p.revision || 1, updated_at: new Date().toISOString() }));
+      rows.push(...made); return reply(made, 201);
+    }
     if (method === 'PATCH') {
       const row = rows.find(r => r.user_id === eq(url, 'user_id')
         && (!url.searchParams.has('local_book_id') || r.local_book_id === eq(url, 'local_book_id'))
         && (!url.searchParams.has('id') || r.id === eq(url, 'id'))
+        && (!url.searchParams.has('day') || r.day === eq(url, 'day'))
         && r.revision === Number(eq(url, 'revision')));
       if (!row) return reply([]);
-      Object.assign(row, payload); return reply([row]);
+      Object.assign(row, payload, { updated_at: new Date().toISOString() }); return reply([row]);
     }
     return reply({}, 404);
   }) as typeof fetch;
@@ -59,13 +69,21 @@ function world() {
     const m = new Map<string, string>([['readlife.sb1', JSON.stringify({ access: 'a', refresh: 'r', exp: Date.now() + 3.6e6, user: { id: USER } })]]);
     const storage = { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k), key: (i: number) => [...m.keys()][i] ?? null, get length() { return m.size; } };
     const use = () => Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage });
-    /** What the app does on open: pull the cloud copy, merge it into local, then push. */
+    /** What the app does for per-day pages: pull the cloud's days, apply the newer ones, upload this device's newer ones. */
+    const days = async (state: ReadingState): Promise<{ state: ReadingState; ok: boolean }> => {
+      use();
+      let holder = state;
+      const ok = await syncDailyPages(USER, { getState: () => holder, apply: change => { holder = change(holder); } });
+      return { state: holder, ok };
+    };
+    /** What the app does on open: pull the cloud copy, merge it into local, then push, then sync the days. */
     const open = async (state: ReadingState, books: any[] = []) => {
       use();
       const remote = await loadRemoteLibrary(USER);
       const merged = remote ? mergeRemoteLibrary(state, [], remote, {}, false).state : state;
       const ok = await syncLocalLibrary(USER, { state: merged, books, collections: [], coverPicks: {} });
-      return { state: merged, ok };
+      const d = await days(merged);
+      return { state: d.state, ok };
     };
     /** What the app does after a local edit: push, then take the cloud copy back. Records paused by a conflict are left alone; the rest keep refreshing. */
     const edit = async (state: ReadingState, books: any[] = []) => {
@@ -73,7 +91,8 @@ function world() {
       const ok = await syncLocalLibrary(USER, { state, books, collections: [], coverPicks: {} });
       let after = state;
       if (ok) { const remote = await loadRemoteLibrary(USER); if (remote) after = mergeRemoteLibrary(state, [], remote, {}, true, pausedLibraryKeys(USER)).state; }
-      return { state: after, ok };
+      const d = await days(after);
+      return { state: d.state, ok };
     };
     const conflicts = () => { use(); return hasLibrarySyncConflicts(USER); };
     const paused = () => { use(); return [...pausedLibraryKeys(USER)].sort(); };
@@ -87,23 +106,27 @@ function world() {
       return mergeRemoteLibrary(state, [], remote!, {}, true).state;
     };
     const useDevice = () => { use(); resolveLibraryConflictsToLocal(USER); };
-    return { open, edit, conflicts, paused, pending, useCloud, useDevice };
+    const ties = () => { use(); return loadDailyTies(USER); };
+    return { open, edit, days, ties, conflicts, paused, pending, useCloud, useDevice };
   };
   const prefs = () => tables.get('user_library_preferences')![0]?.preferences as any;
   const setOnline = (onLine: boolean) => Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine } });
   const done = () => {
+    setDailyPagesSyncOverride(undefined);
     globalThis.fetch = realFetch;
     if (realStorage) Object.defineProperty(globalThis, 'localStorage', realStorage); else delete (globalThis as any).localStorage;
     if (realNavigator) Object.defineProperty(globalThis, 'navigator', realNavigator);
   };
-  return { device, prefs, tables, setOnline, done };
+  const dayRows = () => tables.get('user_daily_pages')!;
+  return { device, prefs, tables, setOnline, dayRows, done };
 }
 
 /* ---------- regression guards: these work today and must keep working ---------- */
 
-test('guard: a day lowered on the same device stays lowered after a push and refresh', async () => {
+test('guard (kill switch off, legacy path): a day lowered on the same device stays lowered after a push and refresh', async () => {
   const w = world();
   try {
+    setDailyPagesSyncOverride(false);
     const a = w.device();
     let s = blank(); s.dailyLog = { '2026-10-20': 10 };
     s = (await a.open(s)).state;
@@ -138,11 +161,11 @@ test('second device first sync does not pause its own edits as a conflict', asyn
     const sb = blank(); sb.dailyLog = { '2026-10-21': 7 };
     await b.open(sb);
     assert.equal(b.conflicts(), false, 'first sync of a second device must not be flagged as a conflict');
-    assert.deepEqual(w.prefs().dailyLog, { '2026-10-20': 10, '2026-10-21': 7 }, 'both devices\' days are in the cloud');
+    assert.deepEqual(cloudDays(w), { '2026-10-20': 10, '2026-10-21': 7 }, 'both devices\' days are in the cloud');
   } finally { w.done(); }
 });
 
-defect('daily pages edited on two devices for different days both reach the cloud', async () => {
+test('daily pages edited on two devices for different days both reach the cloud and both devices', async () => {
   const w = world();
   try {
     const a = w.device(); const b = w.device();
@@ -150,12 +173,12 @@ defect('daily pages edited on two devices for different days both reach the clou
     await a.open(sa);
     const sb = blank(); sb.dailyLog = { '2026-10-21': 7 };
     await b.open(sb);
-    const sa2 = blank(); sa2.dailyLog = { '2026-10-20': 10, '2026-10-22': 5 };
-    await a.edit(sa2);
-    const log = w.prefs().dailyLog;
-    assert.equal(log['2026-10-20'], 10);
-    assert.equal(log['2026-10-21'], 7, 'device B day must not be lost');
-    assert.equal(log['2026-10-22'], 5);
+    const sa2 = setDay(blank(), '2026-10-22', 5, T0); sa2.dailyLog['2026-10-20'] = 10;
+    const refreshedA = (await a.edit(sa2)).state;
+    assert.deepEqual(cloudDays(w), { '2026-10-20': 10, '2026-10-21': 7, '2026-10-22': 5 }, 'no day lost');
+    assert.equal(refreshedA.dailyLog['2026-10-21'], 7, 'device A receives device B\'s day');
+    const refreshedB = (await b.edit(sb)).state;
+    assert.equal(refreshedB.dailyLog['2026-10-22'], 5, 'device B receives device A\'s day');
   } finally { w.done(); }
 });
 
@@ -230,11 +253,6 @@ defect('a book un-hidden on one device is not re-hidden by a second device that 
     assert.equal(reopenedB.hiddenBookIds.b9, undefined);
     assert.equal(w.prefs().hiddenBookIds.b9, undefined);
   } finally { w.done(); }
-});
-
-/* Contract for Phase 2 (not testable until the per-day records exist): written here so it is not forgotten. */
-defect('an exact-timestamp tie on a day with different pages is reported for the user to choose', () => {
-  assert.fail('needs per-day timestamps (Phase 2)');
 });
 
 /* ---------- Phase 1: second-device first sync, per-record conflicts, use cloud, reconnect ---------- */
@@ -356,7 +374,11 @@ test('offline edits stay pending, then upload on reconnect without a conflict', 
   } finally { w.done(); }
 });
 
-test('first-sync preferences merge: gaps filled, collections unioned, only two different non-empty values conflict', () => {
+test('first-sync preferences merge: gaps filled, collections unioned, only two different non-empty values conflict (legacy daily log merge, kill switch off)', () => {
+  setDailyPagesSyncOverride(false);
+  try { legacyPrefsMerge(); } finally { setDailyPagesSyncOverride(undefined); }
+});
+function legacyPrefsMerge() {
   const base = { goal: 10, readingIntention: '', profile: { name: '', photo: '', theme: 'auto' }, dailyLog: {}, words: [], hiddenBookIds: {}, onDeviceOverrides: {}, coverPicks: {}, nookLook: null };
   const merged = mergePreferencesFirstSync(
     { ...base, goal: 12, dailyLog: { d1: 5, d2: 9 }, words: [word('w1')], hiddenBookIds: { x: true } },
@@ -370,4 +392,212 @@ test('first-sync preferences merge: gaps filled, collections unioned, only two d
   assert.equal(mergePreferencesFirstSync({ ...base, goal: 12 }, { ...base, goal: 15 }), null, 'two chosen goals disagree');
   assert.equal(mergePreferencesFirstSync({ ...base, profile: { name: 'Ana', photo: '', theme: 'auto' } }, { ...base, profile: { name: 'Bea', photo: '', theme: 'auto' } }), null, 'two profile names disagree');
   assert.equal(mergePreferencesFirstSync({ ...base, nookLook: { a: 1 } }, { ...base, nookLook: { a: 2 } }), null);
+}
+
+/* ---------- Phase 2: per-day pages ---------- */
+
+const D = '2026-10-20';
+
+test('the later edit wins per day, and lowering a day on one device lowers it on the other', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const sa = setDay(blank(), D, 10, T0);
+    await a.open(sa);
+    const sb = (await b.open(blank())).state;
+    assert.equal(sb.dailyLog[D], 10);
+    const lowered = (await b.edit(setDay(sb, D, 6, T0 + 1000, 'dev-b'))).state;
+    assert.equal(lowered.dailyLog[D], 6);
+    const refreshedA = (await a.edit(sa)).state; // A still holds the older 10
+    assert.equal(refreshedA.dailyLog[D], 6, 'the older value does not win');
+    assert.equal(cloudDays(w)[D], 6);
+    assert.deepEqual(a.ties(), []);
+  } finally { w.done(); }
+});
+
+test('an exact same-moment edit with different pages is a tie: nothing is overwritten and the owner chooses (cloud)', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const sa = setDay(blank(), D, 10, T0);
+    await a.open(sa);
+    const sb = (await b.open(blank())).state;
+    await a.edit(setDay(sa, D, 12, T0 + 5000, 'dev-a'));
+    const tied = (await b.edit(setDay(sb, D, 15, T0 + 5000, 'dev-b'))).state;
+    assert.equal(cloudDays(w)[D], 12, 'the cloud value was not overwritten');
+    assert.equal(tied.dailyLog[D], 15, 'this device\'s value was not overwritten either');
+    const ties = b.ties();
+    assert.equal(ties.length, 1);
+    assert.deepEqual([ties[0].day, ties[0].localPages, ties[0].cloudPages], [D, 15, 12]);
+    const chosen = takeCloudDay(tied, ties[0]);
+    const after = await b.days(chosen);
+    assert.equal(after.state.dailyLog[D], 12);
+    assert.deepEqual(b.ties(), [], 'the tie is gone once chosen');
+    assert.equal(cloudDays(w)[D], 12);
+  } finally { w.done(); }
+});
+
+test('a tie resolved with "keep this device" uploads this device\'s value', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const sa = setDay(blank(), D, 10, T0);
+    await a.open(sa);
+    const sb = (await b.open(blank())).state;
+    await a.edit(setDay(sa, D, 12, T0 + 5000));
+    const tied = (await b.edit(setDay(sb, D, 15, T0 + 5000, 'dev-b'))).state;
+    assert.equal(b.ties().length, 1);
+    const kept = (await b.days(keepDeviceDay(tied, D))).state;
+    assert.equal(kept.dailyLog[D], 15);
+    assert.equal(cloudDays(w)[D], 15);
+    assert.deepEqual(b.ties(), []);
+    assert.equal((await a.edit(setDay(sa, D, 12, T0 + 5000))).state.dailyLog[D], 15, 'the other device then receives it');
+  } finally { w.done(); }
+});
+
+test('legacy values (never edited since stamping) merge to the larger one with no tie; any real edit beats a legacy value, even a lower one', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const sa = blank(); sa.dailyLog = { [D]: 5 };
+    await a.open(sa);
+    const sb = blank(); sb.dailyLog = { [D]: 8 };
+    await b.open(sb);
+    assert.deepEqual(a.ties(), []); assert.deepEqual(b.ties(), []);
+    assert.equal((await a.edit(sa)).state.dailyLog[D], 8, 'the larger legacy value wins');
+    assert.equal(cloudDays(w)[D], 8);
+    const real = (await a.edit(setDay(blank(), D, 3, T0))).state; // a real, deliberate edit down to 3
+    assert.equal(real.dailyLog[D], 3);
+    assert.equal(cloudDays(w)[D], 3, 'a real edit beats a legacy value');
+  } finally { w.done(); }
+});
+
+test('a day missing from the cloud or from a device is never a deletion; only an explicit deleted_at removes it', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const sa = blank(); sa.dailyLog = { '2026-10-01': 1, '2026-10-02': 2 };
+    await a.open(sa);
+    const sb = blank(); sb.dailyLog = { '2026-10-01': 1 };
+    const afterB = (await b.open(sb)).state;
+    assert.equal(afterB.dailyLog['2026-10-02'], 2, 'B receives the day it did not have');
+    assert.deepEqual(cloudDays(w), { '2026-10-01': 1, '2026-10-02': 2 }, 'the cloud keeps both');
+    // an explicit tombstone newer than this device's edit removes the day
+    const row = w.dayRows().find(r => r.day === '2026-10-02')!;
+    Object.assign(row, { deleted_at: new Date().toISOString(), edited_at: new Date(T0 + 9000).toISOString(), revision: row.revision + 1 });
+    const gone = (await b.days(setDay(afterB, '2026-10-02', 2, T0))).state;
+    assert.equal('2026-10-02' in gone.dailyLog, false);
+  } finally { w.done(); }
+});
+
+test('an untrustworthy clock never wins silently: a far-future local edit or a cloud time far ahead of its own server time is a tie', () => {
+  const now = Date.now();
+  const hour = 3_600_000;
+  const cloud = cloudRow(D, 7, now - 1000);
+  assert.equal(decideDay(9, { editedAt: now + 2 * hour, deviceId: 'a', editSeq: 1 }, cloud, now), 'tie', 'local edit time is in the future');
+  assert.equal(decideDay(9, { editedAt: now, deviceId: 'a', editSeq: 1 }, cloud, now), 'push-local', 'a normal newer local edit wins');
+  const future = cloudRow(D, 7, now + 2 * hour, { updated_at: new Date(now).toISOString() });
+  assert.equal(decideDay(9, { editedAt: now, deviceId: 'a', editSeq: 1 }, future, now), 'tie', 'cloud time is far ahead of the server\'s own time');
+  assert.equal(decideDay(7, { editedAt: now, deviceId: 'a', editSeq: 1 }, future, now), 'same', 'equal pages are never a conflict');
+  assert.equal(decideDay(undefined, undefined, undefined, now), 'skip');
+  assert.equal(decideDay(4, undefined, undefined, now), 'push-local');
+});
+
+test('stampDayEdit is strictly later than the previous stamp even if the clock goes backwards, and counts edits', () => {
+  const one = stampDayEdit(undefined, D, 5000, 'dev');
+  const two = stampDayEdit(one, D, 1000, 'dev');
+  assert.equal(two[D].editedAt, 5001);
+  assert.equal(two[D].editSeq, 2);
+  assert.equal(stampDayEdit(two, '2026-10-21', 10, 'dev')[D].editedAt, 5001, 'other days are left alone');
+});
+
+test('with per-day pages on, the old preferences.dailyLog is read-only: never modified, imported once, and a stale copy cannot undo a stamped day', async () => {
+  const w = world();
+  try {
+    w.tables.get('user_library_preferences')!.push({ user_id: USER, preferences: { goal: 10, readingIntention: '', profile: { name: '', photo: '', theme: 'auto' }, dailyLog: { '2026-10-01': 4, [D]: 9 }, words: [], hiddenBookIds: {}, onDeviceOverrides: {}, coverPicks: {}, nookLook: null }, revision: 1 });
+    const legacyBefore = JSON.stringify(w.prefs().dailyLog);
+    const a = w.device();
+    let s = setDay(blank(), D, 2, T0); // a deliberate, stamped value lower than the stale old copy
+    s = (await a.open(s)).state;
+    s = (await a.edit({ ...s, goal: 12 })).state;
+    assert.equal(JSON.stringify(w.prefs().dailyLog), legacyBefore, 'the old copy is untouched');
+    assert.equal(s.dailyLog[D], 2, 'the stale old copy did not undo the stamped edit');
+    assert.equal(s.dailyLog['2026-10-01'], 4, 'a day only the old copy had is imported');
+    assert.equal(cloudDays(w)['2026-10-01'], 4, '... and uploaded once as a legacy value');
+    assert.equal(cloudDays(w)[D], 2);
+  } finally { w.done(); }
+});
+
+test('kill switch off: per-day pages do nothing and the old preferences.dailyLog path behaves exactly as before', async () => {
+  const w = world();
+  try {
+    setDailyPagesSyncOverride(false);
+    const a = w.device();
+    const s = (await a.open(setDay(blank(), D, 6, T0))).state;
+    assert.equal(w.dayRows().length, 0, 'nothing written to the daily table');
+    assert.equal(w.prefs().dailyLog[D], 6, 'the old copy is still written');
+    assert.equal(s.dailyLog[D], 6);
+  } finally { w.done(); }
+});
+
+test('a day edited offline stays on this device, then uploads on reconnect', async () => {
+  const w = world();
+  try {
+    const a = w.device();
+    let s = (await a.open(blank())).state;
+    w.setOnline(false);
+    s = setDay(s, D, 11, T0);
+    const offline = await a.edit(s);
+    assert.equal(offline.ok, false);
+    assert.equal(w.dayRows().length, 0);
+    assert.equal(offline.state.dailyLog[D], 11, 'the edit is still here');
+    w.setOnline(true);
+    const back = await a.edit(s);
+    assert.equal(back.ok, true);
+    assert.deepEqual(cloudDays(w), { [D]: 11 });
+  } finally { w.done(); }
+});
+
+test('a lost race (someone else wrote the day first) is retried and re-decided, not overwritten', async () => {
+  const w = world();
+  try {
+    const a = w.device();
+    await a.open(setDay(blank(), D, 10, T0));
+    const row = w.dayRows()[0];
+    const realFetch = globalThis.fetch;
+    let raced = false;
+    globalThis.fetch = (async (input: any, init: any = {}) => {
+      // between A's read and A's write, another device writes the same day later
+      if (!raced && (init.method || 'GET') === 'PATCH') { raced = true; Object.assign(row, { pages: 20, edited_at: new Date(T0 + 60_000).toISOString(), revision: row.revision + 1 }); }
+      return realFetch(input, init);
+    }) as typeof fetch;
+    const first = await a.days(setDay(setDay(blank(), D, 10, T0), D, 12, T0 + 1000));
+    assert.equal(first.ok, false, 'the lost compare-and-swap reports a retry');
+    assert.equal(row.pages, 20, 'the other device\'s newer value is intact');
+    globalThis.fetch = realFetch;
+    const second = await a.days(setDay(setDay(blank(), D, 10, T0), D, 12, T0 + 1000));
+    assert.equal(second.ok, true);
+    assert.equal(second.state.dailyLog[D], 20, 'on retry the newer cloud value wins');
+  } finally { w.done(); }
+});
+
+/* ---------- device-local "on this device" is never synced ---------- */
+
+test('"on this device" stays on the device: never uploaded, never applied, and the cloud\'s old value is left as it is', async () => {
+  const w = world();
+  try {
+    const bk = book('b1');
+    w.tables.get('user_library_books')!.push({ id: 'cloud-b1', user_id: USER, local_book_id: 'b1', status: null, reading_progress: {}, personal_cover: null, book_snapshot: bk, personal_data: { isCustomBook: true, onDevice: true, rating: null }, revision: 1, deleted_at: null });
+    const a = w.device();
+    const s0 = blank(); s0.customBooks = [bk as any]; s0.status = { b1: 'now' }; s0.onDeviceOverrides = { b1: false, b2: true };
+    const opened = (await a.open(s0, [bk, book('b2')])).state;
+    const row = w.tables.get('user_library_books')![0];
+    assert.equal(row.status, 'now');
+    assert.equal(row.personal_data.onDevice, true, 'the cloud\'s old value is preserved, not overwritten with this device\'s');
+    assert.equal(w.tables.get('user_library_books')!.some(r => r.local_book_id === 'b2'), false, 'a book with only a device flag gets no cloud row');
+    assert.deepEqual(w.prefs().onDeviceOverrides, {}, 'the device flags are not in the shared preferences');
+    assert.deepEqual(opened.onDeviceOverrides, { b1: false, b2: true }, 'this device keeps its own flags (the cloud\'s true is not applied)');
+    await a.edit({ ...opened, status: { b1: 'done' } }, [bk]);
+    assert.equal(w.tables.get('user_library_books')![0].personal_data.onDevice, true);
+  } finally { w.done(); }
 });

@@ -126,11 +126,19 @@ export interface BookHistory {
   lastRead?: number; // when you last read or moved it to Reading now (time stamp; decides which Reading now book comes first)
 }
 
+/** When and where the pages for one day were last edited by the user (decides which device's value wins in the cloud). */
+export interface DayEdit {
+  editedAt: number;  // ms since 1970 by this device's clock; 0 = a value that predates this tracking (any real edit beats it)
+  deviceId: string;
+  editSeq: number;   // counts this device's edits of the day
+}
+
 export interface ReadingState {
   status: Record<string, BookStatus>;
   currentPage: Record<string, number>;
   totalPages: Record<string, number>;
   dailyLog: Record<string, number>; // "YYYY-MM-DD" -> pages read
+  dailyLogMeta?: Record<string, DayEdit>; // "YYYY-MM-DD" -> who/when last edited that day; set only by setDayPages and updateBookProgress
   notes: Record<string, string>;
   highlights: Record<string, HighlightItem[]>;
   goal: number;

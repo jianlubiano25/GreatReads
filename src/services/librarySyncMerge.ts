@@ -7,6 +7,7 @@
  * then pauses just that record. Pure functions: no storage, no network.
  */
 import type { ReadingState } from '../types';
+import { dailyPagesSyncEnabled } from './dailyPagesSync';
 import type { AnnotationRow, LibraryBookRow, LibrarySyncSnapshot, ShelfBookRow, ShelfRow } from './librarySync';
 
 export function stableJson(value: unknown): string {
@@ -65,7 +66,7 @@ export function mergeBookFirstSync(old: LibraryBookRow, item: LibrarySyncSnapsho
       personal_cover: pick(old.personal_cover, item.personal_cover),
       // A catalogue snapshot is not a user edit, so the cloud copy stands. A custom book's snapshot IS the user's own data.
       book_snapshot: isCustom ? pick(old.book_snapshot, item.book_snapshot) : (old.book_snapshot ?? item.book_snapshot),
-      personal_data: { rating: pick(cloudData.rating ?? null, localData.rating ?? null), onDevice: cloudData.onDevice ?? localData.onDevice ?? null, isCustomBook: isCustom },
+      personal_data: { rating: pick(cloudData.rating ?? null, localData.rating ?? null), onDevice: cloudData.onDevice ?? null, isCustomBook: isCustom },
       deleted_at: null,
     };
   });
@@ -121,7 +122,8 @@ export function mergePreferencesFirstSync(remote: Record<string, unknown>, local
     out.words = [...words.values()];
     if (isSet(remote.garden) && isSet(local.garden)) out.garden = mergeGarden(local.garden as ReadingState['garden'], remote.garden as ReadingState['garden']);
     out.hiddenBookIds = { ...obj(remote.hiddenBookIds), ...obj(local.hiddenBookIds) };
-    out.onDeviceOverrides = { ...obj(remote.onDeviceOverrides), ...obj(local.onDeviceOverrides) };
+    out.onDeviceOverrides = obj(remote.onDeviceOverrides); // device-local: never taken from this device
+    if (dailyPagesSyncEnabled()) out.dailyLog = obj(remote.dailyLog); // per-day records own the days; the old copy is left exactly as the cloud has it
     const picks: Record<string, unknown> = { ...obj(local.coverPicks) };
     for (const [key, value] of Object.entries(obj(remote.coverPicks))) picks[key] = key in picks ? pick(value, picks[key]) : value;
     out.coverPicks = picks;

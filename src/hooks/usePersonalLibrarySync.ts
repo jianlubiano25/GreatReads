@@ -5,6 +5,7 @@ import { exportCoverPicks, restoreCoverPicks } from '../services/books/covers';
 import { loadCollections, type Collection } from '../services/libraryCollections';
 import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
 import { claimLibrarySyncAccount, hasPendingLibrarySync, librarySyncAccountAllowed, loadRemoteLibrary, markPersonalCollectionDeleted, markPersonalMembershipDeleted, mergeRemoteLibrary, pausedLibraryKeys, resolveLibraryConflictsToCloud, syncLocalLibrary } from '../services/librarySync';
+import { keepDeviceDay, loadDailyTies, syncDailyPages, takeCloudDay } from '../services/dailyPagesSync';
 
 export function usePersonalLibrarySync(args: {
   state: ReadingState; books: Book[]; collections: Collection[];
@@ -20,10 +21,13 @@ export function usePersonalLibrarySync(args: {
   const ready = useRef('');
   const stopped = useRef(false);
   const running = useRef(false);
+  const daysRunning = useRef(false);
+  const daysAgain = useRef(false);
   const retryDelay = useRef(1500);
   const ignoreState = useRef('');
   const ignoreCollections = useRef('');
   const previousCollections = useRef(args.collections);
+  const lastDays = useRef<{ log: unknown; meta: unknown }>({ log: args.state.dailyLog, meta: args.state.dailyLogMeta });
 
   useEffect(() => {
     stopped.current = false;
@@ -52,6 +56,21 @@ export function usePersonalLibrarySync(args: {
       return merged;
     };
 
+    /** Per-day pages: pull the cloud's days, apply the newer ones, upload this device's newer ones. Never runs twice at once; a request that arrives meanwhile runs once more after. */
+    const syncDays = async (): Promise<boolean> => {
+      if (stopped.current || ready.current !== userId || currentUser()?.id !== userId) return true;
+      if (daysRunning.current) { daysAgain.current = true; return true; }
+      daysRunning.current = true;
+      try {
+        let ok = true;
+        do {
+          daysAgain.current = false;
+          ok = await syncDailyPages(userId, { getState: () => stateRef.current, apply: change => applyRef.current(change) }) && ok;
+        } while (daysAgain.current && !stopped.current);
+        return ok;
+      } catch { return false; } finally { daysRunning.current = false; }
+    };
+
     const bootstrap = async () => {
       if (stopped.current || running.current || !librarySyncAccountAllowed(userId) || (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
       claimLibrarySyncAccount(userId);
@@ -66,10 +85,14 @@ export function usePersonalLibrarySync(args: {
         if (!ok) throw new Error('cloud write deferred');
         ready.current = userId;
         retryDelay.current = 1500;
-        cancelRealtime = subscribeLibraryRealtime(userId, async () => {
-          if (stopped.current || currentUser()?.id !== userId || hasPendingLibrarySync(userId)) return;
+        if (!await syncDays()) throw new Error('daily pages deferred');
+        cancelRealtime = subscribeLibraryRealtime(userId, async table => {
+          if (stopped.current || currentUser()?.id !== userId) return;
+          if (table === 'user_daily_pages') { void syncDays(); return; }
+          if (hasPendingLibrarySync(userId)) return;
           const latest = await loadRemoteLibrary(userId);
           if (latest) applyRemote(latest, true);
+          if (table === 'resync') void syncDays(); // after a reconnect, anything may have changed
         });
       } catch {
         if (!stopped.current) {
@@ -84,7 +107,8 @@ export function usePersonalLibrarySync(args: {
       running.current = true;
       try {
         const ok = await syncLocalLibrary(userId, { state: stateRef.current, books: booksRef.current, collections: collectionsRef.current, coverPicks: exportCoverPicks() });
-        if (!ok && !stopped.current) {
+        const daysOk = await syncDays();
+        if ((!ok || !daysOk) && !stopped.current) {
           retryTimer = setTimeout(() => void flush(), retryDelay.current);
           retryDelay.current = Math.min(60_000, retryDelay.current * 2);
         } else {
@@ -110,14 +134,29 @@ export function usePersonalLibrarySync(args: {
       } finally { running.current = false; }
     };
 
+    /** The owner chose a value for a day where two devices made different edits at the very same moment. */
+    const onDailyTie = (event: Event) => {
+      const { day, choice } = (event as CustomEvent<{ day: string; choice: 'device' | 'cloud' }>).detail || {};
+      const tie = loadDailyTies(userId).find(item => item.day === day);
+      if (!tie) return;
+      applyRef.current(prev => choice === 'cloud' ? takeCloudDay(prev, tie) : keepDeviceDay(prev, day));
+      setTimeout(() => void syncDays(), 0);
+    };
+
     void bootstrap();
     const onOnline = () => { if (ready.current !== userId) void bootstrap(); else void flush(); };
     const onUseCloud = () => void useCloud();
+    const onDaysRun = () => void syncDays();
+    let localChangeTimer: ReturnType<typeof setTimeout> | undefined;
+    const onLocalChange = () => { if (localChangeTimer) clearTimeout(localChangeTimer); localChangeTimer = setTimeout(() => void flush(), 800); };
     const onManualSync = () => void flush();
     const onHide = () => void flush();
     window.addEventListener('online', onOnline);
     window.addEventListener('greatreads-library-sync-request', onManualSync);
     window.addEventListener('greatreads-library-use-cloud', onUseCloud);
+    window.addEventListener('greatreads-daily-tie', onDailyTie);
+    window.addEventListener('greatreads-daily-pages-run', onDaysRun);
+    window.addEventListener('greatreads-library-local-change', onLocalChange);
     window.addEventListener('pagehide', onHide);
     document.addEventListener('visibilitychange', onHide);
     const poll = setInterval(() => { if (ready.current === userId && hasPendingLibrarySync(userId)) void flush(); }, 20_000);
@@ -126,6 +165,10 @@ export function usePersonalLibrarySync(args: {
       window.removeEventListener('online', onOnline);
       window.removeEventListener('greatreads-library-sync-request', onManualSync);
       window.removeEventListener('greatreads-library-use-cloud', onUseCloud);
+      window.removeEventListener('greatreads-daily-tie', onDailyTie);
+      window.removeEventListener('greatreads-daily-pages-run', onDaysRun);
+      window.removeEventListener('greatreads-library-local-change', onLocalChange);
+      if (localChangeTimer) clearTimeout(localChangeTimer);
       window.removeEventListener('pagehide', onHide);
       document.removeEventListener('visibilitychange', onHide);
       clearInterval(poll);
@@ -137,11 +180,15 @@ export function usePersonalLibrarySync(args: {
   useEffect(() => {
     if (!userId || ready.current !== userId) return;
     const current = JSON.stringify(args.state);
-    if (ignoreState.current && ignoreState.current === current) { ignoreState.current = ''; return; }
+    const daysChanged = lastDays.current.log !== args.state.dailyLog || lastDays.current.meta !== args.state.dailyLogMeta;
+    lastDays.current = { log: args.state.dailyLog, meta: args.state.dailyLogMeta };
+    // Day edits upload on their own short timer, so a quick page tap never waits for the slower library sync.
+    const daysTimer = daysChanged ? setTimeout(() => window.dispatchEvent(new Event('greatreads-daily-pages-run')), 300) : undefined;
+    if (ignoreState.current && ignoreState.current === current) { ignoreState.current = ''; return () => { if (daysTimer) clearTimeout(daysTimer); }; }
     const timer = setTimeout(() => {
       if (currentUser()?.id === userId && ready.current === userId) void syncLocalLibrary(userId, { state: stateRef.current, books: booksRef.current, collections: collectionsRef.current, coverPicks: exportCoverPicks() });
     }, 500);
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(timer); if (daysTimer) clearTimeout(daysTimer); };
   }, [args.state, userId]);
 
   useEffect(() => {

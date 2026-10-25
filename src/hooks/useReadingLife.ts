@@ -15,6 +15,7 @@ import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
 import { applyMerge, findDuplicateGroups, idMapOf, remapCollections } from '../services/mergeDuplicates';
 import { exportCollections, loadCollections, restoreCollectionsFromBackup, saveCollections } from '../services/libraryCollections';
 import { markPersonalAnnotationDeleted, markPersonalBookDeleted } from '../services/librarySync';
+import { stampDayEdit } from '../services/dailyPagesSync';
 
 // Small helper lists that are not persistentCache instances but can be rebuilt (never user data)
 export const EXTRA_CLEARABLE = ['readlife.preload', 'readlife.loaded', 'readlife.phoneticTried'];
@@ -270,10 +271,11 @@ export function useReadingLife() {
   // Actions
   // Set an exact page count for any day (used by tapping a day in the week strip)
   const setDayPages = useCallback((dateKey: string, pages: number) => {
-    setState(prev => ({
-      ...prev,
-      dailyLog: { ...prev.dailyLog, [dateKey]: Math.max(0, pages) },
-    }));
+    setState(prev => {
+      const value = Math.max(0, pages);
+      if (prev.dailyLog[dateKey] === value) return prev; // nothing changed, so nothing to stamp
+      return { ...prev, dailyLog: { ...prev.dailyLog, [dateKey]: value }, dailyLogMeta: stampDayEdit(prev.dailyLogMeta, dateKey) };
+    });
   }, []);
 
   const updateBookProgress = useCallback((bookId: string | number, page: number, total?: number) => {
@@ -297,6 +299,7 @@ export function useReadingLife() {
           ...prev.dailyLog,
           [todayK]: Math.max(0, (prev.dailyLog[todayK] || 0) + diff),
         } : prev.dailyLog,
+        dailyLogMeta: diff !== 0 ? stampDayEdit(prev.dailyLogMeta, todayK) : prev.dailyLogMeta,
         // Reading pages starts the book and makes it the latest one you read
         history: diff > 0 ? { ...prev.history, [idKey]: stampProgress(prev.history[idKey], todayK, Date.now()) } : prev.history,
       };
