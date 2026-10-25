@@ -18,6 +18,7 @@ import { applyDeviceSettings, exportDeviceSettings, mergeDeviceSettings, mergeNa
 import { NO_PREFS, loadStorePrefs, saveStorePrefs } from './store/prefs';
 import { getFontPrefs, setFontPrefs } from './fontPrefs';
 import { getNookMatchesTheme, getWindowFollowsTime, setNookMatchesTheme, setWindowFollowsTime } from './nookPrefs';
+import { setSettingsRecordsOverride } from './settingsRecordsFlag';
 import { decideDay, keepDeviceDay, loadDailyTies, setDailyPagesSyncOverride, stampDayEdit, syncDailyPages, takeCloudDay, type CloudDay } from './dailyPagesSync';
 
 const defect = (name: string, fn: () => Promise<void> | void) => test(name, { todo: 'known sync defect (see sync audit)' }, fn);
@@ -739,9 +740,9 @@ test('offline edits stay pending, then upload on reconnect without a conflict', 
   } finally { w.done(); }
 });
 
-test('first-sync preferences merge: gaps filled, collections unioned, only two different non-empty values conflict (legacy daily log merge, kill switch off)', () => {
-  setDailyPagesSyncOverride(false);
-  try { legacyPrefsMerge(); } finally { setDailyPagesSyncOverride(undefined); }
+test('first-sync preferences merge: gaps filled, collections unioned, only two different non-empty values conflict (legacy daily log merge, both kill switches off)', () => {
+  setDailyPagesSyncOverride(false); setSettingsRecordsOverride(false);
+  try { legacyPrefsMerge(); } finally { setDailyPagesSyncOverride(undefined); setSettingsRecordsOverride(undefined); }
 });
 function legacyPrefsMerge() {
   const base = { goal: 10, readingIntention: '', profile: { name: '', photo: '', theme: 'auto' }, dailyLog: {}, words: [], hiddenBookIds: {}, onDeviceOverrides: {}, coverPicks: {}, nookLook: null };

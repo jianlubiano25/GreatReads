@@ -18,9 +18,9 @@ const key = (id: string) => `word:${id}`;
 
 /* ---------- the switch ---------- */
 
-test('the switch is OFF by default, "1" turns it on, "0" always wins', () => {
+test('the switch is ON by default for signed-in accounts; "0" is the emergency kill switch', () => {
   setSettingsRecordsOverride(undefined);
-  assert.equal(settingsRecordsSyncEnabled(), false);
+  assert.equal(settingsRecordsSyncEnabled(), true);
   setSettingsRecordsOverride(true); assert.equal(settingsRecordsSyncEnabled(), true);
   setSettingsRecordsOverride(false); assert.equal(settingsRecordsSyncEnabled(), false);
   setSettingsRecordsOverride(undefined);

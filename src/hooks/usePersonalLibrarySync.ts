@@ -109,7 +109,7 @@ export function usePersonalLibrarySync(args: {
         ready.current = userId;
         retryDelay.current = 1500;
         if (!await syncDays()) throw new Error('daily pages deferred');
-        if (!await syncSettings()) throw new Error('settings records deferred');
+        if (!await syncSettings()) setTimeout(() => void syncSettings(), retryDelay.current); // never blocks the rest of sync (for example while the two tables are not there yet)
         cancelRealtime = subscribeLibraryRealtime(userId, async table => {
           if (stopped.current || currentUser()?.id !== userId) return;
           if (table === 'user_daily_pages') { void syncDays(); return; }
@@ -181,7 +181,8 @@ export function usePersonalLibrarySync(args: {
     const onUseCloud = () => void useCloud();
     const onDaysRun = () => void syncDays();
     let localChangeTimer: ReturnType<typeof setTimeout> | undefined;
-    const onLocalChange = () => { if (localChangeTimer) clearTimeout(localChangeTimer); localChangeTimer = setTimeout(() => void flush(), 800); };
+    const onLocalChange = () => { void syncSettings(); if (localChangeTimer) clearTimeout(localChangeTimer); localChangeTimer = setTimeout(() => void flush(), 800); };
+    const onSettingsRun = () => void syncSettings();
     const onManualSync = () => void flush();
     const onHide = () => void flush();
     window.addEventListener('online', onOnline);
@@ -190,6 +191,7 @@ export function usePersonalLibrarySync(args: {
     window.addEventListener('greatreads-daily-tie', onDailyTie);
     window.addEventListener('greatreads-daily-pages-run', onDaysRun);
     window.addEventListener('greatreads-setting-tie', onSettingTie);
+    window.addEventListener('greatreads-settings-records-run', onSettingsRun);
     window.addEventListener('greatreads-library-local-change', onLocalChange);
     window.addEventListener('pagehide', onHide);
     document.addEventListener('visibilitychange', onHide);
@@ -202,6 +204,7 @@ export function usePersonalLibrarySync(args: {
       window.removeEventListener('greatreads-daily-tie', onDailyTie);
       window.removeEventListener('greatreads-daily-pages-run', onDaysRun);
       window.removeEventListener('greatreads-setting-tie', onSettingTie);
+      window.removeEventListener('greatreads-settings-records-run', onSettingsRun);
       window.removeEventListener('greatreads-library-local-change', onLocalChange);
       if (localChangeTimer) clearTimeout(localChangeTimer);
       window.removeEventListener('pagehide', onHide);
@@ -219,7 +222,7 @@ export function usePersonalLibrarySync(args: {
     lastDays.current = { log: args.state.dailyLog, meta: args.state.dailyLogMeta };
     // Day edits upload on their own short timer, so a quick page tap never waits for the slower library sync.
     const daysTimer = daysChanged ? setTimeout(() => window.dispatchEvent(new Event('greatreads-daily-pages-run')), 300) : undefined;
-    const settingsTimer = settingsRecordsSyncEnabled() ? setTimeout(() => window.dispatchEvent(new Event('greatreads-library-local-change')), 1200) : undefined; // a goal, name, words... changed: upload them as their own records
+    const settingsTimer = settingsRecordsSyncEnabled() ? setTimeout(() => window.dispatchEvent(new Event('greatreads-settings-records-run')), 300) : undefined; // a goal, name, words... changed: upload it now as its own record
     if (ignoreState.current && ignoreState.current === current) { ignoreState.current = ''; return () => { if (daysTimer) clearTimeout(daysTimer); if (settingsTimer) clearTimeout(settingsTimer); }; }
     const timer = setTimeout(() => {
       if (currentUser()?.id === userId && ready.current === userId) void syncLocalLibrary(userId, { state: stateRef.current, books: booksRef.current, collections: collectionsRef.current, coverPicks: exportCoverPicks() });

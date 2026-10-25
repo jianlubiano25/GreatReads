@@ -2,7 +2,6 @@ import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { authVersion, currentUser, subscribeAuth } from '../services/supabase';
 import { backUpNow, cloudStatus, fetchCloudBackup, getSafetyCopy, isAutoBackup, lastSynced, markRestored, saveSafetyCopy, setAutoBackup, type CloudStatus } from '../services/cloudSync';
 import { describeSettingValue, loadSettingTies, requestSettingTieResolution, SETTING_LABELS } from '../services/settingsRecordsSync';
-import { setSettingsRecordsEnabled, settingsRecordsSyncEnabled } from '../services/settingsRecordsFlag';
 import { loadDailyTies, requestDailyTieResolution } from '../services/dailyPagesSync';
 import { hasLibrarySyncConflicts, hasPendingLibrarySync, librarySyncAccountAllowed, requestLibraryUseCloud, resolveLibraryConflictsToLocal } from '../services/librarySync';
 
@@ -42,7 +41,6 @@ export const CloudBackupSection: React.FC<{ onExportBackup: () => string; onImpo
   const libraryPending = !!user && hasPendingLibrarySync(user.id);
   const dayTies = user ? loadDailyTies(user.id) : [];
   const settingTies = user ? loadSettingTies(user.id) : [];
-  const recordsOn = settingsRecordsSyncEnabled();
   const libraryAccountBlocked = !!user && !librarySyncAccountAllowed(user.id);
 
   const refresh = async () => { const r = await cloudStatus(); if (r.ok) setStatus(r.status); };
@@ -111,9 +109,6 @@ export const CloudBackupSection: React.FC<{ onExportBackup: () => string; onImpo
           </div>
         ))}
       </div>}
-      <button type="button" className={btn} disabled={busy} onClick={() => { setSettingsRecordsEnabled(!recordsOn); window.location.reload(); }}>
-        Sync settings and words separately on this device: {recordsOn ? 'ON (tap to turn off)' : 'OFF (tap to turn on)'}
-      </button>
       {libraryAccountBlocked && <p role="alert" className="text-xs text-amber-800 dark:text-amber-300">This device’s library is linked to another account. Sign back into that account to sync it; this account’s cloud library was not loaded.</p>}
       {!libraryAccountBlocked && !libraryConflict && libraryPending && <p role="status" className="text-xs text-[#706256] dark:text-[#a89a8a]">Library changes are waiting to sync when the connection is available.</p>}
       <div className="grid grid-cols-2 gap-2">
