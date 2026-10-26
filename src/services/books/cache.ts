@@ -6,8 +6,11 @@ export interface Cache<T> {
   get(key: string): T | undefined;
   /** Even an expired entry, with its age: for showing something when a fresh load fails. Entries older than `keepStale` are gone. */
   peek(key: string): { value: T; ageMs: number } | undefined;
-  set(key: string, value: T): void;
+  /** `at` sets the entry's saved time (used when a choice arrives from the cloud, so it keeps the time it was really made). */
+  set(key: string, value: T, at?: number): void;
   delete(key: string): void;
+  /** Every live entry with the time it was saved (only caches that can list themselves). */
+  entries?(): { key: string; value: T; at: number }[];
   /** Forget everything in this cache (memory and storage). */
   clear(): void;
 }
@@ -95,11 +98,15 @@ export function persistentCache<T>(storageKey: string, opts: {
       if (ageMs > Math.max(opts.ttl, opts.keepStale ?? opts.ttl)) { mem.delete(key); return undefined; }
       return { value: e.v, ageMs };
     },
-    set(key, value) {
+    set(key, value, at) {
       load();
       mem.delete(key); // newest entries live at the end, so the oldest are dropped first
-      mem.set(key, { t: Date.now(), v: value });
+      mem.set(key, { t: at ?? Date.now(), v: value });
       save();
+    },
+    entries() {
+      load();
+      return [...mem.entries()].map(([key, e]) => ({ key, value: e.v, at: e.t }));
     },
     delete(key) {
       load();

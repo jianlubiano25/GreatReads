@@ -39,6 +39,7 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
   const [storePrefs, setStorePrefs] = useState<StorePrefs>(loadStorePrefs);
   const shelfOrder = useMemo(() => orderShelves(DEFAULT_SHELF_ORDER, storePrefs.order), [storePrefs.order]);
   const hiddenShelves = useMemo(() => hiddenShelfIds(storePrefs), [storePrefs]);
+  useEffect(() => { const reread = () => setStorePrefs(loadStorePrefs()); window.addEventListener('greatreads-store-prefs-changed', reread); return () => window.removeEventListener('greatreads-store-prefs-changed', reread); }, []);
   const updateStorePrefs = useCallback((next: StorePrefs) => { setStorePrefs(next); saveStorePrefs(next); }, []);
   const reorderShelves = useCallback((order: string[]) => updateStorePrefs({ ...storePrefs, order }), [storePrefs, updateStorePrefs]);
 

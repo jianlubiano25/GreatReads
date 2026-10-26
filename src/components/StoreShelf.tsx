@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { displayBooks, refreshNames, subscribeNames } from '../services/books/englishTitle';
 import { mapPool } from '../services/books/http';
 import { Book } from '../types';
-import type { ShelfSource } from '../services/store/shelves';
+import { InsufficientShelfError, type ShelfSource } from '../services/store/shelves';
 import { CoverFace, RatingLine, AwardBadges } from './BookMeta';
 import { rememberHonor } from '../services/store/honors';
 import { withKnownRating } from '../services/books';
@@ -67,6 +67,7 @@ function ShelfSkeleton({ pulse }: { pulse: boolean }) {
 export const StoreShelf = React.memo(function StoreShelf({ id, title, source, books: fixedBooks, ranked, lazy, hideIfUnavailable, hideWhileLoading, known, priority, mine, onOpen }: Props) {
   const [loaded, setLoaded] = useState<Book[] | null>(() => (fixedBooks || !source || lazy ? null : source.cached()));
   const [failed, setFailed] = useState(false);
+  const [insufficient, setInsufficient] = useState(false);
   const [attempt, setAttempt] = useState(0); // "Try again" reloads the shelf
   const [visible, setVisible] = useState(!lazy);
   const holder = useRef<HTMLDivElement>(null);
@@ -105,6 +106,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
     if (fixedBooks || !visible || !source) return;
     let live = true;
     setFailed(false);
+    setInsufficient(false);
     // A shelf reports after EVERY book it resolves; drawing the whole shelf each time is wasted work, so the newest list is drawn at most every 100 ms
     let latest: Book[] | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -117,7 +119,13 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
       // The answer replaces what was drawn first (a saved list shown while this loaded), unless a newer update already arrived
       .then(b => { if (live && !latest) setLoaded(prev => { const cur = prev ?? shown.current; return cur && sameShelf(cur, b) ? prev ?? cur : b; }); })
       // A failed refresh never takes away a list that is already on screen
-      .catch(() => { if (live && !shown.current) setFailed(true); });
+      .catch(error => {
+        if (!live) return;
+        if (error instanceof InsufficientShelfError) {
+          setLoaded(null);
+          setInsufficient(true);
+        } else if (!shown.current) setFailed(true);
+      });
     return () => { live = false; clearTimeout(timer); };
   }, [id, visible, source, fixedBooks, attempt]);
 
@@ -130,6 +138,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
   useEffect(() => { if (!fixedBooks) (loaded ?? saved)?.forEach(rememberHonor); }, [loaded, saved, fixedBooks]);
 
   if (fixedBooks && fixedBooks.length === 0) return null;
+  if (insufficient && hideIfUnavailable) return null;
   if (failed && hideIfUnavailable) return null;
   if (hideWhileLoading && !books && !failed) return null;
 
@@ -143,6 +152,8 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
             Try again
           </button>
         </div>
+      ) : insufficient ? (
+        <p className="text-sm text-[#706256] dark:text-[#a89a8a]">No books meet the Hidden Gems criteria yet.</p>
       ) : !books ? (
         <ShelfSkeleton pulse={visible} />
       ) : (

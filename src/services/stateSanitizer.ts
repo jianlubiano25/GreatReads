@@ -2,6 +2,7 @@ import type {
   Book,
   BookIdentity,
   BookStatus,
+  DayEdit,
   GardenState,
   HighlightItem,
   OwnedPlant,
@@ -15,6 +16,7 @@ import { sanitizeHistory, sanitizeRatings } from './bookHistory';
 import { MILESTONE_BY_ID } from '../data/gardenCatalog';
 import { emptyGarden, seedGarden, todayKeyNow } from './garden';
 import { DATE_KEY_RE } from './dates';
+import { cleanTimes } from './editTimes';
 
 /**
  * Defensive normalisation for anything coming from localStorage or a pasted backup.
@@ -74,6 +76,19 @@ export function sanitizeDailyLog(raw: unknown): Record<string, number> {
   for (const k of safeKeys(raw)) {
     const n = num(raw[k]);
     if (n !== undefined && DATE_KEY_RE.test(k)) out[k] = Math.max(0, Math.round(n));
+  }
+  return out;
+}
+
+/** Per-day edit stamps: only real date keys with a usable time, a short device id and a whole non-negative counter. */
+export function sanitizeDailyLogMeta(raw: unknown): Record<string, DayEdit> {
+  const out: Record<string, DayEdit> = {};
+  if (!isObj(raw)) return out;
+  for (const k of safeKeys(raw)) {
+    const v = raw[k];
+    if (!DATE_KEY_RE.test(k) || !isObj(v)) continue;
+    const editedAt = num(v.editedAt), editSeq = num(v.editSeq);
+    out[k] = { editedAt: editedAt !== undefined && editedAt >= 0 ? Math.round(editedAt) : 0, deviceId: typeof v.deviceId === 'string' ? v.deviceId.slice(0, 120) : '', editSeq: editSeq !== undefined && editSeq >= 0 ? Math.round(editSeq) : 0 };
   }
   return out;
 }
@@ -325,6 +340,12 @@ export function sanitizeGarden(raw: unknown): GardenState | null {
     }
   }
 
+  if (isObj(raw.placementTimes)) {
+    const times: Record<string, number> = {};
+    for (const id of safeKeys(raw.placementTimes)) { const t = Number(raw.placementTimes[id]); if (g.placements[String(id)] && Number.isFinite(t) && t > 0) times[String(id)] = Math.round(t); }
+    if (Object.keys(times).length) g.placementTimes = times;
+  }
+
   if (isObj(raw.celebrated)) {
     for (const id of safeKeys(raw.celebrated)) if (raw.celebrated[id]) g.celebrated[String(id)] = true;
   } else {
@@ -363,6 +384,9 @@ export function normalizeV2(parsed: Record<string, any>, base: ReadingState): Re
     currentPage: has('currentPage') ? sanitizeNumberRecord(parsed.currentPage) : base.currentPage,
     totalPages: has('totalPages') ? sanitizeNumberRecord(parsed.totalPages) : base.totalPages,
     dailyLog: has('dailyLog') ? sanitizeDailyLog(parsed.dailyLog) : base.dailyLog,
+    ...(has('dailyLogMeta') ? { dailyLogMeta: sanitizeDailyLogMeta(parsed.dailyLogMeta) } : base.dailyLogMeta ? { dailyLogMeta: base.dailyLogMeta } : {}),
+    ...(has('editTimes') ? { editTimes: cleanTimes(parsed.editTimes) } : base.editTimes ? { editTimes: base.editTimes } : {}),
+    ...(has('deletedWords') ? { deletedWords: cleanTimes(parsed.deletedWords) } : base.deletedWords ? { deletedWords: base.deletedWords } : {}),
     notes: has('notes') ? sanitizeNotes(parsed.notes) : base.notes,
     highlights: has('highlights') ? sanitizeHighlights(parsed.highlights) : base.highlights,
     goal: goal && goal > 0 ? goal : base.goal,

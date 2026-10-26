@@ -4,6 +4,7 @@ import { useReadingLife } from './hooks/useReadingLife';
 import { syncCatalog } from './services/catalog';
 import { autoBackup } from './services/cloudSync';
 import { authVersion, consumeAuthRedirect, checkAdmin, currentUser, isAdminKnown, subscribeAuth } from './services/supabase';
+import { usePersonalLibrarySync } from './hooks/usePersonalLibrarySync';
 import { initCapture, maybeBackfill } from './services/captureDevice';
 import { bookKey, getCoverPick, ownCoverUrl, sameWork, withKnownRating, isCoverAdminOn, subscribeCoverAdmin, tapSecret, syncSharedCovers } from './services/books';
 import { milestone } from './services/books/perf';
@@ -113,6 +114,7 @@ export default function App() {
     deleteWord,
     exportBackup,
     importBackup,
+    applySyncedState,
     clearLibrary,
     clearOnDevice,
     resetEverything,
@@ -200,6 +202,7 @@ export default function App() {
   const [libAddMenuOpen, setLibAddMenuOpen] = useState(false); // the + in the Library header: Add book / Add shelf
   const [newShelfRequest, setNewShelfRequest] = useState(0);
   const { collections, update: updateCollections, reload: reloadCollections } = useLibraryCollections(); // your own shelves and tags
+  usePersonalLibrarySync({ state, books: allBooks, collections, applyState: applySyncedState, replaceCollections: next => updateCollections(() => next) });
   const [sheetBook, setSheetBook] = useState<Book | null>(null); // the Add to My Library sheet (status, shelves, tags)
   const [showWordPracticeModal, setShowWordPracticeModal] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState<{ open: boolean; type: 'books' | 'words' }>({
@@ -346,7 +349,7 @@ export default function App() {
               style={tab === 'today' ? { touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' } : undefined}
               onClick={tab === 'today' ? () => void tapSecret() : undefined}
             >
-              {tab === 'today' ? `Hello${state.profile.name ? `, ${state.profile.name}` : ''}` : TAB_TITLES[tab] || 'My reading life'}
+              {tab === 'today' ? `Hello${state.profile.name ? `, ${state.profile.name}` : ''}` : TAB_TITLES[tab] || 'GreatReads'}
             </h1>
             <span className="sr-only" role="status" aria-live="polite">{toolsNote}</span>
             {toolsNote && <span className="inline-block mt-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#e8efe7] dark:bg-[#243422] text-[#2e5934] dark:text-[#86b880]" aria-hidden="true">{toolsNote}</span>}
