@@ -40,3 +40,10 @@ Rollback: set "0", then run rollbacks 000005 then 000004. preferences.* is never
 
 ## Supabase
 Free plan: no branches. Only one project (GreatReads). Never write production user data. Schema changes need the owner's explicit approval; the Phase 4 migrations only create two empty tables.
+
+## Audit patches 1-3 (status screen, independent startup, writer)
+- Backup & Restore now has "Live sync status" (src/components/SyncStatusSection.tsx, src/services/syncStatus.ts): per part working/problem with the reason, live connection state, build id, short device id, Sync now.
+- Bootstrap no longer throws when the library upload, daily pages or settings fail: the device is ready right after the cloud copy is merged, live updates start immediately, and each category retries on its own backoff (usePersonalLibrarySync.ts).
+- writeRemoteLibrary tries every record: one failed request or moved record no longer stops the records after it; the round still reports failure so it retries.
+- Verified in the logs: realtime join failures ("V1 JSON Serializer") ran in the thousands per hour until ~15:00 UTC on 25 Oct and are zero since 2e7a579.
+- Pending-upload receive stays stamped-only (status, rating, page, notes, words); unstamped things (custom book details, cover picks, removals) wait for the upload to finish. Not yet per-record.

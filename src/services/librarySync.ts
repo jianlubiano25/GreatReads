@@ -525,6 +525,9 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
     return { write: false };
   };
   const markWritten = (key: string, revision: number) => { versions.revisions[key] = revision; saveVersions(userId, versions); };
+  // One record that cannot be written right now (a request failed, or the cloud copy moved) must not stop the records after it from uploading:
+  // each one is tried, and the round reports failure at the end so it is retried.
+  let failed = false;
   const bookRows = new Map(remote.books.map(row => [row.local_book_id, row]));
   const libraryIds = new Map(remote.books.map(row => [row.local_book_id, row.id]));
   for (const item of snapshot.books) {
@@ -533,8 +536,8 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
       const key = `book:${item.local_book_id}`;
       if (versions.revisions[key] !== undefined || versions.conflicts.includes(key)) { versions.conflicts.push(key); saveVersions(userId, versions); continue; }
       const made = await rest<LibraryBookRow[]>('user_library_books', { method: 'POST', prefer: 'return=representation', body: { ...item, revision: 1 } });
-      if (!made.ok) return { ok: false, conflict: made.status === 409 };
-      if (!made.data?.[0]) return { ok: false, conflict: true };
+      if (!made.ok) { failed = true; continue; }
+      if (!made.data?.[0]) { failed = true; continue; }
       libraryIds.set(item.local_book_id, made.data[0].id);
       markWritten(key, Number(made.data[0].revision) || 1);
       continue;
@@ -549,7 +552,7 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
     const gated = gate(key, old.revision, equalSyncRecord(old, body), () => mergeBookFirstSync(old, item), merged => equalSyncRecord(old, { ...body, ...merged }));
     if (!gated.write) continue;
     const ok = await casUpdate('user_library_books', userId, `local_book_id=eq.${encodeURIComponent(item.local_book_id)}`, old.revision, gated.merged ? { ...body, ...gated.merged } : body);
-    if (!ok) return { ok: false, conflict: true };
+    if (!ok) { failed = true; continue; }
     markWritten(key, old.revision + 1);
   }
   const shelfRows = new Map(remote.shelves.map(row => [String(row.shelf_data?.local_id || ''), row]));
@@ -561,8 +564,8 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
       const key = `shelf:${localId}`;
       if (versions.revisions[key] !== undefined || versions.conflicts.includes(key)) { versions.conflicts.push(key); saveVersions(userId, versions); continue; }
       const made = await rest<ShelfRow[]>('user_shelves', { method: 'POST', prefer: 'return=representation', body: { ...item, revision: 1 } });
-      if (!made.ok) return { ok: false, conflict: made.status === 409 };
-      if (!made.data?.[0]) return { ok: false, conflict: true };
+      if (!made.ok) { failed = true; continue; }
+      if (!made.data?.[0]) { failed = true; continue; }
       shelfIds.set(localId, made.data[0].id);
       markWritten(key, Number(made.data[0].revision) || 1);
     } else {
@@ -572,7 +575,7 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
       const equal = old.name === item.name && old.description === item.description && old.sort_order === item.sort_order && stableJson(old.shelf_data) === stableJson(item.shelf_data) && !old.deleted_at;
       const gated = gate(key, old.revision, equal, () => mergeShelfFirstSync(old, item), merged => sameFields(old, merged, SHELF_FIELDS));
       if (gated.write) {
-        if (!await casUpdate('user_shelves', userId, `id=eq.${old.id}`, old.revision, gated.merged ? { ...body, ...gated.merged } : body)) return { ok: false, conflict: true };
+        if (!await casUpdate('user_shelves', userId, `id=eq.${old.id}`, old.revision, gated.merged ? { ...body, ...gated.merged } : body)) { failed = true; continue; }
         markWritten(key, old.revision + 1);
       }
     }
@@ -585,14 +588,14 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
       const key = `annotation:${row.id}`;
       if (versions.revisions[key] !== undefined || versions.conflicts.includes(key)) { versions.conflicts.push(key); saveVersions(userId, versions); continue; }
       const made = await rest('user_book_annotations', { method: 'POST', prefer: 'return=representation', body: { ...row, revision: 1 } });
-      if (!made.ok) return { ok: false, conflict: made.status === 409 };
+      if (!made.ok) { failed = true; continue; }
       markWritten(key, 1);
     } else {
       const key = `annotation:${row.id}`;
       const equal = old.content === row.content && old.quote_text === row.quote_text && old.page_reference === row.page_reference && old.deleted_at === row.deleted_at && stableJson(old.location_data) === stableJson(row.location_data) && stableJson(old.extra_data) === stableJson(row.extra_data);
       const gated = gate(key, old.revision, equal, () => mergeAnnotationFirstSync(old, row), merged => sameFields(old, merged, ANNOTATION_FIELDS));
       if (gated.write) {
-        if (!await casUpdate('user_book_annotations', userId, `id=eq.${row.id}`, old.revision, gated.merged ?? row as unknown as Record<string, unknown>)) return { ok: false, conflict: true };
+        if (!await casUpdate('user_book_annotations', userId, `id=eq.${row.id}`, old.revision, gated.merged ?? row as unknown as Record<string, unknown>)) { failed = true; continue; }
         markWritten(key, old.revision + 1);
       }
     }
@@ -603,7 +606,7 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
     const localAnnotationId = String(old.extra_data?.local_annotation_id || (old.annotation_type === 'note' ? 'note' : old.id));
     if (!isDeletedLocally(userId, localBookId) && !isDeletedLocally(userId, `annotation:${localBookId}:${localAnnotationId}`)) continue;
     const deletedAt = timeOf(editTimes, old.annotation_type === 'note' ? 'note' : 'highlight', old.annotation_type === 'note' ? localBookId : `${localBookId}:${localAnnotationId}`);
-    if (!await casUpdate('user_book_annotations', userId, `id=eq.${old.id}`, old.revision, { deleted_at: new Date().toISOString(), ...(deletedAt ? { extra_data: { ...(old.extra_data || {}), edited_at: deletedAt } } : {}) })) return { ok: false, conflict: true };
+    if (!await casUpdate('user_book_annotations', userId, `id=eq.${old.id}`, old.revision, { deleted_at: new Date().toISOString(), ...(deletedAt ? { extra_data: { ...(old.extra_data || {}), edited_at: deletedAt } } : {}) })) { failed = true; continue; }
     markWritten(`annotation:${old.id}`, old.revision + 1);
   }
   for (const row of snapshotWithIds.memberships) {
@@ -612,14 +615,14 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
       const key = `membership:${row.id}`;
       if (versions.revisions[key] !== undefined || versions.conflicts.includes(key)) { versions.conflicts.push(key); saveVersions(userId, versions); continue; }
       const made = await rest('user_shelf_books', { method: 'POST', prefer: 'return=representation', body: { ...row, revision: 1 } });
-      if (!made.ok) return { ok: false, conflict: made.status === 409 };
+      if (!made.ok) { failed = true; continue; }
       markWritten(key, 1);
     } else {
       const key = `membership:${row.id}`;
       const equal = old.deleted_at === row.deleted_at && old.sort_order === row.sort_order && old.shelf_id === row.shelf_id && old.library_book_id === row.library_book_id && stableJson(old.membership_data) === stableJson(row.membership_data);
       const gated = gate(key, old.revision, equal, () => mergeMembershipFirstSync(old, row), merged => sameFields(old, merged, MEMBERSHIP_FIELDS));
       if (gated.write) {
-        if (!await casUpdate('user_shelf_books', userId, `id=eq.${row.id}`, old.revision, gated.merged ?? row as unknown as Record<string, unknown>)) return { ok: false, conflict: true };
+        if (!await casUpdate('user_shelf_books', userId, `id=eq.${row.id}`, old.revision, gated.merged ?? row as unknown as Record<string, unknown>)) { failed = true; continue; }
         markWritten(key, old.revision + 1);
       }
     }
@@ -629,20 +632,20 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
     const localId = String(old.membership_data?.local_id || '');
     const [localCollectionId, localBookId] = localId.split('|');
     if (!isDeletedLocally(userId, `collection:${localCollectionId}`) && !isDeletedLocally(userId, `membership:${localCollectionId}:${localBookId}`) && !isDeletedLocally(userId, localBookId)) continue;
-    if (!await casUpdate('user_shelf_books', userId, `id=eq.${old.id}`, old.revision, { deleted_at: new Date().toISOString() })) return { ok: false, conflict: true };
+    if (!await casUpdate('user_shelf_books', userId, `id=eq.${old.id}`, old.revision, { deleted_at: new Date().toISOString() })) { failed = true; continue; }
     markWritten(`membership:${old.id}`, old.revision + 1);
   }
   const desiredShelves = new Set(snapshotWithIds.shelves.map(row => String(row.shelf_data.local_id || '')));
   for (const old of remote.shelves) if (!old.deleted_at && !desiredShelves.has(String(old.shelf_data?.local_id || ''))) {
     const localId = String(old.shelf_data?.local_id || '');
     if (!isDeletedLocally(userId, `collection:${localId}`)) continue;
-    if (!await casUpdate('user_shelves', userId, `id=eq.${old.id}`, old.revision, { deleted_at: new Date().toISOString() })) return { ok: false, conflict: true };
+    if (!await casUpdate('user_shelves', userId, `id=eq.${old.id}`, old.revision, { deleted_at: new Date().toISOString() })) { failed = true; continue; }
     markWritten(`shelf:${localId}`, old.revision + 1);
   }
   const desiredBooks = new Set(snapshot.books.map(row => row.local_book_id));
   for (const old of remote.books) if (!old.deleted_at && !desiredBooks.has(old.local_book_id)) {
     if (!isDeletedLocally(userId, old.local_book_id)) continue;
-    if (!await casUpdate('user_library_books', userId, `local_book_id=eq.${encodeURIComponent(old.local_book_id)}`, old.revision, { deleted_at: new Date().toISOString() })) return { ok: false, conflict: true };
+    if (!await casUpdate('user_library_books', userId, `local_book_id=eq.${encodeURIComponent(old.local_book_id)}`, old.revision, { deleted_at: new Date().toISOString() })) { failed = true; continue; }
     markWritten(`book:${old.local_book_id}`, old.revision + 1);
   }
   const currentPrefs = remote.preferences[0];
@@ -667,7 +670,7 @@ export async function writeRemoteLibrary(userId: string, snapshot: LibrarySyncSn
     }
   }
   saveVersions(userId, versions);
-  return { ok: true, conflict: versions.conflicts.length > 0, libraryIds, shelfIds };
+  return { ok: !failed, conflict: failed || versions.conflicts.length > 0, libraryIds, shelfIds };
 }
 
 const SHELF_FIELDS = ['name', 'description', 'sort_order', 'shelf_data', 'deleted_at'];

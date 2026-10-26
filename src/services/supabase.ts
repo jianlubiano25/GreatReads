@@ -186,6 +186,7 @@ export const rpc = <T = unknown>(fn: string, args: Record<string, unknown> = {})
  * made the server reject every join and heartbeat ("V1 JSON Serializer expected a map"), so live updates never arrived.
  */
 import { createLinkHealth } from './linkHealth';
+import { reportCloudEvent, reportLive, reportSync } from './syncStatus';
 import { createProbeWatcher, probeFingerprint, type ProbeRest } from './changeProbe';
 
 export function subscribeLibraryRealtime(userId: string, onChange: (table: string) => void): () => void {
@@ -219,6 +220,7 @@ export function subscribeLibraryRealtime(userId: string, onChange: (table: strin
       if (socket !== ws) { ws.close(); return; }
       delay = 1000;
       health.opened(Date.now());
+      reportLive('connecting');
       // Anything that changed while the socket was down was never delivered: after a RE-connect, ask the app to pull everything once.
       if (hasConnected) onChange('resync'); hasConnected = true;
       const postgres_changes = tables.map(table => ({ event: '*', schema: 'public', table, filter: `user_id=eq.${userId}` }));
@@ -233,15 +235,16 @@ export function subscribeLibraryRealtime(userId: string, onChange: (table: strin
         if (!Array.isArray(message)) return;
         const kind = message[3], payload = message[4];
         // The server refused or dropped our channel (for example the login token expired): rebuild instead of waiting for events that will never come
-        if (message[2] === topic && ((kind === 'phx_reply' && payload?.status === 'error') || kind === 'phx_error' || kind === 'phx_close')) { health.channelFailed(); rebuild(); return; }
+        if (message[2] === topic && kind === 'phx_reply' && payload?.status === 'ok') reportLive('connected');
+        if (message[2] === topic && ((kind === 'phx_reply' && payload?.status === 'error') || kind === 'phx_error' || kind === 'phx_close')) { health.channelFailed(); reportLive('refused'); rebuild(); return; }
         if (kind !== 'postgres_changes') return;
         const table = payload?.data?.table || payload?.table;
-        if (typeof table === 'string' && tables.includes(table) && currentUser()?.id === userId) onChange(table);
+        if (typeof table === 'string' && tables.includes(table) && currentUser()?.id === userId) { reportCloudEvent(); onChange(table); }
       } catch {}
     };
     const onEnd = () => {
       if (closed) return; closed = true; // onerror and onclose both fire: handle the end of this socket once
-      if (socket === ws) { if (heartbeat) clearInterval(heartbeat); heartbeat = undefined; socket = undefined; }
+      if (socket === ws) { if (heartbeat) clearInterval(heartbeat); heartbeat = undefined; socket = undefined; reportLive('closed'); }
       if (!stopped && currentUser()?.id === userId && !retry) { retry = setTimeout(() => void connect(), delay); delay = Math.min(30_000, delay * 2); }
     };
     ws.onclose = onEnd; ws.onerror = onEnd;
@@ -266,6 +269,7 @@ export function subscribeLibraryRealtime(userId: string, onChange: (table: strin
     probing = true;
     try {
       const fp = await probeFingerprint(userId, rest as ProbeRest);
+      reportSync('safety-check', fp !== null, fp === null ? 'could not read the cloud' : undefined);
       if (!stopped && probeWatcher.changed(fp)) onChange('resync');
     } catch {} finally { probing = false; }
   };

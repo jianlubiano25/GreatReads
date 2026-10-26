@@ -21,15 +21,17 @@ const PROBES: { table: string; select: string; order?: string; limit?: number }[
 /** A fingerprint of the cloud's current revisions, or null when any part could not be read (never treated as a change). */
 export async function probeFingerprint(userId: string, rest: ProbeRest): Promise<string | null> {
   const parts: string[] = [];
+  let failures = 0;
   for (const p of PROBES) {
     const q = `${p.table}?user_id=eq.${encodeURIComponent(userId)}&select=${p.select}${p.order ? `&order=${p.order}` : ''}&limit=${p.limit ?? 1000}`;
     const r = await rest<Record<string, unknown>[]>(q);
     if (!r.ok || !Array.isArray(r.data)) {
       // A table that does not exist yet answers with an error: skip it, never fail the whole probe for it
-      parts.push(`${p.table}:x`); continue;
+      failures++; parts.push(`${p.table}:x`); continue;
     }
     parts.push(`${p.table}:${r.data.map(row => Object.values(row).join('.')).sort().join(',')}`);
   }
+  if (failures === PROBES.length) return null; // nothing could be read (offline): not a fingerprint at all
   return parts.join('|');
 }
 

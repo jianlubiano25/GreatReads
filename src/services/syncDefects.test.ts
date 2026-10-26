@@ -1200,3 +1200,29 @@ test('the safety-net check notices each of those changes in the cloud', async ()
     assert.equal(await probe(), true, 'plant move noticed');
   } finally { w.done(); }
 });
+
+/* ---------- One record that cannot be written must not stop the others ---------- */
+
+test('a record that fails to upload does not stop the other records (and the round is reported as failed so it retries)', async () => {
+  const w = world();
+  try {
+    const a = w.device();
+    const inner = globalThis.fetch;
+    globalThis.fetch = (async (input: any, init: any = {}) => {
+      if ((init.method || 'GET') === 'POST' && String(input).includes('user_library_books') && String(init.body).includes('"local_book_id":"bad"')) return new Response('{"message":"boom"}', { status: 500 });
+      return inner(input, init);
+    }) as typeof fetch;
+    const bad = book('bad'), good = book('good');
+    let s = blank(); s.customBooks = [bad as any, good as any]; s.status = { bad: 'now', good: 'next' }; s.goal = 12;
+    const r = await a.edit(s, [bad, good]);
+    assert.equal(r.ok, false, 'the failed record makes the round report failure');
+    const rows = w.tables.get('user_library_books')!.map(x => x.local_book_id);
+    assert.deepEqual(rows, ['good'], 'the other book still uploaded');
+    assert.ok(w.prefs(), 'the shared preferences record still uploaded');
+    // later the failure clears: the retry uploads the missing book
+    globalThis.fetch = inner;
+    const retry = await a.edit(s, [bad, good]);
+    assert.equal(retry.ok, true);
+    assert.deepEqual(w.tables.get('user_library_books')!.map(x => x.local_book_id).sort(), ['bad', 'good']);
+  } finally { w.done(); }
+});
