@@ -729,6 +729,82 @@ test('a record paused only because two devices\' catalogue copies differed resum
   } finally { w.done(); }
 });
 
+/* ---------- Reading progress is a timestamped edit: the later page wins, including a correction downward ---------- */
+
+const setPage = (s: ReadingState, id: string, page: number, at: number): ReadingState => withEdits({ ...s, currentPage: { ...s.currentPage, [id]: page } }, 'progress', [id], at);
+
+test('a page corrected DOWN on one device reaches the other when it opens and when it receives live', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const bk = book('b1');
+    let sa = blank(); sa.customBooks = [bk as any]; sa = setPage(setStatus(sa, 'b1', 'now', E1), 'b1', 40, E1); sa.totalPages = { b1: 100 };
+    await a.open(sa, [bk]);
+    let sb = (await b.open(blank(), [bk])).state;
+    assert.equal(sb.currentPage.b1, 40);
+    sa = setPage(sa, 'b1', 25, E2);                          // A corrects the page back down
+    await a.edit(sa, [bk]);
+    assert.equal((await b.refresh(sb)).currentPage.b1, 25);   // live receive
+    assert.equal((await b.open(sb, [bk])).state.currentPage.b1, 25); // and a plain open (the old rule kept the higher 40)
+    assert.equal(a.conflicts() || b.conflicts(), false);
+  } finally { w.done(); }
+});
+
+test('the later page wins in both directions, and an older stamped page never overwrites a newer local one', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const bk = book('b1');
+    let sa = blank(); sa.customBooks = [bk as any]; sa = setPage(setStatus(sa, 'b1', 'now', E1), 'b1', 10, E1);
+    await a.open(sa, [bk]);
+    let sb = (await b.open(blank(), [bk])).state;
+    sb = setPage(sb, 'b1', 60, E3);                          // B reads on, later
+    await b.edit(sb, [bk]);
+    const staleA = setPage(sa, 'b1', 30, E2);                // A's own edit is OLDER than B's
+    const kept = await a.refresh(staleA);
+    assert.equal(kept.currentPage.b1, 60);                   // B's later page is taken
+    const newerLocal = setPage(sb, 'b1', 5, E3 + 5_000);     // a local edit newer than what the cloud holds
+    assert.equal((await b.refresh(newerLocal)).currentPage.b1, 5);
+  } finally { w.done(); }
+});
+
+test('with no stamps anywhere (old data) the higher page still wins on open, as before', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const bk = book('b1');
+    const sa = blank(); sa.customBooks = [bk as any]; sa.status = { b1: 'now' }; sa.currentPage = { b1: 30 };
+    await a.open(sa, [bk]);
+    const sb = blank(); sb.customBooks = [bk as any]; sb.status = { b1: 'now' }; sb.currentPage = { b1: 12 };
+    assert.equal((await b.open(sb, [bk])).state.currentPage.b1, 30);
+  } finally { w.done(); }
+});
+
+test('first sync of the same book on two devices: the later stamped page wins and nothing is paused', async () => {
+  const w = world();
+  try {
+    const a = w.device(); const b = w.device();
+    const bk = book('b1');
+    let sa = blank(); sa.customBooks = [bk as any]; sa = setPage(setStatus(sa, 'b1', 'now', E1), 'b1', 50, E1);
+    await a.open(sa, [bk]);
+    let sb = blank(); sb.customBooks = [bk as any]; sb = setPage(setStatus(sb, 'b1', 'now', E1), 'b1', 20, E2);   // B's page is the later edit, and lower
+    const opened = await b.open(sb, [bk]);
+    assert.equal(opened.state.currentPage.b1, 20);
+    assert.equal(b.conflicts(), false);
+    assert.equal(w.tables.get('user_library_books')!.find(r => r.local_book_id === 'b1')!.reading_progress.currentPage, 20);
+  } finally { w.done(); }
+});
+
+test('while this device still has an upload waiting, the cloud\'s newer stamped edits arrive but unstamped details are not overwritten', () => {
+  const lb: any = { id: 'l1', user_id: USER, local_book_id: 'b1', status: 'now', reading_progress: { currentPage: 70, totalPages: 100 }, personal_data: { isCustomBook: true, times: { progress: E3 } }, book_snapshot: { ...book('b1'), title: 'Cloud title' }, personal_cover: null, deleted_at: null, revision: 4 };
+  const remote: RemoteLibrarySnapshot = { books: [lb], annotations: [], shelves: [], memberships: [], preferences: [], sessions: [] };
+  let local = blank(); local.customBooks = [{ ...book('b1'), title: 'My unsent edit' } as any]; local = setPage(setStatus(local, 'b1', 'now', E1), 'b1', 10, E1);
+  const whilePending = mergeRemoteLibrary(local, [], remote, {}, false).state;     // receive without overwriting unstamped data
+  assert.equal(whilePending.currentPage.b1, 70);                                       // the stamped page arrives
+  assert.equal(whilePending.customBooks[0].title, 'My unsent edit');                   // the unsent custom-book edit survives
+  assert.equal(mergeRemoteLibrary(local, [], remote, {}, true).state.customBooks[0].title, 'Cloud title'); // once uploaded, the cloud copy applies
+});
+
 /* ---------- Phase 1: second-device first sync, per-record conflicts, use cloud, reconnect ---------- */
 
 test('first sync fills gaps in both directions: cloud status and this device\'s rating both end up in the cloud, with no conflict', async () => {

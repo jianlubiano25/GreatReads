@@ -78,14 +78,23 @@ export function mergeBookFirstSync(old: LibraryBookRow, item: LibrarySyncSnapsho
     const cloudData = obj(old.personal_data), localData = obj(item.personal_data);
     const isCustom = !!cloudData.isCustomBook || !!localData.isCustomBook;
     const cloudTimes = obj(cloudData.times), localTimes = obj(localData.times);
-    const mergedTimes = maxTimes(cloudTimes as Record<string, number>, localTimes as Record<string, number>, ['status', 'rating']);
+    const mergedTimes = maxTimes(cloudTimes as Record<string, number>, localTimes as Record<string, number>, ['status', 'rating', 'progress']);
+    const progressAtCloud = Number(cloudTimes.progress) || 0;
+    const progressAtLocal = Number(localTimes.progress) || 0;
+    const progressSide = newer(progressAtLocal, progressAtCloud);
+    // Later stamped progress wins; with no stamps, keep the higher page so unstamped devices still converge.
+    const currentPage = progressSide === 'remote' ? (Number(cloudProgress.currentPage) || 0)
+      : progressSide === 'local' ? (Number(localProgress.currentPage) || 0)
+      : Math.max(Number(cloudProgress.currentPage) || 0, Number(localProgress.currentPage) || 0);
+    const totalPages = progressSide === 'remote' && Number(cloudProgress.totalPages) > 0 ? Number(cloudProgress.totalPages)
+      : progressSide === 'local' && Number(localProgress.totalPages) > 0 ? Number(localProgress.totalPages)
+      : (Number(cloudProgress.totalPages) > 0 ? Number(cloudProgress.totalPages) : Number(localProgress.totalPages) || 0);
+    const history = progressSide === 'remote' ? (cloudProgress.history ?? localProgress.history ?? null)
+      : progressSide === 'local' ? (localProgress.history ?? cloudProgress.history ?? null)
+      : pick(cloudProgress.history ?? null, localProgress.history ?? null);
     return {
       status: pickTimed(old.status, item.status, Number(cloudTimes.status) || 0, Number(localTimes.status) || 0),
-      reading_progress: {
-        currentPage: Math.max(Number(cloudProgress.currentPage) || 0, Number(localProgress.currentPage) || 0),
-        totalPages: Number(cloudProgress.totalPages) > 0 ? Number(cloudProgress.totalPages) : Number(localProgress.totalPages) || 0,
-        history: pick(cloudProgress.history ?? null, localProgress.history ?? null),
-      },
+      reading_progress: { currentPage, totalPages, history },
       personal_cover: pick(old.personal_cover, item.personal_cover),
       // A catalogue snapshot is not a user edit, so the cloud copy stands. A custom book's snapshot IS the user's own data.
       book_snapshot: isCustom ? pick(old.book_snapshot, item.book_snapshot) : (old.book_snapshot ?? item.book_snapshot),

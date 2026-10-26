@@ -284,14 +284,19 @@ export function useReadingLife() {
     const idKey = String(bookId);
     setState(prev => {
       const oldPage = prev.currentPage[idKey] || 0;
-      const diff = Math.max(0, page) - oldPage; // negative when you correct a page number back down
+      const nextPage = Math.max(0, page);
+      const pageChanged = nextPage !== oldPage;
+      const totalChanged = !!total && total !== (prev.totalPages[idKey] || 0); // a missing or zero total never erases a saved one
+      if (!pageChanged && !totalChanged) return prev;
+      const diff = nextPage - oldPage; // negative when you correct a page number back down
       const todayK = getTodayKey();
 
-      return {
+      // Stamp progress so another device's later page edit wins (not "higher page always wins").
+      const next = {
         ...prev,
         currentPage: {
           ...prev.currentPage,
-          [idKey]: Math.max(0, page),
+          [idKey]: nextPage,
         },
         totalPages: total ? {
           ...prev.totalPages,
@@ -305,6 +310,7 @@ export function useReadingLife() {
         // Reading pages starts the book and makes it the latest one you read
         history: diff > 0 ? { ...prev.history, [idKey]: stampProgress(prev.history[idKey], todayK, Date.now()) } : prev.history,
       };
+      return withEdits(next, 'progress', [idKey]);
     });
   }, []);
 

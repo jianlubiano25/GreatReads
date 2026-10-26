@@ -120,9 +120,13 @@ export function usePersonalLibrarySync(args: {
           // After a reconnect or a "something changed" check, anything may have changed: days and settings are always refreshed, even
           // while this device has its own change waiting to upload (they never wait on the shared library record).
           if (table === 'resync') { void syncDays(); void syncSettings(); }
-          if (hasPendingLibrarySync(userId)) return;
+          // Always pull cloud changes: a pending upload must not hide the other device's edits (it used to, until the upload queue cleared).
+          // While this device still has something to upload, only the cloud's NEWER STAMPED edits are applied (status, rating, page, notes,
+          // words...); things with no edit time (custom book details, cover picks, removals) wait until the upload is done, so an unsent edit can never be overwritten.
+          const pending = hasPendingLibrarySync(userId);
           const latest = await loadRemoteLibrary(userId);
-          if (latest) applyRemote(latest, true);
+          if (latest) applyRemote(latest, !pending && !hasPendingLibrarySync(userId));
+          if (pending) void flush();
         });
       } catch {
         if (!stopped.current) {
@@ -188,7 +192,8 @@ export function usePersonalLibrarySync(args: {
     const onUseCloud = () => void useCloud();
     const onDaysRun = () => void syncDays();
     let localChangeTimer: ReturnType<typeof setTimeout> | undefined;
-    const onLocalChange = () => { void syncSettings(); if (localChangeTimer) clearTimeout(localChangeTimer); localChangeTimer = setTimeout(() => void flush(), 800); };
+    // Short debounce so the other device sees library edits almost immediately without spamming every keystroke.
+    const onLocalChange = () => { void syncSettings(); if (localChangeTimer) clearTimeout(localChangeTimer); localChangeTimer = setTimeout(() => void flush(), 250); };
     const onSettingsRun = () => void syncSettings();
     const onManualSync = () => void flush();
     const onHide = () => void flush();
@@ -202,7 +207,7 @@ export function usePersonalLibrarySync(args: {
     window.addEventListener('greatreads-library-local-change', onLocalChange);
     window.addEventListener('pagehide', onHide);
     document.addEventListener('visibilitychange', onHide);
-    const poll = setInterval(() => { if (ready.current === userId && hasPendingLibrarySync(userId)) void flush(); }, 20_000);
+    const poll = setInterval(() => { if (ready.current === userId && hasPendingLibrarySync(userId)) void flush(); }, 5_000);
     return () => {
       stopped.current = true;
       window.removeEventListener('online', onOnline);
@@ -228,12 +233,12 @@ export function usePersonalLibrarySync(args: {
     const daysChanged = lastDays.current.log !== args.state.dailyLog || lastDays.current.meta !== args.state.dailyLogMeta;
     lastDays.current = { log: args.state.dailyLog, meta: args.state.dailyLogMeta };
     // Day edits upload on their own short timer, so a quick page tap never waits for the slower library sync.
-    const daysTimer = daysChanged ? setTimeout(() => window.dispatchEvent(new Event('greatreads-daily-pages-run')), 300) : undefined;
-    const settingsTimer = settingsRecordsSyncEnabled() ? setTimeout(() => window.dispatchEvent(new Event('greatreads-settings-records-run')), 300) : undefined; // a goal, name, words... changed: upload it now as its own record
+    const daysTimer = daysChanged ? setTimeout(() => window.dispatchEvent(new Event('greatreads-daily-pages-run')), 150) : undefined;
+    const settingsTimer = settingsRecordsSyncEnabled() ? setTimeout(() => window.dispatchEvent(new Event('greatreads-settings-records-run')), 150) : undefined; // a goal, name, words... changed: upload it now as its own record
     if (ignoreState.current && ignoreState.current === current) { ignoreState.current = ''; return () => { if (daysTimer) clearTimeout(daysTimer); if (settingsTimer) clearTimeout(settingsTimer); }; }
     const timer = setTimeout(() => {
       if (currentUser()?.id === userId && ready.current === userId) void syncLocalLibrary(userId, { state: stateRef.current, books: booksRef.current, collections: collectionsRef.current, coverPicks: exportCoverPicks() });
-    }, 500);
+    }, 250);
     return () => { clearTimeout(timer); if (daysTimer) clearTimeout(daysTimer); if (settingsTimer) clearTimeout(settingsTimer); };
   }, [args.state, userId]);
 
@@ -250,7 +255,7 @@ export function usePersonalLibrarySync(args: {
     previousCollections.current = args.collections;
     const timer = setTimeout(() => {
       if (currentUser()?.id === userId && ready.current === userId) void syncLocalLibrary(userId, { state: stateRef.current, books: booksRef.current, collections: collectionsRef.current, coverPicks: exportCoverPicks() });
-    }, 500);
+    }, 250);
     return () => clearTimeout(timer);
   }, [args.collections, userId]);
 }

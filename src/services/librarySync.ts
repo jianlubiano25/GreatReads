@@ -38,10 +38,14 @@ export interface LibrarySyncSnapshot {
   preferences: Record<string, unknown>;
 }
 
-/** When the user last edited this book's status and rating (only the ones that were ever edited), so a clear can win over an older value. */
+/** When the user last edited this book's status, rating and reading progress (only fields that were ever stamped). */
 const bookTimes = (state: ReadingState, id: string): { times?: Record<string, number> } => {
-  const status = timeOf(state.editTimes, 'status', id), rating = timeOf(state.editTimes, 'rating', id);
-  return status || rating ? { times: { ...(status ? { status } : {}), ...(rating ? { rating } : {}) } } : {};
+  const status = timeOf(state.editTimes, 'status', id);
+  const rating = timeOf(state.editTimes, 'rating', id);
+  const progress = timeOf(state.editTimes, 'progress', id);
+  return status || rating || progress
+    ? { times: { ...(status ? { status } : {}), ...(rating ? { rating } : {}), ...(progress ? { progress } : {}) } }
+    : {};
 };
 
 /** When the user last edited a note or highlight (only if ever stamped); written into the annotation row's extra_data, so no schema change is needed. */
@@ -150,10 +154,18 @@ export function mergeInitialLibrarySnapshot(local: ReadingState, rows: LibraryBo
       next.editTimes = { ...(next.editTimes || {}), [timeKey('status', id)]: Number(rowTimes.status) };
     } else if (statusSide === 'same' && row.status && (preferRemote || !next.status[id])) next.status[id] = row.status as ReadingState['status'][string];
     const progress = row.reading_progress || {};
-    if (preferRemote && progress.currentPage !== undefined) next.currentPage[id] = Number(progress.currentPage) || 0;
-    else if (Number(progress.currentPage) > Number(next.currentPage[id] || 0)) next.currentPage[id] = Number(progress.currentPage);
-    if (Number(progress.totalPages) > 0 && (preferRemote || !next.totalPages[id])) next.totalPages[id] = Number(progress.totalPages);
-    if (progress.history && typeof progress.history === 'object' && (preferRemote || !next.history[id])) next.history[id] = progress.history as ReadingState['history'][string];
+    const progressSide = newer(timeOf(next.editTimes, 'progress', id), Number(rowTimes.progress) || 0);
+    if (progressSide === 'remote' || (progressSide === 'same' && preferRemote)) {
+      if (progress.currentPage !== undefined) next.currentPage[id] = Number(progress.currentPage) || 0;
+      if (Number(progress.totalPages) > 0) next.totalPages[id] = Number(progress.totalPages);
+      if (progress.history && typeof progress.history === 'object') next.history[id] = progress.history as ReadingState['history'][string];
+      if (Number(rowTimes.progress) > 0) next.editTimes = { ...(next.editTimes || {}), [timeKey('progress', id)]: Number(rowTimes.progress) };
+    } else if (progressSide === 'same') {
+      // No stamps on either side: keep the higher page so an older device without stamps still converges upward.
+      if (Number(progress.currentPage) > Number(next.currentPage[id] || 0)) next.currentPage[id] = Number(progress.currentPage);
+      if (Number(progress.totalPages) > 0 && !next.totalPages[id]) next.totalPages[id] = Number(progress.totalPages);
+      if (progress.history && typeof progress.history === 'object' && !next.history[id]) next.history[id] = progress.history as ReadingState['history'][string];
+    }
     const rating = Number(row.personal_data?.rating);
     const ratingSide = newer(timeOf(next.editTimes, 'rating', id), Number(rowTimes.rating) || 0);
     if (ratingSide === 'remote') {

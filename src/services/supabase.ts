@@ -271,7 +271,8 @@ export function subscribeLibraryRealtime(userId: string, onChange: (table: strin
   };
   const onWake = () => { if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return; checkLink(); void probe(); };
   const watchdog = setInterval(checkLink, 10_000);
-  const probeTimer = setInterval(() => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') void probe(); }, 30_000);
+  // Safety net next to the live channel: while the app is on screen, a tiny revision check every 10 seconds catches anything the live connection missed.
+  const probeTimer = setInterval(() => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') void probe(); }, 10_000);
   if (typeof document !== 'undefined') { document.addEventListener('visibilitychange', onWake); window.addEventListener('online', onWake); window.addEventListener('pageshow', onWake); window.addEventListener('focus', onWake); }
   void probe(); // baseline
   void connect();
