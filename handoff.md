@@ -149,6 +149,12 @@ Live cloud contents [verified]: `user_settings` 6 rows (theme, garden, nook_look
 ## 12. Completed work, outstanding, blockers, test results
 
 - **Completed (Phase 0):** repo cloned; branch `GreatReads-realtime` created from Jldata2 `f3f764f`; both branches baselined (table in §3); live schema/RLS/policies/grants/indexes/functions/publication/advisors/migration list inspected read-only; counts in §4–5; this file written.
+- **Batch A1 — admin "Save to catalog" now writes identifiers/editions (2026-10-26, code only, no migration, no DB change by me).**
+  Finding: before this, NO app path wrote `catalog_works.identifiers` or `catalog_editions`; works were matched only by `work_key`. Now `saveBookToCatalog` (Book Info → "Save to catalog", owner only) also calls `saveIdentityToCatalog` (`src/services/catalog.ts`) using pure rules in `src/services/books/catalogIdentity.ts`:
+  work level = Open Library work id (`identifiers.olWork`, other keys such as `alt_keys` kept); edition level = row in `catalog_editions` (ISBN-13/10 check-digit validated, OL edition id, Google volume id; source_name `app`, status `published`), created only when an edition id is known; exact-id matching only; invalid/contradicting ids, an id owned by another catalog book, ids pointing at two editions, or a different existing value are **reported in the toast and never written/moved/merged**; re-saving is a no-op. `cleanIsbn` and all search code untouched.
+  Not yet covered: the cover-publish modal (`publishCoverToCatalog`) and background capture (`capture.ts`) still create works without identifiers; linking personal `user_library_books` rows to works/editions (needs DB writes → approval-gated).
+  Checks run: `npm test` 706/706 pass (692 + 14 new in `catalogIdentity.test.ts`), `npx tsc --noEmit` exit 0, `npm run build` ok.
+  **Owner device test:** open the Cloudflare preview of `GreatReads-realtime`, sign in as the admin, open a book's Book Info, tap **Save to catalog**. Toast should say `Saved to catalog: …, olWork, edition` (or name each skipped id). In Supabase check `catalog_works.identifiers` has `olWork` for that book and `catalog_editions` has a row with the ISBN/ids and the right `work_id`. Tap Save again: no new edition row. Try a book with no ISBN: work id only, no edition row.
 - **Outstanding:** §10 Phases 1–5; function-body review; performance advisors; search-speed measurement; real-device tests.
 - **Blockers:** none for Phase 1. Phase 2 writes need explicit approval.
 - **Test results (Phase 0, run, not assumed):** see §3 table.
@@ -171,4 +177,5 @@ Phase 1, then Phase 2 step 1 (read-only): (a) obtain answers to §13; (b) export
 
 ## 15. Change log
 
+- **2026-10-26** — Batch A1: admin Save-to-catalog writes validated work/edition identifiers (see §12). Tests 706/706. Next per owner: verify on Cloudflare preview, then sync port (file-level port of comparison-branch sync, search files excluded), Hidden Gems cache check, genre tabs.
 - **2026-10-26** — Phase 0 audit complete; branch `GreatReads-realtime` created from Jldata2 `f3f764f`; baselines recorded (Jldata2 692/692, comparison 836/836, tsc/build clean); `handoff.md` created. No app-code or database changes.
