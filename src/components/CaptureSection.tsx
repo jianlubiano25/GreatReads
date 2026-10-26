@@ -31,6 +31,7 @@ export const CaptureSection: React.FC<{ books: Book[]; onOpenReview?: () => void
       <p role="status" className="text-xs text-[#706256] dark:text-[#a89a8a]">
         {!wanted ? 'Paused.' : st.error ? st.error : st.running ? `Sending to the catalog… ${st.queued} book${st.queued === 1 ? '' : 's'} waiting.` : st.sent || st.published ? `Up to date. ${st.sent} stored, ${st.published} published this session.` : 'Up to date.'}
       </p>
+      {!!st.idSkipped && <p className="text-xs text-amber-800 dark:text-amber-300">{st.idSkipped} book{st.idSkipped === 1 ? ' has' : 's have'} an ID that was not saved (invalid, or already on another catalog book). Nothing was merged or changed. {st.idNotes?.slice(0, 3).join(' · ')}</p>}
       <button type="button" className={btn} disabled={!active || st.running} onClick={() => void backfillNow(books)}>Send and publish everything on this device now</button>
       {onOpenReview && <button type="button" className={btn} onClick={onOpenReview}>Review catalog (publish or reject)</button>}
     </div>
