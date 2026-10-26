@@ -773,7 +773,7 @@ export default function App() {
         />
       )}
 
-      {coverTools && showCoverPublish && <CoverPublishModal onClose={() => setShowCoverPublish(false)} />}
+      {coverTools && showCoverPublish && <CoverPublishModal books={allBooks} onClose={() => setShowCoverPublish(false)} />}
       {showCatalogReview && <CatalogReviewModal onClose={() => setShowCatalogReview(false)} />}
 
       {/* Modal 6: Word Practice / Quiz Modal */}
