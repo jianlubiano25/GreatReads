@@ -11,7 +11,10 @@
  */
 import { coverKey } from './books/coverAnalysis';
 import { coverSourceOf } from './books/coverPicks';
+import { catalogIdsFrom } from './books/catalogIdentity';
+import { saveIdentityToCatalog } from './catalog';
 import { currentUser, isAdminKnown, rest, rpc } from './supabase';
+import type { BookIdentity } from '../types';
 
 export type CaptureRating = { source: string; average: number; count?: number };
 export type CaptureItem = {
@@ -24,8 +27,10 @@ export type CaptureItem = {
   pageCount?: number;
   genre?: string;
   ratings?: CaptureRating[];
+  /** The book's outside ids (Open Library work / edition, ISBNs, Google volume). Recorded in the catalog exactly as Save to catalog does. */
+  identity?: BookIdentity;
 };
-export type CaptureStatus = { on: boolean; running: boolean; queued: number; sent: number; published: number; total: number; error?: string };
+export type CaptureStatus = { on: boolean; running: boolean; queued: number; sent: number; published: number; total: number; error?: string; idSkipped?: number; idNotes?: string[] };
 
 const DONE_KEY = 'readlife.captured1';
 const OFF_KEY = 'readlife.captureOff1';
@@ -115,6 +120,15 @@ export function rowsFor(item: CaptureItem, workId: string): Row[] {
   return rows;
 }
 
+/** Marks "this book's ids were judged" in the sent list (same list as the other rows). Null when the book has no valid ids, so nothing is asked. */
+export function identityMark(item: CaptureItem): string | null {
+  const { ids } = catalogIdsFrom(item.identity);
+  const parts = Object.entries(ids).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}=${v}`).join(',');
+  return parts ? `i|${coverKey({ title: item.title, author: item.author })}|${hashText(parts)}` : null;
+}
+const idPending = (item: CaptureItem): boolean => { const m = identityMark(item); return !!m && !doneSet().has(m); };
+const needsSending = (item: CaptureItem): boolean => rowsFor(item, 'x').some(r => !doneSet().has(r.id)) || idPending(item);
+
 /* ---------------- the work (book) ids ---------------- */
 
 const works = new Map<string, string>();
@@ -203,7 +217,8 @@ const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 async function processOne(item: CaptureItem): Promise<void> {
   if (!item.title?.trim()) return;
   const probe = rowsFor(item, 'x').filter(r => !doneSet().has(r.id));
-  if (!probe.length) return;
+  const sendIds = idPending(item);
+  if (!probe.length && !sendIds) return;
   const workId = await workIdFor(item);
   if (!workId) return;
   const todo = rowsFor(item, workId).filter(r => !doneSet().has(r.id));
@@ -212,6 +227,16 @@ async function processOne(item: CaptureItem): Promise<void> {
     const sent = await send(t, todo.filter(r => r.table === t));
     for (const r of sent) { doneSet().add(r.id); dirty = true; }
     status.sent += sent.length;
+  }
+  if (sendIds) {
+    const r = await saveIdentityToCatalog(workId, item.identity);
+    status.sent += r.saved.length;
+    if (r.skipped.length) { // invalid or conflicting ids were NOT written; the owner is told (Profile → Data)
+      status.idSkipped = (status.idSkipped || 0) + 1;
+      const note = `${item.title}: ${r.skipped.map(x => x.replace(/^identity:/, '')).join('; ')}`;
+      status.idNotes = [note, ...(status.idNotes || []).filter(n => n !== note)].slice(0, 5);
+    }
+    if (!r.retry) { doneSet().add(identityMark(item) as string); dirty = true; } // a failed request is asked again next time; a judged id is not
   }
   touched.add(workId);
 }
@@ -249,7 +274,7 @@ function pump(): Promise<void> {
 export function captureBook(item: CaptureItem): void {
   if (!captureOn()) return;
   if (queue.length >= MAX_QUEUE) return;
-  if (!rowsFor(item, 'x').some(r => !doneSet().has(r.id))) return;
+  if (!needsSending(item)) return;
   queue.push(item);
   status.total++;
   emit();
@@ -260,7 +285,7 @@ export function captureBook(item: CaptureItem): void {
 export function captureMany(items: CaptureItem[]): Promise<void> {
   if (!captureOn()) return Promise.resolve();
   status = { ...status, total: status.total + items.length };
-  for (const it of items) if (queue.length < MAX_QUEUE && rowsFor(it, 'x').some(r => !doneSet().has(r.id))) queue.push(it);
+  for (const it of items) if (queue.length < MAX_QUEUE && needsSending(it)) queue.push(it);
   emit();
   return pump();
 }
