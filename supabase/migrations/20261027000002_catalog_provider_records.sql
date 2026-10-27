@@ -1,4 +1,4 @@
--- NOT APPLIED. Phase 2 of the catalog plan. Apply only with explicit owner approval.
+-- APPLIED to production 2026-10-27 with owner approval (migration name catalog_provider_records), followed by 20261027000003 to tighten grants. Phase 2 of the catalog plan.
 -- Additive only: one new admin-only table + two nullable columns on catalog_metadata_candidates. No existing row, column, policy or function is changed or removed.
 -- Rollback: supabase/rollbacks/20261027000002_catalog_provider_records.rollback.sql (export the table first if it holds rows you want to keep).
 -- Storage policy per provider is in docs/provider-terms.md: Open Library = full, Apple = trimmed, Google = trimmed/ids_only (never the full response).

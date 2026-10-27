@@ -1,6 +1,6 @@
 # Live catalog schema (read-only snapshot, 2026-10-27, project `amvkwwqcepmxxkfeqjox`)
 
-Structure only, no book data. Counts at the time: works 779, editions 59, cover candidates 1,383, metadata candidates 1,157, content versions 792, rating candidates 919, private notes 3, admins 2.
+Structure only, no book data. Counts 2026-10-27 after Phase 2 was applied: works 780, editions 61, cover candidates 1,386, metadata candidates 1,159, content versions 792, rating candidates 919, user_library_books 21, private notes 3, admins 2.
 The DDL is not all in `supabase/migrations/` (see HANDOFF); this file is the reference until it is.
 
 **catalog_works**: id, canonical_title, canonical_author, aliases text[], author_aliases text[], genres text[], honors text[], language_code, identifiers jsonb, status (draft|published|archived), work_key, main_cover_candidate_id, created_at, updated_at. Unique: work_key (when set), identifiers->>'olWork' (when set).
@@ -9,6 +9,7 @@ The DDL is not all in `supabase/migrations/` (see HANDOFF); this file is the ref
 **catalog_content_versions**: id, work_id, edition_id, content_type (book_description|author_bio), language_code, content, source_*, status, is_selected. Unique (work, type, language, md5(content)); one selected published version per (work, type, language).
 **catalog_metadata_candidates**: id, work_id, edition_id, field_name, field_value jsonb, language_code, source_*, status, is_selected, verified_at. Unique (work, field, edition, source, md5(value)); one selected published value per (work, field, edition).
 **catalog_rating_candidates**: id, work_id, edition_id, source_name (apple_books|google_books|open_library), average_rating 0..5, rating_count, rating_scale, status, is_selected, checked_at.
+**catalog_provider_records** (added 2026-10-27, empty): id, provider (apple|google|openlibrary), provider_record_id, record_kind (work|edition|volume|author|listing), work_id/edition_id (on delete SET NULL), payload_policy (full|trimmed|ids_only; ids_only means no payload), payload jsonb, source_url, http_status, fetched_at, refresh_after, match_status (unmatched|matched|needs_review|rejected), match_confidence 0..1. Unique (provider, record_kind, provider_record_id). Admin-only RLS; grants select/insert/update/delete to authenticated only. `catalog_metadata_candidates` also gained nullable `provider_record_id` and `raw_value`.
 **catalog_private_notes**: id, work_id, target_table, target_id, kind (note|rejection), note. **catalog_admins**: user_id, note.
 **RLS**: everyone reads published works, editions, selected metadata/content/ratings and the main cover; only `catalog_admins` insert, update or delete (delete policies exist on every catalog table).
 **Functions**: catalog_work_json, catalog_get, catalog_changes, catalog_publish_{content,cover,metadata,rating,defaults}, catalog_reject_{candidate,cover}, catalog_set_work_status, catalog_is_admin, plus triggers for updated_at and the main-cover check.
