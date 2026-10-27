@@ -1,11 +1,13 @@
 # GreatReads - HANDOFF (read "START HERE" first; the rest is reference)
 
 ## START HERE
-- Branch: `claude/best-of-vscode-catalog-ids` (best-of-vscode `3cea4d3` + 3 catalog-identity commits). Checks 2026-10-27: tests 857/857, tsc clean, build ok. Not device-tested. Nothing merged; no DB changes made by Claude.
+- Branch: `claude/best-of-vscode-catalog-ids` (best-of-vscode `3cea4d3` + 3 catalog-identity commits). Checks 2026-10-27: tests 880/880, tsc clean, build ok. Not device-tested. Nothing merged; no DB changes made by Claude.
 - Owner is **not a coder**: explain in plain words, ask approval in plain words.
-- **Current task: Task A, Phase 1 done locally (not pushed)**. Owner approved D7 (per-provider policy, see `docs/provider-terms.md`), D8 (term tables, not a `tags` column), New Release = first full edition date within 90 days (`newReleaseStatus`, derived, never stored). Phase 0 docs: `docs/provider-terms.md`, `docs/catalog-live-schema.md`. Phase 1 code: `books/catalogFill.ts`, `books/providerFacts.ts`, `saveFactsToCatalog` in `catalog.ts`. **Next (needs owner approval): Phase 2 migration `catalog_provider_records` + 2 provenance columns.** No migration, backfill or push has been done for Phase 1.
+- **Current task: Task A, Phase 0 + Phase 1 DONE and pushed**. Owner approved D7 (per-provider policy, see `docs/provider-terms.md`), D8 (term tables, not a `tags` column), New Release = first full edition date within 90 days (`newReleaseStatus`, derived, never stored). Phase 0 docs: `docs/provider-terms.md`, `docs/catalog-live-schema.md`. Phase 1 code: `books/catalogFill.ts`, `books/providerFacts.ts`, `saveFactsToCatalog` in `catalog.ts`. **Next (needs owner approval): Phase 2 migration `catalog_provider_records` + 2 provenance columns.** No migration or backfill has been done.
 - Keep this file current: **every commit updates this file** (tick done items, rewrite "Current task", add one change-log line, delete finished detail). Keep it under ~110 lines.
-- Token for pushing is given by the owner in chat each session; never write it into any file.
+- **PHASE-END ROUTINE (owner's standing order, he uses several free Claude accounts and may hit quota at any time):** when a phase or step finishes, in this order: run the 3 checks, update this file (Current task + change log), commit, then **push to this branch only** (`git push origin claude/best-of-vscode-catalog-ids`). Pushing the working branch is pre-approved; it is NOT approval for migrations, backfills, merges, deploys or writes to the live database (those still need explicit approval in chat).
+- **Token:** the owner pastes a GitHub token in chat each session. Use it only for the push, e.g. `git push https://x-access-token:$TOKEN@github.com/jianlubiano25/GreatReads.git HEAD:claude/best-of-vscode-catalog-ids`, so it is never saved in `.git/config`, a file, or a commit. If it was pasted in chat, remind the owner once to revoke it later. The repo is public: never commit data exports, provider payloads or private notes.
+- **Starting as a new Claude:** `git clone -b claude/best-of-vscode-catalog-ids https://github.com/jianlubiano25/GreatReads.git`, read this file, run the 3 checks to confirm the baseline, then continue from "Current task". Do not redo finished phases; do not repeat the audit.
 
 ## 1. Rules
 - Work only on this branch. Never touch `main`; no merge, deploy or force-push.
@@ -83,7 +85,7 @@ Open decision D2: when two devices edit the same item, compare device edit time 
 - D2 (above). D3 approve backfill dry-run first, writes later. D4 approve exporting live DDL and recording 000004/5 as applied. D5 keep/drop unused tables. D6 enable leaked-password protection.
 
 ## 9. Change log
-- 2026-10-27: Phase 0 (terms verified, live schema documented) and Phase 1 (code only: fill-only genres/honors, unpublished provider-fact candidates, Google-only edition detail fill, New Release rule; 880 tests pass). No DB write, no merge, no push.
+- 2026-10-27: Owner standing order added (push every phase; handoff must let another account continue). Phase 0 (terms verified, live schema documented) and Phase 1 (code only: fill-only genres/honors, unpublished provider-fact candidates, Google-only edition detail fill, New Release rule; 880 tests pass). No DB write, no merge, no push.
 - 2026-10-27: owner approved; `honors` migration applied (file in `supabase/migrations/`, rollback in `supabase/rollbacks/`); conflict scan + backfill dry-run recorded in section 5.
 - 2026-10-27: Task A step 1 done: field map doc; found 22 Prize winner, 22 book-club/Inklings labels stored as genre, root cause in `curated.ts`; drafted (not applied) honors migration + rollback.
 - 2026-10-27: branch created; 3 GreatReads-realtime commits cherry-picked cleanly; handoffs merged and slimmed; live catalog checked (cascade-delete risk, 779 works, genres empty, 22 "Prize winner" genres); tasks A/B/C written from owner goals.
