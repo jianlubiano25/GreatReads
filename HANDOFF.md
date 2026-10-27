@@ -10,9 +10,9 @@ App: reading-companion PWA, React/Vite/TS, hand-written Supabase REST client (no
 - After every step run `npm test`, `npx tsc --noEmit`, `npm run build`. Never claim an unrun check passed.
 - Report, then stop for approval before the next phase. Update this file at the end of each step.
 - Owner goal: **simpler sync that still works**. Owner always uses a 12-hour clock (already in code).
---
+---
 
-## 1. Mission and architecture principles
+## 1b. Mission and architecture principles
 
 Finish GreatReads (reading-companion PWA, React/Vite/TS, hand-written Supabase REST client, no Supabase JS dependency) as reliable, lightweight, fast and maintainable. Three coordinated layers:
 
