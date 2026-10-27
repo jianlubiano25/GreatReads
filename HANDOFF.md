@@ -3,7 +3,7 @@
 ## START HERE
 - Branch: `claude/best-of-vscode-catalog-ids` (best-of-vscode `3cea4d3` + 3 catalog-identity commits). Checks 2026-10-27: tests 857/857, tsc clean, build ok. Not device-tested. Nothing merged; no DB changes made by Claude.
 - Owner is **not a coder**: explain in plain words, ask approval in plain words.
-- **Current task: Task A step 2** (code only; no DB write without owner approval). Done: step 1 field map; `honors` column + `honors` key in `catalog_work_json` APPLIED 2026-10-27 (verified: 779 works unchanged, devices receive `honors`). Waiting on owner: D7 (raw lookup snapshot table) and D8 (`tags` column).
+- **Current task: Task A, Phase 1 done locally (not pushed)**. Owner approved D7 (per-provider policy, see `docs/provider-terms.md`), D8 (term tables, not a `tags` column), New Release = first full edition date within 90 days (`newReleaseStatus`, derived, never stored). Phase 0 docs: `docs/provider-terms.md`, `docs/catalog-live-schema.md`. Phase 1 code: `books/catalogFill.ts`, `books/providerFacts.ts`, `saveFactsToCatalog` in `catalog.ts`. **Next (needs owner approval): Phase 2 migration `catalog_provider_records` + 2 provenance columns.** No migration, backfill or push has been done for Phase 1.
 - Keep this file current: **every commit updates this file** (tick done items, rewrite "Current task", add one change-log line, delete finished detail). Keep it under ~110 lines.
 - Token for pushing is given by the owner in chat each session; never write it into any file.
 
@@ -83,6 +83,7 @@ Open decision D2: when two devices edit the same item, compare device edit time 
 - D2 (above). D3 approve backfill dry-run first, writes later. D4 approve exporting live DDL and recording 000004/5 as applied. D5 keep/drop unused tables. D6 enable leaked-password protection.
 
 ## 9. Change log
+- 2026-10-27: Phase 0 (terms verified, live schema documented) and Phase 1 (code only: fill-only genres/honors, unpublished provider-fact candidates, Google-only edition detail fill, New Release rule; 880 tests pass). No DB write, no merge, no push.
 - 2026-10-27: owner approved; `honors` migration applied (file in `supabase/migrations/`, rollback in `supabase/rollbacks/`); conflict scan + backfill dry-run recorded in section 5.
 - 2026-10-27: Task A step 1 done: field map doc; found 22 Prize winner, 22 book-club/Inklings labels stored as genre, root cause in `curated.ts`; drafted (not applied) honors migration + rollback.
 - 2026-10-27: branch created; 3 GreatReads-realtime commits cherry-picked cleanly; handoffs merged and slimmed; live catalog checked (cascade-delete risk, 779 works, genres empty, 22 "Prize winner" genres); tasks A/B/C written from owner goals.

@@ -10,6 +10,8 @@ import { coverSourceOf, notifyCoversChanged } from './books';
 import { rest, rpc } from './supabase';
 import { identityOf } from './books/identity';
 import { catalogIdsFrom, planEdition, planWorkIdentifiers, type EditionRow } from './books/catalogIdentity';
+import { classifyAll, classifyLabel, planEditionFill, planWorkFill, type EditionFillRow } from './books/catalogFill';
+import { providerFactsFor, type ProviderFacts } from './books/providerFacts';
 import type { Book, BookIdentity } from '../types';
 import type { SourceRating } from './books';
 
@@ -189,7 +191,7 @@ export async function saveIdentityToCatalog(workId: string, identity: BookIdenti
  * Values the owner already rejected are not brought back (the database refuses the same text again). Its outside ids (Open Library work,
  * ISBN, edition and Google volume ids) are recorded too; see saveIdentityToCatalog.
  */
-export async function saveBookToCatalog(book: Pick<Book, 'id' | 'identity' | 'title' | 'author' | 'summary' | 'authorBio' | 'year' | 'pageCount' | 'genre'>, ratings: SourceRating[]): Promise<{ ok: boolean; saved: string[]; skipped: string[] }> {
+export async function saveBookToCatalog(book: Pick<Book, 'id' | 'identity' | 'title' | 'author' | 'summary' | 'authorBio' | 'year' | 'pageCount' | 'genre'> & Partial<Pick<Book, 'awardLabel'>>, ratings: SourceRating[]): Promise<{ ok: boolean; saved: string[]; skipped: string[] }> {
   const saved: string[] = [], skipped: string[] = [];
   const key = coverKey(book);
   const enc = encodeURIComponent;
@@ -229,7 +231,9 @@ export async function saveBookToCatalog(book: Pick<Book, 'id' | 'identity' | 'ti
   await content('author_bio', book.authorBio);
   await meta('year', /^\d{3,4}$/.test(book.year || '') ? book.year : undefined);
   await meta('pageCount', book.pageCount || undefined);
-  await meta('genre', book.genre && book.genre !== 'Book' ? book.genre : undefined);
+  // a shelf name such as "Reese's Book Club" or "Prize winner" is an honor, not a genre: it is filed under honors below, never as a genre candidate
+  const genreLabel = book.genre && book.genre !== 'Book' && !classifyLabel(book.genre).some(c => c.kind === 'honor' || c.kind === 'tag' || c.kind === 'derived') ? book.genre : undefined;
+  await meta('genre', genreLabel);
 
   // every site's rating is kept (one per source); each is published on its own
   for (const r of ratings) if (await storeRating(workId, r, true)) saved.push(`rating:${r.source}`); else if (RATING_SRC[r.source] && r.average > 0) skipped.push(`rating:${r.source}`);
@@ -237,7 +241,75 @@ export async function saveBookToCatalog(book: Pick<Book, 'id' | 'identity' | 'ti
   // ids last and separate: they never decide whether the work gets published, and a conflict here never blocks the rest
   const idr = await saveIdentityToCatalog(workId, identityOf(book));
   saved.push(...idr.saved); skipped.push(...idr.skipped);
+  // then the extra facts (genres, honors, provider candidates, edition details): fill-only, never changes what is already there
+  const fr = await saveFactsToCatalog(workId, book);
+  saved.push(...fr.saved); skipped.push(...fr.skipped);
   return { ok: saved.length > 0, saved, skipped };
+}
+
+/** A provider fact kept as an UNPUBLISHED candidate with its source: devices never see it, nothing selected is replaced, the same value twice is ignored (unique index). */
+const FACT_FIELDS: { field: string; get: (f: ProviderFacts) => unknown }[] = [
+  { field: 'publisher', get: f => f.publisher }, { field: 'publishedDate', get: f => f.publishedDate },
+  { field: 'providerGenres', get: f => f.genres }, { field: 'providerSubjects', get: f => f.subjects },
+  { field: 'providerLanguage', get: f => f.language }, { field: 'providerAuthors', get: f => f.authors },
+  { field: 'altAuthorNames', get: f => f.altAuthorNames }, { field: 'providerPages', get: f => f.pages },
+  { field: 'providerRecord', get: f => ({ id: f.recordId, ...(f.sourceUrl ? { url: f.sourceUrl } : {}) }) },
+];
+
+/**
+ * Phase 1 "fill" step of Save to catalog. Owner only (the database refuses anyone else). Everything here only ADDS:
+ *  - work: new genres and honors are appended to what the work already has (nothing removed or reordered); a shelf name or award label goes to honors, never genres.
+ *  - candidates: what each provider said (publisher, exact date, categories, subjects, authors, alt author names, record id) as unpublished candidates with the provider as source.
+ *  - edition: only when this work already has an edition with the SAME Google volume id as the facts, its EMPTY publisher/date/year/pages/language are filled. A disagreeing filled value stays and the provider's value is kept as a candidate.
+ * Facts exist only for lookups made in this session (memory); with none, only the book's own genre/award label is filed. Never touches personal data, covers or other works.
+ */
+export async function saveFactsToCatalog(workId: string, book: Pick<Book, 'id' | 'identity' | 'genre'> & Partial<Pick<Book, 'awardLabel'>>, facts: ProviderFacts[] = providerFactsFor({ id: String(book.id), identity: book.identity })): Promise<{ saved: string[]; skipped: string[] }> {
+  const saved: string[] = [], skipped: string[] = [];
+
+  // 1) genres and honors on the work
+  const labels = [book.genre, ...facts.filter(f => f.provider !== 'openlibrary').flatMap(f => f.genres || [])]; // Open Library subjects are too loose to be genres: candidates only
+  const c = classifyAll(labels);
+  const honors = [...(book.awardLabel ? [book.awardLabel] : []), ...c.honors];
+  if (c.genres.length || honors.length) {
+    const cur = await rest<{ genres: string[] | null; honors: string[] | null }[]>(`catalog_works?id=eq.${workId}&select=genres,honors&limit=1`);
+    if (!cur.ok || !cur.data[0]) skipped.push('genres/honors: could not read the work');
+    else {
+      const patch = planWorkFill(cur.data[0], { genres: c.genres, honors });
+      if (Object.keys(patch).length) {
+        const up = await rest(`catalog_works?id=eq.${workId}`, { method: 'PATCH', body: patch });
+        if (up.ok) saved.push(...Object.keys(patch)); else skipped.push(`${Object.keys(patch).join('/')}: ${up.error}`);
+      }
+    }
+  }
+
+  // 2) provider candidates (unpublished) and shared-tag labels
+  let kept = 0;
+  const addCandidate = async (field: string, value: unknown, source: string, recordId?: string, url?: string) => {
+    const r = await rest('catalog_metadata_candidates', { method: 'POST', body: { work_id: workId, field_name: field, field_value: value, source_name: source, ...(recordId ? { source_record_id: recordId } : {}), ...(url ? { source_url: url } : {}), status: 'candidate' } });
+    if (r.ok) kept++; else if (r.status !== 409) skipped.push(`candidate:${field} ${r.error}`); // 409 = this exact value from this source is already kept
+  };
+  for (const f of facts) for (const { field, get } of FACT_FIELDS) {
+    const v = get(f);
+    if (v !== undefined && !(Array.isArray(v) && !v.length)) await addCandidate(field, v, f.provider, f.recordId, f.sourceUrl);
+  }
+  for (const t of c.tags) await addCandidate('tagLabel', t, 'app');
+  if (kept) saved.push(`provider facts (${kept})`);
+
+  // 3) edition details, only for the edition this exact Google volume is
+  const g = facts.find(f => f.provider === 'google');
+  if (g && /^[A-Za-z0-9_-]{6,24}$/.test(g.recordId)) {
+    const ed = await rest<(EditionFillRow & { id: string })[]>(`catalog_editions?work_id=eq.${workId}&google_volume_id=eq.${encodeURIComponent(g.recordId)}&select=id,publisher,publication_date,publication_year,page_count,language_code,format&limit=2`);
+    if (!ed.ok) skipped.push('edition details: could not read the edition');
+    else if (ed.data.length === 1) {
+      const plan = planEditionFill(ed.data[0], { publisher: g.publisher, publishedDate: g.publishedDate, pages: g.pages, language: g.language });
+      if (Object.keys(plan.patch).length) {
+        const up = await rest(`catalog_editions?id=eq.${ed.data[0].id}`, { method: 'PATCH', body: plan.patch });
+        if (up.ok) saved.push('edition details'); else skipped.push(`edition details: ${up.error}`);
+      }
+      plan.conflicts.forEach(x => skipped.push(`edition ${x} (kept both)`));
+    }
+  }
+  return { saved, skipped };
 }
 
 const RATING_SRC: Record<string, string> = { apple: 'apple_books', google: 'google_books', openlibrary: 'open_library' };

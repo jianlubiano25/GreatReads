@@ -4,6 +4,7 @@ import { authorVariants, cleanIsbn, isbnPair, titleVariants, titlesMatch, author
 import { difficultyFor, hasRealSummary, isKnownGenre, makeBook } from '../model';
 import { externalRating } from '../ratings';
 import { isEnglishLanguage, titleIsNonLatin } from '../language';
+import { rememberProviderFacts } from '../providerFacts';
 import type { CallOpts, Hit } from './types';
 
 const GB = 'https://www.googleapis.com/books/v1';
@@ -171,6 +172,8 @@ export function gbItemToHit(item: any, fallbackTitle = ''): Hit {
     source: 'google',
     identity: { gbVolume: item?.id, ...isbn },
   });
+  // what Google said beyond the Book (memory only): publisher, exact date, every category and author, this volume's own page count
+  if (item?.id) rememberProviderFacts({ provider: 'google', recordId: String(item.id), publisher: v.publisher ? String(v.publisher) : undefined, publishedDate: v.publishedDate ? String(v.publishedDate) : undefined, genres: Array.isArray(v.categories) ? v.categories.map(String) : undefined, language: v.language ? String(v.language).toLowerCase() : undefined, authors: Array.isArray(v.authors) ? v.authors.map(String) : undefined, pages: Number(v.pageCount) > 0 ? Number(v.pageCount) : undefined });
   return { book, flags: { language: v.language ? String(v.language).toLowerCase() : undefined, subjects: v.categories, description: v.description && !foreignText ? String(v.description) : undefined, googleMaturity: v.maturityRating, publisher: v.publisher ? String(v.publisher) : undefined } };
 }
 

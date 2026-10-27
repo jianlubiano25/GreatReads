@@ -3,6 +3,7 @@ import { authorListMatches, subtitleKey, titleKey, titleVariants, titlesMatch } 
 import { genreFromSubjects, makeBook, plainText } from '../model';
 import { isEnglishLanguage, titleIsNonLatin } from '../language';
 import { BUNDLE_TITLE } from './openLibrary';
+import { rememberProviderFacts } from '../providerFacts';
 import type { CallOpts, Hit } from './types';
 
 /**
@@ -75,5 +76,7 @@ function appleHit(m: any): Hit {
     source: 'apple',
   });
   if (!m.description) book.summary = `A book by ${book.author}.`;
+  // what Apple said beyond the Book (memory only; the owner's Save to catalog keeps it as unpublished candidates with its source)
+  rememberProviderFacts({ provider: 'apple', recordId: String(m.trackId), publishedDate: m.releaseDate ? String(m.releaseDate) : undefined, genres, authors: m.artistName ? [String(m.artistName)] : undefined, language: m.languageCodesISO2A?.[0] ? String(m.languageCodesISO2A[0]).toLowerCase() : undefined, sourceUrl: m.trackViewUrl ? String(m.trackViewUrl) : undefined });
   return { book, flags: { subjects: genres, description: m.description ? String(m.description) : undefined, appleAdvisory: String(m.contentAdvisoryRating || m.trackExplicitness || '') } };
 }
