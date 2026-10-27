@@ -3,7 +3,7 @@
 ## START HERE
 - Branch: `claude/best-of-vscode-catalog-ids` (best-of-vscode `3cea4d3` + 3 catalog-identity commits). Checks 2026-10-27: tests 857/857, tsc clean, build ok. Not device-tested. Nothing merged; no DB changes made by Claude.
 - Owner is **not a coder**: explain in plain words, ask approval in plain words.
-- **Current task: Task A step 1** (section 6). All first steps are read-only; stop and report before any write.
+- **Current task: Task A.** Step 1 done (`docs/catalog-field-map.md` = field map, root cause, genre breakdown). **Waiting for owner approval (D1)** to apply `supabase/proposed/20261027000001_catalog_works_honors.sql` (rollback beside it). Meanwhile step 2 (code only, no DB) may start. Stop and report before any DB write.
 - Keep this file current: **every commit updates this file** (tick done items, rewrite "Current task", add one change-log line, delete finished detail). Keep it under ~110 lines.
 - Token for pushing is given by the owner in chat each session; never write it into any file.
 
@@ -32,7 +32,7 @@ Principles: one owner per datum; no data lives only on a device; shared sync nev
 Files: `librarySync.ts`, `librarySyncMerge.ts`, `dailyPagesSync.ts`, `settingsRecordsSync.ts` (`user_settings`, `user_words`), `editTimes.ts`, `runGate.ts`, `linkHealth.ts`, `changeProbe.ts`, `syncStatus.ts`, `SyncStatusSection.tsx`, `usePersonalLibrarySync.ts`, `supabase.ts` (25 s timeout), `cloudSync.ts` (backup).
 Rules today: later edit wins; equal time + different value = recorded tie (Backup & Restore screen); clock skew >60 s untrusted; deletes = tombstones. Per-setting records ON for all signed-in accounts; kill switch localStorage `readlife.settingsRecordsSync1="0"` or `VITE_SETTINGS_RECORDS_SYNC=0`; rollback = kill switch, then `supabase/rollbacks/` 000005, 000004. Realtime serializer must stay 2.0.0.
 **Catalog publish today (`src/services/catalog.ts`):** `saveBookToCatalog` stores Work (title, author, `work_key`), description, author bio, year/pageCount/genre as *metadata candidates only*, ratings, and ids via `saveIdentityToCatalog` (olWork on Work; ISBN/OL edition/Google volume on a new Edition row; invalid/conflicting ids reported, never written). Cover publish (`publishCoverToCatalog`) and background capture (`capture.ts`) are separate paths that also send ids.
-**Not saved today:** `catalog_works.genres` (EMPTY on all 779 works), `aliases`, `author_aliases`, `language_code`; Edition `publisher`, `publication_date/year`, `page_count`, `format`, `language_code`; cover candidates from Save to catalog; any category/shelf field (no column exists).
+**Not saved today:** honors/`awardLabel` (device cache only), `catalog_works.genres` (EMPTY on all 779 works), `aliases`, `author_aliases`, `language_code`; Edition `publisher`, `publication_date/year`, `page_count`, `format`, `language_code`; cover candidates from Save to catalog; any category/shelf field (no column exists).
 
 ## 5. Data facts (live Supabase `GreatReads`, ref `amvkwwqcepmxxkfeqjox`; ignore Kipr projects; checked 2026-10-27)
 - `catalog_works` 779 rows; identifiers mostly empty. `catalog_editions` has at least 1 row (origin unverified). Metadata candidate fields in use: `genre` 301, `pageCount` 409, `year` 447. 22 published+selected `genre` candidates equal "Prize winner".
@@ -44,9 +44,9 @@ Rules today: later edit wins; equal time + different value = recorded tie (Backu
 
 ## 6. Tasks (do in order; each starts read-only)
 ### Task A - Publish EVERYTHING to the catalog  [ ] current
-1. [ ] Read-only: export live catalog DDL to `supabase/schema-snapshot-<date>.sql`; read `catalog_work_json`/`catalog_changes` (what devices receive); write `docs/catalog-field-map.md`: every `Book` field -> DB column/row, marking saved today vs missing.
+1. [x] Field map written: `docs/catalog-field-map.md` (columns, `catalog_work_json` output, what is saved vs missing, root cause of shelf names in genre, network fields the app drops). A full DDL snapshot file was not made; the two functions are saved in the proposed migration files.
 2. [ ] Design ONE shared function used by Save to catalog, cover publish and background capture. Idempotent; only adds or fills; never overwrites a published value; never deletes; conflicts reported, not resolved. Writes Work (title, author, aliases, author aliases, language, genres, ids), Edition (ISBN10/13, OL edition, Google volume, publisher, date/year, pages, format, language, source), description/bio, ratings, all cover candidates, metadata candidates with source.
-3. [ ] Categories/shelves: owner decision D1 (section 8), then implement; "Prize winner" moves out of genre (copy first; un-select the genre copy only after approval; never delete).
+3. [ ] Honors vs genres (D1): new `catalog_works.honors text[]` holds prizes, shortlists and book-club picks (the app already shows them together as "Honors & Awards", `store/honors.ts`); `genres` holds real genres only. Add a pure classifier (tests) that sends honor/club labels to `honors`, splits "Fiction / Historical" into genre + sub-genre, tidies case (crime -> Crime), leaves "New release"/"Reader favourite" for the owner. Stop `curated.ts` (~line 161, `genre: shelf.genre`) from writing shelf names into the genre. Send `honors` to devices (`CatalogWork` type, `catalogCovers.ts`, Book info merges them with `honorsFor`). Old genre candidates are copied, never deleted.
 4. [ ] Same book / same author rule: match by exact ids (olWork, ISBN13/10, OL edition, Google volume), then `work_key`, then author alias; found = add aliases/ids/candidates to the existing Work, never a second Work; uncertain = list it.
 5. [ ] Tests (pure rules, like `catalogIdentity.test.ts`), tsc, build, owner device test.
 6. [ ] Backfill existing 779 works: dry-run counts first; after approval fill `genres` from real genre candidates (not categories), Editions from known data; audit snapshot + rollback script.
@@ -76,8 +76,9 @@ Open decision D2: when two devices edit the same item, compare device edit time 
 "Reading now" did not update on the 2nd device (cause unknown; check `user_library_books` status sync + pull after a realtime event). Search felt slower than Jldata2 (unmeasured; compare `useBookSearch.ts`, `BookSearch.tsx`, `search.ts`, `cache.ts`; keep genre picks and Hidden Gems). Real two-device tests owed. No fake-Supabase test for `syncSettingsRecords`; nook look may flip-flop. While an upload is pending only stamped edits are received. `settingsRecordsSync.ts` header says "OFF by default" (stale). Owner's other queued items: Hidden Gems cache check, genre tabs.
 
 ## 8. Owner decisions needed
-- **D1 categories/shelves storage:** recommend adding a nullable `categories text[]` to `catalog_works` (additive migration + rollback, and include it in `catalog_work_json`); alternative: a `category` metadata candidate (no migration, harder for devices to read).
+- **D1 (needs owner "yes, apply"):** add `catalog_works.honors text[]` (default empty) and one `honors` key in `catalog_work_json`; files ready in `supabase/proposed/`, rollback included. One column instead of separate categories + awards, because the app already treats club picks and prizes as one "Honors & Awards" list. Also owner to say what to do with "New release" (3) and "Reader favourite" (1).
 - D2 (above). D3 approve backfill dry-run first, writes later. D4 approve exporting live DDL and recording 000004/5 as applied. D5 keep/drop unused tables. D6 enable leaked-password protection.
 
 ## 9. Change log
+- 2026-10-27: Task A step 1 done: field map doc; found 22 Prize winner, 22 book-club/Inklings labels stored as genre, root cause in `curated.ts`; drafted (not applied) honors migration + rollback.
 - 2026-10-27: branch created; 3 GreatReads-realtime commits cherry-picked cleanly; handoffs merged and slimmed; live catalog checked (cascade-delete risk, 779 works, genres empty, 22 "Prize winner" genres); tasks A/B/C written from owner goals.
