@@ -10,6 +10,17 @@ App: reading-companion PWA, React/Vite/TS, hand-written Supabase REST client (no
 - After every step run `npm test`, `npx tsc --noEmit`, `npm run build`. Never claim an unrun check passed.
 - Report, then stop for approval before the next phase. Update this file at the end of each step.
 - Owner goal: **simpler sync that still works**. Owner always uses a 12-hour clock (already in code).
+--
+
+## 1. Mission and architecture principles
+
+Finish GreatReads (reading-companion PWA, React/Vite/TS, hand-written Supabase REST client, no Supabase JS dependency) as reliable, lightweight, fast and maintainable. Three coordinated layers:
+
+1. **Shared catalog** — works, editions, identifiers, approved metadata, cover decisions, curated discovery. Admin-owned.
+2. **Personal sync** — one mechanism for all user-owned data across a user's signed-in devices. User-owned.
+3. **Local-first cache/offline** — fast render, offline edits, pending queue. A cache, never a competing source of truth.
+
+Principles: one authoritative owner per datum; shared sync never overwrites personal data and vice-versa; no second Supabase project; no new infrastructure/dependencies without measured benefit; reuse working code; do not redesign for appearance; never bulk-replace cloud data from local; never silently merge uncertain book identities; backup/restore stays a separate recovery feature.
 
 ## 2. Branches
 | Ref | Note |
