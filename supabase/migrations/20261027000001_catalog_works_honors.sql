@@ -1,5 +1,5 @@
--- PROPOSED, NOT APPLIED. Needs the owner's explicit approval. Additive: old app versions ignore the new key.
--- Live definition captured read-only on 2026-10-27 (also serves as the rollback source).
+-- APPLIED to production 2026-10-27 with owner approval (migration name catalog_works_honors). Additive: old app versions ignore the new key.
+-- Rollback: supabase/rollbacks/20261027000001_catalog_works_honors.rollback.sql (export honors values first).
 alter table public.catalog_works add column if not exists honors text[] not null default '{}';
 comment on column public.catalog_works.honors is 'Honors & awards and book-club picks (e.g. Oprah''s Book Club - Mar 2026, Women''s Prize 2021). Not genres.';
 
