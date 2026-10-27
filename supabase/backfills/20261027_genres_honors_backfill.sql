@@ -1,5 +1,5 @@
--- NOT APPLIED. Phase 3 one-off backfill: catalog_works.genres / honors from the genre labels already stored as metadata candidates.
--- Apply only with explicit owner approval. Data only, no schema change. Dry-run (2026-10-27): 276 works have a stored genre label; this fills 270 (226 genres, 44 honors) and leaves 6 alone
+-- APPLIED to production 2026-10-27 with owner approval (270 works, 270 audit notes). Phase 3 one-off backfill: catalog_works.genres / honors from the genre labels already stored as metadata candidates.
+-- Data only, no schema change. Dry-run (2026-10-27): 276 works have a stored genre label; this fills 270 (226 genres, 44 honors) and leaves 6 alone
 -- (1 "Reader favourite" tag, 3 "New release", 2 only unmapped labels). All 780 works had empty genres and honors when this was prepared.
 -- Fill-only: a work is touched only if BOTH arrays are still empty; nothing is overwritten or removed. Each touched work gets a private audit note (catalog_private_notes) so it can be rolled back exactly.
 -- The label-set -> genres/honors mapping below was produced by the app's own tested classifier (src/services/books/catalogFill.ts, classifyAll + planWorkFill), not by hand.
