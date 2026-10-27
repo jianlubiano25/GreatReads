@@ -3,7 +3,7 @@
 ## START HERE
 - Branch: `claude/best-of-vscode-catalog-ids` (best-of-vscode `3cea4d3` + 3 catalog-identity commits). Checks 2026-10-27: tests 880/880, tsc clean, build ok. Not device-tested. Nothing merged; no DB changes made by Claude.
 - Owner is **not a coder**: explain in plain words, ask approval in plain words.
-- **Current task: Task A, Phase 0 + Phase 1 DONE and pushed**. Owner approved D7 (per-provider policy, see `docs/provider-terms.md`), D8 (term tables, not a `tags` column), New Release = first full edition date within 90 days (`newReleaseStatus`, derived, never stored). Phase 0 docs: `docs/provider-terms.md`, `docs/catalog-live-schema.md`. Phase 1 code: `books/catalogFill.ts`, `books/providerFacts.ts`, `saveFactsToCatalog` in `catalog.ts`. **Next (needs owner approval): Phase 2 migration `catalog_provider_records` + 2 provenance columns.** No migration or backfill has been done.
+- **Current task: Task A, Phase 2 FILES WRITTEN, NOT APPLIED.** Done+pushed: Phase 0 (docs/provider-terms.md, docs/catalog-live-schema.md) and Phase 1 (`books/catalogFill.ts`, `books/providerFacts.ts`, `saveFactsToCatalog` in `catalog.ts`; fill-only genres/honors, unpublished provider-fact candidates, Google-only edition fill, 90-day New Release rule). Owner approved D7/D8/90 days. Phase 2 = `supabase/migrations/20261027000002_catalog_provider_records.sql` (+ rollback in `supabase/rollbacks/`): admin-only `catalog_provider_records` + `provider_record_id`/`raw_value` on `catalog_metadata_candidates`; verified 20/20 on a scratch Postgres (`supabase/tests/phase2-scratch-check.mjs`), not on the live project. **Next: owner approves applying it. Then Claude applies it (migration name `catalog_provider_records`), re-counts tables (works 779, editions 59, covers 1383, metadata 1157, content 792, ratings 919), and does Phase 2b.**
 - Keep this file current: **every commit updates this file** (tick done items, rewrite "Current task", add one change-log line, delete finished detail). Keep it under ~110 lines.
 - **PHASE-END ROUTINE (owner's standing order, he uses several free Claude accounts and may hit quota at any time):** when a phase or step finishes, in this order: run the 3 checks, update this file (Current task + change log), commit, then **push to this branch only** (`git push origin claude/best-of-vscode-catalog-ids`). Pushing the working branch is pre-approved; it is NOT approval for migrations, backfills, merges, deploys or writes to the live database (those still need explicit approval in chat).
 - **Token:** the owner pastes a GitHub token in chat each session. Use it only for the push, e.g. `git push https://x-access-token:$TOKEN@github.com/jianlubiano25/GreatReads.git HEAD:claude/best-of-vscode-catalog-ids`, so it is never saved in `.git/config`, a file, or a commit. If it was pasted in chat, remind the owner once to revoke it later. The repo is public: never commit data exports, provider payloads or private notes.
@@ -15,6 +15,14 @@
 - Never delete catalog data. Merge = add missing info to one record, keep everything. Never overwrite local data or bulk-replace cloud from local. Never silently merge uncertain identities; list conflicts.
 - After every step run `npm test`, `npx tsc --noEmit`, `npm run build`. Never claim an unrun check passed.
 - Owner always uses a 12-hour clock (already in code).
+
+## 1b. Catalog phase roadmap (Task A, owner-approved order; each phase ends with the PHASE-END ROUTINE)
+- [x] 0 terms + live schema docs. [x] 1 fill-only code (genres vs honors, candidates, edition fill, New Release rule).
+- [~] 2 migration `catalog_provider_records` (written, awaiting approval to apply).
+- [ ] 2b code: write/read provider records (check the table before any lookup; refresh ~90 days, "not found" ~14 days; payload by provider policy; Open Library never bulk-crawled).
+- [ ] 3 backfill dry-run then real run for the 779 works (genres, honors, edition details) from stored data only: fill-if-empty, audit row, validation counts, owner approval for the real run.
+- [ ] 4 term tables (genre/subject/collection/tag) + award tables; keep `genres`/`honors` arrays as the derived read model. [ ] 5 people, name aliases, contributors. [ ] 6 safe duplicate merge with audit (Nettle & Bone, Harry Potter first; never on similarity alone). [ ] 7 series, structured awards, New Release in the UI.
+- Then Task B (personal sync fixes: "Reading now" bug, simplify sync) and Task C (offline protection), see the sections below.
 
 ## 2. Owner goals (plain words)
 Three layers (owner's design, keep):
@@ -85,6 +93,7 @@ Open decision D2: when two devices edit the same item, compare device edit time 
 - D2 (above). D3 approve backfill dry-run first, writes later. D4 approve exporting live DDL and recording 000004/5 as applied. D5 keep/drop unused tables. D6 enable leaked-password protection.
 
 ## 9. Change log
+- 2026-10-27: Phase 2 migration + rollback written (not applied) and scratch-tested 20/20.
 - 2026-10-27: Owner standing order added (push every phase; handoff must let another account continue). Phase 0 (terms verified, live schema documented) and Phase 1 (code only: fill-only genres/honors, unpublished provider-fact candidates, Google-only edition detail fill, New Release rule; 880 tests pass). No DB write, no merge, no push.
 - 2026-10-27: owner approved; `honors` migration applied (file in `supabase/migrations/`, rollback in `supabase/rollbacks/`); conflict scan + backfill dry-run recorded in section 5.
 - 2026-10-27: Task A step 1 done: field map doc; found 22 Prize winner, 22 book-club/Inklings labels stored as genre, root cause in `curated.ts`; drafted (not applied) honors migration + rollback.
