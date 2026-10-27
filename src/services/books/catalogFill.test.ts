@@ -99,3 +99,10 @@ test('edition fill: junk input writes nothing', () => {
   assert.deepEqual(planEditionFill(row(), { publishedDate: 'soon', pages: -4, language: 'english??', publisher: '  ' }), { patch: {}, conflicts: [] });
   assert.deepEqual(planEditionFill(row(), { pages: 99999 }).patch, {});
 });
+
+test('Google\'s "Biography & Autobiography" is Biography; "Fiction / Historical" is Fiction + Historical fiction; other sub-labels stay unmapped', () => {
+  assert.deepEqual(kinds('Biography & Autobiography'), ['genre:Biography']);
+  assert.deepEqual(kinds('Fiction / Historical'), ['genre:Fiction', 'genre:Historical fiction']);
+  assert.deepEqual(kinds('Fiction / Translated'), ['genre:Fiction', 'unmapped:Translated']);
+  assert.deepEqual(kinds('Fiction / Dystopian'), ['genre:Fiction', 'unmapped:Dystopian']);
+});
