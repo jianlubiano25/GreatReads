@@ -11,6 +11,7 @@ import { peekCoverCandidates, setCandidateSink } from './books/coverCandidates';
 import { getMyCoverPick } from './books/coverPicks';
 import { getInfo, setInfoSink, siteRatingsOf } from './books/infoStore';
 import { identityOf, mergeIdentity } from './books/identity';
+import { setProviderFactsPersistence } from './books/providerFacts';
 import { hasRealSummary, isKnownGenre } from './books/model';
 import { backfillDone, captureBook, captureMany, captureOn, captureStatus, markBackfillDone, publishAllMissing, setPublishedSink, type CaptureItem, type CaptureRating } from './capture';
 
@@ -27,6 +28,7 @@ export function mergeItems(a: CaptureItem, b: CaptureItem): CaptureItem {
     year: a.year || b.year, pageCount: a.pageCount || b.pageCount, genre: a.genre || b.genre,
     ratings,
     identity: mergeIdentity(a.identity, b.identity),
+    ...(a.bookId || b.bookId ? { bookId: a.bookId || b.bookId } : {}),
   };
 }
 
@@ -45,6 +47,7 @@ export function itemOf(book: Pick<Book, 'title' | 'author'> & Partial<Book>): Ca
     pageCount: book.pageCount || entry.facts.pageCount,
     genre: isKnownGenre(book.genre) ? book.genre : entry.facts.genre,
     ratings: siteRatingsOf(entry).map(r => ({ source: r.source, average: r.average, count: r.count })),
+    ...(book.id !== undefined ? { bookId: String(book.id) } : {}),
   };
 }
 
@@ -75,6 +78,7 @@ let wired = false;
 export function initCapture(): void {
   if (wired) return;
   wired = true;
+  setProviderFactsPersistence(captureOn); // facts looked up on the owner's device are kept across reloads (owner only)
   setPublishedSink(() => { void syncCatalog({ force: true }); }); // this device then shows what was just published
   setInfoSink((book) => captureBook(itemOf(book)));
   setCandidateSink((book, list) => captureBook({ title: book.title, author: book.author, covers: list.map(c => c.url) }));

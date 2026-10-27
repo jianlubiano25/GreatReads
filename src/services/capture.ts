@@ -12,7 +12,9 @@
 import { coverKey } from './books/coverAnalysis';
 import { coverSourceOf } from './books/coverPicks';
 import { catalogIdsFrom } from './books/catalogIdentity';
-import { saveIdentityToCatalog } from './catalog';
+import { saveFactsToCatalog, saveIdentityToCatalog } from './catalog';
+import { receiptSignature } from './catalogReceipts';
+import { providerFactsFor, type ProviderFacts } from './books/providerFacts';
 import { currentUser, isAdminKnown, rest, rpc } from './supabase';
 import type { BookIdentity } from '../types';
 
@@ -29,6 +31,8 @@ export type CaptureItem = {
   ratings?: CaptureRating[];
   /** The book's outside ids (Open Library work / edition, ISBNs, Google volume). Recorded in the catalog exactly as Save to catalog does. */
   identity?: BookIdentity;
+  /** The device's own id for the book; only used to find the provider facts remembered for it (an Apple listing id looks like apple_123). Never sent. */
+  bookId?: string;
 };
 export type CaptureStatus = { on: boolean; running: boolean; queued: number; sent: number; published: number; total: number; error?: string; idSkipped?: number; idNotes?: string[] };
 
@@ -127,7 +131,14 @@ export function identityMark(item: CaptureItem): string | null {
   return parts ? `i|${coverKey({ title: item.title, author: item.author })}|${hashText(parts)}` : null;
 }
 const idPending = (item: CaptureItem): boolean => { const m = identityMark(item); return !!m && !doneSet().has(m); };
-const needsSending = (item: CaptureItem): boolean => rowsFor(item, 'x').some(r => !doneSet().has(r.id)) || idPending(item);
+/** Provider facts this device remembers for the book (this session or stored on this owner device) and which of them are not yet sent in their current form. */
+function factsOf(item: CaptureItem): { facts: ProviderFacts[]; pending: string[] } {
+  const facts = providerFactsFor({ id: item.bookId, identity: item.identity });
+  const key = coverKey({ title: item.title, author: item.author });
+  const marks = facts.map(f => `f|${key}|${f.provider}|${f.recordId}|${hashText(receiptSignature(f))}`);
+  return { facts, pending: marks.filter(m => !doneSet().has(m)) };
+}
+const needsSending = (item: CaptureItem): boolean => rowsFor(item, 'x').some(r => !doneSet().has(r.id)) || idPending(item) || factsOf(item).pending.length > 0;
 
 /* ---------------- the work (book) ids ---------------- */
 
@@ -218,7 +229,8 @@ async function processOne(item: CaptureItem): Promise<void> {
   if (!item.title?.trim()) return;
   const probe = rowsFor(item, 'x').filter(r => !doneSet().has(r.id));
   const sendIds = idPending(item);
-  if (!probe.length && !sendIds) return;
+  const fx = factsOf(item);
+  if (!probe.length && !sendIds && !fx.pending.length) return;
   const workId = await workIdFor(item);
   if (!workId) return;
   const todo = rowsFor(item, workId).filter(r => !doneSet().has(r.id));
@@ -237,6 +249,11 @@ async function processOne(item: CaptureItem): Promise<void> {
       status.idNotes = [note, ...(status.idNotes || []).filter(n => n !== note)].slice(0, 5);
     }
     if (!r.retry) { doneSet().add(identityMark(item) as string); dirty = true; } // a failed request is asked again next time; a judged id is not
+  }
+  if (fx.pending.length) { // provider receipts + their candidates (+ fill-only genres and edition details): from what this device already remembers, no provider request
+    const r = await saveFactsToCatalog(workId, { id: item.bookId ?? '', identity: item.identity, genre: item.genre ?? '' }, fx.facts);
+    status.sent += r.saved.length;
+    if (!r.retry) for (const m of fx.pending) { doneSet().add(m); dirty = true; } // a failed request is asked again next time
   }
   touched.add(workId);
 }

@@ -119,7 +119,7 @@ test('safety: the fill step never deletes, never touches personal tables, never 
   const calls = fake([{ id: 'w1', genres: [], honors: [] }], [ed()]);
   await saveFactsToCatalog('w1', { ...base, genre: 'Prize winner', awardLabel: 'Booker 2025' }, [gFacts()]);
   assert.ok(calls.every(c => c.method !== 'DELETE'));
-  assert.ok(calls.every(c => /^catalog_(works|editions|metadata_candidates)$/.test(c.table)), 'no user_* or rpc calls');
+  assert.ok(calls.every(c => /^catalog_(works|editions|metadata_candidates|provider_records)$/.test(c.table)), 'no user_* or rpc calls');
   assert.ok(calls.filter(c => c.table === 'catalog_metadata_candidates').every(c => c.body.status === 'candidate'));
 });
 
