@@ -1,101 +1,83 @@
-# GreatReads - Handoff
+# GreatReads - HANDOFF (read "START HERE" first; the rest is reference)
 
-Branch: `claude/best-of-vscode-catalog-ids` (best-of-vscode `3cea4d3` + 3 catalog-identity commits). Last verified 2026-10-27: `npm test` 857/857, `npx tsc --noEmit` clean, `npm run build` ok. Not device-tested. Nothing merged, no DB changes.
-App: reading-companion PWA, React/Vite/TS, hand-written Supabase REST client (no supabase-js).
+## START HERE
+- Branch: `claude/best-of-vscode-catalog-ids` (best-of-vscode `3cea4d3` + 3 catalog-identity commits). Checks 2026-10-27: tests 857/857, tsc clean, build ok. Not device-tested. Nothing merged; no DB changes made by Claude.
+- Owner is **not a coder**: explain in plain words, ask approval in plain words.
+- **Current task: Task A step 1** (section 6). All first steps are read-only; stop and report before any write.
+- Keep this file current: **every commit updates this file** (tick done items, rewrite "Current task", add one change-log line, delete finished detail). Keep it under ~110 lines.
+- Token for pushing is given by the owner in chat each session; never write it into any file.
 
 ## 1. Rules
 - Work only on this branch. Never touch `main`; no merge, deploy or force-push.
-- No production Supabase writes, migrations or policy changes without explicit owner approval. Free plan: no Supabase branches.
-- Never overwrite local data, bulk-replace cloud from local, or silently merge uncertain book identities.
+- No production Supabase writes, migrations or policy changes without explicit owner approval (free plan: no Supabase branches).
+- Never delete catalog data. Merge = add missing info to one record, keep everything. Never overwrite local data or bulk-replace cloud from local. Never silently merge uncertain identities; list conflicts.
 - After every step run `npm test`, `npx tsc --noEmit`, `npm run build`. Never claim an unrun check passed.
-- Report, then stop for approval before the next phase. Update this file at the end of each step.
-- Owner goal: **simpler sync that still works**. Owner always uses a 12-hour clock (already in code).
----
+- Owner always uses a 12-hour clock (already in code).
 
-## 1b. Mission and architecture principles
+## 2. Owner goals (plain words)
+Three layers (owner's design, keep):
+1. **Shared catalog** - works, editions, identifiers, approved metadata, cover decisions, curated discovery. Admin-owned.
+2. **Personal sync** - one mechanism for all user-owned data across a user's signed-in devices. User-owned.
+3. **Local-first cache/offline** - fast render, offline edits, pending queue. A cache, never a competing source of truth.
+Principles: one owner per datum; no data lives only on a device; shared sync never overwrites personal data and vice-versa; no new services or dependencies without measured benefit; reuse working code; backup/restore stays a separate recovery feature.
 
-Finish GreatReads (reading-companion PWA, React/Vite/TS, hand-written Supabase REST client, no Supabase JS dependency) as reliable, lightweight, fast and maintainable. Three coordinated layers:
+**Goal 1 - catalog:** when the owner/admin publishes (Save to catalog, cover publish, background capture) EVERYTHING known is stored in the right DB columns/rows: ISBNs, ids, Work, Edition, author, aliases, year, pages, genre, cover candidates, etc. "Prize winner" is a category/shelf, not a genre; real genres go in `genres`. Same book / same author = one record; merge info, never delete.
+**Goal 2 - personal sync:** simpler. Everything on iPhone equals iPad (same account, version, branch), live, no conflicts, no master device, cloud is the single copy. Covers: garden, nook look, arrangements, username, reading progress, reading now (Today/Library tabs), pages read counts, shelves, profile photo, settings.
 
-1. **Shared catalog** — works, editions, identifiers, approved metadata, cover decisions, curated discovery. Admin-owned.
-2. **Personal sync** — one mechanism for all user-owned data across a user's signed-in devices. User-owned.
-3. **Local-first cache/offline** — fast render, offline edits, pending queue. A cache, never a competing source of truth.
+## 3. Branches
+`claude/best-of-vscode-catalog-ids` = working branch. `claude/jldata2-best-of-vscode` @ `3cea4d3` = base (has the sync engine). `GreatReads-realtime` = source of the 3 cherry-picked commits (read only). `Jldata2` @ `f3f764f` = old base (backup-blob sync only).
 
-Principles: one authoritative owner per datum; shared sync never overwrites personal data and vice-versa; no second Supabase project; no new infrastructure/dependencies without measured benefit; reuse working code; do not redesign for appearance; never bulk-replace cloud data from local; never silently merge uncertain book identities; backup/restore stays a separate recovery feature.
+## 4. What exists
+**Sync:** per-record sync into Supabase `user_*` tables; Realtime fast path + 30 s revision probe + reconnect catch-up. Backup blob (`user_sync_records` type `backup`) = recovery only.
+Files: `librarySync.ts`, `librarySyncMerge.ts`, `dailyPagesSync.ts`, `settingsRecordsSync.ts` (`user_settings`, `user_words`), `editTimes.ts`, `runGate.ts`, `linkHealth.ts`, `changeProbe.ts`, `syncStatus.ts`, `SyncStatusSection.tsx`, `usePersonalLibrarySync.ts`, `supabase.ts` (25 s timeout), `cloudSync.ts` (backup).
+Rules today: later edit wins; equal time + different value = recorded tie (Backup & Restore screen); clock skew >60 s untrusted; deletes = tombstones. Per-setting records ON for all signed-in accounts; kill switch localStorage `readlife.settingsRecordsSync1="0"` or `VITE_SETTINGS_RECORDS_SYNC=0`; rollback = kill switch, then `supabase/rollbacks/` 000005, 000004. Realtime serializer must stay 2.0.0.
+**Catalog publish today (`src/services/catalog.ts`):** `saveBookToCatalog` stores Work (title, author, `work_key`), description, author bio, year/pageCount/genre as *metadata candidates only*, ratings, and ids via `saveIdentityToCatalog` (olWork on Work; ISBN/OL edition/Google volume on a new Edition row; invalid/conflicting ids reported, never written). Cover publish (`publishCoverToCatalog`) and background capture (`capture.ts`) are separate paths that also send ids.
+**Not saved today:** `catalog_works.genres` (EMPTY on all 779 works), `aliases`, `author_aliases`, `language_code`; Edition `publisher`, `publication_date/year`, `page_count`, `format`, `language_code`; cover candidates from Save to catalog; any category/shelf field (no column exists).
 
-## 2. Branches
-| Ref | Note |
-|---|---|
-| `claude/best-of-vscode-catalog-ids` | working branch |
-| `claude/jldata2-best-of-vscode` @ `3cea4d3` | base; has the per-record sync engine |
-| `GreatReads-realtime` | source of the 3 cherry-picked commits (read only) |
-| `Jldata2` @ `f3f764f` | older base; only a whole-app backup, no per-record sync |
+## 5. Data facts (live Supabase `GreatReads`, ref `amvkwwqcepmxxkfeqjox`; ignore Kipr projects; checked 2026-10-27)
+- `catalog_works` 779 rows; identifiers mostly empty. `catalog_editions` has at least 1 row (origin unverified). Metadata candidate fields in use: `genre` 301, `pageCount` 409, `year` 447. 22 published+selected `genre` candidates equal "Prize winner".
+- `user_library_books` 21 rows, 0 linked to a Work/Edition. `local_book_id`/`Book.id` must never be rewritten.
+- **Delete danger:** Editions, covers, content, metadata, ratings, private notes reference `catalog_works(id)` **ON DELETE CASCADE**. Deleting a Work destroys its data: re-point children, then archive (`catalog_set_work_status`), never delete. Unique rules that collide on re-pointing: `work_key`, `identifiers->>'olWork'`, one preferred cover per work, one selected value per metadata field.
+- RLS on all public tables; `catalog_*` writes only for `catalog_admins`. `authenticated` has write grants on `catalog_*` (RLS gates them). Bodies of `catalog_*` functions unread. Catalog table DDL is not in the repo.
+- Migration drift: `user_settings`/`user_words` live with data, but migrations `20261025000004/5` not in live history. Fix by exporting live DDL and recording them applied, not re-applying.
+- Unused tables: `user_sync_devices`, `user_reading_sessions`, `user_profiles`. Auth advisor: leaked-password protection off.
 
-## 3. What is built
-**Sync (in this branch):** per-record sync into Supabase `user_*` tables; Realtime is the fast path, a 30 s revision-only probe and reconnect catch-up give durability. Backup blob (`user_sync_records` type `backup`) is recovery only.
-- Files: `librarySync.ts`, `librarySyncMerge.ts` (books, shelves, annotations, prefs); `dailyPagesSync.ts`; `settingsRecordsSync.ts` (`user_settings` per key, `user_words` per word); `editTimes.ts` (timestamps, tombstones); `runGate.ts` (locks); `linkHealth.ts` (realtime watchdog); `changeProbe.ts`; `syncStatus.ts` + `SyncStatusSection.tsx`; hook `usePersonalLibrarySync.ts`; `supabase.ts` (25 s request timeout); `cloudSync.ts` (backup).
-- Conflict rules: later edit wins; equal time + different value = recorded tie (nothing overwritten); clock skew over 60 s untrusted; deletes are tombstones.
-- Per-setting records are ON for every signed-in account. Kill switch: localStorage `readlife.settingsRecordsSync1="0"` or build var `VITE_SETTINGS_RECORDS_SYNC=0`. Rollback: kill switch, then `supabase/rollbacks/` 000005 then 000004.
-- Realtime serializer must stay 2.0.0 (1.0.0 made every join fail).
+## 6. Tasks (do in order; each starts read-only)
+### Task A - Publish EVERYTHING to the catalog  [ ] current
+1. [ ] Read-only: export live catalog DDL to `supabase/schema-snapshot-<date>.sql`; read `catalog_work_json`/`catalog_changes` (what devices receive); write `docs/catalog-field-map.md`: every `Book` field -> DB column/row, marking saved today vs missing.
+2. [ ] Design ONE shared function used by Save to catalog, cover publish and background capture. Idempotent; only adds or fills; never overwrites a published value; never deletes; conflicts reported, not resolved. Writes Work (title, author, aliases, author aliases, language, genres, ids), Edition (ISBN10/13, OL edition, Google volume, publisher, date/year, pages, format, language, source), description/bio, ratings, all cover candidates, metadata candidates with source.
+3. [ ] Categories/shelves: owner decision D1 (section 8), then implement; "Prize winner" moves out of genre (copy first; un-select the genre copy only after approval; never delete).
+4. [ ] Same book / same author rule: match by exact ids (olWork, ISBN13/10, OL edition, Google volume), then `work_key`, then author alias; found = add aliases/ids/candidates to the existing Work, never a second Work; uncertain = list it.
+5. [ ] Tests (pure rules, like `catalogIdentity.test.ts`), tsc, build, owner device test.
+6. [ ] Backfill existing 779 works: dry-run counts first; after approval fill `genres` from real genre candidates (not categories), Editions from known data; audit snapshot + rollback script.
 
-**Catalog identity (cherry-picked):** `saveIdentityToCatalog` (`src/services/catalog.ts`) with pure rules in `src/services/books/catalogIdentity.ts`, used by admin "Save to catalog", the cover-publish modal and background capture (`capture.ts`). Writes `catalog_works.identifiers.olWork` and creates `catalog_editions` rows only when an edition id is known (ISBN check-digit validated). Invalid, conflicting or other-owned ids are reported, never written or merged. Re-save is a no-op.
-Owner device test: sign in as admin, Book Info, tap Save to catalog; toast lists saved/skipped ids; check `catalog_works.identifiers` and `catalog_editions` in Supabase; save again = no new edition row.
-
-## 4. Data facts (live Supabase, project `GreatReads`, ref `amvkwwqcepmxxkfeqjox`)
-- Ignore other org projects (Kipr, Kipr v1.2).
-- `catalog_works` 748 rows, but only 3 have non-empty `identifiers` (only `alt_keys`); `catalog_editions` had 0 rows at audit; on 2026-10-27 it has at least 1 (on the `nettle & bone|ursula vernon` work; origin not verified). Identity today = `work_key` (normalized title+author). Schema is sufficient; **data population and linking are the gap**.
-- **Delete danger:** `catalog_editions`, `catalog_cover_candidates`, `catalog_content_versions`, `catalog_metadata_candidates`, `catalog_rating_candidates`, `catalog_private_notes` all reference `catalog_works(id)` **ON DELETE CASCADE**. Deleting a duplicate work destroys its data. `user_library_books.catalog_work_id/catalog_edition_id` and `catalog_works.main_cover_candidate_id` are SET NULL. Unique rules that will collide on re-pointing: `work_key`, `identifiers->>'olWork'`, one preferred cover per work, one selected value per metadata field.
-- `user_library_books` 21 rows (1 user), 0 linked to a work or edition. `local_book_id` / `Book.id` must never be rewritten.
-- RLS on all public tables: `user_*` = `auth.uid()=user_id`; `catalog_*` public-read published rows, writes only for users in `catalog_admins`. `authenticated` holds write grants on `catalog_*` (RLS gates them; consider revoking later).
-- **Migration drift:** `user_settings` and `user_words` exist live with data, but migrations `20261025000004/5` are not in the live migration history. The repo also lacks most live catalog migrations. Fix by exporting live DDL (read only) and recording them as applied, not by re-applying.
-- Unused tables: `user_sync_devices`, `user_reading_sessions`, `user_profiles`. Advisor warning: leaked-password protection is off (Auth setting).
-
-## 5. Open issues and unknowns
-- "Reading now" page did not update on the second device; cause not found. Check `user_library_books` status sync and the pull after a realtime event.
-- Book search felt slower than Jldata2; not measured. Compare `useBookSearch.ts`, `BookSearch.tsx`, `search.ts`, `cache.ts` against Jldata2 before changing; keep genre picks and Hidden Gems.
-- Real two-device tests (iPhone + iPad) still owed for everything.
-- No test of `syncSettingsRecords` against a fake Supabase; nook look may flip-flop between devices.
-- Cover picks, hidden books and profile photo still live in the shared `user_library_preferences` JSON.
-- While an upload is pending, only stamped edits are received; unstamped items (custom book details, cover picks, removals) wait.
-- `settingsRecordsSync.ts` header comment says "OFF by default" (stale; it is ON).
-- Bodies of `catalog_*` SQL functions unread; unknown whether they re-check admin (RLS still protects writes).
-- Owner's other queued items: Hidden Gems cache check, genre tabs.
-
-## 6. Phases
-1. **Next tasks (section 8):** catalog merge preview, then sync simplification audit. Both read only.
-2. **Catalog identity foundation:** read-only dry run (exact-id / `work_key` / ambiguous / unmatched counts), then separately approved backfill and linking via admin-gated migration with a rollback script. Accept: the 21 `local_book_id`s unchanged, nothing silently merged, ambiguous rows listed, ISBN and RLS tests pass.
-3. **Apply approved sync simplifications**, with two-device simulation tests (offline edit, tombstone, tie, interrupted sync, account switch) plus owner real-device test.
-4. **Remaining categories and discovery:** move cover picks / hidden books / photo off the shared JSON; shared discovery shelves; decide unused tables.
-5. **Release validation:** search speed vs Jldata2, security re-check, iOS PWA update check, request counts.
-
-## 7. Owner decisions still open
-Backfill: approve dry run first, write later. Export live DDL and record 000004/5 as applied. Keep or drop unused tables. Enable leaked-password protection.
-
-## 8. Next tasks for the next Claude account (all read-only first; stop and report before any write)
-
-### Task 1 - Catalog merge preview and safe merge (owner's in-flight work from GreatReads-realtime; nothing of it was pushed, build it fresh here)
-Applicability checked 2026-10-27 (read-only SQL): the records exist, no merge code or RPC exists on any branch, `aliases[]` and `author_aliases[]` columns already exist (alternate titles need **no schema change**; verify `catalog_work_json` / `catalog_changes` actually send them to devices). The client already maps T. Kingfisher = Ursula Vernon (commit `954a598`).
-
-Records (all `published`, none with rejected covers, none linked to personal books):
-| Work id | Title / author | work_key | ids | covers / meta / content / ratings / editions |
+### Task B - Merge duplicates safely (owner's earlier work; not pushed anywhere, build here)
+Verified 2026-10-27: records exist; `aliases[]`/`author_aliases[]` exist (no schema change for alternate titles; confirm devices receive them). Client already maps T. Kingfisher = Ursula Vernon (commit `954a598`). All `published`, no rejected covers, no personal links.
+| Work id | Title / author | work_key | ids | covers/meta/content/ratings/editions |
 |---|---|---|---|---|
-| `a1a46652-be9b-482f-ac3c-e8d16700a552` | Nettle & Bone / T. Kingfisher (author_aliases: Ursula Vernon) | `nettle & bone\|ursula vernon` | olWork OL24510090W, alt_keys | 3 / 3 / 1 / 2 / **1** |
-| `806d8475-69b3-4ee0-ba46-8780c053c17d` | Nettle & Bone / T. Kingfisher | `nettle & bone\|t. kingfisher` | none | 8 / 4 / 3 / 3 / 0 |
-| `1f36b07f-f181-4ffe-86fc-11ac75612bcc` | HP and the Sorcerer's Stone / J. K. Rowling | `...sorcerer's stone\|j. k. rowling` | none | 3 / 3 / 2 / 3 / 0 |
-| `e3f8a77e-7cb8-4e4a-be3e-f1a8da694980` | HP and the Sorcerer's Stone / J.K. Rowling | `...sorcerer's stone\|j.k. rowling` | olWork OL31306243W | 2 / 3 / 2 / 3 / 0 |
-| `be350d24-3b7a-48e5-81e3-09733b54737c` | HP and the Philosopher's Stone / J. K. Rowling | `...philosopher's stone\|j. k. rowling` | none | 1 / 3 / 2 / 2 / 0 |
-All five have empty `aliases` and `genres`; "Prize winner" is not in these works' `genres`, so find where it is stored before preserving it.
+| `a1a46652-be9b-482f-ac3c-e8d16700a552` | Nettle & Bone / T. Kingfisher (author_aliases Ursula Vernon) | `nettle & bone\|ursula vernon` | olWork OL24510090W | 3/3/1/2/**1** |
+| `806d8475-69b3-4ee0-ba46-8780c053c17d` | Nettle & Bone / T. Kingfisher | `nettle & bone\|t. kingfisher` | none | 8/4/3/3/0 |
+| `1f36b07f-f181-4ffe-86fc-11ac75612bcc` | HP and the Sorcerer's Stone / J. K. Rowling | `...\|j. k. rowling` | none | 3/3/2/3/0 |
+| `e3f8a77e-7cb8-4e4a-be3e-f1a8da694980` | HP and the Sorcerer's Stone / J.K. Rowling | `...\|j.k. rowling` | olWork OL31306243W | 2/3/2/3/0 |
+| `be350d24-3b7a-48e5-81e3-09733b54737c` | HP and the Philosopher's Stone / J. K. Rowling | `...philosopher's stone\|j. k. rowling` | none | 1/3/2/2/0 |
+1. [ ] Read-only preview script `scripts/catalog-merge-preview.ts` (report only): per group the proposed canonical Work, what moves, and a conflict list. Nettle & Bone first: verify Vernon = Kingfisher from evidence; investigate conflicting page counts (metadata `pageCount` rows vs Edition `page_count`, with sources); pick none without evidence.
+2. [ ] Harry Potter: same first novel (US/UK titles) but never merge on title similarity alone; confirm by ids/edition data. Target = one Work, distinct Editions (own ISBN, publisher, date, pages, cover), other title kept as searchable alias.
+3. [ ] Safe merge (needs approval to apply): admin-gated function, dry-run default, re-point children first, archive the duplicate, audit row with JSON snapshot of affected rows, rollback script. New table/function = migration needing approval.
+4. [ ] Source-backed missing-metadata repair: every value has a source, labelled Work-level or Edition-level, applied only after approval.
 
-Do, in order:
-1. **Read-only merge preview** (`scripts/catalog-merge-preview.ts`, output a report; no writes) for Nettle & Bone, the two Sorcerer's Stone works, and Philosopher's Stone vs Sorcerer's Stone. Per group: proposed canonical Work, what moves (identifiers, `alt_keys`, aliases, author aliases, editions, cover/metadata/content/rating candidates, rejection state, selected-cover pointer, personal links), and a **conflict list** (unique-rule collisions, differing values, ids owned by another work). Never decide an ambiguity silently.
-2. **Nettle & Bone is the pilot.** Verify Ursula Vernon = T. Kingfisher from the audit evidence and records. Investigate the conflicting page counts (compare `catalog_metadata_candidates` page_count rows and the edition's `page_count`, with source/provenance) and report; do not pick one without evidence. Keep Work-level vs Edition-level metadata separate.
-3. **Harry Potter:** same first novel under US and UK titles, but do not merge on title similarity alone; confirm identity by ids and edition data. Plan = one canonical Work, distinct Editions (own ISBN, publisher, date, page count, cover), the other title kept as a searchable alias. Report any schema limit before proposing a schema change.
-4. **Safe merge design (needs owner approval to apply):** admin-gated function, dry-run by default; **re-point children first, never delete a source work** (cascade deletes); archive the loser via `catalog_set_work_status`; write an audit record with a JSON snapshot of every affected row so it can be rolled back; ship a rollback script. Any new table or function is a migration needing explicit approval.
-5. **Source-backed missing-metadata repair workflow:** every proposed value carries a source URL/name, is labelled Work-level or Edition-level, and is applied only after owner approval.
-Do not classify "Prize winner" as a genre unless the schema separates genres from categories/shelves. Export the live catalog DDL first (not in the repo), as in Phase 2.
+### Task C - Simple personal sync (Goal 2)
+Target design: cloud = the only copy; every device equal; local = cache + pending queue; each item synced as its own small record (setting, book, shelf, day's pages, plant/arrangement, photo); live push via Realtime + automatic catch-up on reconnect/foreground; later change wins per item, resolved silently (no tie screens, no "pause on conflict"). Honest limit: if two devices change the same item at the same moment, one wins automatically; that is what "no conflicts" means in practice.
+1. [ ] Read-only audit -> `docs/sync-simplification-audit.md`: per sync file (+tests) what it does, what depends on it, remove/merge candidates, risk (low/med/high), coverage. Hypotheses to test (not verified): one generic per-record engine instead of per-category files; drop tie screen and clock-skew guard; keep catch-up on reconnect (Realtime alone is not durable); keep backup blob as recovery only.
+2. [ ] Coverage check: for each item in Goal 2, which table/record carries it today and where a gap exists (cover picks, hidden books, profile photo still sit in the shared `user_library_preferences` JSON).
+3. [ ] Owner approves specific simplifications; implement in small steps with two-device simulation tests (offline edit, delete, same-item change, interrupted sync, account switch); then owner tests iPhone + iPad.
+Open decision D2: when two devices edit the same item, compare device edit time (fair to offline edits, needs clock guard) or server time (simplest, but a late-uploaded old offline edit wins). Recommend keeping per-item edit time.
 
-### Task 2 - Sync simplification audit (read only)
-For each sync file in section 3 (plus its tests): what it does, what depends on it, whether it can be removed or merged without losing reliability, risk (low/med/high), test coverage. Write to `docs/sync-simplification-audit.md` ending with a ranked list. No code changes until the owner approves specific items.
+## 7. Open issues
+"Reading now" did not update on the 2nd device (cause unknown; check `user_library_books` status sync + pull after a realtime event). Search felt slower than Jldata2 (unmeasured; compare `useBookSearch.ts`, `BookSearch.tsx`, `search.ts`, `cache.ts`; keep genre picks and Hidden Gems). Real two-device tests owed. No fake-Supabase test for `syncSettingsRecords`; nook look may flip-flop. While an upload is pending only stamped edits are received. `settingsRecordsSync.ts` header says "OFF by default" (stale). Owner's other queued items: Hidden Gems cache check, genre tabs.
+
+## 8. Owner decisions needed
+- **D1 categories/shelves storage:** recommend adding a nullable `categories text[]` to `catalog_works` (additive migration + rollback, and include it in `catalog_work_json`); alternative: a `category` metadata candidate (no migration, harder for devices to read).
+- D2 (above). D3 approve backfill dry-run first, writes later. D4 approve exporting live DDL and recording 000004/5 as applied. D5 keep/drop unused tables. D6 enable leaked-password protection.
 
 ## 9. Change log
-- 2026-10-27: Branch created from best-of-vscode; 3 GreatReads-realtime commits cherry-picked cleanly (only `src/App.tsx` overlapped); handoff files merged and slimmed into this one file.
-- 2026-10-27: Added Task 1 (catalog merge preview) after read-only checks of the live catalog; found cascade-delete risk and 1 edition row now exists.
+- 2026-10-27: branch created; 3 GreatReads-realtime commits cherry-picked cleanly; handoffs merged and slimmed; live catalog checked (cascade-delete risk, 779 works, genres empty, 22 "Prize winner" genres); tasks A/B/C written from owner goals.
