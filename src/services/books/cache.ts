@@ -1,4 +1,5 @@
 import { bump, timed } from './perf';
+import { forgetDurable, mirrorDurable, registerDurableKey } from '../durableCopy';
 
 /** A small localStorage-backed map with an expiry and a size cap. Failures (private mode, full storage) are silent: it is only a cache. */
 
@@ -39,6 +40,13 @@ export const NEVER_CLEAR: readonly string[] = ['readlife.nameChoices1'];
 /** Saved shelf lists: kept when the device is merely out of storage (clearing them sent every shelf back to its starting books). "Refresh everything" still clears them. */
 export const KEEP_WHEN_STORAGE_FULL: readonly string[] = ['readlife.dynseeds1', 'readlife.dynstatus1', 'readlife.dynreset1'];
 export const clearableKeysWhenStorageFull = (): string[] => clearableCacheKeys().filter(k => !KEEP_WHEN_STORAGE_FULL.includes(k));
+
+/**
+ * Re-downloadable, but what makes the Store look right on the first frame: the saved lists of self-refreshing shelves, their one-time reset marks
+ * (without the mark a reset fires again and drops the saved list) and the shelf covers. A new build keeps them (the data refresh of a new build
+ * must not blank the Store); the explicit "Refresh App & Data" button may still clear them (the storage-full cleanup keeps the lists, see KEEP_WHEN_STORAGE_FULL).
+ */
+export const KEEP_ACROSS_BUILDS: readonly string[] = ['readlife.dynseeds1', 'readlife.dynreset1', COVER_CACHE_KEYS.shelves];
 export const clearableCacheKeys = (): string[] => [...new Set([...clearableKeys, ...LEGACY_BOOK_CACHE_KEYS, 'readlife.curated1', 'readlife.curated2'])].filter(k => !NEVER_CLEAR.includes(k));
 
 /** Pending (debounced) writes by cache, so a closing or backgrounded app can save them at once instead of losing the last 400 ms of results. */
@@ -58,8 +66,11 @@ export function persistentCache<T>(storageKey: string, opts: {
    * instead of crashing a screen or being trusted. The other entries, and everything outside this cache, are left as they are.
    */
   validate?: (value: any) => boolean;
+  /** Also keep a safety copy in IndexedDB (see durableCopy.ts) that is put back before the app draws if the browser dropped localStorage. */
+  durable?: boolean;
 }): Cache<T> {
   registerClearableKey(storageKey);
+  if (opts.durable) registerDurableKey(storageKey);
   type Entry = { t: number; v: T };
   const mem = new Map<string, Entry>();
   let loaded = false;
@@ -90,6 +101,7 @@ export function persistentCache<T>(storageKey: string, opts: {
           const text = JSON.stringify(Object.fromEntries(mem));
           bump(`cache.${storageKey}.saveBytes`, text.length);
           localStorage.setItem(storageKey, text);
+          if (opts.durable) mirrorDurable(storageKey, text);
         });
       } catch {}
     }
@@ -137,6 +149,7 @@ export function persistentCache<T>(storageKey: string, opts: {
       dirty = false;
       clearTimeout(timer);
       try { localStorage.removeItem(storageKey); } catch {}
+      if (opts.durable) forgetDurable(storageKey); // a deliberate clear is not undone by the safety copy
     },
   };
   instances.set(storageKey, cache);

@@ -19,7 +19,10 @@ const SEED_COLORS = ['#6b6f80', '#8a5a3b', '#2e5934', '#925838', '#3a7d80', '#7a
 // v3: shelves saved by older versions could hold a cover that belonged to another book, or stars picked by older rating rules; they are looked up again once
 // `cv`: the cover rule the books' covers were chosen by (resolve.ts). A shelf saved before the English-first rule is dropped when read, so its books are resolved again
 // (a shelf book that already has a cover and a rating is never looked up, so an old foreign cover would otherwise stay for the whole week)
-const cache = persistentCache<{ sig: string; books: Book[]; cv?: number }>(COVER_CACHE_KEYS.shelves, { ttl: 7 * 24 * 60 * 60 * 1000, max: 40, validate: v => !!v && typeof v.sig === 'string' && Array.isArray(v.books) && v.cv === COVER_RULE });
+/** How long a shelf's last good copy stays usable as a fallback (covers, and the list itself when its saved list is gone). Fresh use is still 7 days. */
+const LAST_GOOD_MS = 60 * 24 * 60 * 60 * 1000;
+const FRESH_MS = 7 * 24 * 60 * 60 * 1000;
+const cache = persistentCache<{ sig: string; books: Book[]; cv?: number }>(COVER_CACHE_KEYS.shelves, { ttl: 7 * 24 * 60 * 60 * 1000, keepStale: LAST_GOOD_MS, max: 40, durable: true, validate: v => !!v && typeof v.sig === 'string' && Array.isArray(v.books) && v.cv === COVER_RULE });
 
 /** A short fingerprint of text (not for security): equal text, equal fingerprint. */
 const fingerprint = (text: string): string => {
@@ -121,6 +124,58 @@ export function getCachedCurated(shelf: CuratedShelf): Book[] | null {
 }
 
 /**
+ * Covers by BOOK, not by list. The saved copy of a shelf is only trusted whole when its list and bundled data are exactly the same (getCachedCurated); when a
+ * shelf's list changed (a refresh added a pick, an update shipped new data) every book used to start as a placeholder. Instead each book of the shelf takes what
+ * is saved for the same title + author, from this shelf's last good copy first, then any other shelf's:
+ *  - the cover (and its link) always, as long as the copy is not older than 60 days;
+ *  - rating, year, pages and ids only from a copy that is still fresh (7 days), so a stale rating is looked up again instead of staying for ever.
+ * Only gaps are filled: what the book already has (a bundled cover, a prefetched rating) wins, and the shelf's own title, author, genre and label stay.
+ * A different book never gets it: the match is the same title key and author key as everywhere else.
+ */
+export function reuseSavedCovers(shelf: CuratedShelf, books: Book[]): Book[] {
+  if (books.every(b => !needsLookup(b))) return books;
+  const now = Date.now();
+  const pool = cache.entries?.() ?? [];
+  const ordered = [...pool.filter(e => e.key === shelf.id), ...pool.filter(e => e.key !== shelf.id)].filter(e => now - e.at <= LAST_GOOD_MS && e.value?.cv === COVER_RULE);
+  const index = new Map<string, { book: Book; fresh: boolean }>();
+  for (const e of ordered) for (const b of e.value.books || []) {
+    if (!b?.title || !(b.coverId || b.coverUrl)) continue;
+    const k = bookKey(b.title, b.author || '');
+    if (!index.has(k)) index.set(k, { book: b, fresh: now - e.at <= FRESH_MS });
+  }
+  if (!index.size) return books;
+  return books.map(b => {
+    if (!needsLookup(b)) return b;
+    const hit = index.get(bookKey(b.title, b.author || ''));
+    if (!hit) return b;
+    const c = hit.book, out: Book = { ...b };
+    if (!(b.coverId || b.coverUrl)) { out.coverId = c.coverId; out.coverUrl = c.coverUrl; }
+    if (hit.fresh) {
+      if (!b.ratingAverage && c.ratingAverage) { out.ratingAverage = c.ratingAverage; out.ratingCount = c.ratingCount; out.ratingSource = c.ratingSource; }
+      if (!b.year && c.year) out.year = c.year;
+      if (!b.pageCount && c.pageCount) out.pageCount = c.pageCount;
+      if (!b.identity && c.identity) out.identity = c.identity;
+    }
+    return out;
+  });
+}
+
+/** Tests only: put a saved shelf copy in the cache (with the time it was saved). */
+export const putSavedShelfForTests = (id: string, books: Book[], at: number, cv: number = COVER_RULE): void => cache.set(id, { sig: 'test', books, cv }, at);
+export const clearSavedShelvesForTests = (): void => cache.clear();
+
+/**
+ * The list a shelf last showed, read back from its last good saved copy (60 days). For a self-refreshing shelf whose saved list is missing: it is rebuilt from
+ * here before falling back to the hand-picked default list, so the Store does not flash the defaults. Title, author and pick label only; undefined when there is none.
+ */
+export function lastGoodShelfSeeds(shelfId: string): [string, string, string?][] | undefined {
+  const e = cache.peek(shelfId);
+  if (!e || !Array.isArray(e.value?.books) || e.value.cv !== COVER_RULE) return undefined;
+  const seeds = e.value.books.filter(b => typeof b?.title === 'string' && typeof b?.author === 'string' && b.title && b.author).map((b): [string, string, string?] => (b.awardLabel ? [b.title, b.author, b.awardLabel] : [b.title, b.author]));
+  return seeds.length ? seeds : undefined;
+}
+
+/**
  * Is what the resolver found the book the shelf asked for? The shelf's own title and author are always what is shown, so a wrong
  * match would put another book's cover, rating and link under the right name. Accepted when the titles agree, or when the author
  * agrees and the titles share most of their words (a different edition's title); anything else is left to the cover search,
@@ -171,7 +226,7 @@ export function curatedSource(shelf: CuratedShelf): ShelfSource & { seeded: () =
   const seeded = () => {
     const s = seedPlaceholders(shelf);
     // Fully prefetched shelves need no lookups and no cache at all
-    return s.every(b => !needsLookup(b)) ? s : getCachedCurated(shelf) || s;
+    return s.every(b => !needsLookup(b)) ? s : getCachedCurated(shelf) || reuseSavedCovers(shelf, s);
   };
   return {
     id: shelf.id,

@@ -7,7 +7,7 @@
  * NOT touched: your library, reading history, notes, highlights, settings, cover picks, and the owner's title/author choices (see NEVER_CLEAR in books/cache.ts).
  * The caller reloads the page afterwards. Needs a connection: with none the saved copy would be deleted and nothing fetched, so it is refused.
  */
-import { clearCaches, clearableCacheKeys } from './books/cache';
+import { clearCaches, clearableCacheKeys, KEEP_ACROSS_BUILDS } from './books/cache';
 import { refreshAllCovers } from './books/coverLookup';
 import { EXTRA_CLEARABLE } from '../hooks/useReadingLife';
 
@@ -31,12 +31,15 @@ export async function refreshEverything(): Promise<boolean> {
  * After the app updates to a new build, the data this device downloaded or worked out under the old build is forgotten once, so every reader gets the latest data without
  * pressing anything: the same data refresh as the button (re-downloadable caches, covers published for everyone), but with no reload and no change to the saved app copy
  * (the new build is already running). Recorded first, so a failure can never repeat on every launch. Your own data is untouched. Returns true when it ran.
+ * Kept across the update (KEEP_ACROSS_BUILDS): the saved lists of self-refreshing shelves, their reset marks and the shelf covers. Wiping them showed the hand-picked
+ * default lists and cover placeholders after every update, and made one-time resets (Oprah) run again. Their own rules (signatures, 7-day expiry, refresh schedules)
+ * still retire anything that is really out of date.
  */
 const BUILD_KEY = 'readlife.dataBuild1'; // one tiny control record; not a cache, so no cleanup clears it
 export function refreshDataForNewBuild(build: string): boolean {
   if (!build || build === 'dev') return false;
   try { if (localStorage.getItem(BUILD_KEY) === build) return false; localStorage.setItem(BUILD_KEY, build); } catch { return false; }
-  try { clearCaches([...clearableCacheKeys(), ...EXTRA_CLEARABLE]); } catch {}
-  void refreshAllCovers().catch(() => {});
+  try { clearCaches([...clearableCacheKeys().filter(k => !KEEP_ACROSS_BUILDS.includes(k)), ...EXTRA_CLEARABLE]); } catch {}
+  void refreshAllCovers({ keepShelfCovers: true }).catch(() => {});
   return true;
 }

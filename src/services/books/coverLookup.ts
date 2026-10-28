@@ -415,10 +415,11 @@ export async function repairMissingCovers(opts: { includeNotFound?: boolean; onP
  * Touches only the two cover caches: Library, history, notes, settings, shelves and offline data are left alone.
  * Returns how many saved repairs were forgotten.
  */
-export function refreshBookCovers(): number {
+export function refreshBookCovers(opts: { keepShelfCovers?: boolean } = {}): number {
   const count = Object.keys(fixes).length;
   // The saved answers a cover is chosen from: each book's resolved result, the shelves built from them and the cover viewer's lists. (Ratings are looked up again with them.)
-  clearCaches([COVER_CACHE_KEYS.resolved, COVER_CACHE_KEYS.shelves, COVER_CACHE_KEYS.candidates]);
+  // (`keepShelfCovers`: a new build keeps the shelves' saved covers, so the Store never starts from placeholders)
+  clearCaches([COVER_CACHE_KEYS.resolved, ...(opts.keepShelfCovers ? [] : [COVER_CACHE_KEYS.shelves]), COVER_CACHE_KEYS.candidates]);
   fixes = {};
   try { localStorage.removeItem(FIX_KEY); localStorage.removeItem(NONE_KEY); } catch {}
   inflight.clear();
@@ -434,8 +435,8 @@ export function refreshBookCovers(): number {
  * keeps them for 12 hours and would hand the same old answer back), and fetch the covers published for everyone right now. Your own picks and your data are untouched.
  * Pictures already on the device stay: a new choice is a different picture, and an unchanged one need not be downloaded again. The caller reloads the page afterwards.
  */
-export async function refreshAllCovers(): Promise<number> {
-  const count = refreshBookCovers();
+export async function refreshAllCovers(opts: { keepShelfCovers?: boolean } = {}): Promise<number> {
+  const count = refreshBookCovers(opts);
   try { await (globalThis as any).caches?.delete('rl-api-v1'); } catch {}
   await syncSharedCovers({ force: true }).catch(() => false);
   return count;
