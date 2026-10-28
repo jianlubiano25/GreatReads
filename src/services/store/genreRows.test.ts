@@ -9,6 +9,7 @@ const storage = new Map<string, string>();
 };
 
 import { genreRowSource } from './genreRows';
+import { flushPersistentCaches } from '../books/cache';
 import { InsufficientShelfError } from './shelves';
 import type { Book } from '../../types';
 import { SEARCH_GENRES } from '../../data/searchGenres';
@@ -71,4 +72,18 @@ test('genre gem pools and shelf caches are isolated by the genre query', async (
   assert.notEqual(fiction.id, nonfiction.id);
   assert.equal(fiction.cached(), null);
   assert.equal(nonfiction.cached(), null);
+});
+
+test('H1: an empty provider answer is not saved as the genre pool, so the next open tries again', async () => {
+  const q = 'h1-fixture-classics';
+  const g = { label: 'H1 fixture', emoji: '', query: q, subgenres: [] };
+  const currentFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('{"docs":[],"items":[],"results":[],"numFound":0,"totalItems":0}', { status: 200, headers: { 'content-type': 'application/json' } });
+  try {
+    await assert.rejects(() => genreRowSource(g, 'gems').load(() => {}));
+  } finally {
+    globalThis.fetch = currentFetch;
+  }
+  flushPersistentCaches();
+  assert.equal(JSON.parse(storage.get('readlife.genrepool1') || '{}')[q], undefined);
 });
