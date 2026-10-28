@@ -16,6 +16,7 @@ const GENRE_ALIASES: Record<string, string> = {
   'mystery': 'Mystery', 'mysteries': 'Mystery', 'thriller': 'Thriller', 'thrillers': 'Thriller', 'suspense': 'Thriller',
   'fantasy': 'Fantasy', 'romance': 'Romance', 'memoir': 'Memoir', 'memoirs': 'Memoir', 'biography': 'Biography', 'biographies': 'Biography',
   'horror': 'Horror', 'historical fiction': 'Historical fiction', 'science fiction': 'Science fiction', 'sci-fi': 'Science fiction', 'sci fi': 'Science fiction',
+  'business & economics': 'Business', 'cooking methods': 'Cookbooks', // owner-approved 2026-10-27
   'biography & autobiography': 'Biography', // Google's own category name (seen in the catalog's stored candidates)
   'classic': 'Classic', 'classics': 'Classic', 'self-help': 'Self-help', 'self help': 'Self-help', 'self-development': 'Self-help',
   'graphic novels': 'Graphic novels', 'graphic novel': 'Graphic novels', 'comics': 'Graphic novels', 'philosophy': 'Philosophy', 'science': 'Science',
@@ -33,7 +34,7 @@ const APPLE_MULTI: Record<string, string[]> = {
 };
 
 /** Google category paths seen in the catalog's stored candidates where the second part says what KIND of fiction it is. Anything not listed here stays unmapped. */
-const COMPOSITE: Record<string, string[]> = { 'fiction / historical': ['Fiction', 'Historical fiction'] };
+const COMPOSITE: Record<string, string[]> = { 'fiction / historical': ['Fiction', 'Historical fiction'], 'fiction / literary': ['Fiction', 'Literary fiction'], 'fiction / romcom': ['Fiction', 'Romance'] };
 
 const DERIVED = /^new releases?$/i; // time-limited: derived from dates instead (newReleaseStatus)
 const TAG = /^(readers?'?\s+favou?rites?|staff\s+picks?)$/i;

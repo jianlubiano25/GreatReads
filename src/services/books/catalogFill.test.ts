@@ -106,3 +106,11 @@ test('Google\'s "Biography & Autobiography" is Biography; "Fiction / Historical"
   assert.deepEqual(kinds('Fiction / Translated'), ['genre:Fiction', 'unmapped:Translated']);
   assert.deepEqual(kinds('Fiction / Dystopian'), ['genre:Fiction', 'unmapped:Dystopian']);
 });
+
+test('owner-approved mappings: Literary, Romcom, Business & Economics, Cooking Methods; subjects like Dystopian and Satire stay unmapped', () => {
+  assert.deepEqual(kinds('Fiction / Literary'), ['genre:Fiction', 'genre:Literary fiction']);
+  assert.deepEqual(kinds('Fiction / Romcom'), ['genre:Fiction', 'genre:Romance']);
+  assert.deepEqual(kinds('Business & Economics'), ['genre:Business']);
+  assert.deepEqual(kinds('Cooking Methods'), ['genre:Cookbooks']);
+  for (const subj of ['Fiction / Satire', 'Fiction / Myth', 'Fiction / Epistolary']) assert.equal(classifyLabel(subj).filter(c => c.kind === 'genre').length, 1, subj);
+});
