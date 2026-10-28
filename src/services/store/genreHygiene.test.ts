@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { CuratedShelf } from '../../data/storeCatalog';
-import { genreOrEmpty, isShelfOrHonorLabel } from '../books/catalogFill';
+import { genreOrEmpty, isShelfOrHonorLabel, displayGenre } from '../books/catalogFill';
 import { seedPlaceholders } from './curated';
 import { rowsFor } from '../capture';
 
@@ -26,4 +26,9 @@ test('admin capture sends no genre candidate for a prize label, and still sends 
   const rows = (genre: string) => rowsFor({ title: 'T', author: 'A B', genre } as any, 'w1').filter(r => r.table === 'catalog_metadata_candidates' && (r.body as any).field_name === 'genre');
   assert.equal(rows('Prize winner').length, 0);
   assert.equal(rows('Fantasy').length, 1);
+});
+
+test('F1: the placeholder "Book" (and shelf/prize labels) is never shown as a genre; real genres are', () => {
+  for (const bad of ['Book', 'book', ' Book ', '', undefined, null, 'Prize winner']) assert.equal(displayGenre(bad), '', String(bad));
+  assert.equal(displayGenre('Memoir'), 'Memoir');
 });

@@ -64,6 +64,9 @@ export const isShelfOrHonorLabel = (raw: unknown): boolean => classifyLabel(raw)
 /** The label when it may be a genre, otherwise '' (so a shelf or honor name can never become book.genre or a genre candidate). */
 export const genreOrEmpty = (raw: unknown): string => { const t = clean(raw); return t && !isShelfOrHonorLabel(t) ? t : ''; };
 
+/** What to SHOW as a book's genre: '' when it is unknown, the placeholder "Book", or a prize/club/tag label. */
+export const displayGenre = (raw: unknown): string => { const t = genreOrEmpty(raw); return t.toLowerCase() === 'book' ? '' : t; };
+
 /** Append-only union: existing entries stay (order and spelling), new ones are added when not there ignoring case. Returns undefined when nothing was added. */
 export function unionKeep(existing: readonly string[] | null | undefined, incoming: readonly string[]): string[] | undefined {
   const have = [...(existing || [])];
