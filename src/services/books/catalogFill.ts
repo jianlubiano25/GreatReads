@@ -59,6 +59,11 @@ export function classifyLabel(raw: unknown): ClassifiedLabel[] {
   });
 }
 
+/** A prize, club pick, tag or time-limited label ("Prize winner", "Reese's Book Club", "New release"): never a genre. */
+export const isShelfOrHonorLabel = (raw: unknown): boolean => classifyLabel(raw).some(c => c.kind === 'honor' || c.kind === 'tag' || c.kind === 'derived');
+/** The label when it may be a genre, otherwise '' (so a shelf or honor name can never become book.genre or a genre candidate). */
+export const genreOrEmpty = (raw: unknown): string => { const t = clean(raw); return t && !isShelfOrHonorLabel(t) ? t : ''; };
+
 /** Append-only union: existing entries stay (order and spelling), new ones are added when not there ignoring case. Returns undefined when nothing was added. */
 export function unionKeep(existing: readonly string[] | null | undefined, incoming: readonly string[]): string[] | undefined {
   const have = [...(existing || [])];

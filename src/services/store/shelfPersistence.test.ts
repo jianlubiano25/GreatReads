@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { CuratedShelf } from '../../data/storeCatalog';
-import { persistentCache, flushPersistentCaches } from '../books/cache';
+import { persistentCache, flushPersistentCaches, clearableCacheKeys, clearableKeysWhenStorageFull } from '../books/cache';
 import { dynamicCuratedSource, dynamicInfo, refreshShelf, type DynamicSpec } from './dynamic';
 
 type Seed = [string, string, string?];
@@ -52,4 +52,10 @@ test('REPRO 3: a result saved just before the app is hidden or closed is written
   assert.equal(store.has('readlife.test-flush1'), false); // still waiting (debounced)
   flushPersistentCaches(); // what pagehide / visibilitychange calls
   assert.match(store.get('readlife.test-flush1') ?? '', /"n":1/);
+});
+
+test('storage-full cleanup keeps saved shelf lists, but Refresh everything (clearableCacheKeys) still clears them', () => {
+  persistentCache('readlife.dynseeds1', { ttl: 1, max: 1 }); // registers the key as the store does
+  assert.ok(clearableCacheKeys().includes('readlife.dynseeds1'));
+  assert.ok(!clearableKeysWhenStorageFull().includes('readlife.dynseeds1'));
 });

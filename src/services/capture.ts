@@ -9,6 +9,7 @@
  *  - A new book is created as a draft and becomes visible when something of it is published.
  *  - Slow and quiet on purpose (one request at a time, a small pause between them); a failure just stops it and it picks up again later.
  */
+import { genreOrEmpty } from './books/catalogFill';
 import { coverKey } from './books/coverAnalysis';
 import { coverSourceOf } from './books/coverPicks';
 import { catalogIdsFrom } from './books/catalogIdentity';
@@ -114,7 +115,7 @@ export function rowsFor(item: CaptureItem, workId: string): Row[] {
   const meta = (field: string, value: unknown) => rows.push({ table: 'catalog_metadata_candidates', id: `m|${key}|${field}|${hashText(String(value))}`, body: { work_id: workId, field_name: field, field_value: value, source_name: 'app', status: 'candidate' } });
   if (/^\d{3,4}$/.test(item.year || '')) meta('year', item.year);
   if (Number.isInteger(item.pageCount) && (item.pageCount as number) > 0 && (item.pageCount as number) < 20000) meta('pageCount', item.pageCount);
-  if (item.genre && item.genre !== 'Book' && item.genre.length <= 80) meta('genre', item.genre);
+  if (item.genre && item.genre !== 'Book' && item.genre.length <= 80 && genreOrEmpty(item.genre)) meta('genre', item.genre); // a prize / club / shelf label is never a genre candidate
   for (const r of item.ratings || []) {
     const src = RATING_SRC[r.source];
     if (!src || !(r.average > 0 && r.average <= 5)) continue;

@@ -1,4 +1,5 @@
 import type { Book } from '../../types';
+import { genreOrEmpty } from '../books/catalogFill';
 import resolvedData from '../../data/storeResolved.json';
 import { CURATED_SHELVES, type CuratedShelf } from '../../data/storeCatalog';
 import { mapPool } from '../books/http';
@@ -98,7 +99,7 @@ export function seedPlaceholders(shelf: CuratedShelf): Book[] {
       awardLabel: award,
       title: t,
       author: a,
-      genre: shelf.genre,
+      genre: genreOrEmpty(shelf.genre) || 'Book',
       summary: `${t} by ${a}.`,
       spineColor: SEED_COLORS[i % SEED_COLORS.length],
       source: 'openlibrary',
@@ -153,12 +154,12 @@ export async function resolveCuratedShelf(shelf: CuratedShelf, current: Book[], 
   await mapPool(shelf.seeds, 4, async ([title, author, award], i) => {
     const have = out[i];
     if (!needsLookup(have)) return;
-    const r = await resolveBook({ title, author, fallbackId: have.id, genreHint: shelf.genre, apple: true });
+    const r = await resolveBook({ title, author, fallbackId: have.id, genreHint: genreOrEmpty(shelf.genre) || undefined, apple: true });
     if (!r || !resolvedMatchesSeed(r.book, title, author)) return;
     const hadCover = !!(have.coverId || have.coverUrl);
     // `have` goes first so it wins every gap; ids and identity (Open Library work, ISBN) are taken from the resolved book
     const merged = mergeBooks({ ...have, id: r.book.id }, r.book);
-    out[i] = { ...merged, title, author, genre: shelf.genre, awardLabel: award, year: merged.year || r.book.year || have.year, spineColor: have.spineColor };
+    out[i] = { ...merged, title, author, genre: genreOrEmpty(shelf.genre) || merged.genre, awardLabel: award, year: merged.year || r.book.year || have.year, spineColor: have.spineColor };
     if (!hadCover) try { new Image().src = getCoverUrl(r.book.coverId, 'M', r.book.coverUrl); } catch {} // warm the cache
     onUpdate([...out]);
   });

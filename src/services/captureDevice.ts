@@ -2,6 +2,7 @@
  * Feeds the owner-only capture (capture.ts): what each lookup finds as it happens, and, once, everything this device already holds
  * (your library, the Store shelves shipped with the app, saved lookups and cover lists).
  */
+import { genreOrEmpty } from './books/catalogFill';
 import resolvedData from '../data/storeResolved.json';
 import { CURATED_SHELVES } from '../data/storeCatalog';
 import type { Book } from '../types';
@@ -45,7 +46,7 @@ export function itemOf(book: Pick<Book, 'title' | 'author'> & Partial<Book>): Ca
     authorBio: book.authorBio || entry.facts.authorBio,
     year: /^\d{3,4}$/.test(book.year || '') ? book.year : entry.facts.year,
     pageCount: book.pageCount || entry.facts.pageCount,
-    genre: isKnownGenre(book.genre) ? book.genre : entry.facts.genre,
+    genre: isKnownGenre(book.genre) && genreOrEmpty(book.genre) ? book.genre : genreOrEmpty(entry.facts.genre) || undefined,
     ratings: siteRatingsOf(entry).map(r => ({ source: r.source, average: r.average, count: r.count })),
     ...(book.id !== undefined ? { bookId: String(book.id) } : {}),
   };

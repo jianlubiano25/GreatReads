@@ -36,6 +36,9 @@ export const registerClearableKey = (key: string) => { clearableKeys.add(key); }
 /** Keys that are safe to clear: registered caches plus the old cache keys older versions used. */
 /** Saved with persistentCache but a choice of the reader, not a download: no cleanup or refresh may ever clear it. */
 export const NEVER_CLEAR: readonly string[] = ['readlife.nameChoices1'];
+/** Saved shelf lists: kept when the device is merely out of storage (clearing them sent every shelf back to its starting books). "Refresh everything" still clears them. */
+export const KEEP_WHEN_STORAGE_FULL: readonly string[] = ['readlife.dynseeds1', 'readlife.dynstatus1', 'readlife.dynreset1'];
+export const clearableKeysWhenStorageFull = (): string[] => clearableCacheKeys().filter(k => !KEEP_WHEN_STORAGE_FULL.includes(k));
 export const clearableCacheKeys = (): string[] => [...new Set([...clearableKeys, ...LEGACY_BOOK_CACHE_KEYS, 'readlife.curated1', 'readlife.curated2'])].filter(k => !NEVER_CLEAR.includes(k));
 
 /** Pending (debounced) writes by cache, so a closing or backgrounded app can save them at once instead of losing the last 400 ms of results. */
