@@ -38,6 +38,14 @@ export const registerClearableKey = (key: string) => { clearableKeys.add(key); }
 export const NEVER_CLEAR: readonly string[] = ['readlife.nameChoices1'];
 export const clearableCacheKeys = (): string[] => [...new Set([...clearableKeys, ...LEGACY_BOOK_CACHE_KEYS, 'readlife.curated1', 'readlife.curated2'])].filter(k => !NEVER_CLEAR.includes(k));
 
+/** Pending (debounced) writes by cache, so a closing or backgrounded app can save them at once instead of losing the last 400 ms of results. */
+const flushers = new Map<string, () => void>();
+export const flushPersistentCaches = (): void => { flushers.forEach(f => { try { f(); } catch {} }); };
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  window.addEventListener('pagehide', flushPersistentCaches);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushPersistentCaches(); });
+}
+
 export function persistentCache<T>(storageKey: string, opts: {
   ttl: number;
   max: number;
@@ -67,9 +75,11 @@ export function persistentCache<T>(storageKey: string, opts: {
   };
   const usable = (v: unknown) => { try { return !opts.validate || opts.validate(v); } catch { return false; } };
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const save = () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => {
+  let dirty = false;
+  const write = () => {
+    if (!dirty) return;
+    dirty = false;
+    {
       try {
         const keys = [...mem.keys()];
         if (keys.length > opts.max) keys.slice(0, keys.length - opts.max).forEach(k => mem.delete(k));
@@ -79,8 +89,14 @@ export function persistentCache<T>(storageKey: string, opts: {
           localStorage.setItem(storageKey, text);
         });
       } catch {}
-    }, 400);
+    }
   };
+  const save = () => {
+    dirty = true;
+    clearTimeout(timer);
+    timer = setTimeout(write, 400);
+  };
+  flushers.set(storageKey, () => { clearTimeout(timer); write(); });
 
   const cache: Cache<T> = {
     get(key) {
@@ -115,6 +131,7 @@ export function persistentCache<T>(storageKey: string, opts: {
     clear() {
       loaded = true;
       mem.clear();
+      dirty = false;
       clearTimeout(timer);
       try { localStorage.removeItem(storageKey); } catch {}
     },

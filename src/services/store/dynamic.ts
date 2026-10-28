@@ -186,13 +186,16 @@ export async function refreshShelf(shelf: CuratedShelf, spec: DynamicSpec, now =
   const found = fresh ? cleanSeeds(fresh.seeds) : [];
   if (found.length < spec.minSeeds) {
     attempts.set(shelf.id, { at: now, ok: false, why });
-    if (old) saved.set(shelf.id, { ...old, tried: now }); // keep the stale list; try again in an hour
+    const cur = saved.get(shelf.id); // read AGAIN: a refresh that finished while this one waited must not be overwritten by the older copy taken before the wait
+    if (cur) saved.set(shelf.id, { ...cur, tried: now }); // keep the last good list; try again in an hour
     return null;
   }
+  const cur = saved.get(shelf.id) ?? old;
+  if (cur && cur.at > now) return cur; // a newer successful refresh is already saved: this slower, older answer must not replace it
   attempts.set(shelf.id, { at: now, ok: true });
   const order = spec.order ?? ((x: Seed[]) => x);
   const seeds = spec.merge === 'append'
-    ? order(mergeAppend(found, order(old?.seeds ?? shelf.seeds), spec.cap, spec.keepExisting))
+    ? order(mergeAppend(found, order(cur?.seeds ?? shelf.seeds), spec.cap, spec.keepExisting))
     : found.slice(0, Math.max(shelf.seeds.length, 12));
   const next: Saved = { seeds, title: fresh?.title, official: fresh?.official, at: now, tried: now };
   saved.set(shelf.id, next);
