@@ -3,7 +3,7 @@
 ## START HERE
 - Branch: `claude/best-of-vscode-catalog-ids` (best-of-vscode `3cea4d3` + 3 catalog-identity commits). Checks 2026-10-27: tests 898/898, tsc clean, build ok. Not device-tested. Nothing merged; no DB changes made by Claude.
 - Owner is **not a coder**: explain in plain words, ask approval in plain words.
-- **Current task: Task A Phase 3 applied (4763eda). Owner approved 4 genre mappings (added in code + tests: Literary->Literary fiction, Romcom->Romance, Business & Economics->Business, Cooking Methods->Cookbooks); the other unmapped labels stay candidates for Phase 4 subjects. Applying those mappings to the few existing works is bundled with Phase 4 (no extra step). Owner's iPhone-PWA test findings are ARRANGED in `docs/backlog-iphone-pwa-tests.md` (tasks D0-D7, E1) and NOT started: wait for the owner's "go".** Known now: "Prize winner" shows as a genre because 64 published `genre` metadata values are honor/shelf names and `store/curated.ts` sets genre from the shelf; works.genres is clean. Recommended start: D0, then D1 (startup timeline, needs one iPhone log).
+- **Current task: planning done, waiting for the owner's "go" on WP1.** Last pushed state: Phase 3 applied (4763eda), 4 genre mappings added (7888a29), vocabulary decisions and grouped work packages written (this commit). The owner's mapping table was reviewed: kinds are genre/subgenre/subject/keyword/collection/tag + separate honors/awards; labels map by meaning and never lose the specific label; ambiguous ones (Historical alone, Speculative, Satire, Family & Relationships, Myth, Translated) are conditional or subject-only (see the table in `docs/catalog-vocabulary.md`, owner to confirm).
 - Keep this file current: **every commit updates this file** (tick done items, rewrite "Current task", add one change-log line, delete finished detail). Keep it under ~110 lines.
 - **PHASE-END ROUTINE (owner's standing order, he uses several free Claude accounts and may hit quota at any time):** when a phase or step finishes, in this order: run the 3 checks, update this file (Current task + change log), commit, then **push to this branch only** (`git push origin claude/best-of-vscode-catalog-ids`). Pushing the working branch is pre-approved; it is NOT approval for migrations, backfills, merges, deploys or writes to the live database (those still need explicit approval in chat).
 - **Token:** the owner pastes a GitHub token in chat each session. Use it only for the push, e.g. `git push https://x-access-token:$TOKEN@github.com/jianlubiano25/GreatReads.git HEAD:claude/best-of-vscode-catalog-ids`, so it is never saved in `.git/config`, a file, or a commit. If it was pasted in chat, remind the owner once to revoke it later. The repo is public: never commit data exports, provider payloads or private notes.
@@ -16,13 +16,10 @@
 - After every step run `npm test`, `npx tsc --noEmit`, `npm run build`. Never claim an unrun check passed.
 - Owner always uses a 12-hour clock (already in code).
 
-## 1b. Catalog phase roadmap (Task A, owner-approved order; each phase ends with the PHASE-END ROUTINE)
-- [x] 0 terms + live schema docs. [x] 1 fill-only code (genres vs honors, candidates, edition fill, New Release rule).
-- [x] 2 migration `catalog_provider_records` applied 2026-10-27 (+ grant tightening).
-- [x] 2b write side: receipts from Save to catalog, capture and the device backfill; candidates linked; owner-device fact persistence (897 tests). [ ] 2c read side: check stored receipts before any provider lookup (refresh ~90 days, "not found" ~14 days); Open Library `full` payload.
-- [x] 3 backfill applied 2026-10-27 (270 works). Genres/honors only; editions have nothing to fill from stored data. Works with no stored genre (504) need provider lookups through Save to catalog/capture (the owner's own lookups, never bulk).
-- [ ] 4 term tables (genre/subgenre/subject/theme/keyword/collection/tag) + award tables; keep `genres`/`honors` arrays as the derived read model. [ ] 5 people, name aliases, contributors. [ ] 6 safe duplicate merge with audit (Nettle & Bone, Harry Potter first; never on similarity alone). [ ] 7 series, structured awards, New Release in the UI.
-- Then Task B (personal sync fixes: "Reading now" bug, simplify sync) and Task C (offline protection), see the sections below.
+## 1b. Work plan (grouped by shared files; details in `docs/work-packages.md`, vocabulary design in `docs/catalog-vocabulary.md`)
+- Done: Phase 0 docs, Phase 1 fill code, Phase 2 table (applied), 2b receipts, Phase 3 backfill (applied, 270 works). 2c dropped (reason in change log).
+- Next, in order, each only on the owner's "go": **WP1** genre hygiene (D0) -> **WP2a** startup timeline + request priority (needs one iPhone log) -> **WP2b** catalog-first reads and cover persistence -> **WP2c** failing shelves and Discover -> **WP3** vocabulary tables (genres, subgenres, subjects, keywords, collections, tags, awards) -> **WP4** admin "everything we know" in Book Info. Later: people/aliases, safe merge, series, sync, offline.
+- Token saving: one package per session, read only its listed files, run single test files while working and the full suite once at the end.
 
 ## 2. Owner goals (plain words)
 Three layers (owner's design, keep):
@@ -93,6 +90,7 @@ Open decision D2: when two devices edit the same item, compare device edit time 
 - D2 (above). D3 approve backfill dry-run first, writes later. D4 approve exporting live DDL and recording 000004/5 as applied. D5 keep/drop unused tables. D6 enable leaked-password protection.
 
 ## 9. Change log
+- 2026-10-27: Docs only: `docs/catalog-vocabulary.md` (naming checked against Open Library/Goodreads/Apple/Google, adjusted mapping table, example record) and `docs/work-packages.md` (tasks grouped by shared files; replaces the iPhone backlog doc). No code or database change.
 - 2026-10-27: Owner approved the 4 genre mappings (code+tests, 899 tests expected); iPhone-PWA findings arranged in docs/backlog-iphone-pwa-tests.md (not started); Prize-winner-as-genre causes found (published metadata + curated shelf genre), fix queued as D0.
 - 2026-10-27: Phase 3 backfill APPLIED to production with owner approval via the SQL tool: 270 works, 270 audit notes, counts verified (see Current task). No other table changed.
 - 2026-10-27: Phase 3 dry-run (read-only) + backfill/rollback SQL + scratch check 11/11; classifier gained 2 verified mappings (Biography & Autobiography; Fiction / Historical); 898/898 tests, tsc clean, build ok. 2c re-scoped (see Current task). No production write.
