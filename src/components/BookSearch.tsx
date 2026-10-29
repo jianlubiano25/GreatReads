@@ -3,7 +3,7 @@ import { Search, ArrowLeft, SlidersHorizontal, Loader2 } from 'lucide-react';
 import type { Book } from '../types';
 import { useBookSearch } from '../hooks/useBookSearch';
 import { lockBodyScroll } from '../hooks/bodyScrollLock';
-import { activeFilterCount, applySearchView, DEFAULT_SEARCH_VIEW, genreOptions, getCoverPick, ownCoverUrl, isDefaultView, SEARCH_PUBLISHED_LABEL, SEARCH_SORT_LABEL, type SearchScope, type SearchSort, type SearchView } from '../services/books';
+import { activeFilterCount, applySearchView, DEFAULT_SEARCH_VIEW, genreOptions, knownCover, isDefaultView, SEARCH_PUBLISHED_LABEL, SEARCH_SORT_LABEL, type SearchScope, type SearchSort, type SearchView } from '../services/books';
 import { sameWork } from '../services/books/identity';
 import { didYouMean, suggestionVocab } from '../services/books/suggest';
 import { SEARCH_KIND_LABEL, SEARCH_LENGTH_LABEL } from '../services/books/searchView';
@@ -101,7 +101,7 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
   useEffect(() => {
     if (!searching) return;
     for (const b of shownResults.slice(visibleCount, visibleCount + SEARCH_STEP)) {
-      const url = getCoverPick(b, coverSize) || ownCoverUrl(b, coverSize);
+      const url = knownCover(b, coverSize).url;
       if (url) new Image().src = url;
     }
   }, [searching, shownResults, visibleCount, coverSize]);
