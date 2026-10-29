@@ -164,13 +164,14 @@ test('save: an Open Library work id that another catalog book has is refused by 
   assert.deepEqual(works[0].identifiers, {});
 });
 
-test('save: a work that already has a different Open Library id keeps it (conflict reported, nothing written)', async () => {
+test('save: a work that already has a different Open Library id keeps it (conflict reported; the only write is the unpublished alternateIds note)', async () => {
   const works: Work[] = [{ id: 'w1', identifiers: { olWork: 'OL1W' } }];
   const calls = fakeCatalog(works, []);
   const r = await saveIdentityToCatalog('w1', { olWork: 'OL2W' });
   assert.deepEqual(r.saved, []);
   assert.match(r.skipped[0], /already has Open Library id OL1W/);
-  assert.equal(calls.filter(c => c.method !== 'GET').length, 0);
+  const writes = calls.filter(c => c.method !== 'GET');
+  assert.ok(writes.every(c => c.path.startsWith('catalog_metadata_candidates') && c.body?.field_name === 'alternateIds' && c.body?.status === 'candidate'), 'no work or edition is changed');
 });
 
 test('save: an invalid ISBN is named and never written', async () => {

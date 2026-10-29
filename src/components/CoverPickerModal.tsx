@@ -20,7 +20,7 @@ import {
   subscribeCovers,
   type CoverSource,
 } from '../services/books';
-import { rejectCoverForBook, rejectedCovers } from '../services/catalog';
+import { publishCoverToCatalog, rejectCoverForBook, rejectedCovers, storedCovers, syncCatalog } from '../services/catalog';
 import { authVersion, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
 
 /**
@@ -83,6 +83,15 @@ export function CoverPickerModal({ book, onClose }: Props) {
   const [dims, setDims] = useState<Record<string, string>>({});
   const [active, setActive] = useState(0);
 
+  // The owner sees what the catalog already stores for this book first (the same covers the admin tools list), then the live finds are added behind them
+  useEffect(() => {
+    if (!owner) return;
+    let live = true;
+    storedCovers(book).then(list => { if (live && list.length) setSlides(prev => merge(prev, list)); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [owner, book.title, book.author]);
+
   // Ask the sources (once per book; a repeat open is answered from this device)
   const bookKey = coverKey(book);
   useEffect(() => {
@@ -121,8 +130,13 @@ export function CoverPickerModal({ book, onClose }: Props) {
   useEffect(() => setNote(''), [at]);
   const toggleStar = () => {
     if (!current) return;
-    if (!starred) setCoverPick(book, { url: current.url, source: current.source });
-    else if (mine) clearCoverPick(book);
+    if (!starred) {
+      setCoverPick(book, { url: current.url, source: current.source }); // your own pick: on this device at once
+      if (owner) { // the owner's star is also published for everyone, and this device's catalog is refreshed straight away
+        setNote('Published for everyone…');
+        void publishCoverToCatalog(book, current.url).then(async r => { if (r.ok) await syncCatalog({ force: true }); setNote(r.ok ? 'Published for everyone.' : `Used here, but not published: ${r.error}`); });
+      }
+    } else if (mine) clearCoverPick(book);
     else setNote('Published for everyone. To take it off, use the ✕ in Profile › Publish book covers.'); // nothing of yours to unstar
   };
 
