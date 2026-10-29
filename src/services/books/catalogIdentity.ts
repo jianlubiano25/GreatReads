@@ -9,25 +9,19 @@
  *    NOT written. Nothing is ever moved, merged or overwritten.
  */
 import type { BookIdentity } from '../../types';
-import { isbn10to13 } from './identity';
+import { isbn10to13, validIsbn } from './identity';
 
 export type EditionIds = { isbn13?: string; isbn10?: string; olEdition?: string; gbVolume?: string };
 export type CatalogIds = { olWork?: string } & EditionIds;
 
 export function validIsbn13(raw = ''): string {
   const s = String(raw).replace(/[\s-]/g, '');
-  if (!/^97[89]\d{10}$/.test(s)) return '';
-  let sum = 0;
-  for (let i = 0; i < 12; i++) sum += Number(s[i]) * (i % 2 ? 3 : 1);
-  return (10 - (sum % 10)) % 10 === Number(s[12]) ? s : '';
+  return /^97[89]\d{10}$/.test(s) && validIsbn(s) ? s : ''; // the check digit is identity.validIsbn's, the only copy
 }
 
 export function validIsbn10(raw = ''): string {
   const s = String(raw).replace(/[\s-]/g, '').toUpperCase();
-  if (!/^\d{9}[\dX]$/.test(s)) return '';
-  let sum = 0;
-  for (let i = 0; i < 10; i++) sum += (s[i] === 'X' ? 10 : Number(s[i])) * (10 - i);
-  return sum % 11 === 0 ? s : '';
+  return /^\d{9}[\dX]$/.test(s) && validIsbn(s) ? s : '';
 }
 
 /** Check what a book says about itself. Invalid or self-contradicting values are dropped and named in `rejected`; nothing is guessed or filled in. */

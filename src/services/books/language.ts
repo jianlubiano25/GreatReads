@@ -19,8 +19,6 @@ const FOREIGN = new Set((
 
 /** Is a catalogue language code English, or not stated? (Google says "en"; Open Library's flag is already folded to "en".) The ONE place that decides this. */
 export const isEnglishLanguage = (language?: string): boolean => !language || language === 'en';
-/** The same question for an Open Library edition's language list ("/languages/eng"): English, or no language stated. */
-export const isEnglishEditionLanguages = (keys: string[]): boolean => !keys.length || keys.includes('/languages/eng');
 
 const words = (t: string): string[] => t.toLowerCase().normalize('NFC').split(/[^\p{L}\p{M}]+/u).filter(Boolean);
 

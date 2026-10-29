@@ -62,9 +62,6 @@ export const setInfoSink = (f?: (book: Book, entry: InfoEntry) => void) => { inf
 let clock = () => Date.now();
 /** Tests only. */
 export const setInfoClockForTests = (fn?: () => number) => { clock = fn ?? (() => Date.now()); };
-/** Tests only: forget in-memory state (saved data is the test's own storage). */
-export const resetInfoStoreForTests = () => { catalogMemo.clear(); seeded.clear(); inflightNow.clear(); versions.clear(); adopted.clear(); };
-
 /**
  * One key per book, the same normalised title + first author the resolver uses when there is no ISBN, so a Store card, the NYT list, a search result and
  * a library copy of the same book share one entry however each spells the author, and an edition without an ISBN finds the entry of the one with.

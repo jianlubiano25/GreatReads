@@ -9,7 +9,7 @@ import { useBookInfo } from '../hooks/useBookInfo';
 import { saveBookToCatalog } from '../services/catalog';
 import { CatalogReviewModal } from './CatalogReviewModal';
 import { authVersion, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
-import { unlinkAuthorGroup, displayBook, nameAlternates, nameChoiceOf, setNameChoice, subscribeNames, mainRating, otherRatings, RATING_SOURCE_LABEL, isCoverAdminOn, subscribeCoverAdmin, type SourceRating } from '../services/books';
+import { unlinkAuthorGroup, displayBook, nameAlternates, nameChoiceOf, setNameChoice, subscribeNames, mainRating, otherRatings, RATING_SOURCE_LABEL, isCoverAdminOn, subscribeCoverAdmin } from '../services/books';
 import { CoverFace, StarRating, compactCount, honorsListFor } from './BookMeta';
 import { X, BookOpen, Star, Award, ChevronDown, Check, Bookmark, Image as ImageIcon, RefreshCw, Code, Languages } from 'lucide-react';
 import { displayGenre } from '../services/books/catalogFill';

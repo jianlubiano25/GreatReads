@@ -11,7 +11,7 @@
  */
 import { genreOrEmpty } from './books/catalogFill';
 import { coverKey } from './books/coverAnalysis';
-import { coverSourceOf } from './books/coverPicks';
+import { coverSourceOf, isHttps } from './books/coverPicks';
 import { catalogIdsFrom } from './books/catalogIdentity';
 import { saveFactsToCatalog, saveIdentityToCatalog } from './catalog';
 import { receiptSignature } from './catalogReceipts';
@@ -65,7 +65,7 @@ const saveDone = () => {
     localStorage.setItem(DONE_KEY, JSON.stringify([...doneSet()]));
   } catch {}
 };
-export const hashText = (text: string): string => {
+const hashText = (text: string): string => {
   let h = 5381;
   for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
   return (h >>> 0).toString(36) + text.length.toString(36);
@@ -97,7 +97,6 @@ export const captureStatus = (): CaptureStatus => status;
 
 /* ---------------- cleaning what is sent ---------------- */
 
-const isHttps = (u: unknown): u is string => typeof u === 'string' && u.length <= 1000 && /^https:\/\/[^\s]+$/i.test(u);
 const goodText = (t: unknown): t is string => typeof t === 'string' && t.trim().length >= 40 && t.length <= 20000;
 
 type Row = { table: string; id: string; body: Record<string, unknown> };
@@ -310,7 +309,6 @@ export function captureMany(items: CaptureItem[]): Promise<void> {
 
 export const backfillDone = (): boolean => { try { return localStorage.getItem(BACKFILL_KEY) === '1'; } catch { return false; } };
 export const markBackfillDone = (): void => { try { localStorage.setItem(BACKFILL_KEY, '1'); } catch {} };
-export const resetBackfill = (): void => { try { localStorage.removeItem(BACKFILL_KEY); } catch {} };
 
 /** Tests only. */
 export const resetCaptureForTests = (): void => { queue.length = 0; works.clear(); worksLoaded = false; done = new Set(); dirty = false; running = undefined; touched.clear(); status = { on: false, running: false, queued: 0, sent: 0, published: 0, total: 0 }; };

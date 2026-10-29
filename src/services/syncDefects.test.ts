@@ -22,7 +22,6 @@ import { getNookMatchesTheme, getWindowFollowsTime, setNookMatchesTheme, setWind
 import { setSettingsRecordsOverride } from './settingsRecordsFlag';
 import { decideDay, keepDeviceDay, loadDailyTies, setDailyPagesSyncOverride, stampDayEdit, syncDailyPages, takeCloudDay, type CloudDay } from './dailyPagesSync';
 
-const defect = (name: string, fn: () => Promise<void> | void) => test(name, { todo: 'known sync defect (see sync audit)' }, fn);
 
 const USER = 'user-1';
 const TABLES = ['user_library_books', 'user_book_annotations', 'user_shelves', 'user_shelf_books', 'user_reading_sessions', 'user_library_preferences', 'user_daily_pages', 'user_settings', 'user_words'];

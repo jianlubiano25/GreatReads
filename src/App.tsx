@@ -8,7 +8,7 @@ import { usePersonalLibrarySync } from './hooks/usePersonalLibrarySync';
 import { initCapture, maybeBackfill } from './services/captureDevice';
 import { bookKey, getCoverPick, ownCoverUrl, sameWork, withKnownRating, isCoverAdminOn, subscribeCoverAdmin, tapSecret, syncSharedCovers } from './services/books';
 import { milestone } from './services/books/perf';
-import { formatRating, prettyDate, readingNowOrder } from './services/bookHistory';
+import { formatRating, readingNowOrder } from './services/bookHistory';
 import { makeCollection, setBookMembership } from './services/libraryCollections';
 import { resolveLibraryId } from './services/library';
 import { useLibraryCollections } from './hooks/useLibraryCollections';

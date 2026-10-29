@@ -56,7 +56,7 @@ export const shelfSig = (shelf: CuratedShelf, records: unknown = PREFETCHED[shel
  * `i` is only the fast path for an unchanged list.
  */
 const prefetchedIndex = new Map<string, Map<string, Partial<Book> & { olKey?: string; title?: string }>>();
-const bookKey = (title: string, author: string) => `${titleKey(title)}|${authorKey(author)}`;
+const titleAuthorKey = (title: string, author: string) => `${titleKey(title)}|${authorKey(author)}`;
 
 function prefetchedByBook(shelfId: string): Map<string, Partial<Book> & { olKey?: string; title?: string }> {
   let index = prefetchedIndex.get(shelfId);
@@ -65,7 +65,7 @@ function prefetchedByBook(shelfId: string): Map<string, Partial<Book> & { olKey?
     const bundled = CURATED_SHELVES.find(s => s.id === shelfId)?.seeds ?? [];
     (PREFETCHED[shelfId] ?? []).forEach((rec, i) => {
       const seed = bundled[i];
-      if (rec && seed) index!.set(bookKey(seed[0], seed[1]), rec);
+      if (rec && seed) index!.set(titleAuthorKey(seed[0], seed[1]), rec);
     });
     prefetchedIndex.set(shelfId, index);
   }
@@ -76,7 +76,7 @@ export function prefetchedFor(shelfId: string, i: number, title: string, author:
   const rec = PREFETCHED[shelfId]?.[i];
   if (rec && rec.title && rec.title === title) return rec;
   const index = prefetchedByBook(shelfId);
-  const exact = index.get(bookKey(title, author));
+  const exact = index.get(titleAuthorKey(title, author));
   if (exact) return exact;
   // The same book with its author written another way (a source's spelling of a translated name): same title, compatible author
   const bundled = CURATED_SHELVES.find(s => s.id === shelfId)?.seeds ?? [];
@@ -140,13 +140,13 @@ export function reuseSavedCovers(shelf: CuratedShelf, books: Book[]): Book[] {
   const index = new Map<string, { book: Book; fresh: boolean }>();
   for (const e of ordered) for (const b of e.value.books || []) {
     if (!b?.title || !(b.coverId || b.coverUrl)) continue;
-    const k = bookKey(b.title, b.author || '');
+    const k = titleAuthorKey(b.title, b.author || '');
     if (!index.has(k)) index.set(k, { book: b, fresh: now - e.at <= FRESH_MS });
   }
   if (!index.size) return books;
   return books.map(b => {
     if (!needsLookup(b)) return b;
-    const hit = index.get(bookKey(b.title, b.author || ''));
+    const hit = index.get(titleAuthorKey(b.title, b.author || ''));
     if (!hit) return b;
     const c = hit.book, out: Book = { ...b };
     if (!(b.coverId || b.coverUrl)) { out.coverId = c.coverId; out.coverUrl = c.coverUrl; }
