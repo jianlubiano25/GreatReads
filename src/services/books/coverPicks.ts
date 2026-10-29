@@ -5,7 +5,7 @@
 import { registerClearableKey } from './cache';
 import { isUnknownAuthor, authorKey, titleKey } from './identity';
 import { coverKey } from './coverAnalysis';
-import { getCatalogCover } from './catalogCovers';
+import { getCatalogCoverFor } from './catalogCovers';
 import { isCoverRejected } from './rejectedCovers';
 import { notifyCoversChanged, sizedCoverUrl, type CoverSize } from './coverLookup';
 
@@ -203,10 +203,10 @@ const looseIndex = () => {
 };
 
 /** The cover in use for this book: your own pick, else the catalog's, else the one published for everyone; undefined when neither (or it failed to load this session). */
-export function getCoverPickInfo(book: { title?: string; author?: string }): CoverPick | undefined {
+export function getCoverPickInfo(book: { title?: string; author?: string; identity?: { isbn13?: string; isbn10?: string } }): CoverPick | undefined {
   const key = coverKey(book);
   const ok = (p?: CoverPick) => (p && !failed.has(p.url) && !isCoverRejected(book, p.url) ? p : undefined);
-  const cat = getCatalogCover(key);
+  const cat = getCatalogCoverFor(book); // same matcher as Book Info: ids/ISBN, aliases, author aliases
   const fromCatalog = cat ? ok({ url: cat, source: coverSourceOf(cat), t: 0 }) : undefined; // your pick, then the catalog, then the older shared set
   const exact = ok(all()[key]) ?? fromCatalog ?? ok(getSharedPick(key));
   if (exact) return exact;
