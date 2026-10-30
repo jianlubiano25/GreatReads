@@ -15,7 +15,7 @@ applyFontPrefs(); // a font chosen in developer mode (nothing changes for everyo
 // If the browser dropped the saved shelf lists / reset marks / shelf covers, put them back from the IndexedDB safety copy BEFORE anything reads them
 // (nothing is awaited when they are all there; at most 1.5 s otherwise). Then a new build refreshes what it should (not those, see KEEP_ACROSS_BUILDS).
 void restoreDurableCopies(KEEP_ACROSS_BUILDS).catch(() => []).then(() => {
-  refreshDataForNewBuild(APP_BUILD); // a new build forgets what the old one downloaded, once, before anything reads it
+  refreshDataForNewBuild(APP_BUILD); // clears old downloads only when DATA_EPOCH changed (once), never on every update // a new build forgets what the old one downloaded, once, before anything reads it
   createRoot(document.getElementById('root')!).render(
     <ErrorBoundary>
       <App />
