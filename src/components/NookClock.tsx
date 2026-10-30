@@ -11,7 +11,7 @@ export function weatherIcon(condition: WeatherData['condition'], night: boolean)
 
 const fmtMinutes = (minutes: number) => {
   const date = new Date(2000, 0, 1, Math.floor(minutes / 60) % 24, minutes % 60);
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
 };
 
 // ---- Seven-segment digits ---------------------------------------------------------------------------
@@ -54,13 +54,8 @@ function Digit({ ch, x, y, color }: { ch: string; x: number; y: number; color: s
   );
 }
 
-const uses12h = (() => {
-  try {
-    return !!new Intl.DateTimeFormat([], { hour: 'numeric' }).resolvedOptions().hour12;
-  } catch {
-    return true;
-  }
-})();
+/** Always the 12-hour clock (the owner's choice), whatever the device's region format says: an iPad set to a 24-hour region used to show military time. */
+const uses12h = true;
 
 /** Five looks, cycled by tapping the clock: digits, screen and casing colours (+ glow for the LED ones). */
 type ClockLook = { name: string; led: string; ledDark?: string; screen: string; casing: string; edge: string; glow: boolean };

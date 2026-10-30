@@ -7,13 +7,17 @@ import { computeSnapshot, currentStreakFor, evaluateGarden, markCelebrated, move
 import { dateKey } from '../services/dates';
 import { applyHistoryEdit, applyRating, stampProgress, stampStatus, type HistoryPatch } from '../services/bookHistory';
 import { applyAddBook, type AddDestination, type AddStatus } from '../services/library';
-import { clearableCacheKeys } from '../services/books/cache';
+import { clearableKeysWhenStorageFull } from '../services/books/cache';
 import { exportCoverPicks, restoreCoverPicksFromBackup } from '../services/books/covers';
 import { displayBook, refreshNames, subscribeNames } from '../services/books/englishTitle';
 import { mapPool } from '../services/books/http';
 import { exportNookLook, restoreNookLook } from '../services/nookPrefs';
+import { exportDeviceSettings, restoreDeviceSettings } from '../services/deviceSettings';
 import { applyMerge, findDuplicateGroups, idMapOf, remapCollections } from '../services/mergeDuplicates';
 import { exportCollections, loadCollections, restoreCollectionsFromBackup, saveCollections } from '../services/libraryCollections';
+import { markPersonalAnnotationDeleted, markPersonalBookDeleted, unmarkPersonalAnnotationDeleted, unmarkPersonalBookDeleted } from '../services/librarySync';
+import { stampDayEdit } from '../services/dailyPagesSync';
+import { withEdits, withWordsDeleted } from '../services/editTimes';
 
 // Small helper lists that are not persistentCache instances but can be rebuilt (never user data)
 export const EXTRA_CLEARABLE = ['readlife.preload', 'readlife.loaded', 'readlife.phoneticTried'];
@@ -118,7 +122,7 @@ export function useReadingLife() {
       console.error('Failed to save to localStorage:', e);
       // Storage is full or blocked. Throw away the re-downloadable caches first, then try once more.
       try {
-        for (const k of [...clearableCacheKeys(), ...EXTRA_CLEARABLE]) localStorage.removeItem(k);
+        for (const k of [...clearableKeysWhenStorageFull(), ...EXTRA_CLEARABLE]) localStorage.removeItem(k);
         write();
         dirty.current = false;
         setSaveError(false);
@@ -269,24 +273,30 @@ export function useReadingLife() {
   // Actions
   // Set an exact page count for any day (used by tapping a day in the week strip)
   const setDayPages = useCallback((dateKey: string, pages: number) => {
-    setState(prev => ({
-      ...prev,
-      dailyLog: { ...prev.dailyLog, [dateKey]: Math.max(0, pages) },
-    }));
+    setState(prev => {
+      const value = Math.max(0, pages);
+      if (prev.dailyLog[dateKey] === value) return prev; // nothing changed, so nothing to stamp
+      return { ...prev, dailyLog: { ...prev.dailyLog, [dateKey]: value }, dailyLogMeta: stampDayEdit(prev.dailyLogMeta, dateKey) };
+    });
   }, []);
 
   const updateBookProgress = useCallback((bookId: string | number, page: number, total?: number) => {
     const idKey = String(bookId);
     setState(prev => {
       const oldPage = prev.currentPage[idKey] || 0;
-      const diff = Math.max(0, page) - oldPage; // negative when you correct a page number back down
+      const nextPage = Math.max(0, page);
+      const pageChanged = nextPage !== oldPage;
+      const totalChanged = !!total && total !== (prev.totalPages[idKey] || 0); // a missing or zero total never erases a saved one
+      if (!pageChanged && !totalChanged) return prev;
+      const diff = nextPage - oldPage; // negative when you correct a page number back down
       const todayK = getTodayKey();
 
-      return {
+      // Stamp progress so another device's later page edit wins (not "higher page always wins").
+      const next = {
         ...prev,
         currentPage: {
           ...prev.currentPage,
-          [idKey]: Math.max(0, page),
+          [idKey]: nextPage,
         },
         totalPages: total ? {
           ...prev.totalPages,
@@ -296,22 +306,27 @@ export function useReadingLife() {
           ...prev.dailyLog,
           [todayK]: Math.max(0, (prev.dailyLog[todayK] || 0) + diff),
         } : prev.dailyLog,
+        dailyLogMeta: diff !== 0 ? stampDayEdit(prev.dailyLogMeta, todayK) : prev.dailyLogMeta,
         // Reading pages starts the book and makes it the latest one you read
         history: diff > 0 ? { ...prev.history, [idKey]: stampProgress(prev.history[idKey], todayK, Date.now()) } : prev.history,
       };
+      return withEdits(next, 'progress', [idKey]);
     });
   }, []);
 
   const setBookStatus = useCallback((bookId: string | number, status: BookStatus) => {
     const idKey = String(bookId);
-    setState(prev => ({
-      ...prev,
-      status: {
-        ...prev.status,
-        [idKey]: status,
-      },
-      history: { ...prev.history, [idKey]: stampStatus(prev.history[idKey], prev.status[idKey], status, getTodayKey(), Date.now()) },
-    }));
+    setState(prev => {
+      const next = {
+        ...prev,
+        status: {
+          ...prev.status,
+          [idKey]: status,
+        },
+        history: { ...prev.history, [idKey]: stampStatus(prev.history[idKey], prev.status[idKey], status, getTodayKey(), Date.now()) },
+      };
+      return prev.status[idKey] === status ? next : withEdits(next, 'status', [idKey]);
+    });
   }, []);
 
   /** Edit when a book was added, started or finished (null clears a date). */
@@ -331,6 +346,7 @@ export function useReadingLife() {
   const mergeDuplicates = useCallback((): number => {
     const groups = findDuplicateGroups(latestState.current);
     if (!groups.length) return 0;
+    groups.forEach(group => group.otherIds.forEach(markPersonalBookDeleted));
     setState(prev => applyMerge(prev, findDuplicateGroups(prev)));
     saveCollections(remapCollections(loadCollections(), idMapOf(groups))); // your own tags and shelves follow the kept copy
     return groups.length;
@@ -357,16 +373,18 @@ export function useReadingLife() {
   }, []);
 
   const addBook = useCallback((incoming: Book, destination: AddDestination = 'library', status?: AddStatus) => {
+    unmarkPersonalBookDeleted(String(incoming.id));
     setState(prev => applyAddBook(prev, incoming, destination, status));
   }, []);
 
   const removeBook = useCallback((bookId: string | number) => {
     const idKey = String(bookId);
+    markPersonalBookDeleted(idKey);
     setState(prev => {
       const isCustom = prev.customBooks.some(b => String(b.id) === idKey);
       if (!isCustom) {
         // Catalog books are only hidden (they can be restored with their notes intact)
-        return { ...prev, hiddenBookIds: { ...prev.hiddenBookIds, [idKey]: true } };
+        return withEdits({ ...prev, hiddenBookIds: { ...prev.hiddenBookIds, [idKey]: true } }, 'hidden', [idKey]);
       }
       const without = <T,>(rec: Record<string, T>) => {
         const { [idKey]: _gone, ...rest } = rec;
@@ -388,21 +406,20 @@ export function useReadingLife() {
   }, []);
 
   const restoreHiddenBooks = useCallback(() => {
-    setState(prev => ({
-      ...prev,
-      hiddenBookIds: {},
-    }));
+    // Un-hiding is an edit: each book that was hidden gets a newer stamp, so another device cannot hide it again
+    setState(prev => withEdits({ ...prev, hiddenBookIds: {} }, 'hidden', Object.keys(prev.hiddenBookIds)));
   }, []);
 
   const updateBookNote = useCallback((bookId: string | number, note: string) => {
     const idKey = String(bookId);
-    setState(prev => ({
+    if (!note.trim()) markPersonalAnnotationDeleted(idKey, 'note'); else unmarkPersonalAnnotationDeleted(idKey, 'note'); // writing a note again after clearing it is a newer edit
+    setState(prev => prev.notes[idKey] === note ? prev : withEdits({
       ...prev,
       notes: {
         ...prev.notes,
         [idKey]: note,
       },
-    }));
+    }, 'note', [idKey]));
   }, []);
 
   const addHighlight = useCallback((bookId: string | number, text: string, page?: number) => {
@@ -413,29 +430,30 @@ export function useReadingLife() {
       page,
       timestamp: Date.now(),
     };
-    setState(prev => ({
+    setState(prev => withEdits({
       ...prev,
       highlights: {
         ...prev.highlights,
         [idKey]: [newHighlight, ...(prev.highlights[idKey] || [])],
       },
-    }));
+    }, 'highlight', [`${idKey}:${newHighlight.id}`]));
   }, []);
 
   const deleteHighlight = useCallback((bookId: string | number, highlightId: string) => {
     const idKey = String(bookId);
-    setState(prev => ({
+    markPersonalAnnotationDeleted(idKey, highlightId);
+    setState(prev => withEdits({
       ...prev,
       highlights: {
         ...prev.highlights,
         [idKey]: (prev.highlights[idKey] || []).filter(h => h.id !== highlightId),
       },
-    }));
+    }, 'highlight', [`${idKey}:${highlightId}`])); // the stamp is the delete's time
   }, []);
 
   const updateHighlight = useCallback((bookId: string | number, highlightId: string, newText: string, newPage?: number) => {
     const idKey = String(bookId);
-    setState(prev => ({
+    setState(prev => withEdits({
       ...prev,
       highlights: {
         ...prev.highlights,
@@ -443,7 +461,7 @@ export function useReadingLife() {
           h.id === highlightId ? { ...h, text: newText.trim(), page: newPage } : h
         ),
       },
-    }));
+    }, 'highlight', [`${idKey}:${highlightId}`]));
   }, []);
 
   const updateIntention = useCallback((readingIntention: string) => {
@@ -468,44 +486,46 @@ export function useReadingLife() {
       const filtered = prev.words.filter(
         w => w.id !== newWord.id && (w.word || '').toLowerCase() !== (newWord.word || '').toLowerCase(),
       );
-      return {
-        ...prev,
-        words: [newWord, ...filtered],
-      };
+      const dropped = prev.words.filter(w => !filtered.includes(w) && w.id !== newWord.id).map(w => w.id); // same spelling replaced: those are deletes
+      const base = withWordsDeleted({ ...prev, words: [newWord, ...filtered] }, dropped);
+      // Re-adding a word that was deleted earlier must be newer than the delete
+      return withEdits(base, 'word', [newWord.id], Math.max(Date.now(), (prev.deletedWords?.[newWord.id] ?? 0) + 1));
     });
   }, []);
 
   const toggleWordLearned = useCallback((wordId: string) => {
-    setState(prev => ({
+    setState(prev => withEdits({
       ...prev,
       words: prev.words.map(w => w.id === wordId ? { ...w, isLearned: !w.isLearned } : w),
-    }));
+    }, 'word', [wordId]));
   }, []);
 
   const setWordLearned = useCallback((wordId: string, learned: boolean) => {
-    setState(prev => ({
+    setState(prev => withEdits({
       ...prev,
       words: prev.words.map(w => (w.id === wordId ? { ...w, isLearned: learned } : w)),
-    }));
+    }, 'word', [wordId]));
   }, []);
 
   const updateWord = useCallback((wordId: string, updates: Partial<WordItem>) => {
-    setState(prev => ({
+    setState(prev => withEdits({
       ...prev,
       words: prev.words.map(w => w.id === wordId ? { ...w, ...updates } : w),
-    }));
+    }, 'word', [wordId]));
   }, []);
 
   const deleteWord = useCallback((wordId: string) => {
-    setState(prev => ({
+    setState(prev => withWordsDeleted({
       ...prev,
       words: prev.words.filter(w => w.id !== wordId),
-    }));
+    }, prev.words.some(w => w.id === wordId) ? [wordId] : []));
   }, []);
 
   /** Remove every book from the library (catalog books are only hidden, so "Restore hidden books" can bring them back). */
   const clearLibrary = useCallback(() => {
-    setState(prev => ({
+    const ids = new Set([...latestState.current.customBooks.map(book => String(book.id)), ...Object.keys(latestState.current.status), ...Object.keys(latestState.current.currentPage), ...Object.keys(latestState.current.totalPages), ...Object.keys(latestState.current.notes), ...Object.keys(latestState.current.highlights), ...Object.keys(latestState.current.history), ...Object.keys(latestState.current.ratings), ...Object.keys(latestState.current.onDeviceOverrides)]);
+    ids.forEach(markPersonalBookDeleted);
+    setState(prev => withEdits({
       ...prev,
       customBooks: [],
       hiddenBookIds: { ...prev.hiddenBookIds, ...Object.fromEntries(DEFAULT_BOOKS.map(b => [String(b.id), true as const])) },
@@ -517,7 +537,7 @@ export function useReadingLife() {
       history: {},
       ratings: {},
       onDeviceOverrides: {},
-    }));
+    }, 'hidden', DEFAULT_BOOKS.map(b => String(b.id))));
   }, []);
 
   /** Take every book off the device. Books stay in the library; nothing else changes. */
@@ -551,14 +571,27 @@ export function useReadingLife() {
     const coverPicks = exportCoverPicks();
     const nookLook = exportNookLook(); // vine look, clock colours and nook decorations; absent when they are all default
     const libraryCollections = exportCollections(); // your own shelves and tags; absent when you have none
-    return JSON.stringify({ ...state, ...(Object.keys(coverPicks).length ? { coverPicks } : {}), ...(nookLook ? { nookLook } : {}), ...(libraryCollections ? { libraryCollections } : {}) }, null, 2);
+    const deviceSettings = exportDeviceSettings(); // store layout, fonts, nook toggles and name choices; absent when all are default and never changed
+    return JSON.stringify({ ...state, ...(Object.keys(coverPicks).length ? { coverPicks } : {}), ...(nookLook ? { nookLook } : {}), ...(deviceSettings ? { deviceSettings } : {}), ...(libraryCollections ? { libraryCollections } : {}) }, null, 2);
   }, [state]);
 
   const importBackup = useCallback((jsonStr: string) => {
     const restored = parseBackup(jsonStr, buildDefaultState());
     if (!restored) return false;
+    const before = latestState.current;
+    const oldIds = new Set([...before.customBooks.map(book => String(book.id)), ...Object.keys(before.status), ...Object.keys(before.currentPage), ...Object.keys(before.notes), ...Object.keys(before.highlights), ...Object.keys(before.history), ...Object.keys(before.ratings)]);
+    const restoredIds = new Set([...restored.customBooks.map(book => String(book.id)), ...Object.keys(restored.status), ...Object.keys(restored.currentPage), ...Object.keys(restored.notes), ...Object.keys(restored.highlights), ...Object.keys(restored.history), ...Object.keys(restored.ratings)]);
+    for (const id of oldIds) {
+      if (!restoredIds.has(id)) markPersonalBookDeleted(id);
+      else {
+        if (before.notes[id] && !restored.notes[id]) markPersonalAnnotationDeleted(id, 'note');
+        const nextHighlights = new Set((restored.highlights[id] || []).map(item => item.id));
+        for (const item of before.highlights[id] || []) if (!nextHighlights.has(item.id)) markPersonalAnnotationDeleted(id, item.id);
+      }
+    }
     restoreCoverPicksFromBackup(jsonStr); // a backup made before picks existed leaves the current picks alone
     restoreNookLook(jsonStr); // likewise for a backup made before the nook look was saved
+    restoreDeviceSettings(jsonStr); // and for one made before store layout, fonts, nook toggles and name choices were saved
     restoreCollectionsFromBackup(jsonStr); // and for one made before shelves and tags were saved
     // A restore never shows "new plant" prompts: bring the garden up to date silently and mark everything as seen.
     const snap = computeSnapshot({
@@ -570,6 +603,8 @@ export function useReadingLife() {
     setState({ ...restored, garden });
     return true;
   }, []);
+
+  const applySyncedState = useCallback((change: (prev: ReadingState) => ReadingState) => setState(prev => change(prev)), []);
 
   return {
     state,
@@ -605,6 +640,7 @@ export function useReadingLife() {
     deleteWord,
     exportBackup,
     importBackup,
+    applySyncedState,
     clearLibrary,
     clearOnDevice,
     resetEverything,

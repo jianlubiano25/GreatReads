@@ -1,4 +1,5 @@
 import type { Book } from '../../types';
+import { genreOrEmpty } from '../books/catalogFill';
 import resolvedData from '../../data/storeResolved.json';
 import { CURATED_SHELVES, type CuratedShelf } from '../../data/storeCatalog';
 import { mapPool } from '../books/http';
@@ -18,7 +19,10 @@ const SEED_COLORS = ['#6b6f80', '#8a5a3b', '#2e5934', '#925838', '#3a7d80', '#7a
 // v3: shelves saved by older versions could hold a cover that belonged to another book, or stars picked by older rating rules; they are looked up again once
 // `cv`: the cover rule the books' covers were chosen by (resolve.ts). A shelf saved before the English-first rule is dropped when read, so its books are resolved again
 // (a shelf book that already has a cover and a rating is never looked up, so an old foreign cover would otherwise stay for the whole week)
-const cache = persistentCache<{ sig: string; books: Book[]; cv?: number }>(COVER_CACHE_KEYS.shelves, { ttl: 7 * 24 * 60 * 60 * 1000, max: 40, validate: v => !!v && typeof v.sig === 'string' && Array.isArray(v.books) && v.cv === COVER_RULE });
+/** How long a shelf's last good copy stays usable as a fallback (covers, and the list itself when its saved list is gone). Fresh use is still 7 days. */
+const LAST_GOOD_MS = 60 * 24 * 60 * 60 * 1000;
+const FRESH_MS = 7 * 24 * 60 * 60 * 1000;
+const cache = persistentCache<{ sig: string; books: Book[]; cv?: number }>(COVER_CACHE_KEYS.shelves, { ttl: 7 * 24 * 60 * 60 * 1000, keepStale: LAST_GOOD_MS, max: 40, durable: true, validate: v => !!v && typeof v.sig === 'string' && Array.isArray(v.books) && v.cv === COVER_RULE });
 
 /** A short fingerprint of text (not for security): equal text, equal fingerprint. */
 const fingerprint = (text: string): string => {
@@ -52,7 +56,7 @@ export const shelfSig = (shelf: CuratedShelf, records: unknown = PREFETCHED[shel
  * `i` is only the fast path for an unchanged list.
  */
 const prefetchedIndex = new Map<string, Map<string, Partial<Book> & { olKey?: string; title?: string }>>();
-const bookKey = (title: string, author: string) => `${titleKey(title)}|${authorKey(author)}`;
+const titleAuthorKey = (title: string, author: string) => `${titleKey(title)}|${authorKey(author)}`;
 
 function prefetchedByBook(shelfId: string): Map<string, Partial<Book> & { olKey?: string; title?: string }> {
   let index = prefetchedIndex.get(shelfId);
@@ -61,7 +65,7 @@ function prefetchedByBook(shelfId: string): Map<string, Partial<Book> & { olKey?
     const bundled = CURATED_SHELVES.find(s => s.id === shelfId)?.seeds ?? [];
     (PREFETCHED[shelfId] ?? []).forEach((rec, i) => {
       const seed = bundled[i];
-      if (rec && seed) index!.set(bookKey(seed[0], seed[1]), rec);
+      if (rec && seed) index!.set(titleAuthorKey(seed[0], seed[1]), rec);
     });
     prefetchedIndex.set(shelfId, index);
   }
@@ -72,7 +76,7 @@ export function prefetchedFor(shelfId: string, i: number, title: string, author:
   const rec = PREFETCHED[shelfId]?.[i];
   if (rec && rec.title && rec.title === title) return rec;
   const index = prefetchedByBook(shelfId);
-  const exact = index.get(bookKey(title, author));
+  const exact = index.get(titleAuthorKey(title, author));
   if (exact) return exact;
   // The same book with its author written another way (a source's spelling of a translated name): same title, compatible author
   const bundled = CURATED_SHELVES.find(s => s.id === shelfId)?.seeds ?? [];
@@ -98,7 +102,7 @@ export function seedPlaceholders(shelf: CuratedShelf): Book[] {
       awardLabel: award,
       title: t,
       author: a,
-      genre: shelf.genre,
+      genre: genreOrEmpty(shelf.genre) || 'Book',
       summary: `${t} by ${a}.`,
       spineColor: SEED_COLORS[i % SEED_COLORS.length],
       source: 'openlibrary',
@@ -117,6 +121,58 @@ export function seedPlaceholders(shelf: CuratedShelf): Book[] {
 export function getCachedCurated(shelf: CuratedShelf): Book[] | null {
   const hit = cache.get(shelf.id);
   return hit && hit.sig === shelfSig(shelf) && hit.books.length === shelf.seeds.length ? hit.books : null;
+}
+
+/**
+ * Covers by BOOK, not by list. The saved copy of a shelf is only trusted whole when its list and bundled data are exactly the same (getCachedCurated); when a
+ * shelf's list changed (a refresh added a pick, an update shipped new data) every book used to start as a placeholder. Instead each book of the shelf takes what
+ * is saved for the same title + author, from this shelf's last good copy first, then any other shelf's:
+ *  - the cover (and its link) always, as long as the copy is not older than 60 days;
+ *  - rating, year, pages and ids only from a copy that is still fresh (7 days), so a stale rating is looked up again instead of staying for ever.
+ * Only gaps are filled: what the book already has (a bundled cover, a prefetched rating) wins, and the shelf's own title, author, genre and label stay.
+ * A different book never gets it: the match is the same title key and author key as everywhere else.
+ */
+export function reuseSavedCovers(shelf: CuratedShelf, books: Book[]): Book[] {
+  if (books.every(b => !needsLookup(b))) return books;
+  const now = Date.now();
+  const pool = cache.entries?.() ?? [];
+  const ordered = [...pool.filter(e => e.key === shelf.id), ...pool.filter(e => e.key !== shelf.id)].filter(e => now - e.at <= LAST_GOOD_MS && e.value?.cv === COVER_RULE);
+  const index = new Map<string, { book: Book; fresh: boolean }>();
+  for (const e of ordered) for (const b of e.value.books || []) {
+    if (!b?.title || !(b.coverId || b.coverUrl)) continue;
+    const k = titleAuthorKey(b.title, b.author || '');
+    if (!index.has(k)) index.set(k, { book: b, fresh: now - e.at <= FRESH_MS });
+  }
+  if (!index.size) return books;
+  return books.map(b => {
+    if (!needsLookup(b)) return b;
+    const hit = index.get(titleAuthorKey(b.title, b.author || ''));
+    if (!hit) return b;
+    const c = hit.book, out: Book = { ...b };
+    if (!(b.coverId || b.coverUrl)) { out.coverId = c.coverId; out.coverUrl = c.coverUrl; }
+    if (hit.fresh) {
+      if (!b.ratingAverage && c.ratingAverage) { out.ratingAverage = c.ratingAverage; out.ratingCount = c.ratingCount; out.ratingSource = c.ratingSource; }
+      if (!b.year && c.year) out.year = c.year;
+      if (!b.pageCount && c.pageCount) out.pageCount = c.pageCount;
+      if (!b.identity && c.identity) out.identity = c.identity;
+    }
+    return out;
+  });
+}
+
+/** Tests only: put a saved shelf copy in the cache (with the time it was saved). */
+export const putSavedShelfForTests = (id: string, books: Book[], at: number, cv: number = COVER_RULE): void => cache.set(id, { sig: 'test', books, cv }, at);
+export const clearSavedShelvesForTests = (): void => cache.clear();
+
+/**
+ * The list a shelf last showed, read back from its last good saved copy (60 days). For a self-refreshing shelf whose saved list is missing: it is rebuilt from
+ * here before falling back to the hand-picked default list, so the Store does not flash the defaults. Title, author and pick label only; undefined when there is none.
+ */
+export function lastGoodShelfSeeds(shelfId: string): [string, string, string?][] | undefined {
+  const e = cache.peek(shelfId);
+  if (!e || !Array.isArray(e.value?.books) || e.value.cv !== COVER_RULE) return undefined;
+  const seeds = e.value.books.filter(b => typeof b?.title === 'string' && typeof b?.author === 'string' && b.title && b.author).map((b): [string, string, string?] => (b.awardLabel ? [b.title, b.author, b.awardLabel] : [b.title, b.author]));
+  return seeds.length ? seeds : undefined;
 }
 
 /**
@@ -153,12 +209,12 @@ export async function resolveCuratedShelf(shelf: CuratedShelf, current: Book[], 
   await mapPool(shelf.seeds, 4, async ([title, author, award], i) => {
     const have = out[i];
     if (!needsLookup(have)) return;
-    const r = await resolveBook({ title, author, fallbackId: have.id, genreHint: shelf.genre, apple: true });
+    const r = await resolveBook({ title, author, fallbackId: have.id, genreHint: genreOrEmpty(shelf.genre) || undefined, apple: true });
     if (!r || !resolvedMatchesSeed(r.book, title, author)) return;
     const hadCover = !!(have.coverId || have.coverUrl);
     // `have` goes first so it wins every gap; ids and identity (Open Library work, ISBN) are taken from the resolved book
     const merged = mergeBooks({ ...have, id: r.book.id }, r.book);
-    out[i] = { ...merged, title, author, genre: shelf.genre, awardLabel: award, year: merged.year || r.book.year || have.year, spineColor: have.spineColor };
+    out[i] = { ...merged, title, author, genre: genreOrEmpty(shelf.genre) || merged.genre, awardLabel: award, year: merged.year || r.book.year || have.year, spineColor: have.spineColor };
     if (!hadCover) try { new Image().src = getCoverUrl(r.book.coverId, 'M', r.book.coverUrl); } catch {} // warm the cache
     onUpdate([...out]);
   });
@@ -170,7 +226,7 @@ export function curatedSource(shelf: CuratedShelf): ShelfSource & { seeded: () =
   const seeded = () => {
     const s = seedPlaceholders(shelf);
     // Fully prefetched shelves need no lookups and no cache at all
-    return s.every(b => !needsLookup(b)) ? s : getCachedCurated(shelf) || s;
+    return s.every(b => !needsLookup(b)) ? s : getCachedCurated(shelf) || reuseSavedCovers(shelf, s);
   };
   return {
     id: shelf.id,

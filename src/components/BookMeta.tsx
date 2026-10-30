@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect, useRef, useSyncExternalStore } from 'react';
+import React, { useCallback, useState, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { Book } from '../types';
 import { BOOK_AWARDS } from '../data/defaultBooks';
 import { honorKind, mergeHonors } from '../services/store/honors';
@@ -6,7 +6,7 @@ import { externalRating, isNytCoverUrl, ratingOf, starFills } from '../services/
 import { infoKey, infoVersion, shownRating, subscribeInfo } from '../services/books/infoStore';
 import { placeholderStyleFor, titleSizeCqw, isFrontCoverShape } from '../services/books/placeholderCover';
 import { inspectCover } from '../services/books/covers';
-import { coverKey, ownCoverUrl, sizedCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, isCoverSettled, markCoverSettled, reportMissingCover, clearMissingCover, getCoverPickInfo, pickSizedUrl, markCoverPickFailed, peekCoverCandidate } from '../services/books';
+import { coverKey, sizedCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, isCoverSettled, markCoverSettled, reportMissingCover, clearMissingCover, knownCover, markCoverPickFailed } from '../services/books';
 
 export type AwardKind = 'w' | 's' | 'c'; // winner, shortlist, other pick (book club, series...)
 
@@ -84,8 +84,6 @@ export const primaryAward = (b: Book): { type: AwardKind; label: string } | unde
 const chipIcon = (t: AwardKind) => (t === 'c' ? '\u{1F4D6}' : t === 'w' ? '\u{1F3C6}' : '\u{1F396}\uFE0F');
 /** "NYT bestseller · 12 weeks" reads "NYT · 12 weeks" on a chip, and "NYT · new this week" in full (never cut: a chip too wide for its card wraps to a second line). The book info keeps the full label. */
 export const chipLabel = (label: string): string => label.replace(/^NYT bestseller(?= · )/, 'NYT');
-/** Does the book wear any honor chip? (The shelf card uses it to place your status chip.) */
-export const hasHonors = (b: Book): boolean => awardsFor(b).length > 0;
 const chipClass = (t: AwardKind) => `rl-bdg ${t === 'w' ? 'rl-bdg-w' : t === 'c' ? 'rl-bdg-c' : ''}`;
 
 /** Prize / shortlist chips, e.g. 🏆 Women's Prize 2021. `primary`: just the one main honor, on one line (Store shelves: every shelf stays the same height). */
@@ -211,14 +209,12 @@ export const CoverFace = React.memo(function CoverFace(props: CoverFaceProps) {
 function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = false }: CoverFaceProps) {
   // Re-render when "Reload missing covers" repairs one or a cover is picked in the cover viewer. A picked cover wins over a repaired one, which wins over the original link
   useSyncExternalStore(subscribeCovers, getCoversVersion, getCoversVersion);
-  const pick = getCoverPickInfo(book);
-  // ONE URL per picture: a repaired cover is drawn at the card's size exactly like the same picture arriving through the book's own link (getCoverUrl). Raw, a repair
-  // (Apple's 600x900) and the book's updated link (360x540) were two URLs for one picture, so the cover loaded twice and visibly swapped.
-  const fix = pick ? '' : getCoverFix(book);
   // Whatever is already known is drawn at once (pick, repair, the book's own link, else a cover kept from an earlier lookup): nothing here waits on a lookup or a measurement.
-  const own = pick ? '' : ownCoverUrl(book, imgSize);
-  const kept = pick || fix || own ? '' : peekCoverCandidate(book);
-  const baseUrl = pick ? pickSizedUrl(pick.url, imgSize) : fix ? sizedCoverUrl(fix, imgSize) : own || (kept ? sizedCoverUrl(kept, imgSize) : '');
+  // One function for every screen (bookView.ts), so a card, the search list and the nook can never disagree about which cover a book has.
+  const known = knownCover(book, imgSize);
+  const pick = known.pick;
+  const fix = known.from === 'fix' ? known.url : '';
+  const baseUrl = known.url;
   type St = { base: string; tries: number; alt: string; dead: boolean };
   const [st, setSt] = useState<St>({ base: baseUrl, tries: 0, alt: '', dead: false });
   const cur: St = st.base === baseUrl ? st : { base: baseUrl, tries: 0, alt: '', dead: false };
@@ -231,7 +227,8 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
   // A cover the browser already has (HTTP cache) is complete the moment the <img> exists: show it straight away instead of
   // flashing the title placeholder first. (onLoad can fire before React attaches it, or not at all for cached images.)
   const imgRef = useRef<HTMLImageElement>(null);
-  useEffect(() => {
+  // Layout effect (before the screen paints): a cover the browser already has is marked loaded in the SAME frame it first appears, so reopening the app never shows the stand-in for a frame and fades the cover in.
+  useLayoutEffect(() => {
     const im = imgRef.current;
     const ready = !!im && im.complete && im.naturalWidth >= 8 && (!!pick || isFrontCoverShape(im.naturalWidth, im.naturalHeight));
     // Always set (not only to true): a NEW picture (a pick, a repair, a replacement) starts as "not loaded", so the stand-in stays until THIS picture is in hand\n    setImgLoaded(ready);

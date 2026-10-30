@@ -7,20 +7,20 @@ import { useReducedMotion } from '../hooks/useReducedMotion';
 import {
   clearCoverPick,
   coverKey,
-  coverSourceLabel,
+  COVER_SOURCE_LABEL,
   coverSourceOf,
   getCoverFix,
   getCoverPickInfo,
   getMyCoverPick,
   getCoverUrl,
   getCoversVersion,
-  imageKey,
+  flatKey,
   loadCoverCandidates,
   setCoverPick,
   subscribeCovers,
   type CoverSource,
 } from '../services/books';
-import { rejectCoverForBook, rejectedCovers } from '../services/catalog';
+import { publishCoverToCatalog, rejectCoverForBook, rejectedCovers, storedCovers, syncCatalog } from '../services/catalog';
 import { authVersion, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
 
 /**
@@ -49,14 +49,14 @@ export function CoverPickerModal({ book, onClose }: Props) {
 
   // What the app would show without a pick: the repaired cover, else the book's own link (full size)
   const [autoUrl] = useState(() => getCoverFix(book) || getCoverUrl(book.coverId, 'L', book.coverUrl));
-  const autoKey = autoUrl ? imageKey(autoUrl) : '';
+  const autoKey = autoUrl ? flatKey(autoUrl) : '';
   const pickInfo = getCoverPickInfo(book);
-  const pickKey = pickInfo ? imageKey(pickInfo.url) : '';
+  const pickKey = pickInfo ? flatKey(pickInfo.url) : '';
 
   const merge = useCallback((list: Slide[], more: { url: string; source: CoverSource }[]): Slide[] => {
     const next = [...list];
     for (const c of more) {
-      const key = imageKey(c.url);
+      const key = flatKey(c.url);
       if (!next.some(s => s.key === key)) next.push({ url: c.url, source: c.source, key });
     }
     return next.length === list.length ? list : next;
@@ -76,12 +76,21 @@ export function CoverPickerModal({ book, onClose }: Props) {
   useEffect(() => {
     if (!owner) return;
     let live = true;
-    rejectedCovers(book).then(urls => { if (live && urls.length) setBad(prev => { const n = { ...prev }; urls.forEach(u => { n[imageKey(u)] = true; }); return n; }); });
+    rejectedCovers(book).then(urls => { if (live && urls.length) setBad(prev => { const n = { ...prev }; urls.forEach(u => { n[flatKey(u)] = true; }); return n; }); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [owner, book.title, book.author]);
   const [dims, setDims] = useState<Record<string, string>>({});
   const [active, setActive] = useState(0);
+
+  // The owner sees what the catalog already stores for this book first (the same covers the admin tools list), then the live finds are added behind them
+  useEffect(() => {
+    if (!owner) return;
+    let live = true;
+    storedCovers(book).then(list => { if (live && list.length) setSlides(prev => merge(prev, list)); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [owner, book.title, book.author]);
 
   // Ask the sources (once per book; a repeat open is answered from this device)
   const bookKey = coverKey(book);
@@ -121,8 +130,13 @@ export function CoverPickerModal({ book, onClose }: Props) {
   useEffect(() => setNote(''), [at]);
   const toggleStar = () => {
     if (!current) return;
-    if (!starred) setCoverPick(book, { url: current.url, source: current.source });
-    else if (mine) clearCoverPick(book);
+    if (!starred) {
+      setCoverPick(book, { url: current.url, source: current.source }); // your own pick: on this device at once
+      if (owner) { // the owner's star is also published for everyone, and this device's catalog is refreshed straight away
+        setNote('Published for everyone…');
+        void publishCoverToCatalog(book, current.url).then(async r => { if (r.ok) await syncCatalog({ force: true }); setNote(r.ok ? 'Published for everyone.' : `Used here, but not published: ${r.error}`); });
+      }
+    } else if (mine) clearCoverPick(book);
     else setNote('Published for everyone. To take it off, use the ✕ in Profile › Publish book covers.'); // nothing of yours to unstar
   };
 
@@ -131,13 +145,13 @@ export function CoverPickerModal({ book, onClose }: Props) {
     if (!current) return;
     const { url, key } = current;
     setBad(prev => ({ ...prev, [key]: true }));
-    if (mine && imageKey(mine.url) === key) clearCoverPick(book);
+    if (mine && flatKey(mine.url) === key) clearCoverPick(book);
     if (!owner) { setNote('Hidden here. Sign in as the owner (Profile → Account) to reject it for everyone.'); return; }
     const r = await rejectCoverForBook(book, url);
     setNote(r.ok ? 'Rejected: this cover will not be used.' : `Hidden here, but not saved to the catalog: ${r.error}`);
   };
 
-  const tip = current ? `${coverSourceLabel(current.source)}${current.key === autoKey ? ' · default cover' : ''}${dims[current.key] ? ` · ${dims[current.key]}` : ''}` : '';
+  const tip = current ? `${COVER_SOURCE_LABEL[current.source]}${current.key === autoKey ? ' · default cover' : ''}${dims[current.key] ? ` · ${dims[current.key]}` : ''}` : '';
 
   return (
     <div
@@ -177,7 +191,7 @@ export function CoverPickerModal({ book, onClose }: Props) {
             <div className="relative rounded-md overflow-hidden bg-white/5 shadow-2xl flex items-center justify-center" style={{ height: CH, aspectRatio: '2 / 3' }}>
               <img
                 src={s.url}
-                alt={`${book.title}, cover from ${coverSourceLabel(s.source)}`}
+                alt={`${book.title}, cover from ${COVER_SOURCE_LABEL[s.source]}`}
                 loading={i < 3 ? 'eager' : 'lazy'}
                 decoding="async"
                 referrerPolicy="no-referrer"
@@ -207,7 +221,7 @@ export function CoverPickerModal({ book, onClose }: Props) {
         {/* The tooltip: where this cover comes from (and how big it is) */}
         <div className="min-h-[28px] max-w-full" aria-live="polite">
           {current && (
-            <span className="inline-block max-w-full truncate px-3 py-1 rounded-full bg-white/12 text-xs" title={`Source: ${coverSourceLabel(current.source)}`}>
+            <span className="inline-block max-w-full truncate px-3 py-1 rounded-full bg-white/12 text-xs" title={`Source: ${COVER_SOURCE_LABEL[current.source]}`}>
               {tip}
             </span>
           )}

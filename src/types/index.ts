@@ -114,6 +114,8 @@ export interface GardenState {
   achievements: Record<string, { earnedAt: number; plantId: string }>; // milestoneId -> award (each milestone once)
   plants: Record<string, OwnedPlant>; // plantId -> owned plant
   placements: Record<string, PlantPlacement>; // plantId -> where it stands
+  /** When the reader last moved each plant (ms, this device's clock). Lets a move made on one device reach the other instead of the local spot always winning. A plant with no time has a legacy spot. */
+  placementTimes?: Record<string, number>;
   celebrated: Record<string, true>; // plantIds whose "new plant" prompt was already shown
   vine: number; // 0..1 window vine growth, high-water mark
 }
@@ -126,11 +128,23 @@ export interface BookHistory {
   lastRead?: number; // when you last read or moved it to Reading now (time stamp; decides which Reading now book comes first)
 }
 
+/** When and where the pages for one day were last edited by the user (decides which device's value wins in the cloud). */
+export interface DayEdit {
+  editedAt: number;  // ms since 1970 by this device's clock; 0 = a value that predates this tracking (any real edit beats it)
+  deviceId: string;
+  editSeq: number;   // counts this device's edits of the day
+}
+
 export interface ReadingState {
   status: Record<string, BookStatus>;
   currentPage: Record<string, number>;
   totalPages: Record<string, number>;
   dailyLog: Record<string, number>; // "YYYY-MM-DD" -> pages read
+  dailyLogMeta?: Record<string, DayEdit>; // "YYYY-MM-DD" -> who/when last edited that day; set only by setDayPages and updateBookProgress
+  /** When the user last edited a field, by this device's clock (ms). Keys: "status:<book>", "rating:<book>", "word:<id>", "hidden:<book>". A missing key is a legacy value that any real edit beats. */
+  editTimes?: Record<string, number>;
+  /** Vocabulary words the user deleted: word id -> when. Lets a delete win over a device that still has the word. */
+  deletedWords?: Record<string, number>;
   notes: Record<string, string>;
   highlights: Record<string, HighlightItem[]>;
   goal: number;

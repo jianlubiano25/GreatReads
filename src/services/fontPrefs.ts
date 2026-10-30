@@ -1,3 +1,5 @@
+import { stampSetting } from './settingsTimes';
+
 /**
  * Google Fonts choice (developer mode only: the picker sits under Appearance once the five-tap tools are on).
  * Two choices: the TITLE font (headings, the look of "font-serif-display") and the TEXT font (everything else).
@@ -41,6 +43,11 @@ const FALLBACK: Record<FontChoice['kind'], string> = { serif: 'Georgia, serif', 
 export interface FontPrefs { title: string; text: string }
 
 const known = (list: readonly FontChoice[], f: unknown): f is string => typeof f === 'string' && list.some(x => x.family === f);
+
+/** Repairs anything read from storage, the cloud or a backup: only known families, otherwise the defaults. */
+export function sanitizeFontPrefs(v: any): FontPrefs {
+  return { title: known(TITLE_FONTS, v?.title) ? v.title : DEFAULT_TITLE, text: known(TEXT_FONTS, v?.text) ? v.text : DEFAULT_TEXT };
+}
 
 export function getFontPrefs(): FontPrefs {
   try {
@@ -90,9 +97,16 @@ export function applyFontPrefs(p: FontPrefs = getFontPrefs()): void {
 
 export function setFontPrefs(next: Partial<FontPrefs>): FontPrefs {
   const p = { ...getFontPrefs(), ...next };
-  try { localStorage.setItem(KEY, JSON.stringify(p)); } catch {}
+  try { localStorage.setItem(KEY, JSON.stringify(p)); stampSetting('fonts'); } catch {}
   applyFontPrefs(p);
   return p;
+}
+
+/** The cloud or a backup changed the fonts: store and apply them without counting it as a new edit. */
+export function applyFontPrefsFromSync(next: FontPrefs): void {
+  const p = sanitizeFontPrefs(next);
+  try { localStorage.setItem(KEY, JSON.stringify(p)); } catch {}
+  applyFontPrefs(p);
 }
 
 /** The picker's previews: ONE small request that holds only the letters of the font names, loaded while the picker is open. */

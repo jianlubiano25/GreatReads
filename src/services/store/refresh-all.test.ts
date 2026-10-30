@@ -7,6 +7,7 @@ const store = new Map<string, string>();
 
 import { getRefreshAllState, startRefreshAll, resetRefreshAllForTests } from './refreshAll';
 import { refreshDataForNewBuild } from '../refreshApp';
+import { registerClearableKey } from '../books/cache';
 import type { ManualResult } from './refresh';
 
 test('Refresh all shelves is a job of the app: progress is readable at any time and a second start joins it', async () => {
@@ -42,16 +43,24 @@ test('a shelf that throws is counted as failed and the run goes on', async () =>
   assert.equal(getRefreshAllState().done, 2);
 });
 
-test('a new build forgets the old build\'s downloads once, never loops, and never touches your data', () => {
+test('an update keeps the downloads (genre lists, provider answers); they are forgotten once when DATA_EPOCH changes, never on every build, and your data is never touched', () => {
   store.set('readlife.v2', '{"customBooks":[1]}');
   store.set('readlife.resolved3', '{"x":1}');
+  registerClearableKey('readlife.genrepool1'); // as genreRows.ts does when it is loaded
+  store.set('readlife.genrepool1', '{"fantasy":{"t":1,"v":[]}}');
   assert.equal(refreshDataForNewBuild('dev'), false);
   assert.equal(store.has('readlife.resolved3'), true);
-  assert.equal(refreshDataForNewBuild('build-aaa'), true);
+  assert.equal(refreshDataForNewBuild('build-aaa', 'epoch-1'), true); // first start with this epoch: forgotten once
   assert.equal(store.has('readlife.resolved3'), false);
+  assert.equal(store.has('readlife.genrepool1'), false);
   assert.equal(store.get('readlife.v2'), '{"customBooks":[1]}');
-  store.set('readlife.resolved3', '{"y":1}'); // downloaded again by the new build
-  assert.equal(refreshDataForNewBuild('build-aaa'), false); // same build: nothing
+  store.set('readlife.resolved3', '{"y":1}'); // downloaded again
+  store.set('readlife.genrepool1', '{"fantasy":{"t":2,"v":[]}}');
+  assert.equal(refreshDataForNewBuild('build-aaa', 'epoch-1'), false); // same build: nothing
+  assert.equal(refreshDataForNewBuild('build-bbb', 'epoch-1'), false); // a NEW build, same epoch: nothing is wiped
   assert.equal(store.has('readlife.resolved3'), true);
-  assert.equal(refreshDataForNewBuild('build-bbb'), true); // the next build: once more
+  assert.equal(store.has('readlife.genrepool1'), true, 'the last good genre lists survive an ordinary update');
+  assert.equal(refreshDataForNewBuild('build-ccc', 'epoch-2'), true); // the epoch was changed on purpose: once more
+  assert.equal(store.has('readlife.genrepool1'), false);
+  assert.equal(refreshDataForNewBuild('build-ddd', 'epoch-2'), false);
 });

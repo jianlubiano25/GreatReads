@@ -7,6 +7,7 @@ import { isLocationWeatherEnabled, setLocationWeatherEnabled, fetchLocalWeather 
 import { getNookMatchesTheme, setNookMatchesTheme, getWindowFollowsTime, setWindowFollowsTime } from '../services/nookPrefs';
 import { useAppUpdate, checkForUpdate, applyUpdate, restartApp, APP_BUILD } from '../services/appUpdate';
 import { refreshEverything } from '../services/refreshApp';
+import { diagnosticsText } from '../services/books/perf';
 import { AchievementsModal } from './garden/AchievementsModal';
 import { MILESTONES } from '../data/gardenCatalog';
 import { isCoverAdminOn, subscribeCoverAdmin } from '../services/books';
@@ -66,6 +67,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const update = useAppUpdate();
   const [refreshing, setRefreshing] = useState(false);
   const [refreshNote, setRefreshNote] = useState('');
+  const [diagNote, setDiagNote] = useState('');
+  const [diagText, setDiagText] = useState('');
   const [locationWeather, setLocationWeather] = useState(isLocationWeatherEnabled);
   const [nookMatchesTheme, setNookTheme] = useState(getNookMatchesTheme);
   const [windowFollowsTime, setWindowTime] = useState(getWindowFollowsTime);
@@ -567,6 +570,20 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               <span>Refresh App &amp; Data</span>
             </button>
             {refreshNote && <p className="mt-2 text-xs text-emerald-800 dark:text-emerald-300" role="status">{refreshNote}</p>}
+            <p className="text-xs text-[#706256] dark:text-[#a89a8a] mt-4 mb-2">Slow or empty book lookups? Open the app fresh, use Search and Discover for a minute, then tap this and paste the text to Claude. It holds only website names, request paths, counts and times: no library, account or personal data.</p>
+            <button
+              type="button"
+              onClick={async () => {
+                const text = diagnosticsText();
+                setDiagText(text);
+                try { await navigator.clipboard.writeText(text); setDiagNote('Copied. Paste it into the chat.'); } catch { setDiagNote('Could not copy automatically: press and hold the text below, Select All, Copy.'); }
+              }}
+              className="w-full py-2.5 px-3 rounded-xl text-xs font-semibold border border-[#2e5934] dark:border-[#86b880] text-[#2e5934] dark:text-[#86b880]"
+            >
+              Copy diagnostics
+            </button>
+            {diagNote && <p className="mt-2 text-xs text-emerald-800 dark:text-emerald-300" role="status">{diagNote}</p>}
+            {diagText && <textarea readOnly value={diagText} onFocus={e => e.currentTarget.select()} className="mt-2 w-full h-28 text-[10px] font-mono rounded-lg border border-[#e3d7c3] dark:border-[#382f25] bg-transparent p-2" />}
           </div>
           </>)}
         </div>

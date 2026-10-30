@@ -1,4 +1,5 @@
 import { bump, timed } from './perf';
+import { forgetDurable, mirrorDurable, registerDurableKey } from '../durableCopy';
 
 /** A small localStorage-backed map with an expiry and a size cap. Failures (private mode, full storage) are silent: it is only a cache. */
 
@@ -6,8 +7,11 @@ export interface Cache<T> {
   get(key: string): T | undefined;
   /** Even an expired entry, with its age: for showing something when a fresh load fails. Entries older than `keepStale` are gone. */
   peek(key: string): { value: T; ageMs: number } | undefined;
-  set(key: string, value: T): void;
+  /** `at` sets the entry's saved time (used when a choice arrives from the cloud, so it keeps the time it was really made). */
+  set(key: string, value: T, at?: number): void;
   delete(key: string): void;
+  /** Every live entry with the time it was saved (only caches that can list themselves). */
+  entries?(): { key: string; value: T; at: number }[];
   /** Forget everything in this cache (memory and storage). */
   clear(): void;
 }
@@ -33,7 +37,25 @@ export const registerClearableKey = (key: string) => { clearableKeys.add(key); }
 /** Keys that are safe to clear: registered caches plus the old cache keys older versions used. */
 /** Saved with persistentCache but a choice of the reader, not a download: no cleanup or refresh may ever clear it. */
 export const NEVER_CLEAR: readonly string[] = ['readlife.nameChoices1'];
+/** Saved shelf lists: kept when the device is merely out of storage (clearing them sent every shelf back to its starting books). "Refresh everything" still clears them. */
+export const KEEP_WHEN_STORAGE_FULL: readonly string[] = ['readlife.dynseeds1', 'readlife.dynstatus1', 'readlife.dynreset1'];
+export const clearableKeysWhenStorageFull = (): string[] => clearableCacheKeys().filter(k => !KEEP_WHEN_STORAGE_FULL.includes(k));
+
+/**
+ * Re-downloadable, but what makes the Store look right on the first frame: the saved lists of self-refreshing shelves, their one-time reset marks
+ * (without the mark a reset fires again and drops the saved list) and the shelf covers. A new build keeps them (the data refresh of a new build
+ * must not blank the Store); the explicit "Refresh App & Data" button may still clear them (the storage-full cleanup keeps the lists, see KEEP_WHEN_STORAGE_FULL).
+ */
+export const KEEP_ACROSS_BUILDS: readonly string[] = ['readlife.dynseeds1', 'readlife.dynreset1', COVER_CACHE_KEYS.shelves];
 export const clearableCacheKeys = (): string[] => [...new Set([...clearableKeys, ...LEGACY_BOOK_CACHE_KEYS, 'readlife.curated1', 'readlife.curated2'])].filter(k => !NEVER_CLEAR.includes(k));
+
+/** Pending (debounced) writes by cache, so a closing or backgrounded app can save them at once instead of losing the last 400 ms of results. */
+const flushers = new Map<string, () => void>();
+export const flushPersistentCaches = (): void => { flushers.forEach(f => { try { f(); } catch {} }); };
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  window.addEventListener('pagehide', flushPersistentCaches);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushPersistentCaches(); });
+}
 
 export function persistentCache<T>(storageKey: string, opts: {
   ttl: number;
@@ -44,8 +66,11 @@ export function persistentCache<T>(storageKey: string, opts: {
    * instead of crashing a screen or being trusted. The other entries, and everything outside this cache, are left as they are.
    */
   validate?: (value: any) => boolean;
+  /** Also keep a safety copy in IndexedDB (see durableCopy.ts) that is put back before the app draws if the browser dropped localStorage. */
+  durable?: boolean;
 }): Cache<T> {
   registerClearableKey(storageKey);
+  if (opts.durable) registerDurableKey(storageKey);
   type Entry = { t: number; v: T };
   const mem = new Map<string, Entry>();
   let loaded = false;
@@ -64,9 +89,11 @@ export function persistentCache<T>(storageKey: string, opts: {
   };
   const usable = (v: unknown) => { try { return !opts.validate || opts.validate(v); } catch { return false; } };
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const save = () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => {
+  let dirty = false;
+  const write = () => {
+    if (!dirty) return;
+    dirty = false;
+    {
       try {
         const keys = [...mem.keys()];
         if (keys.length > opts.max) keys.slice(0, keys.length - opts.max).forEach(k => mem.delete(k));
@@ -74,10 +101,17 @@ export function persistentCache<T>(storageKey: string, opts: {
           const text = JSON.stringify(Object.fromEntries(mem));
           bump(`cache.${storageKey}.saveBytes`, text.length);
           localStorage.setItem(storageKey, text);
+          if (opts.durable) mirrorDurable(storageKey, text);
         });
       } catch {}
-    }, 400);
+    }
   };
+  const save = () => {
+    dirty = true;
+    clearTimeout(timer);
+    timer = setTimeout(write, 400);
+  };
+  flushers.set(storageKey, () => { clearTimeout(timer); write(); });
 
   const cache: Cache<T> = {
     get(key) {
@@ -95,11 +129,15 @@ export function persistentCache<T>(storageKey: string, opts: {
       if (ageMs > Math.max(opts.ttl, opts.keepStale ?? opts.ttl)) { mem.delete(key); return undefined; }
       return { value: e.v, ageMs };
     },
-    set(key, value) {
+    set(key, value, at) {
       load();
       mem.delete(key); // newest entries live at the end, so the oldest are dropped first
-      mem.set(key, { t: Date.now(), v: value });
+      mem.set(key, { t: at ?? Date.now(), v: value });
       save();
+    },
+    entries() {
+      load();
+      return [...mem.entries()].map(([key, e]) => ({ key, value: e.v, at: e.t }));
     },
     delete(key) {
       load();
@@ -108,8 +146,10 @@ export function persistentCache<T>(storageKey: string, opts: {
     clear() {
       loaded = true;
       mem.clear();
+      dirty = false;
       clearTimeout(timer);
       try { localStorage.removeItem(storageKey); } catch {}
+      if (opts.durable) forgetDurable(storageKey); // a deliberate clear is not undone by the safety copy
     },
   };
   instances.set(storageKey, cache);

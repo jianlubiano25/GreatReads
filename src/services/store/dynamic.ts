@@ -8,7 +8,7 @@ import { isBlocked } from '../books/quality';
 import { searchOpenLibrary } from '../books/sources/openLibrary';
 import type { Hit } from '../books/sources/types';
 import { READER_CAPS, recencyValue } from './collate';
-import { curatedSource } from './curated';
+import { curatedSource, lastGoodShelfSeeds } from './curated';
 import type { RefreshResult, ShelfInfo, ShelfSource } from './shelves';
 import { cleanAuthorName, cleanTitle, fetchWikiPicks, fetchWikitext, isSaneAuthor, parseWikiTables, splitPairedTitle, type ColumnRule } from './wikiLists';
 
@@ -64,12 +64,12 @@ export interface DynamicSpec {
   order?: (seeds: Seed[]) => Seed[];
 }
 
-interface Saved { seeds: Seed[]; title?: string; /** the last refresh came from the official page (specs that have a fallback) */ official?: boolean; /** last SUCCESSFUL refresh */ at: number; /** last attempt, successful or not (only used to space retries) */ tried: number }
+interface Saved { seeds: Seed[]; title?: string; /** the last refresh came from the official page (specs that have a fallback) */ official?: boolean; /** last SUCCESSFUL refresh */ at: number; /** last attempt, successful or not (only used to space retries) */ tried: number; /** rebuilt from the shelf's last good copy, not a refresh result */ rebuilt?: true }
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 export const RETRY_MS = HOUR;
-const store = persistentCache<Saved>('readlife.dynseeds1', { ttl: 400 * DAY, max: 30 });
+const store = persistentCache<Saved>('readlife.dynseeds1', { ttl: 400 * DAY, max: 30, durable: true });
 /** How the last attempt to refresh each shelf ended (kept apart from the saved list, which only ever changes on success). */
 const attempts = persistentCache<{ at: number; ok: boolean; /** why the last try failed, when the source said */ why?: string }>('readlife.dynstatus1', { ttl: 60 * DAY, max: 40 });
 
@@ -82,14 +82,32 @@ export const SAVED_RESETS: Record<string, string> = {
   oprah: 'default-list-2', // back to Beloved, Song of Solomon, The Covenant of Water...; Oprah Daily's newer picks are added in front on the next refresh (Oprah Daily + Wikipedia 2.0)
   service95: 'full-archive-1', // the full archive from the club's own page; a pick saved with a sentence for an author is gone
 };
-const resetMarks = persistentCache<string>('readlife.dynreset1', { ttl: 800 * DAY, max: 20 });
+const resetMarks = persistentCache<string>('readlife.dynreset1', { ttl: 800 * DAY, max: 20, durable: true }); // with its own safety copy: a lost mark would run the reset again and drop the saved list
 export const forgetResetMarksForTests = () => Object.keys(SAVED_RESETS).forEach(id => resetMarks.delete(id));
-function applyReset(id: string) {
+/** Runs a pending one-time reset. Returns true when it ran just now (the shelf is then meant to start from its hand-picked list). */
+function applyReset(id: string): boolean {
   const want = SAVED_RESETS[id];
-  if (!want || resetMarks.get(id) === want) return;
+  if (!want || resetMarks.get(id) === want) return false;
   store.delete(id);
   attempts.delete(id);
   resetMarks.set(id, want);
+  return true;
+}
+
+/**
+ * The saved list is missing (the browser dropped it) but the shelf's last good copy is there: rebuild the list from it instead of showing the hand-picked default.
+ * `at: 0` marks it as not refreshed, so the shelf refreshes at once; it is not written back (the refresh saves the real list). Nothing when that copy is just the default list.
+ */
+function rebuiltFromLastGood(id: string): Saved | undefined {
+  const base = CURATED_SHELVES.find(s => s.id === id);
+  const last = lastGoodShelfSeeds(id);
+  if (!base || !last) return undefined;
+  const seeds = cleanSeeds(repairSeeds(id, last));
+  if (seeds.length < 3) return undefined;
+  const key = (x: Seed) => `${titleKey(x[0])}|${authorKey(x[1])}`;
+  const def = new Set(base.seeds.map(key));
+  if (seeds.length === base.seeds.length && seeds.every(x => def.has(key(x)))) return undefined;
+  return { seeds, at: 0, tried: 0, rebuilt: true };
 }
 
 /**
@@ -121,9 +139,10 @@ export function repairSeeds(id: string, seeds: Seed[]): Seed[] {
 
 const saved = {
   get(id: string): Saved | undefined {
-    applyReset(id);
+    const justReset = applyReset(id);
     const s = store.get(id);
-    return s ? { ...s, seeds: cleanSeeds(repairSeeds(id, s.seeds)) } : undefined;
+    if (s) return { ...s, seeds: cleanSeeds(repairSeeds(id, s.seeds)) };
+    return justReset ? undefined : rebuiltFromLastGood(id); // a reset that ran now means the hand-picked list on purpose
   },
   set(id: string, value: Saved) { applyReset(id); store.set(id, value); },
 };
@@ -186,13 +205,16 @@ export async function refreshShelf(shelf: CuratedShelf, spec: DynamicSpec, now =
   const found = fresh ? cleanSeeds(fresh.seeds) : [];
   if (found.length < spec.minSeeds) {
     attempts.set(shelf.id, { at: now, ok: false, why });
-    if (old) saved.set(shelf.id, { ...old, tried: now }); // keep the stale list; try again in an hour
+    const cur = saved.get(shelf.id); // read AGAIN: a refresh that finished while this one waited must not be overwritten by the older copy taken before the wait
+    if (cur) saved.set(shelf.id, { ...cur, tried: now }); // keep the last good list; try again in an hour
     return null;
   }
+  const cur = saved.get(shelf.id) ?? old;
+  if (cur && cur.at > now) return cur; // a newer successful refresh is already saved: this slower, older answer must not replace it
   attempts.set(shelf.id, { at: now, ok: true });
   const order = spec.order ?? ((x: Seed[]) => x);
   const seeds = spec.merge === 'append'
-    ? order(mergeAppend(found, order(old?.seeds ?? shelf.seeds), spec.cap, spec.keepExisting))
+    ? order(mergeAppend(found, order(cur?.seeds ?? shelf.seeds), spec.cap, spec.keepExisting))
     : found.slice(0, Math.max(shelf.seeds.length, 12));
   const next: Saved = { seeds, title: fresh?.title, official: fresh?.official, at: now, tried: now };
   saved.set(shelf.id, next);
@@ -218,7 +240,7 @@ export const dynamicInfo = (base: CuratedShelf, spec: DynamicSpec): ShelfInfo =>
   const last = attempts.get(base.id);
   const note = last && !last.ok && (!s || last.at > s.at) ? ` · last check failed (${last.why ?? 'source unreadable'}): showing the ${s ? 'saved' : 'hand-picked'} list` : '';
   return {
-    updatedAt: s?.at,
+    updatedAt: s?.at || undefined,
     schedule: `Refreshes ${everyLabel(spec.refreshMs)}`,
     source: source + (spec.merge === 'append' ? ' · new picks are added to the top, earlier ones stay' : '') + note,
     kind,

@@ -30,7 +30,6 @@ export const catalogCopy = (): Saved => {
   }
   return saved;
 };
-let byCover: Map<string, string> | undefined;
 let version = 0;
 export const catalogVersion = (): number => version;
 
@@ -45,7 +44,7 @@ export function applyCatalog(works: CatalogWork[], since?: string): boolean {
   if (since) s.since = since;
   s.t = Date.now();
   try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {}
-  if (changed) { byCover = undefined; version++; }
+  if (changed) version++;
   return changed;
 }
 
@@ -54,42 +53,61 @@ export function pruneCatalog(keepIds: ReadonlySet<string>): void {
   const s = catalogCopy();
   let n = 0;
   for (const id of Object.keys(s.works)) if (!keepIds.has(id)) { delete s.works[id]; n++; }
-  if (n) { byCover = undefined; version++; try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} }
+  if (n) { version++; try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} }
 }
 
-const index = (): Map<string, string> => {
-  if (!byCover) {
-    byCover = new Map();
-    for (const w of Object.values(catalogCopy().works)) {
-      if (!w.cover || !/^https:\/\//i.test(w.cover)) continue;
-      const names = [w.key, `${w.title}|${w.author}`.toLowerCase(), ...(w.aliases || []).map(a => `${a}|${w.author}`.toLowerCase())];
-      for (const n of names) if (n && !byCover.has(n.toLowerCase())) byCover.set(n.toLowerCase(), w.cover);
-    }
-  }
-  return byCover;
-};
-
-/** The catalog's cover for a book, by the app's own key (title|author, lower case). */
-export const getCatalogCover = (key: string): string | undefined => index().get(key);
-
 /* ---- the whole work (description, bio, facts, rating) for Book Info ---- */
-let byInfo: Map<string, CatalogWork> | undefined;
-let byIsbn: Map<string, CatalogWork> | undefined;
+let byInfo: Map<string, CatalogWork[]> | undefined;
+let byIsbn: Map<string, CatalogWork[]> | undefined;
 let infoIndexVersion = -1;
 const buildInfoIndex = () => {
   if (infoIndexVersion === version && byInfo && byIsbn) return;
   byInfo = new Map(); byIsbn = new Map();
+  const add = (map: Map<string, CatalogWork[]>, key: string, work: CatalogWork) => {
+    const list = map.get(key) || [];
+    if (!list.some(x => x.id === work.id)) list.push(work);
+    map.set(key, list);
+  };
   for (const w of Object.values(catalogCopy().works)) {
     for (const t of [w.title, ...(w.aliases || [])]) {
-      for (const a of [w.author, ...(w.authorAliases || [])]) { const k = `${titleKey(t)}|${authorKey(a || '')}`; if (!byInfo.has(k)) byInfo.set(k, w); }
+      for (const a of [w.author, ...(w.authorAliases || [])]) add(byInfo, `${titleKey(t)}|${authorKey(a || '')}`, w);
     }
-    for (const e of w.editions || []) for (const i of [e.isbn13, e.isbn10]) if (i && !byIsbn.has(i)) byIsbn.set(i, w);
+    for (const e of w.editions || []) for (const i of [e.isbn13, e.isbn10]) if (i) add(byIsbn, i.replace(/[^0-9Xx]/g, '').toUpperCase(), w);
   }
   infoIndexVersion = version;
 };
-/** The catalog's published work for a book: by ISBN when the book has one, else by title + author (aliases included). */
-export function getCatalogWork(book: { title?: string; author?: string; isbn13?: string; isbn10?: string }): CatalogWork | undefined {
+type BookRef = { title?: string; author?: string; isbn13?: string; isbn10?: string; identity?: { isbn13?: string; isbn10?: string } };
+const isbnOf = (i?: string) => (i || '').replace(/[^0-9Xx]/g, '').toUpperCase();
+
+/**
+ * Every published work that fits a book: by ISBN when the book has one (top level or in `identity`, as every Book carries it), else by title + author
+ * (aliases and author aliases included, spelling normalised). This is the ONE matcher: Book Info, rejected covers and the cover chain all use it.
+ */
+function catalogWorksFor(book: BookRef): CatalogWork[] {
   buildInfoIndex();
-  const isbn = [book.isbn13, book.isbn10].map(i => (i || '').replace(/[^0-9Xx]/g, '')).find(i => i && byIsbn!.has(i));
-  return (isbn && byIsbn!.get(isbn)) || byInfo!.get(`${titleKey(book.title || '')}|${authorKey(book.author || '')}`);
+  const isbns = [book.isbn13, book.isbn10, book.identity?.isbn13, book.identity?.isbn10].map(isbnOf).filter(i => i && byIsbn!.has(i));
+  if (isbns.length) {
+    const hits = new Map<string, CatalogWork>();
+    for (const i of isbns) for (const w of byIsbn!.get(i) || []) hits.set(w.id, w);
+    return [...hits.values()];
+  }
+  return byInfo!.get(`${titleKey(book.title || '')}|${authorKey(book.author || '')}`) || [];
+}
+
+/**
+ * The catalog's published work for a book. When two published works fit equally well (duplicates while the owner is still reconciling records),
+ * none is chosen: storage order must never decide which description or rating a reader sees.
+ */
+export function getCatalogWork(book: BookRef): CatalogWork | undefined {
+  const hits = catalogWorksFor(book);
+  return hits.length === 1 ? hits[0] : undefined;
+}
+
+/**
+ * The published cover for a book, by the same matcher as Book Info. Two matching works (duplicates) still give a cover when they agree on it;
+ * if they disagree, none, so a reader never sees a cover chosen by storage order.
+ */
+export function getCatalogCoverFor(book: BookRef): string | undefined {
+  const covers = new Set(catalogWorksFor(book).map(w => w.cover).filter((c): c is string => !!c && /^https:\/\//i.test(c)));
+  return covers.size === 1 ? [...covers][0] : undefined;
 }

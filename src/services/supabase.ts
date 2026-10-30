@@ -4,6 +4,7 @@
  * The session is kept on this device only and is never part of a backup.
  */
 
+import { settingsRecordsSyncEnabled } from './settingsRecordsFlag';
 const URL_ = ((import.meta as any).env?.VITE_SUPABASE_URL as string) || 'https://amvkwwqcepmxxkfeqjox.supabase.co';
 const KEY_ = ((import.meta as any).env?.VITE_SUPABASE_KEY as string) || 'sb_publishable_s-atrWTsjqEYhAyM2moavQ_D0UQRZ51';
 const SESSION_KEY = 'readlife.sb1';
@@ -54,8 +55,21 @@ const plain = (m: string): string => {
   return m;
 };
 
+/** Every request gives up after this long. Without a limit, one request that never answers (common on a phone that was suspended mid-request) froze sync until the app was closed. */
+let requestTimeoutMs = 25_000;
+/** Tests only. */
+export const setRequestTimeoutMs = (ms: number) => { requestTimeoutMs = ms; };
+async function timedFetch(url: string, init: RequestInit, readBody?: (res: Response) => Promise<unknown>): Promise<{ res: Response; body?: unknown }> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), requestTimeoutMs);
+  try {
+    const res = await fetch(url, { ...init, signal: ctl.signal });
+    return { res, body: readBody ? await readBody(res) : undefined };
+  } finally { clearTimeout(timer); }
+}
+
 async function auth(path: string, body: unknown, method = 'POST', token?: string): Promise<Response> {
-  return fetch(`${URL_}/auth/v1/${path}`, { method, headers: { apikey: KEY_, 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+  return (await timedFetch(`${URL_}/auth/v1/${path}`, { method, headers: { apikey: KEY_, 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) })).res;
 }
 
 export async function signIn(email: string, password: string): Promise<AuthResult> {
@@ -154,17 +168,128 @@ export async function accessToken(): Promise<string | null> {
 export async function rest<T = unknown>(path: string, init: { method?: string; body?: unknown; prefer?: string; ifModifiedSince?: never } = {}): Promise<{ ok: true; data: T } | { ok: false; status: number; error: string }> {
   try {
     const token = await accessToken();
-    const res = await fetch(`${URL_}/rest/v1/${path}`, {
+    const { res, body } = await timedFetch(`${URL_}/rest/v1/${path}`, {
       method: init.method || 'GET',
       headers: { apikey: KEY_, authorization: `Bearer ${token || KEY_}`, 'content-type': 'application/json', ...(init.prefer ? { prefer: init.prefer } : {}) },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
-    });
-    if (!res.ok) return { ok: false, status: res.status, error: await errText(res) };
-    const text = await res.text();
+    }, async r => (r.ok ? await r.text() : await errText(r)));
+    if (!res.ok) return { ok: false, status: res.status, error: String(body) };
+    const text = String(body ?? '');
     return { ok: true, data: (text ? JSON.parse(text) : null) as T };
   } catch { return { ok: false, status: 0, error: 'No connection.' }; }
 }
 export const rpc = <T = unknown>(fn: string, args: Record<string, unknown> = {}) => rest<T>(`rpc/${fn}`, { method: 'POST', body: args });
+
+/**
+ * Subscribe to the authenticated user's personal tables using Supabase Realtime's Phoenix websocket protocol.
+ * The messages are arrays [join_ref, ref, topic, event, payload], which is serializer version 2.0.0. Asking for 1.0.0 (object messages)
+ * made the server reject every join and heartbeat ("V1 JSON Serializer expected a map"), so live updates never arrived.
+ */
+import { createLinkHealth } from './linkHealth';
+import { reportCloudEvent, reportLive, reportSync } from './syncStatus';
+import { createProbeWatcher, probeFingerprint, type ProbeRest } from './changeProbe';
+
+export function subscribeLibraryRealtime(userId: string, onChange: (table: string) => void): () => void {
+  let stopped = false;
+  let socket: WebSocket | undefined;
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
+  let retry: ReturnType<typeof setTimeout> | undefined;
+  let delay = 1000;
+  const health = createLinkHealth(60_000);
+  const probeWatcher = createProbeWatcher();
+  let probing = false;
+  const unAuth = subscribeAuth(() => {
+    if (currentUser()?.id !== userId) { socket?.close(); return; }
+    if (socket?.readyState === WebSocket.OPEN) socket.close(); // a refreshed login token: reconnect so the live channel is re-authorised
+  });
+  const tables = ['user_library_books', 'user_book_annotations', 'user_shelves', 'user_shelf_books', 'user_reading_sessions', 'user_library_preferences', 'user_daily_pages', ...(settingsRecordsSyncEnabled() ? ['user_settings', 'user_words'] : [])]; // the two Phase 4 tables exist only once the migrations are applied and the switch is on
+  let hasConnected = false;
+  const topic = `realtime:greatreads:${userId}`;
+  const connect = async () => {
+    retry = undefined;
+    if (stopped || currentUser()?.id !== userId || typeof WebSocket === 'undefined') return;
+    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+    const token = await accessToken();
+    if (!token || stopped || currentUser()?.id !== userId) return;
+    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+    const base = URL_.replace(/^http/, 'ws');
+    const ws = new WebSocket(`${base}/realtime/v1/websocket?apikey=${encodeURIComponent(KEY_)}&vsn=2.0.0`);
+    socket = ws;
+    let closed = false;
+    ws.onopen = () => {
+      if (socket !== ws) { ws.close(); return; }
+      delay = 1000;
+      health.opened(Date.now());
+      reportLive('connecting');
+      // Anything that changed while the socket was down was never delivered: after a RE-connect, ask the app to pull everything once.
+      if (hasConnected) onChange('resync'); hasConnected = true;
+      const postgres_changes = tables.map(table => ({ event: '*', schema: 'public', table, filter: `user_id=eq.${userId}` }));
+      ws.send(JSON.stringify(['1', '1', topic, 'phx_join', { config: { broadcast: { ack: false, self: false }, presence: { key: '' }, postgres_changes }, access_token: token }]));
+      heartbeat = setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify([null, String(Date.now()), 'phoenix', 'heartbeat', {}])); }, 20_000);
+    };
+    ws.onmessage = event => {
+      if (socket !== ws) return;
+      health.heard(Date.now()); // any message, including a heartbeat reply, proves the link is alive
+      try {
+        const message = JSON.parse(String(event.data));
+        if (!Array.isArray(message)) return;
+        const kind = message[3], payload = message[4];
+        // The server refused or dropped our channel (for example the login token expired): rebuild instead of waiting for events that will never come
+        if (message[2] === topic && kind === 'phx_reply' && payload?.status === 'ok') reportLive('connected');
+        if (message[2] === topic && ((kind === 'phx_reply' && payload?.status === 'error') || kind === 'phx_error' || kind === 'phx_close')) { health.channelFailed(); reportLive('refused'); rebuild(); return; }
+        if (kind !== 'postgres_changes') return;
+        const table = payload?.data?.table || payload?.table;
+        if (typeof table === 'string' && tables.includes(table) && currentUser()?.id === userId) { reportCloudEvent(); onChange(table); }
+      } catch {}
+    };
+    const onEnd = () => {
+      if (closed) return; closed = true; // onerror and onclose both fire: handle the end of this socket once
+      if (socket === ws) { if (heartbeat) clearInterval(heartbeat); heartbeat = undefined; socket = undefined; reportLive('closed'); }
+      if (!stopped && currentUser()?.id === userId && !retry) { retry = setTimeout(() => void connect(), delay); delay = Math.min(30_000, delay * 2); }
+    };
+    ws.onclose = onEnd; ws.onerror = onEnd;
+  };
+  /** Throw the current connection away and open a new one now. */
+  const rebuild = () => {
+    const old = socket;
+    if (heartbeat) { clearInterval(heartbeat); heartbeat = undefined; }
+    socket = undefined;
+    try { old?.close(); } catch {}
+    if (retry) { clearTimeout(retry); retry = undefined; }
+    if (!stopped) retry = setTimeout(() => void connect(), 0);
+  };
+  const checkLink = () => {
+    if (stopped || currentUser()?.id !== userId) return;
+    const open = !!socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING);
+    if (health.shouldRebuild(Date.now(), open)) { if (socket || !retry) rebuild(); }
+  };
+  /** Safety net: a tiny revision-only check. If anything changed in the cloud, pull it, whatever the live connection did or did not deliver. */
+  const probe = async () => {
+    if (stopped || probing || currentUser()?.id !== userId || (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
+    probing = true;
+    try {
+      const fp = await probeFingerprint(userId, rest as ProbeRest);
+      reportSync('safety-check', fp !== null, fp === null ? 'could not read the cloud' : undefined);
+      if (!stopped && probeWatcher.changed(fp)) onChange('resync');
+    } catch {} finally { probing = false; }
+  };
+  const onWake = () => { if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return; checkLink(); void probe(); };
+  const watchdog = setInterval(checkLink, 10_000);
+  // Safety net next to the live channel: while the app is on screen, a tiny revision check every 10 seconds catches anything the live connection missed.
+  const probeTimer = setInterval(() => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') void probe(); }, 10_000);
+  if (typeof document !== 'undefined') { document.addEventListener('visibilitychange', onWake); window.addEventListener('online', onWake); window.addEventListener('pageshow', onWake); window.addEventListener('focus', onWake); }
+  void probe(); // baseline
+  void connect();
+  return () => {
+    stopped = true;
+    if (retry) clearTimeout(retry);
+    if (heartbeat) clearInterval(heartbeat);
+    clearInterval(watchdog); clearInterval(probeTimer);
+    if (typeof document !== 'undefined') { document.removeEventListener('visibilitychange', onWake); window.removeEventListener('online', onWake); window.removeEventListener('pageshow', onWake); window.removeEventListener('focus', onWake); }
+    socket?.close();
+    unAuth();
+  };
+}
 
 /** Is the signed-in user on the admin list? Asked of the database, never decided in the app. */
 export async function checkAdmin(): Promise<boolean> {

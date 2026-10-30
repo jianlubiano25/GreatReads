@@ -3,6 +3,7 @@ import { Book, BookStatus, WordItem } from '../types';
 import { DIFFICULTY_LABELS } from '../data/defaultBooks';
 import { BUILTIN_DICTIONARY } from '../data/defaultWords';
 import { speakWord } from '../services/dictionary';
+import { displayGenre } from '../services/books/catalogFill';
 import { CoverFace, RatingLine, AwardBadges } from './BookMeta';
 import { Ban, Bookmark, Check, Edit2, Library, Search, Trash2, Volume2 } from 'lucide-react';
 
@@ -127,7 +128,7 @@ export const NowReadingCard = React.memo(function NowReadingCard({
           <div className="text-sm text-[#706256] dark:text-[#a89a8a] line-clamp-2">{b.author}</div>
           <div className="flex flex-wrap gap-1.5 mt-0.5">
             {b.year ? <span className={chip}>{b.year}</span> : null}
-            {b.genre && b.genre !== 'Book' ? <span className={chip}>{b.genre}</span> : null}
+            {displayGenre(b.genre) ? <span className={chip}>{displayGenre(b.genre)}</span> : null}
             {b.difficulty ? <span className={chip}>{DIFFICULTY_LABELS[b.difficulty]}</span> : null}
           </div>
           <RatingLine book={b} className="mt-0.5" />
@@ -291,7 +292,7 @@ function ShelfCardTop({ book: b, onOpen }: { book: Book; onOpen: (b: Book) => vo
           </h3>
           <p className="text-xs text-[#2e5934] dark:text-[#86b880] font-medium mt-0.5 truncate">{b.author}</p>
           <div className="text-[11px] text-[#706256] dark:text-[#a89a8a] mt-1">
-            {b.year ? `${b.year} · ` : ''}{b.pageCount ? `${b.pageCount} p. · ` : ''}{b.genre}
+            {[b.year, b.pageCount ? `${b.pageCount} p.` : '', displayGenre(b.genre)].filter(Boolean).join(' · ')}
           </div>
           <RatingLine book={b} compact className="mt-0.5" />
         </div>

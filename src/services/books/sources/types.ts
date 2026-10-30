@@ -19,4 +19,6 @@ export interface CallOpts {
   start?: number;
   /** Search only: how many books the source says match in all (not just the ones returned) */
   onTotal?: (n: number) => void;
+  /** Called when this provider could not answer, as distinct from a successful empty result. */
+  onFailure?: () => void;
 }

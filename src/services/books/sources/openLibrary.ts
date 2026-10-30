@@ -1,8 +1,9 @@
-import { getJson } from '../http';
+import { getJson, getJsonDetailed } from '../http';
 import { learnAuthorGroup } from '../authorAliases';
 import { authorVariants, cleanIsbn, titleVariants, titlesMatch, authorListMatches, workIdFromKey } from '../identity';
 import { genreFromSubjects, makeBook } from '../model';
 import { looksEnglish, titleLooksForeign } from '../language';
+import { rememberProviderFacts } from '../providerFacts';
 import type { CallOpts, Hit } from './types';
 
 const OL = 'https://openlibrary.org';
@@ -45,13 +46,18 @@ export function olDocToHit(doc: OlDoc, idx = 0, genreHint = ''): Hit {
     source: 'openlibrary',
     identity: { olWork: workIdFromKey(doc.key), olEdition: doc.cover_edition_key },
   });
+  // what Open Library said beyond the Book (memory only): subjects, every author, alternative author names
+  const olWork = workIdFromKey(doc.key);
+  if (olWork) rememberProviderFacts({ provider: 'openlibrary', recordId: olWork, subjects: doc.subject?.slice(0, 40), authors: doc.author_name?.slice(0, 10), altAuthorNames: doc.author_alternative_name?.slice(0, 20), language: doc.language?.length ? doc.language.join(',') : undefined });
   return { book, flags: { subjects: doc.subject, language: doc.language?.includes('eng') ? 'en' : doc.language?.[0] } };
 }
 
 /** Raw search. Never throws; returns [] on any failure. */
 export async function searchOpenLibrary(params: Record<string, string>, limit: number, opts: CallOpts = {}): Promise<Hit[]> {
   const q = new URLSearchParams({ limit: String(limit), fields: FIELDS, ...params });
-  const data = await getJson(`${OL}/search.json?${q}`, { signal: opts.signal, retries: opts.retries, timeout: opts.timeout });
+  const result = await getJsonDetailed(`${OL}/search.json?${q}`, { signal: opts.signal, retries: opts.retries, timeout: opts.timeout });
+  if ((result.failure && result.failure !== 'aborted') || [403, 429].includes(result.status) || result.status >= 500) opts.onFailure?.();
+  const data = result.data;
   if (typeof data?.numFound === 'number') opts.onTotal?.(data.numFound);
   const docs = ((data?.docs || []) as OlDoc[]).filter(d => d?.title);
   // Open Library knows an author's other names (a pen name): they are one author from here on (authorAliases.ts)

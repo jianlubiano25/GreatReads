@@ -2,6 +2,7 @@
  * Feeds the owner-only capture (capture.ts): what each lookup finds as it happens, and, once, everything this device already holds
  * (your library, the Store shelves shipped with the app, saved lookups and cover lists).
  */
+import { genreOrEmpty } from './books/catalogFill';
 import resolvedData from '../data/storeResolved.json';
 import { CURATED_SHELVES } from '../data/storeCatalog';
 import type { Book } from '../types';
@@ -10,6 +11,8 @@ import { coverKey } from './books/coverAnalysis';
 import { peekCoverCandidates, setCandidateSink } from './books/coverCandidates';
 import { getMyCoverPick } from './books/coverPicks';
 import { getInfo, setInfoSink, siteRatingsOf } from './books/infoStore';
+import { identityOf, mergeIdentity } from './books/identity';
+import { setProviderFactsPersistence } from './books/providerFacts';
 import { hasRealSummary, isKnownGenre } from './books/model';
 import { backfillDone, captureBook, captureMany, captureOn, captureStatus, markBackfillDone, publishAllMissing, setPublishedSink, type CaptureItem, type CaptureRating } from './capture';
 
@@ -25,22 +28,27 @@ export function mergeItems(a: CaptureItem, b: CaptureItem): CaptureItem {
     summary: a.summary || b.summary, authorBio: a.authorBio || b.authorBio,
     year: a.year || b.year, pageCount: a.pageCount || b.pageCount, genre: a.genre || b.genre,
     ratings,
+    identity: mergeIdentity(a.identity, b.identity),
+    ...(a.bookId || b.bookId ? { bookId: a.bookId || b.bookId } : {}),
   };
 }
 
 /** What this device knows about one book right now (no network). */
 export function itemOf(book: Pick<Book, 'title' | 'author'> & Partial<Book>): CaptureItem {
   const entry = getInfo(book as Book);
+  const identity = book.id !== undefined ? identityOf(book as Pick<Book, 'id' | 'identity'>) : book.identity; // a saved book without ids is just a book without ids
   const covers = [book.coverUrl, getMyCoverPick(book)?.url, ...peekCoverCandidates(book).map(c => c.url)].filter((u): u is string => !!u);
   return {
     title: book.title, author: book.author,
     covers,
+    identity: identity && Object.keys(identity).length ? identity : undefined,
     summary: hasRealSummary(book.summary) ? book.summary : entry.facts.summary,
     authorBio: book.authorBio || entry.facts.authorBio,
     year: /^\d{3,4}$/.test(book.year || '') ? book.year : entry.facts.year,
     pageCount: book.pageCount || entry.facts.pageCount,
-    genre: isKnownGenre(book.genre) ? book.genre : entry.facts.genre,
+    genre: isKnownGenre(book.genre) && genreOrEmpty(book.genre) ? book.genre : genreOrEmpty(entry.facts.genre) || undefined,
     ratings: siteRatingsOf(entry).map(r => ({ source: r.source, average: r.average, count: r.count })),
+    ...(book.id !== undefined ? { bookId: String(book.id) } : {}),
   };
 }
 
@@ -71,6 +79,7 @@ let wired = false;
 export function initCapture(): void {
   if (wired) return;
   wired = true;
+  setProviderFactsPersistence(captureOn); // facts looked up on the owner's device are kept across reloads (owner only)
   setPublishedSink(() => { void syncCatalog({ force: true }); }); // this device then shows what was just published
   setInfoSink((book) => captureBook(itemOf(book)));
   setCandidateSink((book, list) => captureBook({ title: book.title, author: book.author, covers: list.map(c => c.url) }));

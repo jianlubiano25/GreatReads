@@ -28,7 +28,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose }) => {
   const handleNativeShare = () => {
     if (navigator.share) {
       navigator.share({
-        title: 'My Reading Life',
+        title: 'GreatReads',
         text: 'A quiet reading companion, bookstore, vocabulary garden, and device library.',
         url: sharedUrl,
       }).catch(() => {});

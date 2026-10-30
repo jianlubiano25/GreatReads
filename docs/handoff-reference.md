@@ -1,0 +1,75 @@
+# GreatReads - HANDOFF reference (read only the section you need; the short file is HANDOFF.md)
+
+Moved here from HANDOFF.md on 2026-10-30 to save tokens. Nothing was dropped.
+
+## 4. What exists
+**Sync:** per-record sync into Supabase `user_*` tables; Realtime fast path + 30 s revision probe + reconnect catch-up. Backup blob (`user_sync_records` type `backup`) = recovery only.
+Files: `librarySync.ts`, `librarySyncMerge.ts`, `dailyPagesSync.ts`, `settingsRecordsSync.ts` (`user_settings`, `user_words`), `editTimes.ts`, `runGate.ts`, `linkHealth.ts`, `changeProbe.ts`, `syncStatus.ts`, `SyncStatusSection.tsx`, `usePersonalLibrarySync.ts`, `supabase.ts` (25 s timeout), `cloudSync.ts` (backup).
+Rules today: later edit wins; equal time + different value = recorded tie (Backup & Restore screen); clock skew >60 s untrusted; deletes = tombstones. Per-setting records ON for all signed-in accounts; kill switch localStorage `readlife.settingsRecordsSync1="0"` or `VITE_SETTINGS_RECORDS_SYNC=0`; rollback = kill switch, then `supabase/rollbacks/` 000005, 000004. Realtime serializer must stay 2.0.0.
+**Catalog publish today (`src/services/catalog.ts`):** `saveBookToCatalog` stores Work (title, author, `work_key`), description, author bio, year/pageCount/genre as *metadata candidates only*, ratings, and ids via `saveIdentityToCatalog` (olWork on Work; ISBN/OL edition/Google volume on a new Edition row; invalid/conflicting ids reported, never written). Cover publish (`publishCoverToCatalog`) and background capture (`capture.ts`) are separate paths that also send ids.
+**Not saved today:** honors/`awardLabel` (device cache only), `catalog_works.genres` (EMPTY on all 779 works), `aliases`, `author_aliases`, `language_code`; Edition `publisher`, `publication_date/year`, `page_count`, `format`, `language_code`; cover candidates from Save to catalog; any category/shelf field (no column exists).
+
+## 5. Data facts (live Supabase `GreatReads`, ref `amvkwwqcepmxxkfeqjox`; ignore Kipr projects; checked 2026-10-27)
+- `catalog_works` 779 rows (all now have `honors` = empty); identifiers mostly empty. `catalog_editions` has 59 rows (background capture is writing them; check they are correct). Metadata candidate fields in use: `genre` 301, `pageCount` 409, `year` 447. (the 64 shelf/honor/tag genre labels were un-selected 2026-10-28.)
+- **Conflicts found (read-only scan):** 9 works have 2 different `pageCount` and 6 have 2 different `year` candidates (all source `app`): they look like different editions/reissues (e.g. Fourth Wing 518 vs 614, Red Rising 2014 vs 2025, Nettle & Bone 220 vs 320, Dungeon Crawler Carl 2020 vs 2026). Pages/year belong on Editions; `catalog_metadata_candidates.edition_id` exists, so new captures can attach the edition. Do not auto-move old ones (edition unknown). `language_code` is empty on all works; aliases/author aliases exist on only 3; 2 works have a `work_key` that differs from title|author (the Vernon alt key).
+- **Backfill dry-run (read-only):** of the genre candidates, 44 works hold only an honor/club label (no real genre), 4 hold "New release"/"Reader favourite", 228 hold a real genre (none has two different ones). ~500 works have no genre at all: the network lookups must supply it. Run the backfill with the same tested classifier as the app (step 3), not with ad-hoc SQL.
+- `user_library_books` 21 rows, 0 linked to a Work/Edition. `local_book_id`/`Book.id` must never be rewritten.
+- **Delete danger:** Editions, covers, content, metadata, ratings, private notes reference `catalog_works(id)` **ON DELETE CASCADE**. Deleting a Work destroys its data: re-point children, then archive (`catalog_set_work_status`), never delete. Unique rules that collide on re-pointing: `work_key`, `identifiers->>'olWork'`, one preferred cover per work, one selected value per metadata field.
+- RLS on all public tables; `catalog_*` writes only for `catalog_admins`. `authenticated` has write grants on `catalog_*` (RLS gates them). Bodies of `catalog_*` functions unread. Catalog table DDL is not in the repo.
+- Migration drift: `user_settings`/`user_words` live with data, but migrations `20261025000004/5` not in live history. Fix by exporting live DDL and recording them applied, not re-applying.
+- Unused tables: `user_sync_devices`, `user_reading_sessions`, `user_profiles`. Auth advisor: leaked-password protection off.
+
+## 6. Tasks (do in order; each starts read-only)
+### Task A - Publish EVERYTHING to the catalog  [~] steps 1, 3, 6 done; 2, 4, 5 still open (they belong to Group 5)
+1. [x] Field map: `docs/catalog-field-map.md`.
+2. [ ] Design ONE shared function used by Save to catalog, cover publish and background capture. Idempotent; only adds or fills; never overwrites a published value; never deletes; conflicts reported, not resolved. Writes Work (title, author, aliases, author aliases, language, genres, ids), Edition (ISBN10/13, OL edition, Google volume, publisher, date/year, pages, format, language, source), description/bio, ratings, all cover candidates, metadata candidates with source.
+3. [x] Honors vs genres: `catalog_works.honors` applied; classifier in `catalogFill.ts`; shelf/honor labels can no longer become a genre (WP1).
+4. [ ] Same book / same author rule: match by exact ids (olWork, ISBN13/10, OL edition, Google volume), then `work_key`, then author alias; found = add aliases/ids/candidates to the existing Work, never a second Work; uncertain = list it.
+5. [ ] Tests (pure rules, like `catalogIdentity.test.ts`), tsc, build, owner device test.
+6. [x] Backfill applied (Phase 3, 270 works) + WP1 data fix (64 labels un-selected, audit notes).
+
+### Task B - Merge duplicates safely (owner's earlier work; not pushed anywhere, build here)
+Verified 2026-10-27: records exist; `aliases[]`/`author_aliases[]` exist (no schema change for alternate titles; confirm devices receive them). Client already maps T. Kingfisher = Ursula Vernon (commit `954a598`). All `published`, no rejected covers, no personal links.
+| Work id | Title / author | work_key | ids | covers/meta/content/ratings/editions |
+|---|---|---|---|---|
+| `a1a46652-be9b-482f-ac3c-e8d16700a552` | Nettle & Bone / T. Kingfisher (author_aliases Ursula Vernon) | `nettle & bone\|ursula vernon` | olWork OL24510090W | 3/3/1/2/**1** |
+| `806d8475-69b3-4ee0-ba46-8780c053c17d` | Nettle & Bone / T. Kingfisher | `nettle & bone\|t. kingfisher` | none | 8/4/3/3/0 |
+| `1f36b07f-f181-4ffe-86fc-11ac75612bcc` | HP and the Sorcerer's Stone / J. K. Rowling | `...\|j. k. rowling` | none | 3/3/2/3/0 |
+| `e3f8a77e-7cb8-4e4a-be3e-f1a8da694980` | HP and the Sorcerer's Stone / J.K. Rowling | `...\|j.k. rowling` | olWork OL31306243W | 2/3/2/3/0 |
+| `be350d24-3b7a-48e5-81e3-09733b54737c` | HP and the Philosopher's Stone / J. K. Rowling | `...philosopher's stone\|j. k. rowling` | none | 1/3/2/2/0 |
+1. [ ] Read-only preview script `scripts/catalog-merge-preview.ts` (report only): per group the proposed canonical Work, what moves, and a conflict list. Nettle & Bone first: verify Vernon = Kingfisher from evidence; investigate conflicting page counts (metadata `pageCount` rows vs Edition `page_count`, with sources); pick none without evidence.
+2. [ ] Harry Potter: same first novel (US/UK titles) but never merge on title similarity alone; confirm by ids/edition data. Target = one Work, distinct Editions (own ISBN, publisher, date, pages, cover), other title kept as searchable alias.
+3. [ ] Safe merge (needs approval to apply): admin-gated function, dry-run default, re-point children first, archive the duplicate, audit row with JSON snapshot of affected rows, rollback script. New table/function = migration needing approval.
+4. [ ] Source-backed missing-metadata repair: every value has a source, labelled Work-level or Edition-level, applied only after approval.
+
+### Task C - Simple personal sync (Goal 2)
+Target design: cloud = the only copy; every device equal; local = cache + pending queue; each item synced as its own small record (setting, book, shelf, day's pages, plant/arrangement, photo); live push via Realtime + automatic catch-up on reconnect/foreground; later change wins per item, resolved silently (no tie screens, no "pause on conflict"). Honest limit: if two devices change the same item at the same moment, one wins automatically; that is what "no conflicts" means in practice.
+1. [ ] Read-only audit -> `docs/sync-simplification-audit.md`: per sync file (+tests) what it does, what depends on it, remove/merge candidates, risk (low/med/high), coverage. Hypotheses to test (not verified): one generic per-record engine instead of per-category files; drop tie screen and clock-skew guard; keep catch-up on reconnect (Realtime alone is not durable); keep backup blob as recovery only.
+2. [ ] Coverage check: for each item in Goal 2, which table/record carries it today and where a gap exists (cover picks, hidden books, profile photo still sit in the shared `user_library_preferences` JSON).
+3. [ ] Owner approves specific simplifications; implement in small steps with two-device simulation tests (offline edit, delete, same-item change, interrupted sync, account switch); then owner tests iPhone + iPad.
+Open decision D2: when two devices edit the same item, compare device edit time (fair to offline edits, needs clock guard) or server time (simplest, but a late-uploaded old offline edit wins). Recommend keeping per-item edit time.
+
+## 7. Open issues
+"Reading now" did not update on the 2nd device (cause unknown; check `user_library_books` status sync + pull after a realtime event). Search felt slower than Jldata2 (unmeasured; compare `useBookSearch.ts`, `BookSearch.tsx`, `search.ts`, `cache.ts`; keep genre picks and Hidden Gems). Real two-device tests owed. No fake-Supabase test for `syncSettingsRecords`; nook look may flip-flop. While an upload is pending only stamped edits are received. `settingsRecordsSync.ts` header says "OFF by default" (stale). Owner's other queued items: Hidden Gems cache check, genre tabs.
+
+## 8. Owner decisions needed
+- **D1 DONE (applied):** add `catalog_works.honors text[]` (default empty) and one `honors` key in `catalog_work_json`; files ready in `supabase/proposed/`, rollback included. One column instead of separate categories + awards, because the app already treats club picks and prizes as one "Honors & Awards" list. Owner idea: store "New release"/"Reader favourite" as **tags** (D8: second additive column `tags text[]`, same pattern; prefer computing "new release" from the publication date). Open: what to do with "New release" (3) and "Reader favourite" (1).
+- **D7 (recommended):** keep everything from lookups in a new table `catalog_source_records` (work_id, edition_id, source, source_record_id, fetched_at, raw payload as jsonb); columns hold what the app uses, nothing is lost. Alternative with no migration: store payloads as non-selected metadata candidates (`raw.google` etc.). Google requests are trimmed by a `fields` list in `googleBooks.ts`, so a fuller request is needed at save time.
+- D2 (above). D3 approve backfill dry-run first, writes later. D4 approve exporting live DDL and recording 000004/5 as applied. D5 keep/drop unused tables. D6 enable leaked-password protection.
+
+
+## Change log (older entries, before 2026-10-29)
+- 2026-10-28: H1 (Search > Classics 0 results / Hidden gems "try again"): an empty provider answer was saved as the genre pool for 24 h; now treated as a failure and not saved (`genreRows.ts`) + test; provider slowness for `classics` still open (Group 3). 909/909 tests, tsc, build ok.
+- 2026-10-28: F1 `displayGenre`: the placeholder "Book" and shelf/prize labels are no longer displayed as a genre (detail modal, info table, cards); 908/908 tests. Added bugs H1 (hidden gems) and C1 (cover placeholder after reopen) to the work packages.
+- 2026-10-28: WP1 data fix APPLIED to production with owner approval (SQL tool, one transaction, guarded to exactly 64 rows): 64 shelf/honor/tag genre candidates un-selected (kept), 64 audit notes in `catalog_private_notes`, missing honors added (Reader favourite kept as honor, New release as tag-note only). Verified by read-back. Rollback: `supabase/rollbacks/20261028_wp1_unselect_shelf_genres.rollback.sql`.
+- 2026-10-28: WP1 code: `genreOrEmpty` guard at curated/capture/captureDevice + 3 tests; storage-full cleanup keeps saved shelf lists (Refresh everything unchanged) + test. 907/907 tests, tsc clean, build ok. No database write.
+- 2026-10-27: Docs only: `docs/catalog-vocabulary.md` (naming checked against Open Library/Goodreads/Apple/Google, adjusted mapping table, example record) and `docs/work-packages.md` (tasks grouped by shared files; replaces the ...
+- 2026-10-27: Owner approved the 4 genre mappings (code+tests, 899 tests expected); iPhone-PWA findings arranged in docs/work-packages.md (not started); Prize-winner-as-genre causes found (published metadata + curated shelf ...
+- 2026-10-27: Phase 3 backfill APPLIED to production with owner approval via the SQL tool: 270 works, 270 audit notes, counts verified (see Current task). No other table changed.
+- 2026-10-27: Phase 3 dry-run (read-only) + backfill/rollback SQL + scratch check 11/11; classifier gained 2 verified mappings (Biography & Autobiography; Fiction / Historical); 898/898 tests, tsc clean, build ok. 2c re-scoped ...
+- 2026-10-27: Phase 2b (code only, no DB change): receipts + linked candidates from Save to catalog, capture and device backfill; owner-device persistence of provider facts. Verified: tsc clean, 897/897 tests (17 new: ...
+- 2026-10-27: Phase 2 applied to production with owner approval: migrations `catalog_provider_records` and `catalog_provider_records_tighten_grants`; post-check counts unchanged, 0 provider rows.
+- 2026-10-27: Owner standing order added (push every phase; handoff must let another account continue). Phase 0 (terms verified, live schema documented) and Phase 1 (code only: fill-only genres/honors, unpublished provider-fact ...
+- 2026-10-27: owner approved; `honors` migration applied (file in `supabase/migrations/`, rollback in `supabase/rollbacks/`); conflict scan + backfill dry-run recorded in section 5.
+- 2026-10-27: Task A step 1 done: field map doc; found 22 Prize winner, 22 book-club/Inklings labels stored as genre, root cause in `curated.ts`; drafted (not applied) honors migration + rollback.
+- 2026-10-27: branch created; 3 GreatReads-realtime commits cherry-picked cleanly; handoffs merged and slimmed; live catalog checked (cascade-delete risk, 779 works, genres empty, 22 "Prize winner" genres); tasks A/B/C written ...
