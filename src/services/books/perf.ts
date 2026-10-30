@@ -5,8 +5,8 @@
  * Read it in the browser console (Safari Web Inspector on a Mac, connected to the iPhone / iPad):
  *   __rlPerf()          the counters, the milestones and the last failed requests
  *   __rlPerf.reset()    start counting again (e.g. just before opening the Store)
- * The last 40 failed requests are also kept in localStorage ('readlife.perflog'), which the Storage tab shows on a device
- * where the console is hard to reach. Nothing here is sent anywhere.
+ * The last 40 failed requests are also kept in localStorage ('readlife.perflog'), and Profile > Copy diagnostics copies everything as text on a device
+ * where the console is hard to reach (iPhone / iPad without a Mac). Nothing here is sent anywhere.
  */
 
 export interface FailedRequest { at: number; host: string; path: string; status: number; failure?: string; ms?: number }
@@ -84,6 +84,13 @@ export const perfSnapshot = (): PerfSnapshot => ({
   milestones: { ...milestones },
   failures: [...failures],
 });
+
+/** The snapshot as plain text a person can paste into a chat (hosts, request paths, counts, times; no library or account data). Used by Profile > Copy diagnostics. */
+export const diagnosticsText = (): string => {
+  const snap = perfSnapshot();
+  const hosts = Object.keys(snap.counters).filter(k => k.startsWith('net.ms.')).map(k => `${k.slice(7)}: ${Math.round(snap.counters[k])} ms total over ${snap.counters[`net.${k.slice(7)}`] ?? '?'} requests`);
+  return JSON.stringify({ when: new Date().toISOString(), upMs: typeof performance !== 'undefined' ? Math.round(performance.now()) : undefined, hosts, ...snap }, null, 1);
+};
 
 export function resetPerf(): void {
   for (const k of Object.keys(counters)) delete counters[k];

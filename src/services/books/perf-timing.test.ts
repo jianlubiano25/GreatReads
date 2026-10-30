@@ -14,3 +14,13 @@ test('WP2a: request time is added up per host, and slow or empty requests are ke
   assert.deepEqual(snap.failures.map(f => f.failure), ['slow', 'empty']);
   assert.equal(snap.failures[0].ms, 3500);
 });
+
+test('diagnostics text is valid JSON with per-host totals and no query strings', async () => {
+  const { diagnosticsText } = await import('./perf');
+  resetPerf();
+  recordRequest('https://openlibrary.org/search.json?q=secret+title', 200, undefined, 1, 100);
+  const text = diagnosticsText();
+  const parsed = JSON.parse(text);
+  assert.match(parsed.hosts[0], /^openlibrary\.org: 100 ms total over 1 requests$/);
+  assert.equal(text.includes('secret'), false);
+});
