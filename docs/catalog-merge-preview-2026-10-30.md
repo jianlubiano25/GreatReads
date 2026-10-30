@@ -1,6 +1,6 @@
 # Catalog merge preview (Task B) - 2026-10-30
 
-**Report only. Nothing was written.** Every query was a SELECT on project `amvkwwqcepmxxkfeqjox`. Applying any of this needs the owner's approval, and a merge function/script is a new migration (also needs approval). The sandbox cannot reach Apple, Google or Open Library, so no provider id could be verified; evidence below is what the catalog itself stores.
+**Status 2026-10-30: M2, M4a, M1 and M3 were APPLIED with the owner's approval (see HANDOFF change log); M4b is still on hold.** The text below is the original read-only preview. (Original: Report only, nothing was written.) Every query was a SELECT on project `amvkwwqcepmxxkfeqjox`. Applying any of this needs the owner's approval, and a merge function/script is a new migration (also needs approval). The sandbox cannot reach Apple, Google or Open Library, so no provider id could be verified; evidence below is what the catalog itself stores.
 
 Policy used (owner, 2026-10-30): same book + same author = one canonical Work, second id kept as an alternate identifier; different books with one title stay separate; other editions/translations = one Work with several Editions. Verify from stored ids, ISBN, publisher, year, content; never title similarity. Keep covers, metadata, content, ratings, notes and personal links; delete nothing (the duplicate is archived).
 
