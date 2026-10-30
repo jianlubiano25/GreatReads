@@ -50,6 +50,8 @@ Full ids: `a1a46652-be9b-482f-ac3c-e8d16700a552`, `806d8475-69b3-4ee0-ba46-8780c
 - Canonical: `e3f8a77e` (has olWork OL31306243W and the Apple cover). Moves: Open Library `isbn/9781338299144` candidate, the Google candidate/preferred covers (non-preferred), 1 note. No conflicts.
 - **Side finding (not fixed):** `pageCount` 16 and year 2000 look wrong for the novel. Needs a source-backed repair (Task B step 4), separate from this merge.
 
+## M4b UPDATE 2026-10-30 (owner checked Open Library): OL31306243W (on `e3f8a77e`) is the Scholastic "Literature Guide: Harry Potter and the Sorcerer's Stone (Grades 4-8)" (edition OL7510988M, 2000), not the novel; OL61027601M is an edition of the Philosopher's Stone (OL82563W, 1997); ISBN 9781781105849 is not on Open Library. Do not merge until `e3f8a77e` is corrected (see HANDOFF).
+
 ## M4b Philosopher's Stone `be350d24` vs the Sorcerer's Stone Work: HOLD (cannot be shown from stored data)
 - It is the same first novel under the UK and US titles, but the catalog has no shared id: the Open Library works differ (OL82563W vs OL31306243W), no edition has an ISBN, publisher or date, pages differ (302 vs 16), years differ (1997 vs 2000), descriptions differ.
 - Under the policy this is "other editions of one Work" only if ids/ISBNs show it. Needed: Open Library's work and ISBN for edition OL61027601M and for ISBNs 9781338299144 / 9781781105849 (found in stored cover URLs), checked from somewhere that can reach the provider (the owner's device or a machine with network).
