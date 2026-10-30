@@ -13,7 +13,7 @@ import { genreOrEmpty } from './books/catalogFill';
 import { coverKey } from './books/coverAnalysis';
 import { coverSourceOf, isHttps } from './books/coverPicks';
 import { catalogIdsFrom } from './books/catalogIdentity';
-import { saveFactsToCatalog, saveIdentityToCatalog } from './catalog';
+import { findWorkByKey, mergedIntoOf, saveFactsToCatalog, saveIdentityToCatalog, type MergeRow } from './catalog';
 import { receiptSignature } from './catalogReceipts';
 import { providerFactsFor, type ProviderFacts } from './books/providerFacts';
 import { currentUser, isAdminKnown, rest, rpc } from './supabase';
@@ -143,6 +143,7 @@ const needsSending = (item: CaptureItem): boolean => rowsFor(item, 'x').some(r =
 /* ---------------- the work (book) ids ---------------- */
 
 const works = new Map<string, string>();
+const blocked = new Set<string>(); // keys of works merged into a work that cannot be found: nothing is written for them
 let worksLoaded = false;
 class Stop extends Error {}
 
@@ -152,27 +153,46 @@ const stopFor = (r: { ok: false; status: number; error: string }): Stop | undefi
   return undefined;
 };
 
-/** Every book the catalog already has (id by key), read once in pages. */
+/** Every book the catalog already has (id by key), read once in pages. A work archived by a merge maps to its canonical work (see findWorkByKey), never to itself. */
 async function loadWorks(): Promise<void> {
   if (worksLoaded) return;
+  const rows = new Map<string, MergeRow & { work_key: string | null }>();
   for (let from = 0; from < 50000; from += 1000) {
-    const r = await rest<{ id: string; work_key: string | null }[]>(`catalog_works?select=id,work_key&order=created_at.asc&limit=1000&offset=${from}`);
+    const r = await rest<(MergeRow & { work_key: string | null })[]>(`catalog_works?select=id,work_key,status,identifiers&order=created_at.asc&limit=1000&offset=${from}`);
     if (!r.ok) { const s = stopFor(r); if (s) throw s; return; }
-    for (const w of r.data) if (w.work_key) works.set(w.work_key, w.id);
+    for (const w of r.data) rows.set(w.id, w);
     if (r.data.length < 1000) break;
   }
+  for (const w of rows.values()) {
+    if (!w.work_key) continue;
+    const to = resolveLoaded(w, rows);
+    if (to) works.set(w.work_key, to); else blocked.add(w.work_key); // merge target missing or looping: nothing is written for that key
+  }
   worksLoaded = true;
+}
+/** The canonical id for a loaded work (up to 3 hops inside the loaded rows); undefined when it cannot be resolved. */
+function resolveLoaded(w: MergeRow, rows: Map<string, MergeRow>): string | undefined {
+  let cur = w;
+  for (let hop = 0; hop < 4; hop++) {
+    const next = mergedIntoOf(cur);
+    if (!next) return cur.id;
+    const n = rows.get(next);
+    if (!n || n.id === w.id) return undefined;
+    cur = n;
+  }
+  return undefined;
 }
 
 async function workIdFor(item: CaptureItem): Promise<string | undefined> {
   const key = coverKey({ title: item.title, author: item.author });
   const have = works.get(key);
   if (have) return have;
+  if (blocked.has(key)) return undefined;
   const made = await rest<{ id: string }[]>('catalog_works', { method: 'POST', prefer: 'return=representation', body: { canonical_title: item.title.trim(), canonical_author: (item.author || '').trim() || null, work_key: key, status: 'draft' } });
   if (made.ok && made.data[0]?.id) { works.set(key, made.data[0].id); return made.data[0].id; }
   if (!made.ok && made.status === 409) { // created a moment ago by another device
-    const f = await rest<{ id: string }[]>(`catalog_works?work_key=eq.${encodeURIComponent(key)}&select=id&limit=1`);
-    if (f.ok && f.data[0]) { works.set(key, f.data[0].id); return f.data[0].id; }
+    const f = await findWorkByKey(key);
+    if (f.ok && f.id) { works.set(key, f.id); return f.id; }
   }
   if (!made.ok) { const s = stopFor(made); if (s) throw s; }
   return undefined;
@@ -214,7 +234,7 @@ async function publishFor(ids: string[]): Promise<void> {
 /** Publish what is missing for every book the catalog has (what is already published stays as it is). */
 export async function publishAllMissing(): Promise<void> {
   if (!captureOn() || !autoPublishWanted()) return;
-  try { await loadWorks(); await publishFor([...works.values()]); status = { ...status, error: undefined }; }
+  try { await loadWorks(); await publishFor([...new Set(works.values())]); status = { ...status, error: undefined }; }
   catch (e) { status = { ...status, error: e instanceof Stop && e.message === 'not owner' ? 'Not signed in as the owner.' : 'Paused: no connection. It continues next time.' }; }
   emit();
 }
@@ -311,4 +331,4 @@ export const backfillDone = (): boolean => { try { return localStorage.getItem(B
 export const markBackfillDone = (): void => { try { localStorage.setItem(BACKFILL_KEY, '1'); } catch {} };
 
 /** Tests only. */
-export const resetCaptureForTests = (): void => { queue.length = 0; works.clear(); worksLoaded = false; done = new Set(); dirty = false; running = undefined; touched.clear(); status = { on: false, running: false, queued: 0, sent: 0, published: 0, total: 0 }; };
+export const resetCaptureForTests = (): void => { queue.length = 0; works.clear(); blocked.clear(); worksLoaded = false; done = new Set(); dirty = false; running = undefined; touched.clear(); status = { on: false, running: false, queued: 0, sent: 0, published: 0, total: 0 }; };

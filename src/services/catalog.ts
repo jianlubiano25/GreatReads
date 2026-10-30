@@ -57,6 +57,38 @@ export function syncCatalog(opts: { force?: boolean } = {}): Promise<boolean> {
 
 /* ---------------- the owner's side ---------------- */
 
+/**
+ * MERGE GUARD. A work that was archived by a merge (status archived + identifiers.mergedInto = the canonical work's id) keeps its old work_key, so a lookup by
+ * key would still find it and attach new data to it, or publish it again. Every lookup by key goes through here: it hands back the CANONICAL work instead
+ * (up to 3 hops). A canonical work that cannot be found, or a loop, is refused (nothing is written anywhere). An archived work with no `mergedInto`
+ * (hidden by the owner) is returned as before. Pure rule: `resolveMerged`.
+ */
+export type MergeRow = { id: string; status?: string; identifiers?: Record<string, unknown> | null };
+export const mergedIntoOf = (w: MergeRow): string | undefined => (w.status === 'archived' && typeof w.identifiers?.mergedInto === 'string' && w.identifiers.mergedInto ? w.identifiers.mergedInto : undefined);
+/** `load` fetches one work by id (null when it does not exist). Returns the work to use, or an error text. */
+export async function resolveMerged(first: MergeRow, load: (id: string) => Promise<MergeRow | null | 'failed'>): Promise<{ id: string } | { error: string; retryable?: true }> {
+  let cur = first;
+  const seen = new Set([first.id]);
+  for (let hop = 0; hop < 3; hop++) {
+    const next = mergedIntoOf(cur);
+    if (!next) return { id: cur.id };
+    if (seen.has(next)) return { error: 'This book was merged into itself in the catalog. Nothing was changed.' };
+    seen.add(next);
+    const w = await load(next);
+    if (w === 'failed') return { error: 'Could not check the merged catalog book. Try again.', retryable: true };
+    if (!w) return { error: 'This book was merged into another catalog book that could not be found. Nothing was changed.' };
+    cur = w;
+  }
+  return mergedIntoOf(cur) ? { error: 'This book was merged through too many steps. Nothing was changed.' } : { id: cur.id };
+}
+export async function findWorkByKey(key: string): Promise<{ ok: true; id?: string } | { ok: false; status: number; error: string }> {
+  const r = await rest<MergeRow[]>(`catalog_works?work_key=eq.${encodeURIComponent(key)}&select=id,status,identifiers&limit=1`);
+  if (!r.ok) return r;
+  if (!r.data[0]) return { ok: true };
+  const res = await resolveMerged(r.data[0], async id => { const g = await rest<MergeRow[]>(`catalog_works?id=eq.${id}&select=id,status,identifiers&limit=1`); return g.ok ? g.data[0] ?? null : 'failed'; });
+  return 'id' in res ? { ok: true, id: res.id } : { ok: false, status: res.retryable ? 0 : 409, error: res.error };
+}
+
 export type CatalogPublishResult = { ok: true; ids?: { saved: string[]; skipped: string[] } } | { ok: false; error: string; ids?: { saved: string[]; skipped: string[] } };
 
 /**
@@ -66,9 +98,9 @@ export type CatalogPublishResult = { ok: true; ids?: { saved: string[]; skipped:
 export async function publishCoverToCatalog(book: { title: string; author?: string; identity?: BookIdentity }, url: string): Promise<CatalogPublishResult> {
   const key = coverKey(book);
   const enc = encodeURIComponent;
-  let work = await rest<{ id: string }[]>(`catalog_works?work_key=eq.${enc(key)}&select=id&limit=1`);
+  const work = await findWorkByKey(key); // a work archived by a merge hands over to its canonical work (never written to or published)
   if (!work.ok) return { ok: false, error: work.error };
-  let workId = work.data[0]?.id;
+  let workId = work.id;
   if (!workId) {
     const made = await rest<{ id: string }[]>('catalog_works', { method: 'POST', prefer: 'return=representation', body: { canonical_title: book.title.trim(), canonical_author: (book.author || '').trim() || null, work_key: key, status: 'draft' } });
     if (!made.ok) return { ok: false, error: made.status === 403 || made.status === 401 ? 'Not allowed: sign in as the owner.' : made.error };
@@ -133,6 +165,11 @@ export async function rejectCandidate(c: Pick<Candidate, 'id' | 'table' | 'kind'
 }
 
 export async function setWorkStatus(workId: string, status: 'draft' | 'published' | 'archived'): Promise<CatalogPublishResult> {
+  if (status === 'published') { // a work archived by a merge is never published again (its canonical work is the one that shows)
+    const w = await rest<MergeRow[]>(`catalog_works?id=eq.${workId}&select=id,status,identifiers&limit=1`);
+    if (!w.ok) return { ok: false, error: w.error };
+    if (w.data[0] && mergedIntoOf(w.data[0])) return { ok: false, error: 'This book was merged into another catalog book, so it stays archived.' };
+  }
   const r = await rpc('catalog_set_work_status', { p_work_id: workId, p_status: status });
   return r.ok ? { ok: true } : { ok: false, error: r.error };
 }
@@ -203,9 +240,9 @@ export async function saveBookToCatalog(book: Pick<Book, 'id' | 'identity' | 'ti
   const saved: string[] = [], skipped: string[] = [];
   const key = coverKey(book);
   const enc = encodeURIComponent;
-  const found = await rest<{ id: string }[]>(`catalog_works?work_key=eq.${enc(key)}&select=id&limit=1`);
+  const found = await findWorkByKey(key);
   if (!found.ok) return { ok: false, saved, skipped: [found.error] };
-  let workId = found.data[0]?.id;
+  let workId = found.id;
   if (!workId) {
     const made = await rest<{ id: string }[]>('catalog_works', { method: 'POST', prefer: 'return=representation', body: { canonical_title: book.title.trim(), canonical_author: (book.author || '').trim() || null, work_key: key, status: 'draft' } });
     if (!made.ok) return { ok: false, saved, skipped: [made.error] };
@@ -332,9 +369,9 @@ const RATING_SRC: Record<string, string> = { apple: 'apple_books', google: 'goog
 /** The catalog's id for this book, created as a hidden draft when it is not there yet (nothing is shown to readers until something is published). */
 export async function ensureWork(book: { title: string; author?: string }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const key = coverKey(book);
-  const found = await rest<{ id: string }[]>(`catalog_works?work_key=eq.${encodeURIComponent(key)}&select=id&limit=1`);
+  const found = await findWorkByKey(key);
   if (!found.ok) return { ok: false, error: found.status === 401 || found.status === 403 ? 'Sign in as the owner first (Profile → Account).' : found.error };
-  if (found.data[0]) return { ok: true, id: found.data[0].id };
+  if (found.id) return { ok: true, id: found.id };
   const made = await rest<{ id: string }[]>('catalog_works', { method: 'POST', prefer: 'return=representation', body: { canonical_title: book.title.trim(), canonical_author: (book.author || '').trim() || null, work_key: key, status: 'draft' } });
   if (!made.ok) return { ok: false, error: made.status === 401 || made.status === 403 ? 'Sign in as the owner first (Profile → Account).' : made.error };
   return made.data[0]?.id ? { ok: true, id: made.data[0].id } : { ok: false, error: 'The catalog did not return the book.' };
@@ -390,8 +427,8 @@ export async function rejectCoverForBook(book: { title: string; author?: string 
 export async function storedCovers(book: { title: string; author?: string; identity?: BookIdentity }): Promise<{ url: string; source: ReturnType<typeof coverSourceOf> }[]> {
   let workId = getCatalogWork(book as { title: string; author?: string; identity?: { isbn13?: string; isbn10?: string } })?.id;
   if (!workId) {
-    const w = await rest<{ id: string }[]>(`catalog_works?work_key=eq.${encodeURIComponent(coverKey(book))}&select=id&limit=1`);
-    workId = w.ok ? w.data[0]?.id : undefined;
+    const w = await findWorkByKey(coverKey(book));
+    workId = w.ok ? w.id : undefined;
   }
   if (!workId) return [];
   const r = await rest<{ image_url: string }[]>(`catalog_cover_candidates?work_id=eq.${workId}&status=neq.rejected&select=image_url&order=created_at.desc&limit=30`);
@@ -400,8 +437,8 @@ export async function storedCovers(book: { title: string; author?: string; ident
 
 /** Cover addresses the owner already rejected for this book (the viewer hides them). */
 export async function rejectedCovers(book: { title: string; author?: string }): Promise<string[]> {
-  const w = await rest<{ id: string }[]>(`catalog_works?work_key=eq.${encodeURIComponent(coverKey(book))}&select=id&limit=1`);
-  if (!w.ok || !w.data[0]) return [];
-  const r = await rest<{ image_url: string }[]>(`catalog_cover_candidates?work_id=eq.${w.data[0].id}&status=eq.rejected&select=image_url`);
+  const w = await findWorkByKey(coverKey(book));
+  if (!w.ok || !w.id) return [];
+  const r = await rest<{ image_url: string }[]>(`catalog_cover_candidates?work_id=eq.${w.id}&status=eq.rejected&select=image_url`);
   return r.ok ? r.data.map(x => x.image_url) : [];
 }
