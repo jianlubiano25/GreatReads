@@ -24,3 +24,15 @@ test('diagnostics text is valid JSON with per-host totals and no query strings',
   assert.match(parsed.hosts[0], /^openlibrary\.org: 100 ms total over 1 requests$/);
   assert.equal(text.includes('secret'), false);
 });
+
+test('Copy diagnostics: every copy is a new reading (own time, live counters), not a kept one', async () => {
+  const { diagnosticsText } = await import('./perf');
+  resetPerf();
+  const a = JSON.parse(diagnosticsText());
+  recordRequest('https://openlibrary.org/search.json?q=x', 200, undefined, 1, 50);
+  const b = JSON.parse(diagnosticsText());
+  assert.equal(a.hosts.length, 0);
+  assert.equal(b.hosts.length, 1, 'the second copy sees what happened after the first');
+  assert.match(b.generated.local, /^\d{1,2}:\d{2}\s?(AM|PM)$/i, '12-hour clock');
+  assert.ok(typeof b.generated.appOpenMin === 'number');
+});

@@ -7,7 +7,7 @@ import { isLocationWeatherEnabled, setLocationWeatherEnabled, fetchLocalWeather 
 import { getNookMatchesTheme, setNookMatchesTheme, getWindowFollowsTime, setWindowFollowsTime } from '../services/nookPrefs';
 import { useAppUpdate, checkForUpdate, applyUpdate, restartApp, APP_BUILD } from '../services/appUpdate';
 import { refreshEverything } from '../services/refreshApp';
-import { diagnosticsText } from '../services/books/perf';
+import { clock12, diagnosticsText } from '../services/books/perf';
 import { AchievementsModal } from './garden/AchievementsModal';
 import { MILESTONES } from '../data/gardenCatalog';
 import { isCoverAdminOn, subscribeCoverAdmin } from '../services/books';
@@ -574,9 +574,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             <button
               type="button"
               onClick={async () => {
-                const text = diagnosticsText();
+                setDiagText(''); // never leave an earlier reading on screen
+                const text = diagnosticsText(); // a new reading, built now from the live counters
                 setDiagText(text);
-                try { await navigator.clipboard.writeText(text); setDiagNote('Copied. Paste it into the chat.'); } catch { setDiagNote('Could not copy automatically: press and hold the text below, Select All, Copy.'); }
+                const at = clock12(new Date());
+                try { await navigator.clipboard.writeText(text); setDiagNote(`Copied a fresh reading at ${at}. Paste it into the chat.`); } catch { setDiagNote(`Reading taken at ${at}. Could not copy automatically: press and hold the text below, Select All, Copy.`); }
               }}
               className="w-full py-2.5 px-3 rounded-xl text-xs font-semibold border border-[#2e5934] dark:border-[#86b880] text-[#2e5934] dark:text-[#86b880]"
             >

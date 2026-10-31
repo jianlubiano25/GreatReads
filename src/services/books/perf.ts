@@ -94,10 +94,15 @@ export function recordSearch(t: SearchTrace): void {
 }
 
 /** The snapshot as plain text a person can paste into a chat (hosts, request paths, counts, times; no library or account data). Used by Profile > Copy diagnostics. */
+export const clock12 = (d: Date): string => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+/** Built from the live counters at the moment it is called, never kept: every copy is a new reading. `generated` says when, and for how long the app has been open, so an old paste is easy to spot. */
 export const diagnosticsText = (): string => {
   const snap = perfSnapshot();
+  const now = new Date();
+  const upMs = typeof performance !== 'undefined' ? Math.round(performance.now()) : undefined;
+  const generated = { at: now.toISOString(), local: clock12(now), appOpenMin: upMs === undefined ? undefined : Math.round(upMs / 600) / 100 };
   const hosts = Object.keys(snap.counters).filter(k => k.startsWith('net.ms.')).map(k => `${k.slice(7)}: ${Math.round(snap.counters[k])} ms total over ${snap.counters[`net.${k.slice(7)}`] ?? '?'} requests`);
-  return JSON.stringify({ when: new Date().toISOString(), searches: searches.map(x => ({ ...x, q: x.q.slice(0, 60) })), upMs: typeof performance !== 'undefined' ? Math.round(performance.now()) : undefined, hosts, ...snap }, null, 1);
+  return JSON.stringify({ when: generated.at, generated, searches: searches.map(x => ({ ...x, q: x.q.slice(0, 60) })), upMs, hosts, ...snap }, null, 1);
 };
 
 export function resetPerf(): void {
