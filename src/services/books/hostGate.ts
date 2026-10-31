@@ -14,6 +14,10 @@ export interface GateOptions {
   minGapMs: number;
   maxBackground: number;
   backoffMs: number[];
+  /** Most requests allowed in flight at once (default: no limit). Callers must call `release()` when a request is finished. */
+  maxConcurrent?: number;
+  /** The user's own searches ('fg') still go while the gate is closed (they only wait their turn); only background lookups are refused. */
+  fgBypassesBlock?: boolean;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -27,9 +31,16 @@ export function createGate(o: GateOptions) {
   let blockedUntil = 0;
   let step = 0;
   let pumping = false;
+  let active = 0;
+  const limit = o.maxConcurrent ?? Infinity;
+  const freed: Array<() => void> = [];
   const queue: Waiting[] = [];
+  const closedFor = (p: Priority) => now() < blockedUntil && !(o.fgBypassesBlock && p === 'fg');
 
-  const refuseAll = () => { while (queue.length) queue.shift()!.resolve(false); };
+  /** Refuse what is waiting (only the background lookups when the user's searches may still go). */
+  const refuseAll = () => {
+    for (let i = queue.length - 1; i >= 0; i--) if (!o.fgBypassesBlock || queue[i].priority === 'bg') queue.splice(i, 1)[0].resolve(false);
+  };
 
   async function pump(): Promise<void> {
     if (pumping) return;
@@ -38,12 +49,15 @@ export function createGate(o: GateOptions) {
       while (queue.length) {
         const wait = nextAllowed - now();
         if (wait > 0) await sleep(wait);
-        if (now() < blockedUntil) { refuseAll(); break; }
+        while (active >= limit) await new Promise<void>(r => freed.push(r));
+        if (now() < blockedUntil) { refuseAll(); if (!queue.length) break; }
         let i = queue.findIndex(w => w.priority === 'fg');
         if (i < 0) i = 0;
+        if (closedFor(queue[i].priority)) { queue.splice(i, 1)[0].resolve(false); continue; }
         const w = queue.splice(i, 1)[0];
         if (w.signal?.aborted) { w.resolve(false); continue; }
         nextAllowed = now() + o.minGapMs;
+        if (limit !== Infinity) active++;
         w.resolve(true);
       }
     } finally { pumping = false; }
@@ -52,7 +66,7 @@ export function createGate(o: GateOptions) {
   return {
     /** true = go ahead and send the request; false = do not send (gate closed, queue full or cancelled). */
     acquire(priority: Priority, signal?: AbortSignal): Promise<boolean> {
-      if (now() < blockedUntil || signal?.aborted) return Promise.resolve(false);
+      if (closedFor(priority) || signal?.aborted) return Promise.resolve(false);
       if (priority === 'bg' && queue.filter(w => w.priority === 'bg').length >= o.maxBackground) return Promise.resolve(false);
       return new Promise<boolean>(resolve => { queue.push({ priority, resolve, signal }); void pump(); });
     },
@@ -63,10 +77,13 @@ export function createGate(o: GateOptions) {
       blockedUntil = now() + wait;
       refuseAll();
     },
+    /** A request that was allowed to go has finished (any outcome): frees its place for the next one. Only needed with `maxConcurrent`. */
+    release(): void { if (active > 0) active--; freed.shift()?.(); },
     /** A good answer: the next 429 starts the back-off from the beginning again. */
     ok(): void { step = 0; },
     blockedForMs: (): number => Math.max(0, blockedUntil - now()),
     waiting: (): number => queue.length,
-    reset(): void { nextAllowed = 0; blockedUntil = 0; step = 0; refuseAll(); },
+    reset(): void { nextAllowed = 0; blockedUntil = 0; step = 0; active = 0; queue.splice(0).forEach(w => w.resolve(false)); while (freed.length) freed.shift()!(); },
+    inFlight: (): number => active,
   };
 }

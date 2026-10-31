@@ -1,4 +1,6 @@
-import { getJson, getJsonDetailed } from '../http';
+import { getJsonDetailed, type GetOpts, type JsonResult } from '../http';
+import { createGate, type Priority } from '../hostGate';
+import { bump } from '../perf';
 import { learnAuthorGroup } from '../authorAliases';
 import { authorVariants, cleanIsbn, titleVariants, titlesMatch, authorListMatches, workIdFromKey } from '../identity';
 import { genreFromSubjects, makeBook } from '../model';
@@ -7,6 +9,36 @@ import { rememberProviderFacts } from '../providerFacts';
 import type { CallOpts, Hit } from './types';
 
 const OL = 'https://openlibrary.org';
+/**
+ * One shared gate for every Open Library request (see hostGate.ts). The owner's second iPad log (2026-10-31): 2478 Open Library requests in one session, 1757 timed out, 1903 slow,
+ * first shelf after 119 s: dozens of lookups at once made the slow site slower. Now at most 3 requests are in flight, 150 ms apart; the user's own search goes first and is never
+ * refused; after 3 timeouts / slow answers / refusals in a row the gate closes for background lookups (20 s, 60 s, 3 min) so the site can recover. Only in a real browser.
+ */
+export const olGate = createGate({ minGapMs: 150, maxBackground: 40, maxConcurrent: 3, fgBypassesBlock: true, backoffMs: [20_000, 60_000, 180_000] });
+const SLOW_MS = 4000;
+const STRIKES = 3;
+let strikes = 0;
+let gateForTests: boolean | null = null;
+export const setOlGateForTests = (on: boolean | null) => { gateForTests = on; strikes = 0; olGate.reset(); };
+const olGateOn = (): boolean => gateForTests ?? (typeof window !== 'undefined');
+
+/** Every Open Library request goes through here. A refused request looks like a temporary failure (429), never like "no such book". */
+async function olJson(url: string, opts: GetOpts, priority: Priority = 'bg'): Promise<JsonResult> {
+  if (!olGateOn()) return getJsonDetailed(url, opts);
+  if (!(await olGate.acquire(priority, opts.signal))) {
+    bump('ol.gateRefused');
+    return { data: null, status: opts.signal?.aborted ? 0 : 429, failure: opts.signal?.aborted ? 'aborted' : 'http' };
+  }
+  const t0 = Date.now();
+  let r: JsonResult;
+  try { r = await getJsonDetailed(url, opts); } finally { olGate.release(); }
+  const bad = r.failure === 'timeout' || r.failure === 'network' || r.status === 429 || r.status >= 500 || (!!r.data && (opts.timeout ?? 6500) <= 10_000 && Date.now() - t0 >= SLOW_MS) /* heavy discovery searches (long timeout) are slow by design */;
+  if (r.failure === 'aborted') return r;
+  if (bad) { if (++strikes >= STRIKES) { strikes = 0; olGate.tripped(); bump('ol.gateTripped'); } } else if (r.data) { strikes = 0; olGate.ok(); }
+  return r;
+}
+const olGet = async (url: string, opts: GetOpts, priority: Priority = 'bg'): Promise<any | null> => (await olJson(url, opts, priority)).data;
+
 const FIELDS = 'key,title,author_name,author_alternative_name,author_key,first_publish_year,cover_i,cover_edition_key,ratings_average,ratings_count,number_of_pages_median,subject,language';
 
 export interface OlDoc {
@@ -55,7 +87,7 @@ export function olDocToHit(doc: OlDoc, idx = 0, genreHint = ''): Hit {
 /** Raw search. Never throws; returns [] on any failure. */
 export async function searchOpenLibrary(params: Record<string, string>, limit: number, opts: CallOpts = {}): Promise<Hit[]> {
   const q = new URLSearchParams({ limit: String(limit), fields: FIELDS, ...params });
-  const result = await getJsonDetailed(`${OL}/search.json?${q}`, { signal: opts.signal, retries: opts.retries, timeout: opts.timeout });
+  const result = await olJson(`${OL}/search.json?${q}`, { signal: opts.signal, retries: opts.retries, timeout: opts.timeout }, opts.priority ?? 'bg');
   if ((result.failure && result.failure !== 'aborted') || [403, 429].includes(result.status) || result.status >= 500) opts.onFailure?.();
   const data = result.data;
   if (typeof data?.numFound === 'number') opts.onTotal?.(data.numFound);
@@ -67,7 +99,7 @@ export async function searchOpenLibrary(params: Record<string, string>, limit: n
 
 /** Open Library's own trending lists (what readers are doing right now). Rank 0 = most trending. */
 export async function trendingOpenLibrary(period: 'daily' | 'weekly', limit: number, opts: CallOpts = {}): Promise<Array<Hit & { rank: number }> | null> {
-  const data = await getJson(`${OL}/trending/${period}.json?limit=${limit}`, { timeout: 10000, retries: 1, signal: opts.signal });
+  const data = await olGet(`${OL}/trending/${period}.json?limit=${limit}`, { timeout: 10000, retries: 1, signal: opts.signal });
   if (!data) return null;
   return ((data.works || data.docs || []) as OlDoc[]).filter(d => d?.title).map((d, i) => ({ ...olDocToHit(d, i), rank: i }));
 }
@@ -109,13 +141,13 @@ export async function findOpenLibrary(q: { title: string; author?: string; isbn?
 }
 
 export async function openLibraryRatings(workId: string, opts: CallOpts = {}): Promise<{ average: number; count: number } | null> {
-  const j = await getJson(`${OL}/works/${workId}/ratings.json`, { timeout: 8000, signal: opts.signal });
+  const j = await olGet(`${OL}/works/${workId}/ratings.json`, { timeout: 8000, signal: opts.signal });
   const sm = j?.summary;
   return sm?.average ? { average: Number(Number(sm.average).toFixed(1)), count: Number(sm.count) || 0 } : null;
 }
 
 export async function openLibraryDescription(workId: string, opts: CallOpts = {}): Promise<string> {
-  const w = await getJson(`${OL}/works/${workId}.json`, { timeout: 8000, signal: opts.signal });
+  const w = await olGet(`${OL}/works/${workId}.json`, { timeout: 8000, signal: opts.signal });
   const val = typeof w?.description === 'string' ? w.description : w?.description?.value;
   const text = val ? String(val).split(/\n-{3,}|\n\n/)[0].replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').slice(0, 600) : '';
   return looksEnglish(text) ? text : ''; // a blurb in another language is no blurb: Google's English one is used instead
@@ -127,7 +159,7 @@ function workEditions(workId: string, opts: CallOpts = {}): Promise<any[] | null
   const memo = editionsMemo.get(workId);
   if (memo) return memo;
   // Open Library is often slow or rate-limited: one patient retry beats "no covers"
-  const p = getJson(`${OL}/works/${workId}/editions.json?limit=40`, { signal: opts.signal, timeout: 10000, retries: 1 }).then(d => (d ? ((d.entries || []) as any[]) : null));
+  const p = olGet(`${OL}/works/${workId}/editions.json?limit=40`, { signal: opts.signal, timeout: 10000, retries: 1 }).then(d => (d ? ((d.entries || []) as any[]) : null));
   editionsMemo.set(workId, p);
   p.then(v => { if (v === null || opts.signal?.aborted) editionsMemo.delete(workId); }); // a failure (or a cancelled read) is asked again next time
   if (editionsMemo.size > 200) editionsMemo.delete(editionsMemo.keys().next().value as string);

@@ -244,7 +244,7 @@ type Task = { name: string; run: (candidates: number, signal?: AbortSignal) => P
 export function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
   // `report`: whether this request's own count is the number shown as "of N" (the main requests only, never the narrower extra ones)
   const ol = (params: Record<string, string>, n: number, signal?: AbortSignal, report = true) =>
-    searchOpenLibrary(io.page > 1 ? { ...params, page: String(io.page) } : params, n, { signal, onTotal: report ? t => io.onTotal('ol', t) : undefined, onFailure: () => io.onFailure?.('Open Library') });
+    searchOpenLibrary(io.page > 1 ? { ...params, page: String(io.page) } : params, n, { signal, priority: 'fg', onTotal: report ? t => io.onTotal('ol', t) : undefined, onFailure: () => io.onFailure?.('Open Library') });
   const google = (query: string, n: number, signal?: AbortSignal, report = true) =>
     searchGoogle(query, n, { signal, start: io.page > 1 ? (io.page - 1) * Math.min(40, n) : 0, onTotal: report ? t => io.onTotal('google', t) : undefined, onFailure: () => io.onFailure?.('Google Books') });
   if (q.isbn) {
@@ -458,14 +458,14 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   const name = !o.signal?.aborted && page === 1 && scope === 'all' ? authorNamed(q, gathered) : '';
   if (name) {
     await Promise.all([
-      runTask({ name: 'ol-author', run: (n, signal) => searchOpenLibrary({ author: name }, n, { signal }) }),
+      runTask({ name: 'ol-author', run: (n, signal) => searchOpenLibrary({ author: name }, n, { signal, priority: 'fg' }) }),
       runTask({ name: 'google-author', run: (n, signal) => searchGoogle(`inauthor:"${name}"`, n, { signal }) }),
     ]);
   }
   const topic = !name && !o.signal?.aborted && page === 1 && scope === 'all' ? topicNamed(q, gathered) : '';
   if (topic) {
     await Promise.all([
-      runTask({ name: 'ol-subject', run: (n, signal) => searchOpenLibrary({ subject: topic }, n, { signal }) }),
+      runTask({ name: 'ol-subject', run: (n, signal) => searchOpenLibrary({ subject: topic }, n, { signal, priority: 'fg' }) }),
       runTask({ name: 'google-subject', run: (n, signal) => searchGoogle(`subject:${topic}`, n, { signal }) }),
     ]);
   }
