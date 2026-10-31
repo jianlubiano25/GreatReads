@@ -68,7 +68,7 @@ async function genrePool(g: SearchGenre): Promise<PoolResult> {
           scope: 'keywords', limit: 40, final: true, local: false,
           onUpdate: (_books, state) => { if (state.done) failed = !!state.failedSources?.length; },
         });
-        if (failed) return { books: stale ?? books, failed: true };
+        if (failed) return { books: stale && stale.length >= books.length ? stale : books, failed: true }; // not saved: a partial answer never replaces the last good list
         // An EMPTY answer (providers slow, timed out or rate-limited without saying so) is a failure, not a result: never save it, or the genre shows 0 results and no Hidden Gems for a whole day.
         if (!books.length) return { books: stale ?? [], failed: true };
         pools.set(g.query, books);

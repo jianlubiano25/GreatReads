@@ -14,6 +14,8 @@ export interface Cache<T> {
   entries?(): { key: string; value: T; at: number }[];
   /** Forget everything in this cache (memory and storage). */
   clear(): void;
+  /** Mark every entry as expired WITHOUT removing it: `get` no longer returns it (so it is fetched again), `peek` still shows it as the last good copy while that happens. */
+  expire(): void;
 }
 
 /** The saved caches that hold a book's cover choice, named once so "Refresh Book Covers" and the caches themselves cannot disagree. */
@@ -27,6 +29,14 @@ export const clearCaches = (keys: readonly string[]): void => {
     else { try { localStorage.removeItem(k); } catch {} }
   }
 };
+
+/**
+ * "Last good" copies: the genre lists, the Hidden Gems rows and the saved answers of searches. A refresh (the button, or a DATA_EPOCH change) never removes them: it only
+ * marks them expired, so everything is fetched again in the background while the old copy is shown at once. Wiping them left Search and Hidden Gems empty for ~10 minutes
+ * (the owner's report) while the slow providers refilled them. Each cache's own `keepStale` still retires really old entries.
+ */
+export const LAST_GOOD_KEYS: readonly string[] = ['readlife.genrepool1', 'readlife.genregems1', 'readlife.searchlast1'];
+export const expireCaches = (keys: readonly string[]): void => { for (const k of keys) { try { instances.get(k)?.expire(); } catch {} } };
 
 /** Every localStorage key the app can download again, so the "storage is full" cleanup can never go stale. */
 const clearableKeys = new Set<string>();
@@ -142,6 +152,13 @@ export function persistentCache<T>(storageKey: string, opts: {
     delete(key) {
       load();
       if (mem.delete(key)) save();
+    },
+    expire() {
+      load();
+      const old = Date.now() - opts.ttl - 1;
+      let any = false;
+      for (const e of mem.values()) if (e.t > old) { e.t = old; any = true; }
+      if (any) save();
     },
     clear() {
       loaded = true;

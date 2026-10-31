@@ -7,7 +7,7 @@ const store = new Map<string, string>();
 
 import { getRefreshAllState, startRefreshAll, resetRefreshAllForTests } from './refreshAll';
 import { refreshDataForNewBuild } from '../refreshApp';
-import { registerClearableKey } from '../books/cache';
+import { persistentCache } from '../books/cache';
 import type { ManualResult } from './refresh';
 
 test('Refresh all shelves is a job of the app: progress is readable at any time and a second start joins it', async () => {
@@ -46,21 +46,24 @@ test('a shelf that throws is counted as failed and the run goes on', async () =>
 test('an update keeps the downloads (genre lists, provider answers); they are forgotten once when DATA_EPOCH changes, never on every build, and your data is never touched', () => {
   store.set('readlife.v2', '{"customBooks":[1]}');
   store.set('readlife.resolved3', '{"x":1}');
-  registerClearableKey('readlife.genrepool1'); // as genreRows.ts does when it is loaded
-  store.set('readlife.genrepool1', '{"fantasy":{"t":1,"v":[]}}');
+  const pools = persistentCache<any[]>('readlife.genrepool1', { ttl: 86_400_000, max: 30, keepStale: 14 * 86_400_000, validate: Array.isArray }); // as genreRows.ts does when it is loaded
+  pools.set('fantasy', [{ title: 'Game of Thrones' }]);
   assert.equal(refreshDataForNewBuild('dev'), false);
   assert.equal(store.has('readlife.resolved3'), true);
   assert.equal(refreshDataForNewBuild('build-aaa', 'epoch-1'), true); // first start with this epoch: forgotten once
   assert.equal(store.has('readlife.resolved3'), false);
-  assert.equal(store.has('readlife.genrepool1'), false);
+  // the genre lists are the LAST GOOD copy: kept and shown at once, only marked expired so they are fetched again
+  assert.equal(pools.get('fantasy'), undefined);
+  assert.equal(pools.peek('fantasy')?.value[0].title, 'Game of Thrones');
   assert.equal(store.get('readlife.v2'), '{"customBooks":[1]}');
   store.set('readlife.resolved3', '{"y":1}'); // downloaded again
-  store.set('readlife.genrepool1', '{"fantasy":{"t":2,"v":[]}}');
+  pools.set('fantasy', [{ title: 'Dune' }]);
   assert.equal(refreshDataForNewBuild('build-aaa', 'epoch-1'), false); // same build: nothing
   assert.equal(refreshDataForNewBuild('build-bbb', 'epoch-1'), false); // a NEW build, same epoch: nothing is wiped
   assert.equal(store.has('readlife.resolved3'), true);
-  assert.equal(store.has('readlife.genrepool1'), true, 'the last good genre lists survive an ordinary update');
+  assert.equal(pools.get('fantasy')?.[0].title, 'Dune', 'the last good genre lists survive an ordinary update, still fresh');
   assert.equal(refreshDataForNewBuild('build-ccc', 'epoch-2'), true); // the epoch was changed on purpose: once more
-  assert.equal(store.has('readlife.genrepool1'), false);
+  assert.equal(pools.get('fantasy'), undefined, 'expired: fetched again');
+  assert.equal(pools.peek('fantasy')?.value[0].title, 'Dune', 'but still shown meanwhile');
   assert.equal(refreshDataForNewBuild('build-ddd', 'epoch-2'), false);
 });
