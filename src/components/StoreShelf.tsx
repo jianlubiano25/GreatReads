@@ -1,3 +1,4 @@
+import { PLACEHOLDER_STYLES } from '../services/books/placeholderCover';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { displayBooks, refreshNames, subscribeNames } from '../services/books/englishTitle';
 import { mapPool } from '../services/books/http';
@@ -47,13 +48,16 @@ interface Props {
 const sameShelf = (a: Book[], b: Book[]): boolean =>
   a === b || (a.length === b.length && a.every((x, i) => x === b[i] || (x.id === b[i].id && x.title === b[i].title && x.coverId === b[i].coverId && x.coverUrl === b[i].coverUrl && x.ratingAverage === b[i].ratingAverage && x.ratingCount === b[i].ratingCount)));
 
+const skeletonCover = (i: number): string => { const st = PLACEHOLDER_STYLES[i % PLACEHOLDER_STYLES.length]; return `linear-gradient(180deg, ${st.bg} 0%, ${st.bg} 55%, ${st.shade} 100%)`; };
+
 /** Same card shape as a real one, so a shelf that has not drawn its books yet holds the height they will take (no jump when they appear). Static: nothing animates off-screen. */
-function ShelfSkeleton({ pulse }: { pulse: boolean }) {
+function ShelfSkeleton() {
   return (
     <div className="flex gap-4 overflow-hidden pb-3" aria-busy="true">
       {[0, 1, 2, 3].map(i => (
         <div key={i} className="w-[138px] sm:w-[154px] shrink-0 flex flex-col gap-1.5">
-          <div className={`w-full h-[200px] sm:h-[222px] rounded-md bg-[#e3d7c3]/60 dark:bg-[#382f25]/60 ${pulse ? 'animate-pulse' : ''}`} />
+          {/* the same flat Apple-style colour a stand-in cover has (no text: the book is not known yet), never a grey or beige block */}
+          <div className="w-full h-[200px] sm:h-[222px] rounded-md" style={{ background: skeletonCover(i) }} />
           <div className="h-3 w-4/5 rounded bg-[#e3d7c3]/40 dark:bg-[#382f25]/40" />
           <div className="h-3 w-3/5 rounded bg-[#e3d7c3]/40 dark:bg-[#382f25]/40" />
           <div className="h-3 w-2/5 rounded bg-[#e3d7c3]/40 dark:bg-[#382f25]/40" />
@@ -155,7 +159,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
       ) : insufficient ? (
         <p className="text-sm text-[#706256] dark:text-[#a89a8a]">No books meet the Hidden Gems criteria yet.</p>
       ) : !books ? (
-        <ShelfSkeleton pulse={visible} />
+        <ShelfSkeleton />
       ) : (
         <div className="flex gap-4 overflow-x-auto pb-3 no-scrollbar">
           {view!.map((b, i) => (

@@ -328,7 +328,7 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
           loading={isEager ? 'eager' : 'lazy'}
           fetchPriority={isEager ? 'high' : undefined}
           decoding={wasKnown ? 'sync' : 'async'}
-          className={`absolute inset-0 w-full h-full object-cover z-20 ${wasKnown ? '' : 'transition-opacity duration-150'} ${isReady ? 'opacity-100' : 'opacity-0'}`}
+          className={`absolute inset-0 w-full h-full object-cover z-20 ${isReady ? 'opacity-100' : 'opacity-0'}`} /* no fade: the stand-in goes away in the same frame, so the colour behind it (grey spine colour) is never seen */
           referrerPolicy="no-referrer"
           onLoad={e => {
             // A 1x1 placeholder counts as a failure; a real image clears any earlier miss
