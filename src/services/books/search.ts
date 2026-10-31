@@ -5,6 +5,7 @@ import { dedupeBooks } from './merge';
 import { hasRealSummary, isKnownGenre, shrunkRating } from './model';
 import { searchGoogle } from './sources/googleBooks';
 import { searchOpenLibrary } from './sources/openLibrary';
+import { readShared, writeShared } from '../store/sharedDiscovery';
 import type { Hit } from './sources/types';
 import { englishEditionQueries, isUnknownAuthor, sameWork, titleKey } from './identity';
 import { isBlocked } from './quality';
@@ -415,7 +416,8 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   let googleTotal = 0;
   const totalNow = () => olTotal || googleTotal;
   const failedSources = new Set<string>();
-  const emit = (books: Book[], from: string, done: boolean, total = totalNow()) => { if (!o.signal?.aborted) o.onUpdate?.(books, { done, from, total, failedSources: [...failedSources] }); };
+  let sawLive = false;
+  const emit = (books: Book[], from: string, done: boolean, total = totalNow()) => { if (from !== 'local' && from !== 'saved' && from !== 'shared') sawLive = true; if (!o.signal?.aborted) o.onUpdate?.(books, { done, from, total, failedSources: [...failedSources] }); };
   const io: TaskIo = { page, onTotal: (source, n) => { if (source === 'ol') olTotal = n; else googleTotal = n; }, onFailure: source => failedSources.add(source) };
 
   const mine = useLocal && o.known?.length ? localMatches(q, limit, o.known) : [];
@@ -427,6 +429,7 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   const savable = useLocal && !o.known?.length && !o.exclude?.length; // a search cancelled by the next keystroke returns before it can be saved, so only settled searches are kept
   const saved = savable ? lastGood.peek(memoKey)?.value : undefined;
   if (saved?.length && !local.length) emit(saved.slice(0, limit), 'saved', false, 0); // instant, while the sources are asked again
+  if (savable && !saved?.length && !local.length && !o.final) void readShared('search', memoKey).then(b => { if (b?.length && !sawLive) emit(b.slice(0, limit), 'shared', false, 0); }); // the shared answer, if the live ones are not in yet
   const memo = useLocal && !o.final ? recent.get(memoKey) : undefined;
   if (memo && Date.now() - memo.at < RECENT_MS) {
     emit(memo.books.slice(0, limit), 'cache', true, memo.total);
@@ -476,7 +479,7 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   if (usedSaved) finalList = saved!.slice(0, limit);
   recordSearch({ at: t0, q: title, ms: Date.now() - t0, shown: finalList.length, failed: [...failedSources], usedSaved, sources: trace });
   // // every source failed: keep the last good answer
-  if (savable && gathered.length && finalList.length && (!failedSources.size || !saved?.length || finalList.length >= saved.length)) lastGood.set(memoKey, finalList.slice(0, 20)); // a thinner answer (one source down) never replaces a fuller one
+  if (savable && gathered.length && finalList.length && (!failedSources.size || !saved?.length || finalList.length >= saved.length)) { lastGood.set(memoKey, finalList.slice(0, 20)); if (!failedSources.size) void writeShared('search', memoKey, finalList.slice(0, 20)); } // a thinner answer (one source down) never replaces a fuller one
   if (useLocal && finalList.length) {
     rememberSeen(rank([...withoutBlocked(gathered, q), ...seenHere], q, 20)); // the best few of what the sources and earlier searches gave; never the reader's own books
     if (gathered.length) { // a search that every source failed (offline) is never remembered as "the answer"

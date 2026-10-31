@@ -6,6 +6,7 @@ import { shrunkRating } from '../books/model';
 import { applyInfo } from '../books/infoStore';
 import { externalRating, setRating } from '../books/ratings';
 import { openLibraryRatings } from '../books/sources/openLibrary';
+import { readShared, writeShared } from './sharedDiscovery';
 import { fillMissingCovers } from '../books/covers';
 import { kindAdjust } from '../books/genreRank';
 import { InsufficientShelfError, type ShelfSource } from './shelves';
@@ -86,6 +87,9 @@ async function genrePool(g: SearchGenre): Promise<PoolResult> {
     p = (async () => {
       let failed = false;
       try {
+        // The shared list (Supabase) comes before the slow public sites; it does nothing until the table exists (migration not applied yet)
+        const shared = await readShared('genre_pool', g.query);
+        if (shared?.length) { pools.set(g.query, shared); return { books: shared, failed: false }; }
         const books = await searchBooksLive(g.query, {
           scope: 'keywords', limit: 40, final: true, local: false,
           onUpdate: (_books, state) => { if (state.done) failed = !!state.failedSources?.length; },
@@ -95,6 +99,7 @@ async function genrePool(g: SearchGenre): Promise<PoolResult> {
         if (!books.length) return { books: stale ?? [], failed: true };
         const rated = await withFallbackRatings(books);
         pools.set(g.query, rated);
+        void writeShared('genre_pool', g.query, rated); // admin devices only; a good list is shared for everyone
         return { books: rated, failed: false };
       } catch {
         return { books: stale ?? [], failed: true };
