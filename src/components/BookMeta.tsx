@@ -180,16 +180,21 @@ const loadedCovers = new Set<string>((() => {
 })());
 
 let saveLoadedTimer: ReturnType<typeof setTimeout> | undefined;
+// Covers seen on this device (1000 most recent). A remembered cover loads eagerly and is decoded at once, so it is already there when it scrolls into view
+// instead of showing the stand-in for a moment.
+const saveLoadedNow = () => {
+  try { localStorage.setItem(LOADED_KEY, JSON.stringify(Array.from(loadedCovers).slice(-1000))); } catch {}
+};
+if (typeof window !== 'undefined') { // the list is written a moment after a burst of loads: also write it when the app is hidden or closed
+  window.addEventListener('pagehide', saveLoadedNow);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveLoadedNow(); });
+}
 function recordLoadedCover(url: string) {
   if (!url || loadedCovers.has(url)) return;
   loadedCovers.add(url);
   // Many covers load in a burst: write the list once, a moment later
   clearTimeout(saveLoadedTimer);
-  saveLoadedTimer = setTimeout(() => {
-    try {
-      localStorage.setItem(LOADED_KEY, JSON.stringify(Array.from(loadedCovers).slice(-300)));
-    } catch {}
-  }, 1500);
+  saveLoadedTimer = setTimeout(saveLoadedNow, 1500);
 }
 
 /**
@@ -307,8 +312,8 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
   const url = src;
   const failed = cur.dead;
   const won = awardsFor(book).some(a => a.type === 'w');
-  const isEager = eager || size === 'lg' || size === 'xl';
   const wasKnown = url ? loadedCovers.has(url) : false; // seen before on this device: appears with no fade
+  const isEager = eager || size === 'lg' || size === 'xl' || (wasKnown && near); // a remembered cover near the screen is fetched and decoded now, not when it is already in view
   const isReady = imgLoaded; // only a picture that really loaded replaces the stand-in (a remembered URL can still be slow or gone)
 
   return (
@@ -322,7 +327,7 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
           alt=""
           loading={isEager ? 'eager' : 'lazy'}
           fetchPriority={isEager ? 'high' : undefined}
-          decoding="async"
+          decoding={wasKnown ? 'sync' : 'async'}
           className={`absolute inset-0 w-full h-full object-cover z-20 ${wasKnown ? '' : 'transition-opacity duration-150'} ${isReady ? 'opacity-100' : 'opacity-0'}`}
           referrerPolicy="no-referrer"
           onLoad={e => {

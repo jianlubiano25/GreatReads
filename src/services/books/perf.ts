@@ -85,11 +85,19 @@ export const perfSnapshot = (): PerfSnapshot => ({
   failures: [...failures],
 });
 
+/** The last settled searches (what was typed, what each source gave and how fast), so "search found nothing" can be told apart from "a source was down or slow". */
+export interface SearchTrace { at: number; q: string; ms: number; shown: number; failed: string[]; usedSaved: boolean; sources: { name: string; n: number; ms: number }[] }
+const searches: SearchTrace[] = [];
+export function recordSearch(t: SearchTrace): void {
+  searches.push(t);
+  if (searches.length > 12) searches.splice(0, searches.length - 12);
+}
+
 /** The snapshot as plain text a person can paste into a chat (hosts, request paths, counts, times; no library or account data). Used by Profile > Copy diagnostics. */
 export const diagnosticsText = (): string => {
   const snap = perfSnapshot();
   const hosts = Object.keys(snap.counters).filter(k => k.startsWith('net.ms.')).map(k => `${k.slice(7)}: ${Math.round(snap.counters[k])} ms total over ${snap.counters[`net.${k.slice(7)}`] ?? '?'} requests`);
-  return JSON.stringify({ when: new Date().toISOString(), upMs: typeof performance !== 'undefined' ? Math.round(performance.now()) : undefined, hosts, ...snap }, null, 1);
+  return JSON.stringify({ when: new Date().toISOString(), searches: searches.map(x => ({ ...x, q: x.q.slice(0, 60) })), upMs: typeof performance !== 'undefined' ? Math.round(performance.now()) : undefined, hosts, ...snap }, null, 1);
 };
 
 export function resetPerf(): void {
