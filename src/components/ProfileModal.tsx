@@ -5,7 +5,8 @@ import { Camera, Moon, Sun, Monitor, RefreshCw, Copy, Check, Upload, X, Download
 import { copyText } from '../services/clipboard';
 import { isLocationWeatherEnabled, setLocationWeatherEnabled, fetchLocalWeather } from '../services/weather';
 import { getNookMatchesTheme, setNookMatchesTheme, getWindowFollowsTime, setWindowFollowsTime } from '../services/nookPrefs';
-import { useAppUpdate, checkForUpdate, applyUpdate, restartApp, APP_BUILD } from '../services/appUpdate';
+import { useAppUpdate, checkForUpdate, applyUpdate, restartApp } from '../services/appUpdate';
+import { APP_VERSION } from '../services/appVersion';
 import { refreshEverything } from '../services/refreshApp';
 import { clock12, diagnosticsText } from '../services/books/perf';
 import { AchievementsModal } from './garden/AchievementsModal';
@@ -519,7 +520,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 : update.upToDate
                 ? 'You have the latest version.'
                 : 'The app looks for new versions by itself. You only see a message when there is one.'}
-              {' '}<span className="opacity-60">Version {APP_BUILD}</span>
+              {' '}<span className="opacity-60 select-all">{APP_VERSION}</span>
             </p>
             <div className="flex gap-2">
               {update.available ? (

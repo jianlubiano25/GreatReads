@@ -9,6 +9,8 @@
  * where the console is hard to reach (iPhone / iPad without a Mac). Nothing here is sent anywhere.
  */
 
+import { APP_VERSION } from '../appVersion';
+
 export interface FailedRequest { at: number; host: string; path: string; status: number; failure?: string; ms?: number }
 /** A request this slow (ms) is kept in the log even when it succeeded. */
 export const SLOW_MS = 3000;
@@ -102,7 +104,7 @@ export const diagnosticsText = (): string => {
   const upMs = typeof performance !== 'undefined' ? Math.round(performance.now()) : undefined;
   const generated = { at: now.toISOString(), local: clock12(now), appOpenMin: upMs === undefined ? undefined : Math.round(upMs / 600) / 100 };
   const hosts = Object.keys(snap.counters).filter(k => k.startsWith('net.ms.')).map(k => `${k.slice(7)}: ${Math.round(snap.counters[k])} ms total over ${snap.counters[`net.${k.slice(7)}`] ?? '?'} requests`);
-  return JSON.stringify({ when: generated.at, generated, searches: searches.map(x => ({ ...x, q: x.q.slice(0, 60) })), upMs, hosts, ...snap }, null, 1);
+  return JSON.stringify({ version: APP_VERSION, when: generated.at, generated, searches: searches.map(x => ({ ...x, q: x.q.slice(0, 60) })), upMs, hosts, ...snap }, null, 1);
 };
 
 export function resetPerf(): void {

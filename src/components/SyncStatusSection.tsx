@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { currentUser } from '../services/supabase';
 import { deviceId } from '../services/cloudSync';
-import { APP_BUILD } from '../services/appUpdate';
+import { APP_VERSION } from '../services/appVersion';
 import { hasLibrarySyncConflicts, hasPendingLibrarySync } from '../services/librarySync';
 import { getSyncStatus, subscribeSyncStatus, verdict } from '../services/syncStatus';
 
@@ -38,7 +38,7 @@ export const SyncStatusSection: React.FC = () => {
         })}
       </ul>
       {(pending || conflict) && <p role="status" className="text-[11px] text-amber-800 dark:text-amber-300">{conflict ? 'Some library records are paused because two devices changed them differently.' : 'Library changes are waiting to upload.'}</p>}
-      <p className="text-[10px] text-[#706256] dark:text-[#a89a8a]">Build {APP_BUILD} · device {deviceId().slice(0, 8)} · {user.email || 'signed in'}</p>
+      <p className="text-[10px] text-[#706256] dark:text-[#a89a8a]">{APP_VERSION} · device {deviceId().slice(0, 8)} · {user.email || 'signed in'}</p>
       <button type="button" className="w-full py-2 px-3 rounded-xl text-xs font-semibold border border-[#2e5934] dark:border-[#86b880] text-[#2e5934] dark:text-[#86b880] active:scale-95 transition-all" onClick={() => { window.dispatchEvent(new Event('greatreads-library-sync-request')); window.dispatchEvent(new Event('greatreads-daily-pages-run')); window.dispatchEvent(new Event('greatreads-settings-records-run')); }}>Sync now</button>
     </div>
   );
