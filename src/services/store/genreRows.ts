@@ -3,6 +3,9 @@ import type { SearchGenre } from '../../data/searchGenres';
 import { persistentCache } from '../books/cache';
 import { searchBooksLive } from '../books/search';
 import { shrunkRating } from '../books/model';
+import { applyInfo } from '../books/infoStore';
+import { externalRating, setRating } from '../books/ratings';
+import { openLibraryRatings } from '../books/sources/openLibrary';
 import { fillMissingCovers } from '../books/covers';
 import { kindAdjust } from '../books/genreRank';
 import { InsufficientShelfError, type ShelfSource } from './shelves';
@@ -48,6 +51,25 @@ export function hiddenGems(pool: readonly Book[], kind: SearchGenre['kind']): Bo
     .slice(0, ROW_SIZE);
 }
 
+/**
+ * Hidden Gems needs a rating AND a count on each book. Google's ratings are the usual source and Google refuses requests when its quota is empty (the owner's iPad log:
+ * 95% answered 429), which left the row empty. So a book with no usable rating first takes any rating saved for it on this device (Book Info, the shared catalog, the
+ * bundled lists: `applyInfo`, no network), then asks Open Library for the work's own rating (at most ENRICH_MAX books, background priority, through its gate).
+ * Only real pairs are used (average 1-5 with a count); nothing is made up, and Google being down never empties the row on its own.
+ */
+const ENRICH_MAX = 10;
+export async function withFallbackRatings(books: Book[], ask: (olWork: string) => Promise<{ average: number; count: number } | null> = id => openLibraryRatings(id)): Promise<Book[]> {
+  const out = books.map(b => (externalRating(b) ? b : applyInfo(b)));
+  const need = out.map((b, i) => ({ b, i })).filter(x => !externalRating(x.b) && x.b.identity?.olWork).slice(0, ENRICH_MAX);
+  await Promise.all(need.map(async ({ b, i }) => {
+    try {
+      const r = await ask(b.identity!.olWork!);
+      if (r && r.count > 0 && r.average >= 1) out[i] = setRating(b, { average: r.average, count: r.count, source: 'openlibrary' });
+    } catch {}
+  }));
+  return out;
+}
+
 const DAY = 24 * 60 * 60 * 1000;
 const STALE_FOR = 14 * DAY;
 const pools = persistentCache<Book[]>('readlife.genrepool1', { ttl: DAY, max: 30, keepStale: STALE_FOR, validate: Array.isArray });
@@ -71,8 +93,9 @@ async function genrePool(g: SearchGenre): Promise<PoolResult> {
         if (failed) return { books: stale && stale.length >= books.length ? stale : books, failed: true }; // not saved: a partial answer never replaces the last good list
         // An EMPTY answer (providers slow, timed out or rate-limited without saying so) is a failure, not a result: never save it, or the genre shows 0 results and no Hidden Gems for a whole day.
         if (!books.length) return { books: stale ?? [], failed: true };
-        pools.set(g.query, books);
-        return { books, failed: false };
+        const rated = await withFallbackRatings(books);
+        pools.set(g.query, rated);
+        return { books: rated, failed: false };
       } catch {
         return { books: stale ?? [], failed: true };
       }
