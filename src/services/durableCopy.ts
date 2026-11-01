@@ -71,3 +71,12 @@ export async function restoreDurableCopies(keys: readonly string[] = durableKeyL
     return restored;
   } catch { return []; }
 }
+
+/**
+ * Big saved copies that do not belong in localStorage (its budget is about 2.5-5 MB for the whole app; the published-catalog copy alone was 1.3 MB of 2.7 MB).
+ * Same IndexedDB store, same silent failure: `bigPut` says whether it worked, so the caller can fall back to localStorage.
+ */
+export const bigStoreAvailable = (): boolean => !!backend;
+export async function bigGet(key: string): Promise<string | undefined> { try { return (await backend?.getAll([key]))?.[key]; } catch { return undefined; } }
+export async function bigPut(key: string, text: string): Promise<boolean> { try { if (!backend) return false; await backend.put(key, text); return true; } catch { return false; } }
+export async function bigRemove(key: string): Promise<void> { try { await backend?.remove(key); } catch {} }

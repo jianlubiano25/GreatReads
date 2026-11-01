@@ -26,9 +26,12 @@ export const clearCaches = (keys: readonly string[]): void => {
   for (const k of keys) {
     const c = instances.get(k);
     if (c) c.clear();
-    else { try { localStorage.removeItem(k); } catch {} }
+    else { try { localStorage.removeItem(k); } catch {} clearHooks.get(k)?.(); }
   }
 };
+/** A saved copy that lives somewhere other than localStorage (IndexedDB) says here how to forget it, so every clear (Refresh App & Data, a data epoch) reaches it too. */
+const clearHooks = new Map<string, () => void>();
+export const registerClearHook = (key: string, fn: () => void): void => { clearHooks.set(key, fn); };
 
 /**
  * "Last good" copies: the genre lists, the Hidden Gems rows and the saved answers of searches. A refresh (the button, or a DATA_EPOCH change) never removes them: it only

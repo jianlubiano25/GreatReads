@@ -2,7 +2,8 @@
  * The published catalog, as this device keeps it: one saved copy, shown at once on launch, topped up with only what changed (see services/catalog.ts).
  * Self-contained on purpose (no imports from the cover code) so the cover chain can read it without a circular import.
  */
-import { registerClearableKey } from './cache';
+import { registerClearableKey, registerClearHook } from './cache';
+import { bigGet, bigPut, bigRemove, bigStoreAvailable } from '../durableCopy';
 import { authorKey, titleKey } from './identity';
 
 const KEY = 'readlife.catalog1';
@@ -21,15 +22,52 @@ export type CatalogWork = {
 type Saved = { since: string; t: number; works: Record<string, CatalogWork> };
 
 let saved: Saved | undefined;
+const EMPTY = (): Saved => ({ since: '-infinity', t: 0, works: {} });
+const parseSaved = (text: string | null | undefined): Saved => {
+  try {
+    const r = JSON.parse(text || 'null');
+    return r && r.works && typeof r.works === 'object' ? { since: String(r.since || '-infinity'), t: Number(r.t) || 0, works: r.works } : EMPTY();
+  } catch { return EMPTY(); }
+};
 export const catalogCopy = (): Saved => {
-  if (!saved) {
-    try {
-      const r = JSON.parse(localStorage.getItem(KEY) || 'null');
-      saved = r && r.works && typeof r.works === 'object' ? { since: String(r.since || '-infinity'), t: Number(r.t) || 0, works: r.works } : { since: '-infinity', t: 0, works: {} };
-    } catch { saved = { since: '-infinity', t: 0, works: {} }; }
-  }
+  if (!saved) { let text: string | null = null; try { text = localStorage.getItem(KEY); } catch {} saved = parseSaved(text); }
   return saved;
 };
+
+/**
+ * Where the copy lives. In a browser with IndexedDB it is kept THERE (it was 1.3 MB of the 2.7 MB the app may keep in localStorage, which left no room for the genre lists, covers
+ * and book lookups: 41 failed saves in one session). It is read once before the app draws (`loadCatalogCopy`, main.tsx) and kept in memory; writes are batched. Without
+ * IndexedDB (private mode, scripts, tests) nothing changes: localStorage as before. A copy found in localStorage is moved over once.
+ */
+let idbMode = false;
+let writeTimer: ReturnType<typeof setTimeout> | undefined;
+async function flushCopy(): Promise<void> {
+  writeTimer = undefined;
+  if (!saved) return;
+  const text = JSON.stringify(saved);
+  if (await bigPut(KEY, text)) { try { localStorage.removeItem(KEY); } catch {} } else { try { localStorage.setItem(KEY, text); } catch {} }
+}
+export const flushCatalogCopyForTests = flushCopy;
+const persist = (): void => {
+  if (!idbMode) { try { localStorage.setItem(KEY, JSON.stringify(catalogCopy())); } catch {} return; }
+  clearTimeout(writeTimer);
+  writeTimer = setTimeout(() => { void flushCopy(); }, 800);
+};
+if (typeof window !== 'undefined') window.addEventListener('pagehide', () => { if (writeTimer) { clearTimeout(writeTimer); void flushCopy(); } });
+
+/** Before the app draws: read the copy from IndexedDB (moving an older localStorage copy over once). Never waits longer than `maxMs`; never throws. */
+export async function loadCatalogCopy(maxMs = 1500): Promise<void> {
+  if (!bigStoreAvailable()) return;
+  let inIdb: string | undefined;
+  try { inIdb = await Promise.race([bigGet(KEY), new Promise<undefined>(r => setTimeout(() => r(undefined), maxMs))]); } catch {}
+  let old: string | null = null;
+  try { old = localStorage.getItem(KEY); } catch {}
+  idbMode = true;
+  saved = parseSaved(inIdb || old);
+  if (!inIdb && old) await flushCopy(); // moved over: flushCopy removes the localStorage copy once IndexedDB has it
+  else if (old) { try { localStorage.removeItem(KEY); } catch {} } // IndexedDB has it: free the space
+}
+registerClearHook(KEY, () => { saved = EMPTY(); version++; clearTimeout(writeTimer); writeTimer = undefined; void bigRemove(KEY); });
 let version = 0;
 export const catalogVersion = (): number => version;
 
@@ -43,7 +81,7 @@ export function applyCatalog(works: CatalogWork[], since?: string): boolean {
   }
   if (since) s.since = since;
   s.t = Date.now();
-  try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {}
+  persist();
   if (changed) version++;
   return changed;
 }
@@ -53,7 +91,7 @@ export function pruneCatalog(keepIds: ReadonlySet<string>): void {
   const s = catalogCopy();
   let n = 0;
   for (const id of Object.keys(s.works)) if (!keepIds.has(id)) { delete s.works[id]; n++; }
-  if (n) { version++; try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} }
+  if (n) { version++; persist(); }
 }
 
 /* ---- the whole work (description, bio, facts, rating) for Book Info ---- */
