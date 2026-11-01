@@ -64,11 +64,11 @@ test('write: admin devices only, never empty or thin, never a much thinner list 
   assert.equal(fuller.calls.some(c => c.init?.method === 'POST'), false);
 });
 
-test('the migration and its rollback exist, say NOT APPLIED, and stop empty/thin rows and non-admin writes', async () => {
+test('the migration and its rollback exist, say when they were applied, and stop empty/thin rows and non-admin writes', async () => {
   const { readFileSync } = await import('node:fs');
   const up = readFileSync(new URL('../../../supabase/migrations/20261101000001_discovery_cache.sql', import.meta.url), 'utf8');
   const down = readFileSync(new URL('../../../supabase/rollbacks/20261101000001_discovery_cache.rollback.sql', import.meta.url), 'utf8');
-  assert.match(up, /NOT APPLIED/);
+  assert.match(up, /APPLIED to production 2026-11-01/);
   assert.match(up, /jsonb_array_length\(payload\) >= 3/);
   assert.match(up, /catalog_admins/);
   assert.match(up, /expires_at > now\(\)/);

@@ -1,4 +1,4 @@
--- NOT APPLIED. Owner order 6 (2026-11-01): a shared cache of discovery answers (genre lists and a few busy searches), so a new device or a cold start reads one
+-- APPLIED to production 2026-11-01 with owner approval (migration name discovery_cache). Owner order 6 (2026-11-01): a shared cache of discovery answers (genre lists and a few busy searches), so a new device or a cold start reads one
 -- small row from Supabase first, then its own saved copy, and only then asks the slow public book sites. Needs the owner's explicit approval in chat before it is applied.
 -- Additive only: one new table, one function, one trigger. No existing table, column, policy or function is changed.
 -- Rollback: supabase/rollbacks/20261101000001_discovery_cache.rollback.sql
