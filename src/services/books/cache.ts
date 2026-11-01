@@ -100,26 +100,36 @@ export function persistentCache<T>(storageKey: string, opts: {
   const usable = (v: unknown) => { try { return !opts.validate || opts.validate(v); } catch { return false; } };
   let timer: ReturnType<typeof setTimeout> | undefined;
   let dirty = false;
+  let lastBytes = 0;
+  const writeOnce = () => {
+    const keys = [...mem.keys()];
+    if (keys.length > opts.max) keys.slice(0, keys.length - opts.max).forEach(k => mem.delete(k));
+    timed(`cache.${storageKey}.save`, () => {
+      const text = JSON.stringify(Object.fromEntries(mem));
+      lastBytes = text.length;
+      bump(`cache.${storageKey}.saveBytes`, text.length);
+      localStorage.setItem(storageKey, text);
+      if (opts.durable) mirrorDurable(storageKey, text);
+    });
+  };
   const write = () => {
     if (!dirty) return;
     dirty = false;
-    {
-      try {
-        const keys = [...mem.keys()];
-        if (keys.length > opts.max) keys.slice(0, keys.length - opts.max).forEach(k => mem.delete(k));
-        timed(`cache.${storageKey}.save`, () => {
-          const text = JSON.stringify(Object.fromEntries(mem));
-          bump(`cache.${storageKey}.saveBytes`, text.length);
-          localStorage.setItem(storageKey, text);
-          if (opts.durable) mirrorDurable(storageKey, text);
-        });
-      } catch {}
+    try { writeOnce(); } catch {
+      // The device's storage is full (the saved-data budget is about 5 MB for everything): count it, then keep the NEWEST half of this cache (up to four times) and try again,
+      // so the cache stays inside the budget instead of silently saving nothing (a failed save used to mean "nothing remembered after the app closes")
+      bump('storage.writeFailed'); bump(`storage.writeFailed.${storageKey}`);
+      for (let i = 0; i < 4 && mem.size > 8; i++) {
+        [...mem.keys()].slice(0, Math.floor(mem.size / 2)).forEach(k => mem.delete(k));
+        bump('storage.cacheTrimmed');
+        try { writeOnce(); break; } catch {}
+      }
     }
   };
   const save = () => {
     dirty = true;
     clearTimeout(timer);
-    timer = setTimeout(write, 400);
+    timer = setTimeout(write, lastBytes > 100_000 ? 2500 : 400); // a big cache is written less often (a 600 KB cache was rewritten 349 times in 30 minutes)
   };
   flushers.set(storageKey, () => { clearTimeout(timer); write(); });
 
@@ -185,3 +195,23 @@ export const LEGACY_BOOK_CACHE_KEYS = [
 export const dropLegacyBookCaches = () => {
   try { LEGACY_BOOK_CACHE_KEYS.forEach(k => localStorage.removeItem(k)); } catch {}
 };
+
+/** The caches that remember covers: the last to be given up when storage is full. */
+const COVER_MEMORY_KEYS: readonly string[] = [COVER_CACHE_KEYS.resolved, COVER_CACHE_KEYS.shelves, COVER_CACHE_KEYS.candidates, 'readlife.coverFlat1', 'readlife.loaded', 'readlife.preload', 'readlife.preload2'];
+
+/**
+ * Storage is full and the reader's own data cannot be saved: free space ONE re-downloadable key at a time, biggest first, other caches before cover memory,
+ * and stop as soon as `write` succeeds. (It used to wipe every cache at once, which also threw away the remembered covers and left placeholders after every reopen.)
+ * Returns true when `write` finally succeeded. `candidates` are the keys that may be removed.
+ */
+export function freeSpaceThenRun(write: () => void, candidates: readonly string[]): boolean {
+  const size = (k: string) => { try { return (localStorage.getItem(k) || '').length; } catch { return 0; } };
+  const order = [...new Set(candidates)].filter(k => size(k) > 0)
+    .sort((a, b) => Number(COVER_MEMORY_KEYS.includes(a)) - Number(COVER_MEMORY_KEYS.includes(b)) || size(b) - size(a));
+  for (const k of order) {
+    clearCaches([k]);
+    bump('storage.evicted'); bump(`storage.evicted.${k}`);
+    try { write(); return true; } catch {}
+  }
+  return false;
+}

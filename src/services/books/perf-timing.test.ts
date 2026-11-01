@@ -36,3 +36,14 @@ test('Copy diagnostics: every copy is a new reading (own time, live counters), n
   assert.match(b.generated.local, /^\d{1,2}:\d{2}\s?(AM|PM)$/i, '12-hour clock');
   assert.ok(typeof b.generated.appOpenMin === 'number');
 });
+
+test('diagnostics list the saved-data budget: total and biggest keys (sizes only, no contents)', async () => {
+  const data = new Map<string, string>([['readlife.big', 'secret-text'.repeat(50)], ['readlife.small', 'x']]);
+  (globalThis as any).localStorage = { getItem: (k: string) => data.get(k) ?? null, key: (i: number) => [...data.keys()][i] ?? null, get length() { return data.size; } };
+  const { storageReport, diagnosticsText } = await import('./perf');
+  const r = storageReport()!;
+  assert.equal(r.biggest[0], `readlife.big: ${'readlife.big'.length + 550}`);
+  assert.ok(r.totalChars > 550);
+  assert.equal(diagnosticsText().includes('secret-text'), false);
+  delete (globalThis as any).localStorage;
+});

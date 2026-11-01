@@ -7,7 +7,7 @@ import { computeSnapshot, currentStreakFor, evaluateGarden, markCelebrated, move
 import { dateKey } from '../services/dates';
 import { applyHistoryEdit, applyRating, stampProgress, stampStatus, type HistoryPatch } from '../services/bookHistory';
 import { applyAddBook, type AddDestination, type AddStatus } from '../services/library';
-import { clearableKeysWhenStorageFull } from '../services/books/cache';
+import { clearableKeysWhenStorageFull, freeSpaceThenRun } from '../services/books/cache';
 import { exportCoverPicks, restoreCoverPicksFromBackup } from '../services/books/covers';
 import { displayBook, refreshNames, subscribeNames } from '../services/books/englishTitle';
 import { mapPool } from '../services/books/http';
@@ -121,12 +121,10 @@ export function useReadingLife() {
     } catch (e) {
       console.error('Failed to save to localStorage:', e);
       // Storage is full or blocked. Throw away the re-downloadable caches first, then try once more.
-      try {
-        for (const k of [...clearableKeysWhenStorageFull(), ...EXTRA_CLEARABLE]) localStorage.removeItem(k);
-        write();
+      if (freeSpaceThenRun(write, [...clearableKeysWhenStorageFull(), ...EXTRA_CLEARABLE])) {
         dirty.current = false;
         setSaveError(false);
-      } catch {
+      } else {
         setSaveError(true);
       }
     }

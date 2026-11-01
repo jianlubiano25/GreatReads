@@ -66,6 +66,7 @@ Layers: (1) shared catalog, admin-owned; (2) personal sync, one mechanism, cloud
 `docs/handoff-reference.md` (what exists, live data facts, Task A/B/C, merge status, M4b evidence), `docs/full-change-log.md` (all older log entries), `docs/work-packages.md`, `docs/cover-one-path-plan.md`, `docs/catalog-field-map.md`, `docs/catalog-live-schema.md`, `docs/catalog-vocabulary.md`, `docs/provider-terms.md`, `docs/catalog-merge-preview-2026-10-30.md`.
 
 ## Change log (last 8; older in docs/full-change-log.md)
+- 2026-11-01: A2 step 2 (saved-data budget; owner log: 233 MB written in 30 min, caches ~2.2M chars of a 2.5-5M budget): diagnostics `storage` (total + biggest keys) and `storage.writeFailed/evicted/cacheTrimmed` counters; a failed cache save keeps the newest half and retries; big caches write every 2.5 s not 0.4 s; storage-full now frees ONE key at a time (biggest non-cover first, cover memory last) instead of wiping every cache (`freeSpaceThenRun`). Next: read `storage` in the next log; slim `resolved3` entries if it is the biggest.
 - 2026-11-01: A2 step 1: ONE stand-in look (`coverBackdrop`: the box behind every cover has the stand-in colour, no spine-colour/grey); remembered covers are eager at once + 250 ms grace before the stand-in draws; `readlife.preload2` (80 most recently shown covers) preloaded by index.html. Not device-tested.
 - 2026-11-01: `discovery_cache` migration APPLIED (owner Go; RLS on, admin write, 0 rows); rollback `supabase/rollbacks/20261101000001_discovery_cache.rollback.sql`. Device log: searches 1.0-1.8 s, Open Library 52 req/23 s, first shelf 11 s, Google key quota empty.
 - 2026-11-01: order 6: shared discovery cache code (`store/sharedDiscovery.ts`: slim books, no Google data, admin writes, never empty/thinner, skipped if table missing).
@@ -73,4 +74,3 @@ Layers: (1) shared catalog, admin-owned; (2) personal sync, one mechanism, cloud
 - 2026-11-01: order 5: Copy diagnostics is a fresh reading each tap (own 12-hour time, app-open minutes).
 - 2026-11-01: order 4: one Apple-style placeholder; removed the cover fade that showed grey; Store skeleton uses the same colours.
 - 2026-11-01: order 3: Hidden gems rating fallback (saved ratings, then Open Library, max 10 per list). Order 2: refresh keeps last-good genre lists/searches (expired, not wiped).
-- 2026-11-01: order 1: Open Library gate (3 in flight, typed search first, back-off after 3 slow/timeouts).

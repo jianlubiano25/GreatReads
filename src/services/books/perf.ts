@@ -95,6 +95,23 @@ export function recordSearch(t: SearchTrace): void {
   if (searches.length > 12) searches.splice(0, searches.length - 12);
 }
 
+/** What the device's saved data (localStorage) holds: the total and the biggest keys, in characters (the browser's budget is about 2.5-5 million). Sizes only, never contents. */
+export function storageReport(): { totalChars: number; biggest: string[] } | undefined {
+  try {
+    const rows: [string, number][] = [];
+    let total = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      const n = k.length + (localStorage.getItem(k) || '').length;
+      total += n;
+      rows.push([k, n]);
+    }
+    rows.sort((a, b) => b[1] - a[1]);
+    return { totalChars: total, biggest: rows.slice(0, 14).map(([k, n]) => `${k}: ${n}`) };
+  } catch { return undefined; }
+}
+
 /** The snapshot as plain text a person can paste into a chat (hosts, request paths, counts, times; no library or account data). Used by Profile > Copy diagnostics. */
 export const clock12 = (d: Date): string => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 /** Built from the live counters at the moment it is called, never kept: every copy is a new reading. `generated` says when, and for how long the app has been open, so an old paste is easy to spot. */
@@ -104,7 +121,7 @@ export const diagnosticsText = (): string => {
   const upMs = typeof performance !== 'undefined' ? Math.round(performance.now()) : undefined;
   const generated = { at: now.toISOString(), local: clock12(now), appOpenMin: upMs === undefined ? undefined : Math.round(upMs / 600) / 100 };
   const hosts = Object.keys(snap.counters).filter(k => k.startsWith('net.ms.')).map(k => `${k.slice(7)}: ${Math.round(snap.counters[k])} ms total over ${snap.counters[`net.${k.slice(7)}`] ?? '?'} requests`);
-  return JSON.stringify({ version: APP_VERSION, when: generated.at, generated, searches: searches.map(x => ({ ...x, q: x.q.slice(0, 60) })), upMs, hosts, ...snap }, null, 1);
+  return JSON.stringify({ version: APP_VERSION, when: generated.at, generated, storage: storageReport(), searches: searches.map(x => ({ ...x, q: x.q.slice(0, 60) })), upMs, hosts, ...snap }, null, 1);
 };
 
 export function resetPerf(): void {
