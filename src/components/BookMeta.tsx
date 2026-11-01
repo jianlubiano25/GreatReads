@@ -6,7 +6,7 @@ import { externalRating, isNytCoverUrl, ratingOf, starFills } from '../services/
 import { infoKey, infoVersion, shownRating, subscribeInfo } from '../services/books/infoStore';
 import { placeholderStyleFor, titleSizeCqw, isFrontCoverShape } from '../services/books/placeholderCover';
 import { inspectCover } from '../services/books/covers';
-import { coverKey, sizedCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, isCoverSettled, markCoverSettled, reportMissingCover, clearMissingCover, knownCover, markCoverPickFailed } from '../services/books';
+import { coverKey, sizedCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, isCoverSettled, markCoverSettled, reportMissingCover, clearMissingCover, knownCover, markCoverPickFailed, peekCoverCandidate } from '../services/books';
 
 export type AwardKind = 'w' | 's' | 'c'; // winner, shortlist, other pick (book club, series...)
 
@@ -109,6 +109,9 @@ export function AwardBadges({ book, primary }: { book: Book; primary?: boolean }
     </div>
   );
 }
+
+/** How long the preferred cover may take before a cover the picker already found is shown under it */
+const SLOW_COVER_MS = 1200;
 
 /** Author line size per cover size (title size is set from the cover's own width, see PlaceholderCover). */
 const AUTHOR_CQW: Record<string, number> = { xs: 11.5, nook: 0, md: 10.8, lg: 10.2, xl: 9.6 }; // about 20% larger than before
@@ -334,8 +337,28 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
     return () => clearTimeout(t);
   }, [src, wasKnown]);
 
+  // The preferred cover is slow (or stuck) but the cover picker already found another picture for this book: show that one underneath until the preferred one has loaded, then it takes over
+  const [slow, setSlow] = useState(false);
+  const [fbLoaded, setFbLoaded] = useState(false);
+  useEffect(() => {
+    setSlow(false); setFbLoaded(false);
+    if (!url || failed || known.from !== 'own' || cur.alt) return;
+    const t = setTimeout(() => setSlow(true), SLOW_COVER_MS);
+    return () => clearTimeout(t);
+  }, [url, failed, known.from, cur.alt]);
+  const fallbackUrl = (() => {
+    if (!slow || isReady || failed || known.from !== 'own') return '';
+    const k = peekCoverCandidate(book);
+    if (!k) return '';
+    const u = sizedCoverUrl(k, imgSize);
+    return u && u !== url ? u : '';
+  })();
+
   return (
     <>
+      {fallbackUrl ? (
+        <img key={fallbackUrl} src={fallbackUrl} alt="" className={`absolute inset-0 w-full h-full object-cover z-10 ${fbLoaded ? 'opacity-100' : 'opacity-0'}`} referrerPolicy="no-referrer" onLoad={e => { if (e.currentTarget.naturalWidth >= 8) setFbLoaded(true); }} />
+      ) : null}
       {near ? null : <span ref={sentinel} aria-hidden className="absolute inset-0 pointer-events-none" />}
       {url && !failed ? (
         <img
@@ -362,7 +385,7 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
           onError={onErr}
         />
       ) : null}
-      {(!url || failed || (!isReady && graceOver)) ? <PlaceholderCover book={book} size={size} /> : null}
+      {(!url || failed || (!isReady && graceOver && !(fallbackUrl && fbLoaded))) ? <PlaceholderCover book={book} size={size} /> : null}
       {badge && won && size !== 'xs' ? (
         <span className="rl-prize" title="Prize winner" aria-label="Prize winner">🏆</span>
       ) : null}
