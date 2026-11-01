@@ -51,3 +51,5 @@ Moved out of HANDOFF.md / docs/handoff-reference.md on 2026-11-01 in one batch, 
 - 2026-10-27: owner approved; `honors` migration applied (file in `supabase/migrations/`, rollback in `supabase/rollbacks/`); conflict scan + backfill dry-run recorded in section 5.
 - 2026-10-27: Task A step 1 done: field map doc; found 22 Prize winner, 22 book-club/Inklings labels stored as genre, root cause in `curated.ts`; drafted (not applied) honors migration + rollback.
 - 2026-10-27: branch created; 3 GreatReads-realtime commits cherry-picked cleanly; handoffs merged and slimmed; live catalog checked (cascade-delete risk, 779 works, genres empty, 22 "Prize winner" genres); tasks A/B/C written ...
+
+- 2026-11-01: orders 7+8: version `GreatReads 0.1.<build>.<sha>.<branch>` (bovci/jl2/main), `BUILD_NUMBER` counter, in Profile, Sync status, diagnostics.

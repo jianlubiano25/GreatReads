@@ -16,6 +16,8 @@ export interface SearchGenre {
   shelfId?: string;
   popular?: string;
   picks?: Array<[string, string]>;
+  /** Other words people type for this genre ("women in their 30s"); each opens the genre page with `query` */
+  aliases?: string[];
   subgenres: Array<{ label: string; query: string }>;
 }
 
@@ -31,7 +33,8 @@ export const SEARCH_GENRES: SearchGenre[] = [
     subgenres: [{ label: 'Psychological thriller', query: 'psychological thriller' }, { label: 'Legal thriller', query: 'legal thriller' }, { label: 'Spy', query: 'espionage' }, { label: 'Domestic suspense', query: 'domestic suspense' }] },
   { label: 'Romance', emoji: '💕', query: 'romance', kind: 'fiction', shelfId: 'romance',
     subgenres: [{ label: 'Contemporary romance', query: 'contemporary romance' }, { label: 'Historical romance', query: 'historical romance' }, { label: 'Romantic comedy', query: 'romantic comedy' }, { label: 'Fantasy romance', query: 'fantasy romance' }] },
-  { label: 'Women in their 30s', emoji: '👩', query: 'women in their thirties',
+  { label: 'Women in their 30s', emoji: '👩', query: "women's fiction",
+    aliases: ['women in their thirties', 'women in their 30s', 'women in their 40s', 'women in their forties', 'women in their twenties', 'women in their 20s', 'midlife women', 'books for women', 'women fiction', 'novels about women', 'books about women'],
     picks: [["Bridget Jones's Diary", 'Helen Fielding'], ['Eleanor Oliphant Is Completely Fine', 'Gail Honeyman'], ['Writers & Lovers', 'Lily King'], ['Such a Fun Age', 'Kiley Reid'], ['Beach Read', 'Emily Henry'], ['Lessons in Chemistry', 'Bonnie Garmus'], ['The Idea of You', 'Robinne Lee'], ['Crying in H Mart', 'Michelle Zauner'], ['Everything I Know About Love', 'Dolly Alderton'], ['Ghosts', 'Dolly Alderton']],
     subgenres: [{ label: 'Friendship', query: 'female friendship' }, { label: 'Career & ambition', query: 'career women fiction' }, { label: 'Starting over', query: 'starting over fiction' }, { label: 'Motherhood', query: 'motherhood' }, { label: 'Dating & love', query: 'dating and relationships' }] },
   { label: 'Historical Fiction', emoji: '🏰', query: 'historical fiction', kind: 'fiction', shelfId: 'historical',

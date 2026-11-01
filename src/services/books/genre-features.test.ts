@@ -121,3 +121,21 @@ test('a book filed under Sports, Computers or Games is non-fiction, so a Fantasy
   for (const g of ['Sports', 'Sports & Recreation', 'Computers', 'Games & Activities', 'Mathematics']) assert.equal(bookKind({ genre: g }), 'nonfiction', g);
   for (const g of ['Fantasy', 'Mystery', 'Fiction']) assert.equal(bookKind({ genre: g }), 'fiction', g);
 });
+
+test('typed audience phrases ("women in their thirties", "novels about women") open the Women in their 30s genre page', () => {
+  for (const q of ['women in their thirties', 'Women in their 30s', 'novels about women', 'midlife women']) {
+    const g = genreForQuery(q);
+    assert.equal(g?.genre.label, 'Women in their 30s', q);
+    assert.equal(g?.query, "women's fiction");
+  }
+});
+
+test('hidden gems: a genre with too few gems is widened with its sub-genre searches, never with the same book twice', async () => {
+  const { widenForGems } = await import('../store/genreRows');
+  const gem = (id: string) => book({ id, title: id, ratingAverage: 4.4, ratingCount: 300, coverUrl: 'https://x.test/c.jpg', ratingSource: 'openlibrary' });
+  const g = { label: 'Fantasy', emoji: '', query: 'fantasy', kind: 'fiction' as const, subgenres: [{ label: 'a', query: 'epic fantasy' }, { label: 'b', query: 'dark fantasy' }] };
+  const asked: string[] = [];
+  const out = await widenForGems(g as any, [gem('g0')], async q => { asked.push(q); return q === 'epic fantasy' ? [gem('g0'), ...Array.from({ length: 9 }, (_, i) => gem(`e${i}`))] : []; });
+  assert.equal(out.length, 10);
+  assert.deepEqual(asked, ['epic fantasy'], 'stops once enough gems');
+});

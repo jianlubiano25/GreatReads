@@ -78,6 +78,25 @@ const gemShelves = persistentCache<Book[]>('readlife.genregems1', { ttl: DAY, ma
 type PoolResult = { books: Book[]; failed: boolean };
 const inFlight = new Map<string, Promise<PoolResult>>();
 
+/**
+ * A genre's own search holds only ~40 books, so few of them can be gems (Fantasy showed 2-3). When too few qualify, the first sub-genres' searches
+ * (each a Keywords search of the same kind) are added to the pool, same books never twice. The gem rule itself stays the same; a failed extra search just adds nothing.
+ */
+export const GEMS_WANTED = 8;
+export async function widenForGems(g: SearchGenre, books: Book[], more: (query: string) => Promise<Book[]> = q => searchBooksLive(q, { scope: 'keywords', limit: 40, final: true, local: false })): Promise<Book[]> {
+  const rated = books.map(b => (externalRating(b) ? b : applyInfo(b)));
+  if (hiddenGems(rated, g.kind).length >= GEMS_WANTED) return books;
+  const seen = new Set(books.map(b => b.id));
+  const out = [...books];
+  for (const sub of g.subgenres.slice(0, 3)) {
+    try {
+      for (const b of await more(sub.query)) if (!seen.has(b.id)) { seen.add(b.id); out.push(b); }
+    } catch {}
+    if (hiddenGems(out.map(b => (externalRating(b) ? b : applyInfo(b))), g.kind).length >= GEMS_WANTED) break;
+  }
+  return out;
+}
+
 async function genrePool(g: SearchGenre): Promise<PoolResult> {
   const fresh = pools.get(g.query);
   if (fresh) return { books: fresh, failed: false };
@@ -98,7 +117,7 @@ async function genrePool(g: SearchGenre): Promise<PoolResult> {
         if (failed) return { books: stale && stale.length >= books.length ? stale : books, failed: true }; // not saved: a partial answer never replaces the last good list
         // An EMPTY answer (providers slow, timed out or rate-limited without saying so) is a failure, not a result: never save it, or the genre shows 0 results and no Hidden Gems for a whole day.
         if (!books.length) return { books: stale ?? [], failed: true };
-        const rated = await withFallbackRatings(books);
+        const rated = await withFallbackRatings(await widenForGems(g, books));
         pools.set(g.query, rated);
         void writeShared('genre_pool', g.query, rated); // admin devices only; a good list is shared for everyone
         return { books: rated, failed: false };
