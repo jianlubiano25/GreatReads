@@ -1,4 +1,4 @@
-import { PLACEHOLDER_STYLES } from '../services/books/placeholderCover';
+import { PLACEHOLDER_STYLES, coverBackdrop } from '../services/books/placeholderCover';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { displayBooks, refreshNames, subscribeNames } from '../services/books/englishTitle';
 import { mapPool } from '../services/books/http';
@@ -174,7 +174,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
                   type="button"
                   onClick={() => onOpen(books![i])}
                   className="book-cover-3d w-full h-[200px] sm:h-[222px] text-left p-3 flex flex-col justify-between text-white overflow-hidden"
-                  style={{ backgroundColor: b.spineColor || '#6b6f80' }}
+                  style={{ background: coverBackdrop(b) }}
                   aria-label={`${b.title} by ${b.author}`}
                 >
                   <CoverFace book={b} size="md" eager={!!priority && i < 4} />

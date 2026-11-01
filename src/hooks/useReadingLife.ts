@@ -20,7 +20,7 @@ import { stampDayEdit } from '../services/dailyPagesSync';
 import { withEdits, withWordsDeleted } from '../services/editTimes';
 
 // Small helper lists that are not persistentCache instances but can be rebuilt (never user data)
-export const EXTRA_CLEARABLE = ['readlife.preload', 'readlife.loaded', 'readlife.phoneticTried'];
+export const EXTRA_CLEARABLE = ['readlife.preload', 'readlife.preload2', 'readlife.loaded', 'readlife.phoneticTried'];
 
 const STORAGE_KEY = 'readlife.v2';
 const LEGACY_KEY = 'readlife.v1';

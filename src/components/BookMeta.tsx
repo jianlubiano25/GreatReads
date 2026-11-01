@@ -170,6 +170,7 @@ function PlaceholderCover({ book, size }: { book: Book; size: keyof typeof AUTHO
 // URLs that have already loaded once on this device. Used only to skip the fade-in for covers that appear instantly.
 // (Kept apart from 'readlife.preload', the short list index.html starts loading before the app code runs.)
 const LOADED_KEY = 'readlife.loaded';
+const STANDIN_GRACE_MS = 250;
 const loadedCovers = new Set<string>((() => {
   try {
     const saved = JSON.parse(localStorage.getItem(LOADED_KEY) || '[]');
@@ -183,15 +184,24 @@ let saveLoadedTimer: ReturnType<typeof setTimeout> | undefined;
 // Covers seen on this device (1000 most recent). A remembered cover loads eagerly and is decoded at once, so it is already there when it scrolls into view
 // instead of showing the stand-in for a moment.
 const saveLoadedNow = () => {
-  try { localStorage.setItem(LOADED_KEY, JSON.stringify(Array.from(loadedCovers).slice(-1000))); } catch {}
+  saveLoadedTimer = undefined;
+  try {
+    const all = Array.from(loadedCovers).slice(-1000);
+    localStorage.setItem(LOADED_KEY, JSON.stringify(all));
+    // The covers shown most recently (the Store's first screen, Discover, a genre page, search): index.html starts loading them before the app code runs, so on reopen they are in hand at once
+    localStorage.setItem('readlife.preload2', JSON.stringify(all.slice(-80)));
+  } catch {}
 };
 if (typeof window !== 'undefined') { // the list is written a moment after a burst of loads: also write it when the app is hidden or closed
   window.addEventListener('pagehide', saveLoadedNow);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveLoadedNow(); });
 }
 function recordLoadedCover(url: string) {
-  if (!url || loadedCovers.has(url)) return;
+  if (!url) return;
+  const had = loadedCovers.delete(url); // shown again: moves to the end, so the end of the list is what was on screen most recently
   loadedCovers.add(url);
+  if (had && !saveLoadedTimer) saveLoadedTimer = setTimeout(saveLoadedNow, 4000);
+  if (had) return;
   // Many covers load in a burst: write the list once, a moment later
   clearTimeout(saveLoadedTimer);
   saveLoadedTimer = setTimeout(saveLoadedNow, 1500);
@@ -313,8 +323,16 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
   const failed = cur.dead;
   const won = awardsFor(book).some(a => a.type === 'w');
   const wasKnown = url ? loadedCovers.has(url) : false; // seen before on this device: appears with no fade
-  const isEager = eager || size === 'lg' || size === 'xl' || (wasKnown && near); // a remembered cover near the screen is fetched and decoded now, not when it is already in view
+  const isEager = eager || size === 'lg' || size === 'xl' || wasKnown; // a remembered cover is asked for and decoded at once (a lazy <img> only starts after the first frame, which showed the stand-in on every reopen)
   const isReady = imgLoaded; // only a picture that really loaded replaces the stand-in (a remembered URL can still be slow or gone)
+  // A remembered cover that is on its way from the device (a few milliseconds) is waited for: the stand-in is drawn only if it has not come within STANDIN_GRACE_MS (the box behind it already has the stand-in's colour)
+  const [graceOver, setGraceOver] = useState(!wasKnown);
+  useEffect(() => {
+    if (!wasKnown) { setGraceOver(true); return; }
+    setGraceOver(false);
+    const t = setTimeout(() => setGraceOver(true), STANDIN_GRACE_MS);
+    return () => clearTimeout(t);
+  }, [src, wasKnown]);
 
   return (
     <>
@@ -344,7 +362,7 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
           onError={onErr}
         />
       ) : null}
-      {(!url || failed || !isReady) ? <PlaceholderCover book={book} size={size} /> : null}
+      {(!url || failed || (!isReady && graceOver)) ? <PlaceholderCover book={book} size={size} /> : null}
       {badge && won && size !== 'xs' ? (
         <span className="rl-prize" title="Prize winner" aria-label="Prize winner">🏆</span>
       ) : null}

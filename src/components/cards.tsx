@@ -5,6 +5,7 @@ import { BUILTIN_DICTIONARY } from '../data/defaultWords';
 import { speakWord } from '../services/dictionary';
 import { displayGenre } from '../services/books/catalogFill';
 import { CoverFace, RatingLine, AwardBadges } from './BookMeta';
+import { coverBackdrop } from '../services/books/placeholderCover';
 import { Ban, Bookmark, Check, Edit2, Library, Search, Trash2, Volume2 } from 'lucide-react';
 
 /*
@@ -113,7 +114,7 @@ export const NowReadingCard = React.memo(function NowReadingCard({
           type="button"
           onClick={() => onOpen(b)}
           className="book-cover-3d w-[124px] h-[186px] sm:w-[150px] sm:h-[225px] shrink-0 text-left p-3 flex flex-col justify-between text-white overflow-hidden shadow-lg"
-          style={{ backgroundColor: b.spineColor || accent }}
+          style={{ background: coverBackdrop(b) }}
           title="Tap to see author, year, pages & info"
           aria-label={`${b.title}: details`}
         >
@@ -240,7 +241,7 @@ export const UpNextCard = React.memo(function UpNextCard({
         type="button"
         onClick={() => onOpen(b)}
         className="book-cover-3d w-14 h-20 shrink-0 rounded text-[9px] p-1.5 text-white flex flex-col justify-between overflow-hidden shadow"
-        style={{ backgroundColor: b.spineColor || '#2e5934' }}
+        style={{ background: coverBackdrop(b) }}
         aria-label={`${b.title}: details`}
       >
         <CoverFace book={b} size="xs" />
@@ -279,7 +280,7 @@ function ShelfCardTop({ book: b, onOpen }: { book: Book; onOpen: (b: Book) => vo
           type="button"
           onClick={() => onOpen(b)}
           className="book-cover-3d w-[86px] h-[126px] sm:w-[94px] sm:h-[138px] shrink-0 text-left p-2.5 flex flex-col justify-between text-white overflow-hidden shadow-md"
-          style={{ backgroundColor: b.spineColor || '#2e5934' }}
+          style={{ background: coverBackdrop(b) }}
           title="Tap to see author, year & page info"
           aria-label={`${b.title}: details`}
         >

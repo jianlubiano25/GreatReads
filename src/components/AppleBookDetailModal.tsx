@@ -14,6 +14,7 @@ import { CoverFace, StarRating, compactCount, honorsListFor } from './BookMeta';
 import { X, BookOpen, Star, Award, ChevronDown, Check, Bookmark, Image as ImageIcon, RefreshCw, Code, Languages } from 'lucide-react';
 import { displayGenre } from '../services/books/catalogFill';
 import { ensureBookInfo, resetInfoWaits, type InfoField } from '../services/books/infoStore';
+import { coverBackdrop } from '../services/books/placeholderCover';
 
 // The cover viewer is only fetched the first time someone opens it
 const CoverPickerModal = lazy(() => import('./CoverPickerModal').then(m => ({ default: m.CoverPickerModal })));
@@ -207,7 +208,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           <div className="relative shrink-0">
             <div
               className="book-cover-modal-3d w-[150px] h-[222px] sm:w-[170px] sm:h-[250px] flex flex-col justify-between p-4 text-white overflow-hidden relative shadow-lg"
-              style={{ backgroundColor: book.spineColor || shelfInfo.color }}
+              style={{ background: coverBackdrop(book) }}
             >
               <CoverFace book={book} size="xl" imgSize="M" badge={false} eager={true} />
             </div>

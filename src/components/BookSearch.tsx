@@ -10,6 +10,7 @@ import { SEARCH_KIND_LABEL, SEARCH_LENGTH_LABEL } from '../services/books/search
 import { ClearButton } from './ClearButton';
 import { ViewMoreBar } from './ViewMoreBar';
 import { CoverFace } from './BookMeta';
+import { coverBackdrop } from '../services/books/placeholderCover';
 
 /** Search shows 20 results (rows of three) at first; "View more" adds 20 more, "View all" shows everything loaded, "Load more results" asks the catalog for its next batch. */
 const SEARCH_STEP = 20;
@@ -278,7 +279,7 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
                       type="button"
                       onClick={() => openResult(b)}
                       className="book-cover-3d w-full aspect-[2/3] rounded-md text-left p-2 flex flex-col justify-between text-white overflow-hidden"
-                      style={{ backgroundColor: b.spineColor || '#2e5934' }}
+                      style={{ background: coverBackdrop(b) }}
                     >
                       <CoverFace book={b} size="md" imgSize={coverSize} eager />
                     </button>
