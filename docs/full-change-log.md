@@ -4,6 +4,7 @@ Moved out of HANDOFF.md / docs/handoff-reference.md on 2026-11-01 in one batch, 
 
 ## From HANDOFF.md (2026-10-29 to 2026-11-01)
 
+- 2026-11-01: order 3: Hidden gems rating fallback (saved ratings, then Open Library, max 10 per list). Order 2: refresh keeps last-good genre lists/searches (expired, not wiped).
 - 2026-11-01: order 1: Open Library gate (3 in flight, typed search first, back-off after 3 slow/timeouts).
 - 2026-10-31: `readlife.searchlast1` last good search answer + search trace in diagnostics; covers memory 1000, eager decode.
 - 2026-11-01: **`discovery_cache` migration APPLIED to production (owner "Go")** as `discovery_cache` (same SQL as `supabase/migrations/20261101000001_discovery_cache.sql`; first try timed out unanswered, nothing changed, second applied). Read-back: table exists, RLS on, 2 policies (admins write, anyone reads live rows), 1 trigger, 0 rows; security advisor shows only the old leaked-password warning. Table fills when an admin device loads a genre or searches (`writeShared`). Rollback: `supabase/rollbacks/20261101000001_discovery_cache.rollback.sql`. Device log 2026-11-01 (build 0.1.2.a1ddaa4.bovci): searches 1.0-1.8 s, Open Library 52 requests/23 s, first Store shelf 11 s; Google key quota still empty (first request 429, gate then refused 249): owner to check Google Cloud quota or use the server key.
