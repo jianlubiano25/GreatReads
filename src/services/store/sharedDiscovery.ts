@@ -20,6 +20,16 @@ export const SHARED_MAX = 40;
 /** One book as stored: short keys keep a row at a few KB. */
 export interface SlimBook { i: string | number; t: string; a: string; y?: string; g?: string; id?: BookIdentity; c?: string; ci?: number; ra?: number; rc?: number; rs?: 'openlibrary' | 'apple' }
 
+/** The version of the stored shape. Rows written by an older version (v1 dropped every Open Library rating, so Hidden Gems found none) are never read: they have another key. */
+export const SHARED_VERSION = 'v2';
+const versioned = (key: string) => `${SHARED_VERSION}|${key}`;
+
+/** Which site a book's rating came from. Open Library search hits carry no `ratingSource` (only `source: 'openlibrary'` and an `ol_` id), so it is worked out here. Google's and the library's are never shared. */
+function ratingSiteOf(b: Book): 'openlibrary' | 'apple' | undefined {
+  const s = b.ratingSource ?? (b.source === 'openlibrary' || b.source === 'apple' ? b.source : typeof b.id === 'string' && b.id.startsWith('ol_') ? 'openlibrary' : typeof b.id === 'string' && b.id.startsWith('apple_') ? 'apple' : undefined);
+  return s === 'openlibrary' || s === 'apple' ? s : undefined;
+}
+
 const isGoogleUrl = (u?: string) => !!u && /(^|\.)(google|googleapis|googleusercontent|gstatic)\.com\//i.test(u.replace(/^https?:\/\//i, ''));
 
 export function slimBooks(books: readonly Book[]): SlimBook[] {
@@ -27,14 +37,15 @@ export function slimBooks(books: readonly Book[]): SlimBook[] {
   for (const b of books.slice(0, SHARED_MAX)) {
     if (!b?.title) continue;
     const identity: BookIdentity | undefined = b.identity ? { olWork: b.identity.olWork, olEdition: b.identity.olEdition, isbn13: b.identity.isbn13, isbn10: b.identity.isbn10 } : undefined; // never the Google volume id
-    const okRating = (b.ratingSource === 'openlibrary' || b.ratingSource === 'apple') && Number(b.ratingAverage) > 0 && Number(b.ratingCount) > 0;
+    const site = ratingSiteOf(b);
+    const okRating = !!site && Number(b.ratingAverage) > 0 && Number(b.ratingCount) > 0;
     const s: SlimBook = { i: b.id, t: b.title, a: b.author };
     if (b.year) s.y = b.year;
     if (b.genre && b.genre !== 'Book') s.g = b.genre;
     if (identity && Object.values(identity).some(Boolean)) s.id = Object.fromEntries(Object.entries(identity).filter(([, v]) => v)) as BookIdentity;
     if (b.coverUrl && !isGoogleUrl(b.coverUrl)) s.c = b.coverUrl;
     if (Number.isInteger(b.coverId) && Number(b.coverId) > 0) s.ci = b.coverId;
-    if (okRating) { s.ra = Number(b.ratingAverage); s.rc = Number(b.ratingCount); s.rs = b.ratingSource as 'openlibrary' | 'apple'; }
+    if (okRating) { s.ra = Number(b.ratingAverage); s.rc = Number(b.ratingCount); s.rs = site; }
     out.push(s);
   }
   return out;
@@ -71,7 +82,7 @@ const enc = encodeURIComponent;
 export async function readShared(kind: SharedKind, key: string, deps: SharedDeps = real): Promise<Book[] | null> {
   if (deps === real && typeof window === 'undefined') return null; // scripts and tests never call Supabase from here
   if (deps.now() < offUntil) return null;
-  const r = await deps.rest<{ payload: unknown }[]>(`discovery_cache?kind=eq.${kind}&cache_key=eq.${enc(key)}&select=payload&limit=1`);
+  const r = await deps.rest<{ payload: unknown }[]>(`discovery_cache?kind=eq.${kind}&cache_key=eq.${enc(versioned(key))}&select=payload&limit=1`);
   if (!r.ok) { if (r.status === 404 || r.status === 400 || r.status === 0 || r.status >= 500) offUntil = deps.now() + OFF_MS; bump('shared.readFailed'); return null; }
   const books = hydrateBooks(r.data?.[0]?.payload);
   if (books.length < SHARED_MIN) { bump('shared.miss'); return null; }
@@ -85,12 +96,12 @@ export async function writeShared(kind: SharedKind, key: string, books: readonly
   if (!deps.isAdmin() || deps.now() < offUntil) return false;
   const slim = slimBooks(books);
   if (slim.length < SHARED_MIN) return false; // never an empty or thin list
-  const existing = await deps.rest<{ item_count: number }[]>(`discovery_cache?kind=eq.${kind}&cache_key=eq.${enc(key)}&select=item_count&limit=1`);
+  const existing = await deps.rest<{ item_count: number }[]>(`discovery_cache?kind=eq.${kind}&cache_key=eq.${enc(versioned(key))}&select=item_count&limit=1`);
   if (!existing.ok) { if ([0, 400, 404].includes(existing.status) || existing.status >= 500) offUntil = deps.now() + OFF_MS; return false; }
   const had = existing.data?.[0]?.item_count ?? 0;
   if (had && slim.length * 2 < had) return false; // never a much thinner list over a fuller one
   const at = new Date(deps.now()).toISOString();
-  const body = { kind, cache_key: key, payload: slim, fetched_at: at, expires_at: new Date(deps.now() + 24 * 60 * 60 * 1000).toISOString() };
+  const body = { kind, cache_key: versioned(key), payload: slim, fetched_at: at, expires_at: new Date(deps.now() + 24 * 60 * 60 * 1000).toISOString() };
   const w = await deps.rest(`discovery_cache?on_conflict=kind,cache_key`, { method: 'POST', body, prefer: 'resolution=merge-duplicates,return=minimal' });
   if (!w.ok) { bump('shared.writeFailed'); return false; }
   bump('shared.written');

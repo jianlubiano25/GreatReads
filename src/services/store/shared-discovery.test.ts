@@ -23,13 +23,32 @@ test('the slim list keeps public book facts only: no Google rating, cover, volum
   assert.equal(hydrateBooks([o])[0].ratingAverage, 4.5);
 });
 
+test('Open Library hits (no ratingSource, only source + ol_ id) keep their rating in the shared list: Hidden Gems needs it', () => {
+  const ol = book('Gem', { id: 'ol__works_OL9W', source: 'openlibrary', ratingAverage: 4.4, ratingCount: 250 });
+  const [s] = slimBooks([ol]);
+  assert.deepEqual([s.ra, s.rc, s.rs], [4.4, 250, 'openlibrary']);
+  const [h] = hydrateBooks([s]);
+  assert.deepEqual([h.ratingAverage, h.ratingCount, h.ratingSource], [4.4, 250, 'openlibrary']);
+  const [g] = slimBooks([book('G', { id: 'gb1', source: 'google', ratingAverage: 4.4, ratingCount: 250 })]);
+  assert.equal(g.ra, undefined, 'Google ratings are still never shared');
+});
+
+test('shared rows are versioned: a row of the old shape (key without v2|) is never read or replaced', async () => {
+  resetSharedDiscoveryForTests();
+  const ok = fake(true, p => (p.includes('select=item_count') ? { ok: true, data: [] } : { ok: true, data: [{ payload: slimBooks([book('A'), book('B'), book('C')]) }] }));
+  await readShared('genre_pool', 'fantasy', ok.deps);
+  assert.match(ok.calls[0].path, /cache_key=eq\.v2%7Cfantasy/);
+  await writeShared('genre_pool', 'fantasy', [book('A'), book('B'), book('C')], ok.deps);
+  assert.equal(ok.calls.find(c => c.init?.method === 'POST')!.init.body.cache_key, 'v2|fantasy');
+});
+
 test('read: a live row becomes books; a missing table is noticed once and not asked again for a while', async () => {
   resetSharedDiscoveryForTests();
   const rows = [book('A'), book('B'), book('C')];
   const ok = fake(false, () => ({ ok: true, data: [{ payload: slimBooks(rows) }] }));
   const got = await readShared('genre_pool', 'fantasy', ok.deps);
   assert.deepEqual(got?.map(b => b.title), ['A', 'B', 'C']);
-  assert.match(ok.calls[0].path, /^discovery_cache\?kind=eq\.genre_pool&cache_key=eq\.fantasy/);
+  assert.match(ok.calls[0].path, /^discovery_cache\?kind=eq\.genre_pool&cache_key=eq\.v2%7Cfantasy/);
 
   const missing = fake(false, () => ({ ok: false, status: 404, error: 'relation does not exist' }));
   assert.equal(await readShared('genre_pool', 'x', missing.deps), null);

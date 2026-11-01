@@ -4,6 +4,7 @@ Moved out of HANDOFF.md / docs/handoff-reference.md on 2026-11-01 in one batch, 
 
 ## From HANDOFF.md (2026-10-29 to 2026-11-01)
 
+- 2026-11-01: order 4: one Apple-style placeholder; removed the cover fade that showed grey; Store skeleton uses the same colours.
 - 2026-11-01: order 3: Hidden gems rating fallback (saved ratings, then Open Library, max 10 per list). Order 2: refresh keeps last-good genre lists/searches (expired, not wiped).
 - 2026-11-01: order 1: Open Library gate (3 in flight, typed search first, back-off after 3 slow/timeouts).
 - 2026-10-31: `readlife.searchlast1` last good search answer + search trace in diagnostics; covers memory 1000, eager decode.

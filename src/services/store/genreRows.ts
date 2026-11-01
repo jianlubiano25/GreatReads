@@ -89,7 +89,8 @@ async function genrePool(g: SearchGenre): Promise<PoolResult> {
       try {
         // The shared list (Supabase) comes before the slow public sites; it does nothing until the table exists (migration not applied yet)
         const shared = await readShared('genre_pool', g.query);
-        if (shared?.length) { pools.set(g.query, shared); return { books: shared, failed: false }; }
+        // A shared list with no rating at all is not trusted (Hidden Gems could never use it): it is asked for live instead
+        if (shared?.some(b => externalRating(b))) { pools.set(g.query, shared); return { books: shared, failed: false }; }
         const books = await searchBooksLive(g.query, {
           scope: 'keywords', limit: 40, final: true, local: false,
           onUpdate: (_books, state) => { if (state.done) failed = !!state.failedSources?.length; },
