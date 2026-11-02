@@ -414,7 +414,7 @@ const oprahProblem = (status: number, failure?: string) =>
 
 /* ------------------------------ source: Open Library discovery ------------------------------ */
 
-const JUNK = /\b(box(ed)? set|collection|omnibus|study guide|summary of|summary &|workbook|analysis of|sparknotes|cliffsnotes|bundle|\d+ books?)\b/i;
+const JUNK = /\b(box(ed)? set|collection|omnibus|study guide|summary of|summary &|workbook|analysis of|sparknotes|cliffsnotes|bundle|\d+ books?|educart|cbse|icse|ncert|isc|class (?:\d+|x|xi|xii)|grade \d+|sample papers?|question banks?|previous years?|mock tests?|exam(?:s|ination)?|jee|neet|mcqs?|syllabus|olympiad|board exams?|textbook|guide for|worksheets?|coloring book|activity book)\b/i;
 
 /**
  * Pick a shelf from Open Library search hits. The hits arrive in the order OL's own reader-activity sort gave them; that order
@@ -453,7 +453,7 @@ const withStaples = (found: Seed[], base: CuratedShelf, keep: number, size = 12)
   return [...head.slice(0, size - staples.length), ...staples];
 };
 
-interface Discovery { query: (year: number) => string; keep?: number; yearsBack?: number }
+interface Discovery { query: (year: number) => string; keep?: number; yearsBack?: number; minRatings?: number }
 
 const olSpec = (d: Discovery): DynamicSpec => ({
   source: 'Open Library search (reader activity, ratings), recent books',
@@ -469,7 +469,7 @@ const olSpec = (d: Discovery): DynamicSpec => ({
     let hits = await searchOpenLibrary({ q, sort: 'want_to_read' }, 40, slow);
     if (!hits.length && !signal?.aborted) hits = await searchOpenLibrary({ q }, 40, slow);
     const keep = d.keep ?? 0;
-    const found = rankDiscovery(hits, { year, limit: 12 - keep });
+    const found = rankDiscovery(hits, { year, limit: 12 - keep, minRatings: d.minRatings });
     return found.length ? { seeds: keep ? withStaples(found, base, keep) : found } : null;
   },
 });
@@ -603,7 +603,7 @@ const prize = (): Pick<ColumnRule, 'title' | 'author' | 'when'> => ({ title: /^(
 
 export const DYNAMIC_SPECS: Record<string, DynamicSpec> = {
   // Newest books of the year, by reader interest. Heading follows the calendar year.
-  new2026: { ...olSpec({ query: y => `language:eng AND first_publish_year:${y}` }), title: now => `New in ${now.getFullYear()}`, refreshMs: 7 * DAY },
+  new2026: { ...olSpec({ query: y => `language:eng AND first_publish_year:${y}`, minRatings: 15 }), title: now => `New in ${now.getFullYear()}`, refreshMs: 7 * DAY },
 
   // Published picks, from Wikipedia's lists (see wikiLists.ts). The shelf's labels show each pick's own date.
   // Oprah Daily's own list for the newest picks, Wikipedia's 2.0 table for the dates (and as the fallback): see oprahSpec
