@@ -69,3 +69,5 @@ Moved out of HANDOFF.md / docs/handoff-reference.md on 2026-11-01 in one batch, 
 - 2026-11-02: B7 part 1: the published-catalog copy (`readlife.catalog1`, 1.31 MB = 49% of the 2.70 MB saved-data budget) moved to IndexedDB (`catalogCovers.ts`, `durableCopy.ts` big* helpers, loaded before the first frame in `main.tsx`, an old localStorage copy moved once, a clear reaches it via `registerClearHook`); falls back to localStorage without IndexedDB. Test `catalog-copy-idb.test.ts`. Not device-tested.
 
 - 2026-11-02: C6+C7: typed "women in their thirties/30s/40s", "novels about women" open the Women's fiction genre page (new `aliases` on SearchGenre); a genre with <8 Hidden Gems adds its first 3 sub-genre searches to the pool (`widenForGems`); BUILD_NUMBER 10.
+
+- 2026-11-02: owner log (build 10): Open Library timed out on every request (33 of 33, 6.5 s each) so Fantasy gems/search had nothing; covers: a slow preferred cover now shows the cover-picker's found cover underneath until it loads (`BookMeta` SLOW_COVER_MS 1200); BUILD_NUMBER 11.
