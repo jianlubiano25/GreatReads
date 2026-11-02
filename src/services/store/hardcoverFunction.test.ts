@@ -49,7 +49,7 @@ test('Hardcover function: a rejected token, a rate limit and a GraphQL error eac
 });
 
 test('shapeBook leaves out a rating without a count and non-https covers', () => {
-  const b = shapeBook({ id: 3, title: 'X', rating: 4.5, ratings_count: 0, cached_image: { url: 'http://x/y.jpg' } });
+  const b: any = shapeBook({ id: 3, title: 'X', rating: 4.5, ratings_count: 0, cached_image: { url: 'http://x/y.jpg' } });
   assert.equal(b.rating, undefined);
   assert.equal(b.cover, undefined);
 });
