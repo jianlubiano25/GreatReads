@@ -1,3 +1,4 @@
+import { useAdminUi } from '../services/adminUi';
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { isFrontCoverShape } from '../services/books/placeholderCover';
 import { ChevronLeft, ChevronRight, Star, X } from 'lucide-react';
@@ -71,7 +72,7 @@ export function CoverPickerModal({ book, onClose }: Props) {
   const [loading, setLoading] = useState(true);
   const [bad, setBad] = useState<Record<string, true>>({});
   useSyncExternalStore(subscribeAuth, authVersion, authVersion);
-  const owner = !!currentUser() && isAdminKnown() === true;
+  const owner = useAdminUi();
   // covers the owner already rejected for this book never show up again in the viewer
   useEffect(() => {
     if (!owner) return;

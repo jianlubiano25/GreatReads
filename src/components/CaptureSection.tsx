@@ -1,3 +1,4 @@
+import { useAdminUi } from '../services/adminUi';
 import React, { useState, useSyncExternalStore } from 'react';
 import type { Book } from '../types';
 import { backfillNow } from '../services/captureDevice';
@@ -15,7 +16,8 @@ export const CaptureSection: React.FC<{ books: Book[]; onOpenReview?: () => void
   const st = useSyncExternalStore(subscribeCapture, captureStatus, captureStatus);
   const [wanted, setWanted] = useState(captureWanted);
   const [pub, setPub] = useState(autoPublishWanted);
-  if (!currentUser() || isAdminKnown() !== true) return null;
+  const adminUi = useAdminUi();
+  if (!adminUi) return null;
   const active = captureOn();
   return (
     <div className="pt-3 border-t border-[#e3d7c3] dark:border-[#382f25] space-y-2">

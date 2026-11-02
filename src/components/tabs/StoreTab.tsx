@@ -11,6 +11,7 @@ import { BookSearch } from '../BookSearch';
 import { StoreShelf } from '../StoreShelf';
 import { StoreCustomize } from '../StoreCustomize';
 import { useRefreshAll } from '../../services/store/refreshAll';
+import { useFillState } from '../../services/store/fillGenres';
 import { StoreNav } from '../StoreNav';
 import { TabPane } from './TabPane';
 
@@ -44,6 +45,7 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
   const reorderShelves = useCallback((order: string[]) => updateStorePrefs({ ...storePrefs, order }), [storePrefs, updateStorePrefs]);
 
   useEffect(() => { milestone('store-mounted'); }, []); // measurement only
+  const fill = useFillState();
   const refreshAll = useRefreshAll(); // "Refresh all shelves" keeps running after Customize Shelves is closed; its progress shows here
 
   // The search box is the same one the Search tab has (components/BookSearch.tsx); this tab only keeps what is typed
@@ -81,6 +83,15 @@ export function StoreTab({ active, allBooks, customizing, setCustomizing, handle
             </p>
           ) : refreshAll.noteFresh && refreshAll.note ? (
             <p className="text-xs text-[#2e5934] dark:text-[#86b880]" role="status">{refreshAll.note}</p>
+          ) : null}
+
+          {fill.running ? (
+            <p className="text-xs text-[#2e5934] dark:text-[#86b880] flex items-center gap-1.5" role="status" aria-live="polite">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+              Filling shared lists {Math.min(fill.done + 1, fill.total)} of {fill.total}: {fill.current}…
+            </p>
+          ) : fill.noteFresh && fill.note ? (
+            <p className="text-xs text-[#2e5934] dark:text-[#86b880]" role="status">{fill.note}</p>
           ) : null}
 
           <BookSearch active={active} known={known} query={query} setQuery={setQuery} scope={scope} setScope={setScope} handleOpenCover={handleOpenCover} backLabel="Back to the Store" />

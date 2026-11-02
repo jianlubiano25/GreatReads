@@ -1,3 +1,4 @@
+import { useAdminUi } from '../services/adminUi';
 import { moreLikeThis } from '../services/books/genreRank';
 import React, { Suspense, lazy, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
@@ -74,7 +75,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [showCovers, setShowCovers] = useState(false);
   useSyncExternalStore(subscribeAuth, authVersion, authVersion);
-  const isOwner = !!currentUser() && isAdminKnown() === true;
+  const isOwner = useAdminUi();
   const alts = isOwner ? nameAlternates(book) : { titles: [], authors: [] };
   const picked = nameChoiceOf(book);
   const [catalogNote, setCatalogNote] = useState('');
