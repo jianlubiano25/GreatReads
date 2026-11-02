@@ -458,7 +458,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           )}
 
           {devMode && <GoogleKeyPanel />}
-          {devMode && <AdminFillGenres />}
+          <AdminFillGenres />
 
           {/* Backup & Netlify / Multi-device Sync */}
           <div className="pt-3 border-t border-[#e3d7c3] dark:border-[#382f25]">

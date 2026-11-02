@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useSyncExternalStore } from 'react';
+import { authVersion, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
 import { SEARCH_GENRES } from '../data/searchGenres';
 import { fillSharedGenre, type FillResult } from '../services/store/genreRows';
 
 /** Admin only: loads every search genre that the shared table does not hold yet, one at a time (the sites are slow), and writes it for every reader. */
 export const AdminFillGenres: React.FC = () => {
+  useSyncExternalStore(subscribeAuth, authVersion, authVersion);
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState('');
   const run = async () => {
@@ -22,6 +24,7 @@ export const AdminFillGenres: React.FC = () => {
     setLine(`Done: ${counts.filled} added, ${counts.already} already there, ${counts.failed} failed${failed.length ? ` (${failed.join(', ')})` : ''}${counts['not-admin'] ? '. This device is not an admin, nothing was written' : ''}.`);
     setBusy(false);
   };
+  if (!currentUser() || isAdminKnown() !== true) return null;
   return (
     <div className="pt-3 border-t border-[#e3d7c3] dark:border-[#382f25]">
       <button onClick={run} disabled={busy} className="text-xs font-semibold px-3 py-2 rounded-lg bg-[#2a2118] text-white disabled:opacity-50">{busy ? 'Filling…' : 'Fill shared genre lists'}</button>
