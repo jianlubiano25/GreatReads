@@ -71,3 +71,5 @@ Moved out of HANDOFF.md / docs/handoff-reference.md on 2026-11-01 in one batch, 
 - 2026-11-02: C6+C7: typed "women in their thirties/30s/40s", "novels about women" open the Women's fiction genre page (new `aliases` on SearchGenre); a genre with <8 Hidden Gems adds its first 3 sub-genre searches to the pool (`widenForGems`); BUILD_NUMBER 10.
 
 - 2026-11-02: owner log (build 10): Open Library timed out on every request (33 of 33, 6.5 s each) so Fantasy gems/search had nothing; covers: a slow preferred cover now shows the cover-picker's found cover underneath until it loads (`BookMeta` SLOW_COVER_MS 1200); BUILD_NUMBER 11.
+
+- 2026-11-02: owner log (build 11, 50 min open): checked `discovery_cache` (22 live v2 genre pools, 0 search rows); added tasks C8-C10, A8, B8 and `docs/provider-options.md`; CURRENT GROUP is now C; BUILD_NUMBER 12 (docs only).

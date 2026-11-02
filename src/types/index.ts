@@ -25,7 +25,7 @@ export interface Book {
   /** Place in a popularity-sorted catalog list (0 = most read): set by a genre search, never saved with your data */
   popularRank?: number;
   /** Which site ratingAverage + ratingCount came from (the two always come from the same one). Older saved books have none; it is then worked out when needed. */
-  ratingSource?: 'openlibrary' | 'google' | 'apple' | 'library';
+  ratingSource?: 'openlibrary' | 'google' | 'apple' | 'hardcover' | 'library';
   spineColor?: string;
   /** The title the book was saved under when GreatReads replaced it with its English one ("変な絵" -> "Strange Pictures"): kept so the original still finds it in a search. */
   originalTitle?: string;

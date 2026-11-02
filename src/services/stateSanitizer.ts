@@ -212,7 +212,7 @@ export function sanitizeIdentity(raw: unknown, legacyCanon?: unknown): BookIdent
   return Object.keys(out).length ? out : undefined;
 }
 
-const VALID_RATING_SOURCES = ['openlibrary', 'google', 'apple', 'library'] as const;
+const VALID_RATING_SOURCES = ['openlibrary', 'google', 'apple', 'hardcover', 'library'] as const;
 
 export function sanitizeCustomBooks(raw: unknown): Book[] {
   if (!Array.isArray(raw)) return [];

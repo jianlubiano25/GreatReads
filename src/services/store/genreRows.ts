@@ -6,6 +6,7 @@ import { shrunkRating } from '../books/model';
 import { applyInfo } from '../books/infoStore';
 import { externalRating, setRating } from '../books/ratings';
 import { openLibraryRatings } from '../books/sources/openLibrary';
+import { hardcoverRating } from '../books/sources/hardcover';
 import { readShared, writeShared } from './sharedDiscovery';
 import { fillMissingCovers } from '../books/covers';
 import { kindAdjust } from '../books/genreRank';
@@ -59,12 +60,23 @@ export function hiddenGems(pool: readonly Book[], kind: SearchGenre['kind']): Bo
  * Only real pairs are used (average 1-5 with a count); nothing is made up, and Google being down never empties the row on its own.
  */
 const ENRICH_MAX = 10;
-export async function withFallbackRatings(books: Book[], ask: (olWork: string) => Promise<{ average: number; count: number } | null> = id => openLibraryRatings(id), max = ENRICH_MAX): Promise<Book[]> {
+export async function withFallbackRatings(
+  books: Book[],
+  ask: (olWork: string) => Promise<{ average: number; count: number } | null> = id => openLibraryRatings(id),
+  max = ENRICH_MAX,
+  askHardcover: (title: string, author: string) => Promise<{ average: number; count: number } | null> = (t, a) => hardcoverRating(t, a),
+): Promise<Book[]> {
   const out = books.map(b => (externalRating(b) ? b : applyInfo(b)));
-  const need = out.map((b, i) => ({ b, i })).filter(x => !externalRating(x.b) && x.b.identity?.olWork).slice(0, max);
+  // Hardcover first (one call by title + author, through our server), then the work's own Open Library rating
+  const need = out.map((b, i) => ({ b, i })).filter(x => !externalRating(x.b) && (x.b.identity?.olWork || x.b.title)).slice(0, max);
   await Promise.all(need.map(async ({ b, i }) => {
     try {
-      const r = await ask(b.identity!.olWork!);
+      const hc = await askHardcover(b.title, b.author);
+      if (hc && hc.count > 0 && hc.average >= 1) { out[i] = setRating(b, { average: hc.average, count: hc.count, source: 'hardcover' }); return; }
+    } catch {}
+    try {
+      if (!b.identity?.olWork) return;
+      const r = await ask(b.identity.olWork);
       if (r && r.count > 0 && r.average >= 1) out[i] = setRating(b, { average: r.average, count: r.count, source: 'openlibrary' });
     } catch {}
   }));

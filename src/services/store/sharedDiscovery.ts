@@ -18,16 +18,16 @@ export const SHARED_MIN = 3;
 export const SHARED_MAX = 40;
 
 /** One book as stored: short keys keep a row at a few KB. */
-export interface SlimBook { i: string | number; t: string; a: string; y?: string; g?: string; id?: BookIdentity; c?: string; ci?: number; ra?: number; rc?: number; rs?: 'openlibrary' | 'apple' }
+export interface SlimBook { i: string | number; t: string; a: string; y?: string; g?: string; id?: BookIdentity; c?: string; ci?: number; ra?: number; rc?: number; rs?: 'openlibrary' | 'apple' | 'hardcover' }
 
 /** The version of the stored shape. Rows written by an older version (v1 dropped every Open Library rating, so Hidden Gems found none) are never read: they have another key. */
 export const SHARED_VERSION = 'v2';
 const versioned = (key: string) => `${SHARED_VERSION}|${key}`;
 
 /** Which site a book's rating came from. Open Library search hits carry no `ratingSource` (only `source: 'openlibrary'` and an `ol_` id), so it is worked out here. Google's and the library's are never shared. */
-function ratingSiteOf(b: Book): 'openlibrary' | 'apple' | undefined {
+function ratingSiteOf(b: Book): 'openlibrary' | 'apple' | 'hardcover' | undefined {
   const s = b.ratingSource ?? (b.source === 'openlibrary' || b.source === 'apple' ? b.source : typeof b.id === 'string' && b.id.startsWith('ol_') ? 'openlibrary' : typeof b.id === 'string' && b.id.startsWith('apple_') ? 'apple' : undefined);
-  return s === 'openlibrary' || s === 'apple' ? s : undefined;
+  return s === 'openlibrary' || s === 'apple' || s === 'hardcover' ? s : undefined;
 }
 
 const isGoogleUrl = (u?: string) => !!u && /(^|\.)(google|googleapis|googleusercontent|gstatic)\.com\//i.test(u.replace(/^https?:\/\//i, ''));
