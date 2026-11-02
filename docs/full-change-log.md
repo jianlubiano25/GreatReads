@@ -55,3 +55,5 @@ Moved out of HANDOFF.md / docs/handoff-reference.md on 2026-11-01 in one batch, 
 - 2026-11-01: orders 7+8: version `GreatReads 0.1.<build>.<sha>.<branch>` (bovci/jl2/main), `BUILD_NUMBER` counter, in Profile, Sync status, diagnostics.
 
 - 2026-11-01: order 6: shared discovery cache code (`store/sharedDiscovery.ts`: slim books, no Google data, admin writes, never empty/thinner, skipped if table missing).
+
+- 2026-11-01: `discovery_cache` migration APPLIED (owner Go; RLS on, admin write, 0 rows); rollback `supabase/rollbacks/20261101000001_discovery_cache.rollback.sql`. Device log: searches 1.0-1.8 s, Open Library 52 req/23 s, first shelf 11 s, Google key quota empty.
