@@ -6,7 +6,7 @@ import { externalRating, isNytCoverUrl, ratingOf, starFills } from '../services/
 import { infoKey, infoVersion, shownRating, subscribeInfo } from '../services/books/infoStore';
 import { placeholderStyleFor, titleSizeCqw, isFrontCoverShape } from '../services/books/placeholderCover';
 import { inspectCover } from '../services/books/covers';
-import { coverKey, sizedCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, isCoverSettled, markCoverSettled, reportMissingCover, clearMissingCover, knownCover, markCoverPickFailed, peekCoverCandidate } from '../services/books';
+import { coverKey, sizedCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, isCoverSettled, markCoverSettled, reportMissingCover, clearMissingCover, knownCover, markCoverPickFailed, peekCoverCandidate, loadCoverCandidates, rankCandidates } from '../services/books';
 
 export type AwardKind = 'w' | 's' | 'c'; // winner, shortlist, other pick (book club, series...)
 
@@ -337,18 +337,30 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
     return () => clearTimeout(t);
   }, [src, wasKnown]);
 
-  // The preferred cover is slow (or stuck) but the cover picker already found another picture for this book: show that one underneath until the preferred one has loaded, then it takes over
+  // The preferred cover is slow (or stuck): after SLOW_COVER_MS the quickest other picture is shown underneath (a cover the picker already found, else a fast Apple/Google/Open Library lookup, Apple first),
+  // and the preferred one takes over the moment it has loaded. A starred / picked cover is never replaced: it is the preferred one.
   const [slow, setSlow] = useState(false);
   const [fbLoaded, setFbLoaded] = useState(false);
+  const [fbFound, setFbFound] = useState('');
   useEffect(() => {
-    setSlow(false); setFbLoaded(false);
+    setSlow(false); setFbLoaded(false); setFbFound('');
     if (!url || failed || known.from !== 'own' || cur.alt) return;
     const t = setTimeout(() => setSlow(true), SLOW_COVER_MS);
     return () => clearTimeout(t);
   }, [url, failed, known.from, cur.alt]);
+  useEffect(() => {
+    if (!slow || imgLoaded || failed || known.from !== 'own' || peekCoverCandidate(book)) return;
+    const ac = new AbortController();
+    void loadCoverCandidates(book, list => {
+      if (ac.signal.aborted) return;
+      const first = rankCandidates(list).find(c => !c.foreign);
+      if (first) setFbFound(first.source === 'openlibrary' ? first.url.replace(/-L\.jpg/, '-M.jpg') : first.url);
+    }, ac.signal, { fast: true }).catch(() => []);
+    return () => ac.abort();
+  }, [slow, imgLoaded, failed, known.from, book.title, book.author]);
   const fallbackUrl = (() => {
     if (!slow || isReady || failed || known.from !== 'own') return '';
-    const k = peekCoverCandidate(book);
+    const k = peekCoverCandidate(book) || fbFound;
     if (!k) return '';
     const u = sizedCoverUrl(k, imgSize);
     return u && u !== url ? u : '';
