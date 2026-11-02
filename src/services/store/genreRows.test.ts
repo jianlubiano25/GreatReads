@@ -102,3 +102,12 @@ test('fillSharedGenre: skips a stored genre, retries a failed search, accepts a 
   assert.equal(await fillSharedGenre(g, { ...base, read: async () => null, search: async () => ({ books: mk(40, false), failed: false }) }), 'failed', 'no ratings at all: not written');
   assert.deepEqual(wrote, ['xq']);
 });
+
+test('withFallbackRatings: the number of Open Library lookups can be raised (gems rate more of a thin pool)', async () => {
+  const { withFallbackRatings } = await import('./genreRows');
+  const books = Array.from({ length: 30 }, (_, i) => ({ id: `w${i}`, title: `W${i}`, author: 'A', identity: { olWork: `OL${i}W` } }) as any);
+  let asked = 0;
+  const out = await withFallbackRatings(books, async () => { asked++; return { average: 4.2, count: 90 }; }, 24);
+  assert.equal(asked, 24);
+  assert.equal(out.filter(b => b.ratingCount === 90).length, 24);
+});

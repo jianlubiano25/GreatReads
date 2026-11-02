@@ -59,9 +59,9 @@ export function hiddenGems(pool: readonly Book[], kind: SearchGenre['kind']): Bo
  * Only real pairs are used (average 1-5 with a count); nothing is made up, and Google being down never empties the row on its own.
  */
 const ENRICH_MAX = 10;
-export async function withFallbackRatings(books: Book[], ask: (olWork: string) => Promise<{ average: number; count: number } | null> = id => openLibraryRatings(id)): Promise<Book[]> {
+export async function withFallbackRatings(books: Book[], ask: (olWork: string) => Promise<{ average: number; count: number } | null> = id => openLibraryRatings(id), max = ENRICH_MAX): Promise<Book[]> {
   const out = books.map(b => (externalRating(b) ? b : applyInfo(b)));
-  const need = out.map((b, i) => ({ b, i })).filter(x => !externalRating(x.b) && x.b.identity?.olWork).slice(0, ENRICH_MAX);
+  const need = out.map((b, i) => ({ b, i })).filter(x => !externalRating(x.b) && x.b.identity?.olWork).slice(0, max);
   await Promise.all(need.map(async ({ b, i }) => {
     try {
       const r = await ask(b.identity!.olWork!);
@@ -160,7 +160,14 @@ export function genreRowSource(g: SearchGenre, row: Row): ShelfSource {
     },
     load: async onUpdate => {
       const result = await genrePool(g);
-      const books = showable(result.books);
+      let books = showable(result.books);
+      // Hidden Gems with too few rated books (cookbooks, chick lit: 9-15 of 40 had a rating): rate more of the pool (up to 24 more, background priority) once, keep it, and look again
+      if (!books && row === 'gems' && !result.failed && result.books.length) {
+        try {
+          const richer = await withFallbackRatings(result.books, undefined, 24);
+          if (richer.filter(externalRating).length > result.books.filter(externalRating).length) { pools.set(g.query, richer); books = showable(richer); }
+        } catch {}
+      }
       if (!books) {
         const lastGood = row === 'gems' ? gemShelves.peek(g.query)?.value : undefined;
         if (lastGood && showable(lastGood)) return showable(lastGood)!;
@@ -218,4 +225,22 @@ export async function fillSharedGenre(g: SearchGenre, deps: FillDeps = realFill)
     return (await deps.write(g.query, rated)) ? 'filled' : 'not-admin';
   }
   return 'failed';
+}
+
+/**
+ * "Popular now" when the genre's official NYT list is not available (the NYT stopped publishing it, or its few requests a minute are used): the most-read books of
+ * the genre's own pool (most ratings first, right kind, with a cover). Labelled "Popular now" like the NYT row; never claims to be the NYT list.
+ */
+export function mostReadSource(g: SearchGenre): ShelfSource {
+  const cut = (pool: readonly Book[]) => pool.filter(b => hasCover(b) && rightKind(b, g.kind) && Number(b.ratingCount) > 0)
+    .sort((x, y) => Number(y.ratingCount) - Number(x.ratingCount)).slice(0, ROW_SIZE);
+  return {
+    id: `genre-most-read-${g.label}`,
+    cached: () => { const p = pools.peek(g.query)?.value; const r = p ? cut(p) : []; return r.length >= MIN_ROW ? r : null; },
+    load: async () => {
+      const r = cut((await genrePool(g)).books);
+      if (r.length < MIN_ROW) throw new InsufficientShelfError();
+      return r;
+    },
+  };
 }

@@ -2,6 +2,7 @@ import { PLACEHOLDER_STYLES, coverBackdrop } from '../services/books/placeholder
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { displayBooks, refreshNames, subscribeNames } from '../services/books/englishTitle';
 import { mapPool } from '../services/books/http';
+import { bump } from '../services/books/perf';
 import { Book } from '../types';
 import { InsufficientShelfError, type ShelfSource } from '../services/store/shelves';
 import { CoverFace, RatingLine, AwardBadges } from './BookMeta';
@@ -68,11 +69,14 @@ function ShelfSkeleton() {
 }
 
 /** One horizontally scrolling store shelf, fed by a ShelfSource. */
+const AUTO_RETRY_MS = [6000, 18000, 45000];
+
 export const StoreShelf = React.memo(function StoreShelf({ id, title, source, books: fixedBooks, ranked, lazy, hideIfUnavailable, hideWhileLoading, known, priority, mine, onOpen }: Props) {
   const [loaded, setLoaded] = useState<Book[] | null>(() => (fixedBooks || !source || lazy ? null : source.cached()));
   const [failed, setFailed] = useState(false);
   const [insufficient, setInsufficient] = useState(false);
   const [attempt, setAttempt] = useState(0); // "Try again" reloads the shelf
+  const [autoTries, setAutoTries] = useState(0); // a shelf that failed tries again by itself (after 6 s, 18 s, 45 s), with a spinner, before showing "Try again"
   const [visible, setVisible] = useState(!lazy);
   const holder = useRef<HTMLDivElement>(null);
   // A shelf that waits to scroll into view reads its saved books only then (its first draw is a cheap skeleton, not a row of covers)
@@ -133,6 +137,13 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
     return () => { live = false; clearTimeout(timer); };
   }, [id, visible, source, fixedBooks, attempt]);
 
+  useEffect(() => {
+    if (!failed || autoTries >= AUTO_RETRY_MS.length) return;
+    const t = setTimeout(() => { bump(`shelf.autoRetry.${id}`); setAutoTries(n => n + 1); setAttempt(n => n + 1); }, AUTO_RETRY_MS[autoTries]);
+    return () => clearTimeout(t);
+  }, [failed, autoTries]);
+  useEffect(() => { if (raw) setAutoTries(0); }, [raw]);
+
   useEffect(() => { if (raw) milestone('store-first-shelf'); }, [raw]); // measurement only
 
   // A shelf on screen: its books get their missing Book Info in the background, ahead of books nobody is looking at (services/books/infoQueue.ts)
@@ -149,7 +160,12 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
   return (
     <div ref={holder} data-shelf-id={id} className="rl-shelf flex flex-col gap-3 scroll-mt-16">
       <h3 className="font-serif-display text-xl text-[#201a15] dark:text-[#f0e6d6] flex items-center gap-2">{source?.label?.() ?? title}</h3>
-      {failed ? (
+      {failed && autoTries < AUTO_RETRY_MS.length ? (
+        <div className="flex items-center gap-2 text-sm text-[#706256] dark:text-[#a89a8a]" role="status">
+          <span className="inline-block w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" aria-hidden="true" />
+          <p>Loading… trying again</p>
+        </div>
+      ) : failed ? (
         <div className="flex items-center gap-3 flex-wrap text-sm text-[#706256] dark:text-[#a89a8a]">
           <p>Couldn't load this shelf. The store needs an internet connection.</p>
           <button type="button" onClick={() => setAttempt(n => n + 1)} className="px-3 py-1 rounded-lg text-xs font-semibold border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] active:scale-95 transition-all">
