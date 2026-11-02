@@ -13,6 +13,7 @@ import { AchievementsModal } from './garden/AchievementsModal';
 import { MILESTONES } from '../data/gardenCatalog';
 import { isCoverAdminOn, subscribeCoverAdmin } from '../services/books';
 import { GoogleKeyPanel } from './GoogleKeyPanel';
+import { AdminFillGenres } from './AdminFillGenres';
 import { AccountPanel } from './AccountPanel';
 import { CaptureSection } from './CaptureSection';
 import { TITLE_FONTS, TEXT_FONTS, getFontPrefs, setFontPrefs, loadFontPreviews } from '../services/fontPrefs';
@@ -457,6 +458,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           )}
 
           {devMode && <GoogleKeyPanel />}
+          {devMode && <AdminFillGenres />}
 
           {/* Backup & Netlify / Multi-device Sync */}
           <div className="pt-3 border-t border-[#e3d7c3] dark:border-[#382f25]">

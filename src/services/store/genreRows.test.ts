@@ -87,3 +87,18 @@ test('H1: an empty provider answer is not saved as the genre pool, so the next o
   flushPersistentCaches();
   assert.equal(JSON.parse(storage.get('readlife.genrepool1') || '{}')[q], undefined);
 });
+
+test('fillSharedGenre: skips a stored genre, retries a failed search, accepts a short partial answer, never writes unrated lists', async () => {
+  const { fillSharedGenre } = await import('./genreRows');
+  const mk = (n: number, rated = true) => Array.from({ length: n }, (_, i) => ({ id: `b${i}`, title: `T${i}`, author: 'A', ratingAverage: rated ? 4.3 : undefined, ratingCount: rated ? 200 : undefined, ratingSource: rated ? 'openlibrary' : undefined, coverUrl: 'https://x.test/c.jpg' }) as any);
+  const g: any = { label: 'X', emoji: '', query: 'xq', kind: 'nonfiction', subgenres: [] };
+  const wrote: string[] = [];
+  const base = { rate: async (b: any) => b, write: async (q: string) => { wrote.push(q); return true; }, wait: async () => {} };
+  assert.equal(await fillSharedGenre(g, { ...base, read: async () => mk(40), search: async () => { throw new Error('no'); } }), 'already');
+  let calls = 0;
+  assert.equal(await fillSharedGenre(g, { ...base, read: async () => null, search: async () => (++calls < 3 ? { books: [], failed: true } : { books: mk(25), failed: true }) }), 'filled');
+  assert.equal(calls, 3);
+  assert.equal(await fillSharedGenre(g, { ...base, read: async () => null, search: async () => ({ books: mk(10), failed: true }) }), 'failed', 'a 10-book partial answer is not enough');
+  assert.equal(await fillSharedGenre(g, { ...base, read: async () => null, search: async () => ({ books: mk(40, false), failed: false }) }), 'failed', 'no ratings at all: not written');
+  assert.deepEqual(wrote, ['xq']);
+});

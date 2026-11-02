@@ -182,3 +182,40 @@ export function genreRowSource(g: SearchGenre, row: Row): ShelfSource {
   sources.set(key, src);
   return src;
 }
+
+/**
+ * Admin "Fill shared lists": make sure the shared table holds this genre's list. Skips a genre whose live row exists; otherwise searches (up to 3 tries, the sites are slow,
+ * a short answer of at least 20 books is accepted), adds fallback ratings, saves it on this device and writes it for every reader. Returns what happened.
+ * `deps` lets tests run it without the network.
+ */
+export type FillResult = 'already' | 'filled' | 'failed' | 'not-admin';
+export interface FillDeps {
+  read: (q: string) => Promise<Book[] | null>;
+  search: (q: string) => Promise<{ books: Book[]; failed: boolean }>;
+  rate: (b: Book[]) => Promise<Book[]>;
+  write: (q: string, b: Book[]) => Promise<boolean>;
+  wait: (ms: number) => Promise<void>;
+}
+const realFill: FillDeps = {
+  read: q => readShared('genre_pool', q),
+  search: async q => { let failed = false; const books = await searchBooksLive(q, { scope: 'keywords', limit: 40, final: true, local: false, onUpdate: (_b, s) => { if (s.done) failed = !!s.failedSources?.length; } }); return { books, failed }; },
+  rate: b => withFallbackRatings(b),
+  write: (q, b) => writeShared('genre_pool', q, b),
+  wait: ms => new Promise(r => setTimeout(r, ms)),
+};
+export const FILL_MIN_BOOKS = 20;
+export async function fillSharedGenre(g: SearchGenre, deps: FillDeps = realFill): Promise<FillResult> {
+  const have = await deps.read(g.query);
+  if (have?.some(b => externalRating(b))) return 'already';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt) await deps.wait(4000 * attempt);
+    let r: { books: Book[]; failed: boolean };
+    try { r = await deps.search(g.query); } catch { continue; }
+    if (r.books.length < (r.failed ? FILL_MIN_BOOKS : 3)) continue;
+    const rated = await deps.rate(await widenForGems(g, r.books));
+    if (!rated.some(b => externalRating(b))) continue;
+    pools.set(g.query, rated);
+    return (await deps.write(g.query, rated)) ? 'filled' : 'not-admin';
+  }
+  return 'failed';
+}
