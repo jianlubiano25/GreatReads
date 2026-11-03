@@ -51,15 +51,17 @@ export async function onRequestGet({ request, env }) {
   } catch {
     return json({ error: 'upstream_error' }, 502);
   }
-  if (res.status === 401 || res.status === 403) return json({ error: 'unauthorized' }, 502);
+  if (res.status === 401 || res.status === 403) return json({ error: 'unauthorized', upstream: res.status }, 502);
   if (res.status === 429) return json({ error: 'rate_limited' }, 429);
-  if (!res.ok) return json({ error: 'upstream_error', upstream: res.status }, 502);
+  if (!res.ok) { let detail = ''; try { detail = String(await res.text()).slice(0, 300); } catch {} return json({ error: 'upstream_error', upstream: res.status, detail }, 502); }
   let data;
   try { data = await res.json(); } catch { return json({ error: 'upstream_error' }, 502); }
-  // GraphQL reports a bad token or a schema problem inside a 200 answer
+  // GraphQL reports problems inside a 200 answer. Only a message that is clearly about the token says "unauthorized"; anything else (a field name Hardcover does not know,
+  // a limit) is an upstream_error with Hardcover's own message (`detail`: a few words of text, never the token) so it can be fixed.
   if (data?.errors?.length) {
-    const msg = JSON.stringify(data.errors).toLowerCase();
-    return json({ error: /jwt|token|auth|expired|invalid/.test(msg) ? 'unauthorized' : 'upstream_error' }, 502);
+    const first = String(data.errors[0]?.message || '').slice(0, 300);
+    const tokenProblem = /jwt|invalid token|token (?:is )?(?:invalid|expired)|expired token|unauthori[sz]ed|not authenticated|missing authorization|invalid authorization/i.test(first);
+    return json({ error: tokenProblem ? 'unauthorized' : 'upstream_error', detail: first }, 502);
   }
   let books = (data?.data?.books || []).map(shapeBook);
   if (author) books = books.filter(b => b.authors.some(a => { const n = norm(a); return n.includes(author) || author.includes(n); }));

@@ -81,6 +81,7 @@ Layers: (1) shared catalog, admin-owned; (2) personal sync, one mechanism, cloud
 `docs/handoff-reference.md` (what exists, live data facts, Task A/B/C, merge status, M4b evidence), `docs/full-change-log.md` (all older log entries), `docs/work-packages.md`, `docs/cover-one-path-plan.md`, `docs/catalog-field-map.md`, `docs/catalog-live-schema.md`, `docs/catalog-vocabulary.md`, `docs/provider-terms.md`, `docs/catalog-merge-preview-2026-10-30.md`.
 
 ## Change log (last 8; older in docs/full-change-log.md)
+- 2026-11-03: `/api/hardcover` no longer calls every GraphQL error "unauthorized" (owner got `unauthorized` although Hardcover counted 26 requests = the token works; a wrong field name was being blamed on the token); it now returns `detail` with Hardcover's own message; BUILD_NUMBER 21.
 - 2026-11-03: Hardcover rating source: Hidden Gems pools ask Hardcover (via /api/hardcover) first, then Open Library, for missing ratings; new `ratingSource: 'hardcover'` (label Hardcover); tests; BUILD_NUMBER 20.
 - 2026-11-03: Hardcover server function `/api/hardcover` (token only in the Pages secret, one fixed read-only query, cached 1 day) + tests; not wired into the app yet; BUILD_NUMBER 19.
 - 2026-11-03: slow covers show the quickest other cover (saved candidate or fast Apple/Google/OL lookup) until the preferred one loads; added task F6 (live sync, no conflicts, remove cloud buttons); BUILD_NUMBER 18.
@@ -88,4 +89,3 @@ Layers: (1) shared catalog, admin-owned; (2) personal sync, one mechanism, cloud
 - 2026-11-03: "New in 2026" no longer shows exam guides (Educart CBSE etc.) and needs >= 15 ratings; HANDOFF tasks C11-C13 (genre pages, admin shelf diagnostics); Hardcover plan noted in B8; BUILD_NUMBER 16.
 - 2026-11-03: shelves that fail now retry by themselves (6 s, 18 s, 45 s) with a spinner (`shelf.autoRetry.<id>` in diagnostics); gems rows rate up to 24 more books when too few are rated (cookbooks, chick lit); NYT genre row falls back to most-read books and logs `nyt.failed.<list>.<reason>`; BUILD_NUMBER 15.
 - 2026-11-02: the admin "Fill shared genre lists" button now shows for any signed-in admin (it was hidden behind developer mode); BUILD_NUMBER 14.
-- 2026-11-02: C9 part: admin button "Fill shared genre lists" (Profile, admin only) loads each genre missing from `discovery_cache` one at a time and writes it; test added; BUILD_NUMBER 13.

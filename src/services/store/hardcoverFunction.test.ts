@@ -46,6 +46,10 @@ test('Hardcover function: a rejected token, a rate limit and a GraphQL error eac
   assert.equal((await call('/api/hardcover?op=books&q=zzzz2', { HARDCOVER_TOKEN: 't' })).status, 429);
   upstream(200, { errors: [{ message: 'Invalid or expired token' }] });
   assert.equal((await (await call('/api/hardcover?op=books&q=zzzz3', { HARDCOVER_TOKEN: 't' })).json()).error, 'unauthorized');
+  upstream(200, { errors: [{ message: "field 'cached_image' not found in type: 'books' (invalid)" }] });
+  const bad = await (await call('/api/hardcover?op=books&q=zzzz4', { HARDCOVER_TOKEN: 't' })).json();
+  assert.equal(bad.error, 'upstream_error', 'a wrong field name is not blamed on the token');
+  assert.match(bad.detail, /cached_image/);
 });
 
 test('shapeBook leaves out a rating without a count and non-https covers', () => {
