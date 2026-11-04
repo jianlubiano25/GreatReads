@@ -1,3 +1,4 @@
+import { bump } from '../perf';
 import { dedupeInflight, getJsonDetailed, pool } from '../http';
 import { persistentCache } from '../cache';
 import { cleanIsbn, isbnPair } from '../identity';
@@ -159,6 +160,7 @@ export async function loadNytList(list: string, opts: CallOpts & { force?: boole
     const failure: NytFailure = r.data ? 'empty' : classifyNytFailure(r);
     if (failure === 'list_unavailable') gone.set(list, true);
     lastFailure.set(list, failure);
+    bump(`nyt.failed.${list}.${failure}`); // shows in Copy diagnostics: which list failed and why
     warnOnce(list, failure);
     const old = cache.peek(list);
     return old ? { entries: old.value, stale: true, failure } : { entries: null, stale: false, failure };

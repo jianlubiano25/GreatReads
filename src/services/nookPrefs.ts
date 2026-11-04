@@ -6,6 +6,8 @@
  *                      off = tapping the window's time button cycles morning / day / sunset / night to preview them.
  * A tiny subscribe/notify store lets the nook react immediately when Settings changes one of them.
  */
+import { announceLocalChange, stampSetting } from './settingsTimes';
+
 const THEME_KEY = 'greatreads_nook_match_theme'; // '1' = match the app theme
 const TIME_KEY = 'greatreads_window_follows_time'; // '0' = free to cycle; anything else = follow the clock
 
@@ -40,6 +42,7 @@ export function setNookMatchesTheme(on: boolean) {
     if (on) localStorage.setItem(THEME_KEY, '1');
     else localStorage.removeItem(THEME_KEY);
   } catch {}
+  stampSetting('nookToggles');
   notifyNookPrefs();
 }
 
@@ -55,6 +58,16 @@ export function setWindowFollowsTime(on: boolean) {
   try {
     if (on) localStorage.removeItem(TIME_KEY);
     else localStorage.setItem(TIME_KEY, '0');
+  } catch {}
+  stampSetting('nookToggles');
+  notifyNookPrefs();
+}
+
+/** The cloud or a backup changed the nook toggles: store them without counting it as a new edit. */
+export function applyNookTogglesFromSync(t: { matchTheme: boolean; windowFollowsTime: boolean }): void {
+  try {
+    if (t.matchTheme) localStorage.setItem(THEME_KEY, '1'); else localStorage.removeItem(THEME_KEY);
+    if (t.windowFollowsTime) localStorage.removeItem(TIME_KEY); else localStorage.setItem(TIME_KEY, '0');
   } catch {}
   notifyNookPrefs();
 }
@@ -78,6 +91,7 @@ export const subscribeClockTheme = (cb: () => void) => {
     clockSubs.delete(cb);
   };
 };
+/** Tells the cloud sync that a synced preference changed on this device, so it uploads soon instead of waiting for the next other edit. */
 export const getClockTheme = () => clockTheme;
 export function cycleClockTheme() {
   clockTheme = (clockTheme + 1) % CLOCK_THEME_COUNT;
@@ -85,6 +99,7 @@ export function cycleClockTheme() {
     localStorage.setItem(CLOCK_KEY, String(clockTheme));
   } catch {}
   clockSubs.forEach(f => f());
+  announceLocalChange();
 }
 
 /* ---- Vine look: the wraparound nook vine (default), the classic window vine, or a seasonal / lit variant (remembered on this device) ---- */
@@ -113,6 +128,7 @@ export function setVineStyle(style: VineStyle) {
     else localStorage.setItem(VINE_KEY, style);
   } catch {}
   vineSubs.forEach(f => f());
+  announceLocalChange();
 }
 
 /* ---- Nook decorations: what hangs on the wall above the shelves and what sits on the garden shelf ---- */
@@ -192,6 +208,7 @@ export function setNookDecor(next: NookDecor) {
     else localStorage.setItem(DECOR_KEY, JSON.stringify(decor));
   } catch {}
   decorSubs.forEach(f => f());
+  announceLocalChange();
 }
 
 /** Decorations that are up, in order, for an area */

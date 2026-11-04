@@ -43,7 +43,7 @@ export function GenrePicks({ genre, query, known, onPick, onOpen }: Props) {
       {popular && <StoreShelf key={popular.id} id={popular.id} title="Popular now" source={popular.source} ranked lazy hideIfUnavailable known={known} onOpen={onOpen} />}
       {picks && <StoreShelf key={picks.id} id={picks.id} title="Hand-picked" source={picks.source} known={known} onOpen={onOpen} />}
       {onGenre && <StoreShelf key={`new-${genre.label}`} id={`genre-new-${genre.label}`} title="New releases" source={genreRowSource(genre, 'new')} hideIfUnavailable hideWhileLoading known={known} onOpen={onOpen} />}
-      {onGenre && <StoreShelf key={`gems-${genre.label}`} id={`genre-gems-${genre.label}`} title="Hidden gems" source={genreRowSource(genre, 'gems')} hideIfUnavailable hideWhileLoading known={known} onOpen={onOpen} />}
+      {onGenre && <StoreShelf key={`gems-${genre.label}`} id={`genre-gems-${genre.label}`} title="Hidden gems" source={genreRowSource(genre, 'gems')} known={known} onOpen={onOpen} />}
     </div>
   );
 }

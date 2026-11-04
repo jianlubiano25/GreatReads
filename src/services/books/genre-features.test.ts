@@ -11,7 +11,7 @@ import { genreForQuery, moreLikeThis } from './genreRank';
 import { applySearchView, activeFilterCount, DEFAULT_SEARCH_VIEW } from './searchView';
 import { newReleases, hiddenGems, MIN_ROW } from '../store/genreRows';
 
-const book = (o: any) => ({ id: o.title, title: 'T', author: 'A B', shelf: 'mine', difficulty: 2, isOnDevice: false, year: '2015', genre: 'Fantasy', summary: '', authorBio: '', pageCount: 300, ratingCount: 500, ratingAverage: 4.2, coverUrl: 'x', ...o }) as any;
+const book = (o: any) => ({ id: o.title, title: 'T', author: 'A B', shelf: 'mine', difficulty: 2, isOnDevice: false, year: '2015', genre: 'Fantasy', summary: '', authorBio: '', pageCount: 300, ratingCount: 500, ratingAverage: 4.2, coverUrl: 'https://covers.example/cover.jpg', ...o }) as any;
 
 test('did you mean: a typo one letter off a known word is put right, an unknown word is left alone', () => {
   const v = suggestionVocab([]);
@@ -102,8 +102,40 @@ test('new releases: this year and last, with a cover, newest first; hidden gems:
   assert.ok(MIN_ROW >= 3);
 });
 
+test('hidden gems require a usable cover, the requested book kind, and ratings within the published bounds', () => {
+  const valid = (title: string, overrides = {}) => book({ title, ratingAverage: 4.1, ratingCount: 40, ...overrides });
+  assert.deepEqual(hiddenGems([
+    valid('valid'),
+    valid('no cover', { coverUrl: undefined, coverId: 0 }),
+    valid('unsafe cover', { coverUrl: 'javascript:alert(1)' }),
+    valid('low rating', { ratingAverage: 4.09 }),
+    valid('invalid rating', { ratingAverage: Infinity }),
+    valid('few ratings', { ratingCount: 39 }),
+    valid('too many ratings', { ratingCount: 5001 }),
+    valid('wrong kind', { genre: 'Psychology' }),
+  ], 'fiction').map(b => b.title), ['valid']);
+});
+
 test('a book filed under Sports, Computers or Games is non-fiction, so a Fantasy search pushes it down', async () => {
   const { bookKind } = await import('../bookKind');
   for (const g of ['Sports', 'Sports & Recreation', 'Computers', 'Games & Activities', 'Mathematics']) assert.equal(bookKind({ genre: g }), 'nonfiction', g);
   for (const g of ['Fantasy', 'Mystery', 'Fiction']) assert.equal(bookKind({ genre: g }), 'fiction', g);
+});
+
+test('typed audience phrases ("women in their thirties", "novels about women") open the Women in their 30s genre page', () => {
+  for (const q of ['women in their thirties', 'Women in their 30s', 'novels about women', 'midlife women']) {
+    const g = genreForQuery(q);
+    assert.equal(g?.genre.label, 'Women in their 30s', q);
+    assert.equal(g?.query, "women's fiction");
+  }
+});
+
+test('hidden gems: a genre with too few gems is widened with its sub-genre searches, never with the same book twice', async () => {
+  const { widenForGems } = await import('../store/genreRows');
+  const gem = (id: string) => book({ id, title: id, ratingAverage: 4.4, ratingCount: 300, coverUrl: 'https://x.test/c.jpg', ratingSource: 'openlibrary' });
+  const g = { label: 'Fantasy', emoji: '', query: 'fantasy', kind: 'fiction' as const, subgenres: [{ label: 'a', query: 'epic fantasy' }, { label: 'b', query: 'dark fantasy' }] };
+  const asked: string[] = [];
+  const out = await widenForGems(g as any, [gem('g0')], async q => { asked.push(q); return q === 'epic fantasy' ? [gem('g0'), ...Array.from({ length: 9 }, (_, i) => gem(`e${i}`))] : []; });
+  assert.equal(out.length, 10);
+  assert.deepEqual(asked, ['epic fantasy'], 'stops once enough gems');
 });

@@ -1,8 +1,10 @@
+import { PLACEHOLDER_STYLES, coverBackdrop } from '../services/books/placeholderCover';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { displayBooks, refreshNames, subscribeNames } from '../services/books/englishTitle';
 import { mapPool } from '../services/books/http';
+import { bump } from '../services/books/perf';
 import { Book } from '../types';
-import type { ShelfSource } from '../services/store/shelves';
+import { InsufficientShelfError, type ShelfSource } from '../services/store/shelves';
 import { CoverFace, RatingLine, AwardBadges } from './BookMeta';
 import { rememberHonor } from '../services/store/honors';
 import { withKnownRating } from '../services/books';
@@ -47,13 +49,16 @@ interface Props {
 const sameShelf = (a: Book[], b: Book[]): boolean =>
   a === b || (a.length === b.length && a.every((x, i) => x === b[i] || (x.id === b[i].id && x.title === b[i].title && x.coverId === b[i].coverId && x.coverUrl === b[i].coverUrl && x.ratingAverage === b[i].ratingAverage && x.ratingCount === b[i].ratingCount)));
 
+const skeletonCover = (i: number): string => { const st = PLACEHOLDER_STYLES[i % PLACEHOLDER_STYLES.length]; return `linear-gradient(180deg, ${st.bg} 0%, ${st.bg} 55%, ${st.shade} 100%)`; };
+
 /** Same card shape as a real one, so a shelf that has not drawn its books yet holds the height they will take (no jump when they appear). Static: nothing animates off-screen. */
-function ShelfSkeleton({ pulse }: { pulse: boolean }) {
+function ShelfSkeleton() {
   return (
     <div className="flex gap-4 overflow-hidden pb-3" aria-busy="true">
       {[0, 1, 2, 3].map(i => (
         <div key={i} className="w-[138px] sm:w-[154px] shrink-0 flex flex-col gap-1.5">
-          <div className={`w-full h-[200px] sm:h-[222px] rounded-md bg-[#e3d7c3]/60 dark:bg-[#382f25]/60 ${pulse ? 'animate-pulse' : ''}`} />
+          {/* the same flat Apple-style colour a stand-in cover has (no text: the book is not known yet), never a grey or beige block */}
+          <div className="w-full h-[200px] sm:h-[222px] rounded-md" style={{ background: skeletonCover(i) }} />
           <div className="h-3 w-4/5 rounded bg-[#e3d7c3]/40 dark:bg-[#382f25]/40" />
           <div className="h-3 w-3/5 rounded bg-[#e3d7c3]/40 dark:bg-[#382f25]/40" />
           <div className="h-3 w-2/5 rounded bg-[#e3d7c3]/40 dark:bg-[#382f25]/40" />
@@ -64,10 +69,14 @@ function ShelfSkeleton({ pulse }: { pulse: boolean }) {
 }
 
 /** One horizontally scrolling store shelf, fed by a ShelfSource. */
+const AUTO_RETRY_MS = [6000, 18000, 45000];
+
 export const StoreShelf = React.memo(function StoreShelf({ id, title, source, books: fixedBooks, ranked, lazy, hideIfUnavailable, hideWhileLoading, known, priority, mine, onOpen }: Props) {
   const [loaded, setLoaded] = useState<Book[] | null>(() => (fixedBooks || !source || lazy ? null : source.cached()));
   const [failed, setFailed] = useState(false);
+  const [insufficient, setInsufficient] = useState(false);
   const [attempt, setAttempt] = useState(0); // "Try again" reloads the shelf
+  const [autoTries, setAutoTries] = useState(0); // a shelf that failed tries again by itself (after 6 s, 18 s, 45 s), with a spinner, before showing "Try again"
   const [visible, setVisible] = useState(!lazy);
   const holder = useRef<HTMLDivElement>(null);
   // A shelf that waits to scroll into view reads its saved books only then (its first draw is a cheap skeleton, not a row of covers)
@@ -105,6 +114,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
     if (fixedBooks || !visible || !source) return;
     let live = true;
     setFailed(false);
+    setInsufficient(false);
     // A shelf reports after EVERY book it resolves; drawing the whole shelf each time is wasted work, so the newest list is drawn at most every 100 ms
     let latest: Book[] | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -117,9 +127,22 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
       // The answer replaces what was drawn first (a saved list shown while this loaded), unless a newer update already arrived
       .then(b => { if (live && !latest) setLoaded(prev => { const cur = prev ?? shown.current; return cur && sameShelf(cur, b) ? prev ?? cur : b; }); })
       // A failed refresh never takes away a list that is already on screen
-      .catch(() => { if (live && !shown.current) setFailed(true); });
+      .catch(error => {
+        if (!live) return;
+        if (error instanceof InsufficientShelfError) {
+          setLoaded(null);
+          setInsufficient(true);
+        } else if (!shown.current) setFailed(true);
+      });
     return () => { live = false; clearTimeout(timer); };
   }, [id, visible, source, fixedBooks, attempt]);
+
+  useEffect(() => {
+    if (!failed || autoTries >= AUTO_RETRY_MS.length) return;
+    const t = setTimeout(() => { bump(`shelf.autoRetry.${id}`); setAutoTries(n => n + 1); setAttempt(n => n + 1); }, AUTO_RETRY_MS[autoTries]);
+    return () => clearTimeout(t);
+  }, [failed, autoTries]);
+  useEffect(() => { if (raw) setAutoTries(0); }, [raw]);
 
   useEffect(() => { if (raw) milestone('store-first-shelf'); }, [raw]); // measurement only
 
@@ -130,21 +153,29 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
   useEffect(() => { if (!fixedBooks) (loaded ?? saved)?.forEach(rememberHonor); }, [loaded, saved, fixedBooks]);
 
   if (fixedBooks && fixedBooks.length === 0) return null;
+  if (insufficient && hideIfUnavailable) return null;
   if (failed && hideIfUnavailable) return null;
   if (hideWhileLoading && !books && !failed) return null;
 
   return (
     <div ref={holder} data-shelf-id={id} className="rl-shelf flex flex-col gap-3 scroll-mt-16">
       <h3 className="font-serif-display text-xl text-[#201a15] dark:text-[#f0e6d6] flex items-center gap-2">{source?.label?.() ?? title}</h3>
-      {failed ? (
+      {failed && autoTries < AUTO_RETRY_MS.length ? (
+        <div className="flex items-center gap-2 text-sm text-[#706256] dark:text-[#a89a8a]" role="status">
+          <span className="inline-block w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" aria-hidden="true" />
+          <p>Loading… trying again</p>
+        </div>
+      ) : failed ? (
         <div className="flex items-center gap-3 flex-wrap text-sm text-[#706256] dark:text-[#a89a8a]">
           <p>Couldn't load this shelf. The store needs an internet connection.</p>
           <button type="button" onClick={() => setAttempt(n => n + 1)} className="px-3 py-1 rounded-lg text-xs font-semibold border border-[#e3d7c3] dark:border-[#382f25] bg-[#fbf7ee] dark:bg-[#231d17] text-[#2e5934] dark:text-[#86b880] active:scale-95 transition-all">
             Try again
           </button>
         </div>
+      ) : insufficient ? (
+        <p className="text-sm text-[#706256] dark:text-[#a89a8a]">No books meet the Hidden Gems criteria yet.</p>
       ) : !books ? (
-        <ShelfSkeleton pulse={visible} />
+        <ShelfSkeleton />
       ) : (
         <div className="flex gap-4 overflow-x-auto pb-3 no-scrollbar">
           {view!.map((b, i) => (
@@ -159,7 +190,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
                   type="button"
                   onClick={() => onOpen(books![i])}
                   className="book-cover-3d w-full h-[200px] sm:h-[222px] text-left p-3 flex flex-col justify-between text-white overflow-hidden"
-                  style={{ backgroundColor: b.spineColor || '#6b6f80' }}
+                  style={{ background: coverBackdrop(b) }}
                   aria-label={`${b.title} by ${b.author}`}
                 >
                   <CoverFace book={b} size="md" eager={!!priority && i < 4} />

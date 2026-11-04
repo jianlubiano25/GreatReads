@@ -47,3 +47,10 @@ test('Book Info shows the published description, facts and rating at once', () =
   assert.equal(e.ratings.google?.average, 4.2);
   assert.equal(getInfo({ id: 'y', title: 'Unlisted', author: 'Nobody' } as any).facts.summary, undefined);
 });
+
+test('duplicate catalog works that fit equally well do not select metadata by storage order', () => {
+  const first = { ...work, id: 'w2', cover: MINE };
+  const second = { ...work, id: 'w3', cover: CAT };
+  applyCatalog([first as any, second as any]);
+  assert.equal(getCatalogWork({ title: 'Strange Pictures', author: 'Uketsu' }), undefined);
+});

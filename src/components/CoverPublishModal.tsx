@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Pencil, X } from 'lucide-react';
-import type { Book } from '../types';
+import type { Book, BookIdentity } from '../types';
+import { coverKey } from '../services/books/coverAnalysis';
+import { identityOf } from '../services/books/identity';
 import { useModalA11y } from '../hooks/useModalA11y';
 import {
   COVER_SOURCE_LABEL,
@@ -46,7 +48,7 @@ const STATUS_STYLE = {
   published: 'bg-black/5 dark:bg-white/10 text-[#706256] dark:text-[#a89a8a]',
 } as const;
 
-export function CoverPublishModal({ onClose }: { onClose: () => void }) {
+export function CoverPublishModal({ onClose, books }: { onClose: () => void; books?: Book[] }) {
   useModalA11y(onClose);
   const version = useSyncExternalStore(subscribeCovers, getCoversVersion, getCoversVersion); // your picks or the published set changed
   const [ready, setReady] = useState(false);
@@ -117,15 +119,20 @@ export function CoverPublishModal({ onClose }: { onClose: () => void }) {
   const publishToCatalog = async () => {
     setBusy(true);
     setMessage(null);
-    let ok = 0;
+    let ok = 0, idSaved = 0, idSkipped = 0;
     const failed: string[] = [];
+    // each book's outside ids, found by the same key the cover pick uses; a book this device does not hold has none, and is simply published without
+    const identityByKey = new Map<string, BookIdentity>();
+    for (const b of books || []) { const i = identityOf(b); if (Object.keys(i).length) identityByKey.set(coverKey(b), i); }
     for (const r of rows) {
-      const res = await publishCoverToCatalog({ title: r.title, author: r.author }, r.rec.url);
+      const res = await publishCoverToCatalog({ title: r.title, author: r.author, identity: identityByKey.get(r.key) }, r.rec.url);
       if (res.ok) ok++; else failed.push(`${r.title}: ${res.error}`);
+      if (res.ids) { idSaved += res.ids.saved.length; idSkipped += res.ids.skipped.length; }
     }
     await syncCatalog({ force: true });
     setBusy(false);
-    setMessage({ ok: failed.length === 0, text: `Catalog: ${ok} published${failed.length ? `, ${failed.length} not (${failed.slice(0, 2).join('; ')}${failed.length > 2 ? '; …' : ''})` : '.'}` });
+    const ids = idSaved || idSkipped ? ` IDs: ${idSaved} saved${idSkipped ? `, ${idSkipped} skipped (invalid or already on another book)` : ''}.` : '';
+    setMessage({ ok: failed.length === 0, text: `Catalog: ${ok} published${failed.length ? `, ${failed.length} not (${failed.slice(0, 2).join('; ')}${failed.length > 2 ? '; …' : ''})` : '.'}${ids}` });
   };
 
   return (

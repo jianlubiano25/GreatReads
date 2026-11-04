@@ -1,9 +1,11 @@
+import { createGate, type Priority } from '../hostGate';
 import { getJsonDetailed, type GetOpts, type JsonResult } from '../http';
 import { bump } from '../perf';
 import { authorVariants, cleanIsbn, isbnPair, titleVariants, titlesMatch, authorListMatches } from '../identity';
 import { difficultyFor, hasRealSummary, isKnownGenre, makeBook } from '../model';
 import { externalRating } from '../ratings';
 import { isEnglishLanguage, titleIsNonLatin } from '../language';
+import { rememberProviderFacts } from '../providerFacts';
 import type { CallOpts, Hit } from './types';
 
 const GB = 'https://www.googleapis.com/books/v1';
@@ -89,7 +91,24 @@ let proxyNotConfigured = false;
  * looked exactly like "Google has no ratings". So a rejected key is noticed once (counters only, never the key itself), and the request is repeated without it
  * (Google's shared anonymous quota), for the next 15 minutes. `__rlPerf()` shows `google.keyConfigured` and `google.keyRejected`.
  */
-async function googleJson(url: string, opts: GetOpts): Promise<JsonResult> {
+/** One shared gate for every Google request (see hostGate.ts). Only in a real browser: Node scripts and tests are not paced. */
+export const googleGate = createGate({ minGapMs: 750, maxBackground: 8, backoffMs: [30_000, 60_000, 120_000, 300_000] });
+let gateForTests: boolean | null = null;
+export const setGoogleGateForTests = (on: boolean | null) => { gateForTests = on; googleGate.reset(); };
+const gateOn = (): boolean => gateForTests ?? (typeof window !== 'undefined');
+
+async function googleJson(url: string, opts: GetOpts, priority: Priority = 'bg'): Promise<JsonResult> {
+  if (!gateOn()) return googleJsonUngated(url, opts);
+  if (!(await googleGate.acquire(priority, opts.signal))) {
+    bump('google.gateRefused');
+    return { data: null, status: opts.signal?.aborted ? 0 : 429, failure: opts.signal?.aborted ? 'aborted' : 'http' }; // looks like 429: callers already treat it as a temporary failure
+  }
+  const r = await googleJsonUngated(url, opts);
+  if (r.status === 429) { googleGate.tripped(); bump('google.gateTripped'); } else if (r.data) googleGate.ok();
+  return r;
+}
+
+async function googleJsonUngated(url: string, opts: GetOpts): Promise<JsonResult> {
   if (mode() === 'proxy') {
     if (proxyNotConfigured) return { data: null, status: 503, failure: 'http' };
     bump('google.viaProxy');
@@ -171,6 +190,8 @@ export function gbItemToHit(item: any, fallbackTitle = ''): Hit {
     source: 'google',
     identity: { gbVolume: item?.id, ...isbn },
   });
+  // what Google said beyond the Book (memory only): publisher, exact date, every category and author, this volume's own page count
+  if (item?.id) rememberProviderFacts({ provider: 'google', recordId: String(item.id), publisher: v.publisher ? String(v.publisher) : undefined, publishedDate: v.publishedDate ? String(v.publishedDate) : undefined, genres: Array.isArray(v.categories) ? v.categories.map(String) : undefined, language: v.language ? String(v.language).toLowerCase() : undefined, authors: Array.isArray(v.authors) ? v.authors.map(String) : undefined, pages: Number(v.pageCount) > 0 ? Number(v.pageCount) : undefined });
   return { book, flags: { language: v.language ? String(v.language).toLowerCase() : undefined, subjects: v.categories, description: v.description && !foreignText ? String(v.description) : undefined, googleMaturity: v.maturityRating, publisher: v.publisher ? String(v.publisher) : undefined } };
 }
 
@@ -179,7 +200,9 @@ const searchUrl = (q: string, max: number, start = 0, anyLanguage = false) =>
   gbUrl({ q, maxResults: Math.min(40, max), startIndex: start, langRestrict: anyLanguage ? undefined : 'en', printType: 'books', fields: `totalItems,items(${FIELDS})` });
 
 export async function searchGoogle(q: string, max: number, opts: CallOpts & { anyLanguage?: boolean } = {}): Promise<Hit[]> {
-  const data = (await googleJson(searchUrl(q, max, opts.start, opts.anyLanguage), { signal: opts.signal })).data;
+  const result = await googleJson(searchUrl(q, max, opts.start, opts.anyLanguage), { signal: opts.signal }, 'fg');
+  if ((result.failure && result.failure !== 'aborted') || [403, 429].includes(result.status) || result.status >= 500) opts.onFailure?.();
+  const data = result.data;
   if (typeof data?.totalItems === 'number') opts.onTotal?.(data.totalItems);
   return (data?.items || []).map((i: any) => gbItemToHit(i));
 }

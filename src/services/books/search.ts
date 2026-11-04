@@ -1,8 +1,11 @@
+import { persistentCache } from './cache';
+import { recordSearch } from './perf';
 import type { Book } from '../../types';
 import { dedupeBooks } from './merge';
 import { hasRealSummary, isKnownGenre, shrunkRating } from './model';
 import { searchGoogle } from './sources/googleBooks';
 import { searchOpenLibrary } from './sources/openLibrary';
+import { readShared, writeShared } from '../store/sharedDiscovery';
 import type { Hit } from './sources/types';
 import { englishEditionQueries, isUnknownAuthor, sameWork, titleKey } from './identity';
 import { isBlocked } from './quality';
@@ -242,9 +245,9 @@ type Task = { name: string; run: (candidates: number, signal?: AbortSignal) => P
 export function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
   // `report`: whether this request's own count is the number shown as "of N" (the main requests only, never the narrower extra ones)
   const ol = (params: Record<string, string>, n: number, signal?: AbortSignal, report = true) =>
-    searchOpenLibrary(io.page > 1 ? { ...params, page: String(io.page) } : params, n, { signal, onTotal: report ? t => io.onTotal('ol', t) : undefined });
+    searchOpenLibrary(io.page > 1 ? { ...params, page: String(io.page) } : params, n, { signal, priority: 'fg', onTotal: report ? t => io.onTotal('ol', t) : undefined, onFailure: () => io.onFailure?.('Open Library') });
   const google = (query: string, n: number, signal?: AbortSignal, report = true) =>
-    searchGoogle(query, n, { signal, start: io.page > 1 ? (io.page - 1) * Math.min(40, n) : 0, onTotal: report ? t => io.onTotal('google', t) : undefined });
+    searchGoogle(query, n, { signal, start: io.page > 1 ? (io.page - 1) * Math.min(40, n) : 0, onTotal: report ? t => io.onTotal('google', t) : undefined, onFailure: () => io.onFailure?.('Google Books') });
   if (q.isbn) {
     return [
       { name: 'ol', run: (n, signal) => ol({ isbn: q.isbn }, n, signal) },
@@ -309,7 +312,7 @@ export function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
 }
 
 /** Paging and the "N books match" count, shared by the requests of one search. */
-interface TaskIo { page: number; onTotal: (source: 'ol' | 'google', n: number) => void }
+interface TaskIo { page: number; onTotal: (source: 'ol' | 'google', n: number) => void; onFailure?: (source: string) => void }
 
 /**
  * The author a query names, read from what the first sources returned: two to four words, every one of them a whole word of one result's author
@@ -349,6 +352,8 @@ export interface SearchProgress {
   from: string;
   /** How many books the catalog says match in all (Open Library's count, else Google's); 0 until a source has said */
   total: number;
+  /** Providers that failed during this search; an empty list means they answered successfully. */
+  failedSources?: string[];
 }
 
 export interface LiveSearchOptions {
@@ -391,6 +396,14 @@ export function searchLocal(title: string, author = '', limit = 10, known?: read
  * search from a moment ago, if there is one; (3) the merged, ranked list again each time Open Library or Google Books answers. The returned promise
  * resolves with the final list. Explicit, satanic and demonic books are left out (quality.ts). Either source being down never hides the other.
  */
+/**
+ * The last good answer of each finished search, kept on the device for a week. It is shown the moment the same search is made again (also after the app
+ * was closed) while the sources are asked for a fresh one, and it stays when every source fails: a search is never emptied by a rate limit or an
+ * offline moment. Searches cancelled by the next keystroke, pages after the first and the reader's own-library mixes are not saved.
+ */
+const DAY_MS = 24 * 60 * 60 * 1000;
+const lastGood = persistentCache<Book[]>('readlife.searchlast1', { ttl: 7 * DAY_MS, max: 40, keepStale: 30 * DAY_MS, validate: Array.isArray });
+
 export async function searchBooksLive(title: string, o: LiveSearchOptions = {}): Promise<Book[]> {
   const limit = o.limit ?? 10;
   const scope = o.scope ?? 'all';
@@ -402,8 +415,10 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   let olTotal = 0;
   let googleTotal = 0;
   const totalNow = () => olTotal || googleTotal;
-  const emit = (books: Book[], from: string, done: boolean, total = totalNow()) => { if (!o.signal?.aborted) o.onUpdate?.(books, { done, from, total }); };
-  const io: TaskIo = { page, onTotal: (source, n) => { if (source === 'ol') olTotal = n; else googleTotal = n; } };
+  const failedSources = new Set<string>();
+  let sawLive = false;
+  const emit = (books: Book[], from: string, done: boolean, total = totalNow()) => { if (from !== 'local' && from !== 'saved' && from !== 'shared') sawLive = true; if (!o.signal?.aborted) o.onUpdate?.(books, { done, from, total, failedSources: [...failedSources] }); };
+  const io: TaskIo = { page, onTotal: (source, n) => { if (source === 'ol') olTotal = n; else googleTotal = n; }, onFailure: source => failedSources.add(source) };
 
   const mine = useLocal && o.known?.length ? localMatches(q, limit, o.known) : [];
   const seenHere = useLocal ? localMatches(q, limit) : [];
@@ -411,6 +426,10 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   if (local.length) emit(rank(local, q, limit, mine), 'local', false, 0);
 
   const memoKey = q.key;
+  const savable = useLocal && !o.known?.length && !o.exclude?.length; // a search cancelled by the next keystroke returns before it can be saved, so only settled searches are kept
+  const saved = savable ? lastGood.peek(memoKey)?.value : undefined;
+  if (saved?.length && !local.length) emit(saved.slice(0, limit), 'saved', false, 0); // instant, while the sources are asked again
+  if (savable && !saved?.length && !local.length && !o.final) void readShared('search', memoKey).then(b => { if (b?.length && !sawLive) emit(b.slice(0, limit), 'shared', false, 0); }); // the shared answer, if the live ones are not in yet
   const memo = useLocal && !o.final ? recent.get(memoKey) : undefined;
   if (memo && Date.now() - memo.at < RECENT_MS) {
     emit(memo.books.slice(0, limit), 'cache', true, memo.total);
@@ -422,9 +441,13 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   const candidates = limit <= 1 ? 10 : Math.min(40, Math.max(16, limit * 2));
   const gathered: Hit[] = [];
   let latest: Book[] = local.length ? rank(local, q, limit, mine) : [];
+  const t0 = Date.now();
+  const trace: { name: string; n: number; ms: number }[] = [];
   const runTask = async (t: Task) => {
     let hits: Hit[] = [];
-    try { hits = await t.run(candidates, o.signal); } catch { hits = []; } // a failed source is an empty answer, never an error
+    const ts = Date.now();
+    try { hits = await t.run(candidates, o.signal); } catch { hits = []; failedSources.add(t.name.startsWith('ol') ? 'Open Library' : 'Google Books'); }
+    if (!o.signal?.aborted) trace.push({ name: t.name, n: hits.length, ms: Date.now() - ts });
     if (o.signal?.aborted) return;
     gathered.push(...hits);
     if (!hits.length) return;
@@ -438,20 +461,25 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   const name = !o.signal?.aborted && page === 1 && scope === 'all' ? authorNamed(q, gathered) : '';
   if (name) {
     await Promise.all([
-      runTask({ name: 'ol-author', run: (n, signal) => searchOpenLibrary({ author: name }, n, { signal }) }),
+      runTask({ name: 'ol-author', run: (n, signal) => searchOpenLibrary({ author: name }, n, { signal, priority: 'fg' }) }),
       runTask({ name: 'google-author', run: (n, signal) => searchGoogle(`inauthor:"${name}"`, n, { signal }) }),
     ]);
   }
   const topic = !name && !o.signal?.aborted && page === 1 && scope === 'all' ? topicNamed(q, gathered) : '';
   if (topic) {
     await Promise.all([
-      runTask({ name: 'ol-subject', run: (n, signal) => searchOpenLibrary({ subject: topic }, n, { signal }) }),
+      runTask({ name: 'ol-subject', run: (n, signal) => searchOpenLibrary({ subject: topic }, n, { signal, priority: 'fg' }) }),
       runTask({ name: 'google-subject', run: (n, signal) => searchGoogle(`subject:${topic}`, n, { signal }) }),
     ]);
   }
   if (o.signal?.aborted) return [];
 
-  const finalList = rank([...withoutBlocked(gathered, q), ...local], q, limit, mine, skip);
+  let finalList = rank([...withoutBlocked(gathered, q), ...local], q, limit, mine, skip);
+  const usedSaved = !finalList.length && !!saved?.length && failedSources.size > 0;
+  if (usedSaved) finalList = saved!.slice(0, limit);
+  recordSearch({ at: t0, q: title, ms: Date.now() - t0, shown: finalList.length, failed: [...failedSources], usedSaved, sources: trace });
+  // // every source failed: keep the last good answer
+  if (savable && gathered.length && finalList.length && (!failedSources.size || !saved?.length || finalList.length >= saved.length)) { lastGood.set(memoKey, finalList.slice(0, 20)); if (!failedSources.size) void writeShared('search', memoKey, finalList.slice(0, 20)); } // a thinner answer (one source down) never replaces a fuller one
   if (useLocal && finalList.length) {
     rememberSeen(rank([...withoutBlocked(gathered, q), ...seenHere], q, 20)); // the best few of what the sources and earlier searches gave; never the reader's own books
     if (gathered.length) { // a search that every source failed (offline) is never remembered as "the answer"
@@ -475,4 +503,4 @@ export async function searchBooks(title: string, author = '', limit = 10, signal
 }
 
 /** Tests only: forget the memory of recent searches. */
-export const forgetRecentSearchesForTests = () => recent.clear();
+export const forgetRecentSearchesForTests = () => { recent.clear(); lastGood.clear(); };
