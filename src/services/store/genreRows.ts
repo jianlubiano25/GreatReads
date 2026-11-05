@@ -6,6 +6,7 @@ import { shrunkRating } from '../books/model';
 import { applyInfo } from '../books/infoStore';
 import { externalRating, setRating } from '../books/ratings';
 import { parseQuery } from '../books/query';
+import { isAccessory } from '../books/notTheBook';
 import { titleOnlyMatch, wellKnown } from '../books/search';
 import { openLibraryRatings } from '../books/sources/openLibrary';
 import { hardcoverRating } from '../books/sources/hardcover';
@@ -31,11 +32,6 @@ const hasCover = (b: Book) => {
   try { return new URL(b.coverUrl).protocol === 'https:'; } catch { return false; }
 };
 const rightKind = (b: Book, kind: SearchGenre['kind']) => kindAdjust(b, kind) === 0;
-const isGem = (b: Book, kind: SearchGenre['kind']) => {
-  const average = Number(b.ratingAverage);
-  const count = Number(b.ratingCount);
-  return hasCover(b) && rightKind(b, kind) && Number.isFinite(average) && average >= GEM_MIN_AVERAGE && Number.isFinite(count) && count >= GEM_MIN_RATINGS && count <= GEM_MAX_RATINGS;
-};
 
 export function newReleases(pool: readonly Book[], kind: SearchGenre['kind'], year = new Date().getFullYear()): Book[] {
   return pool
@@ -285,7 +281,7 @@ export function mostReadSource(g: SearchGenre): ShelfSource {
 export const SEARCH_LEAD_MIN = 8;
 export function cleanForSearch(g: Pick<SearchGenre, 'query'>, books: readonly Book[]): Book[] {
   const q = parseQuery(g.query, '', true, 'keywords');
-  return books.filter(b => !titleOnlyMatch(b, q) || wellKnown(b));
+  return books.filter(b => !isAccessory(b.title) && (!titleOnlyMatch(b, q) || wellKnown(b)));
 }
 
 /** The stored list for a genre query: this device's last good pool, else the shared one, cleaned for search. No network when the device has it. Used to lead a typed genre search. */

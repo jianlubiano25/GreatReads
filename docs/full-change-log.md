@@ -87,3 +87,5 @@ Moved out of HANDOFF.md / docs/handoff-reference.md on 2026-11-01 in one batch, 
 - 2026-11-03: slow covers show the quickest other cover (saved candidate or fast Apple/Google/OL lookup) until the preferred one loads; added task F6 (live sync, no conflicts, remove cloud buttons); BUILD_NUMBER 18.
 
 - 2026-11-03: Hardcover server function `/api/hardcover` (token only in the Pages secret, one fixed read-only query, cached 1 day) + tests; not wired into the app yet; BUILD_NUMBER 19.
+
+- 2026-11-03: Hardcover rating source: Hidden Gems pools ask Hardcover (via /api/hardcover) first, then Open Library, for missing ratings; new `ratingSource: 'hardcover'` (label Hardcover); tests; BUILD_NUMBER 20.

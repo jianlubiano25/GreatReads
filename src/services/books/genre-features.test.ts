@@ -181,3 +181,24 @@ test('titleOnlyMatch: a summary that repeats the genre word does not make a book
   assert.equal(titleOnlyMatch({ title: 'The Cultural Politics of Chick Lit' } as any, q), 1);
   assert.equal(titleOnlyMatch({ title: 'Big Little Lies' } as any, q), 0);
 });
+
+test('a genre word runs the subject searches only (no plain title/description searches); a topic word still runs them', async () => {
+  const { tasksFor } = await import('./search');
+  const { parseQuery } = await import('./query');
+  const io = { page: 1, onTotal: () => {} };
+  const names = (text: string) => tasksFor(parseQuery(text, '', true, 'keywords'), true, io as any).map(t => t.name);
+  for (const g of ['sports', 'manga', 'humor', 'cozy', 'chick lit']) assert.ok(!names(g).some(n => n.endsWith('-keyword')), g);
+  assert.ok(names('dragons').includes('ol-keyword') && names('dragons').includes('google-keyword'));
+});
+
+test('notebooks, planners and how-to-draw books never appear in a genre search; study aids and edition-about-a-book words share one list', async () => {
+  const { rank } = await import('./search');
+  const { parseQuery } = await import('./query');
+  const { isAccessory, NOT_THE_BOOK, SHELF_JUNK } = await import('./notTheBook');
+  const q = parseQuery('manga', '', true, 'keywords');
+  const out = rank([book({ title: 'How to Draw Manga' }), book({ title: 'Air Sports Notebook' }), book({ title: 'Naruto' })], q, 10).map(b => b.title);
+  assert.deepEqual(out, ['Naruto']);
+  assert.ok(isAccessory('Daily Planner 2026') && !isAccessory('Diary of a Wimpy Kid') && !isAccessory('The Notebook'));
+  for (const t of ['Study Guide for Dune', 'Summary of Atomic Habits', 'Boxed Set']) assert.ok(NOT_THE_BOOK.test(t) && SHELF_JUNK.test(t), t);
+  assert.ok(SHELF_JUNK.test('Educart CBSE Class 10 Science') && NOT_THE_BOOK.test('Trivia for fans'));
+});

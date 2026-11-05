@@ -1,3 +1,4 @@
+import { SHELF_JUNK } from '../books/notTheBook';
 import type { Book } from '../../types';
 import { CURATED_SHELVES, type CuratedShelf } from '../../data/storeCatalog';
 import { persistentCache } from '../books/cache';
@@ -414,7 +415,7 @@ const oprahProblem = (status: number, failure?: string) =>
 
 /* ------------------------------ source: Open Library discovery ------------------------------ */
 
-const JUNK = /\b(box(ed)? set|collection|omnibus|study guide|summary of|summary &|workbook|analysis of|sparknotes|cliffsnotes|bundle|\d+ books?|educart|cbse|icse|ncert|isc|class (?:\d+|x|xi|xii)|grade \d+|sample papers?|question banks?|previous years?|mock tests?|exam(?:s|ination)?|jee|neet|mcqs?|syllabus|olympiad|board exams?|textbook|guide for|worksheets?|coloring book|activity book)\b/i;
+const JUNK = SHELF_JUNK; // `books/notTheBook.ts`: one list of "not the book itself" words
 
 /**
  * Pick a shelf from Open Library search hits. The hits arrive in the order OL's own reader-activity sort gave them; that order

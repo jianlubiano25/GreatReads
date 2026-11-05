@@ -15,10 +15,10 @@ import { localMatches, rememberSeen } from './localIndex';
 import { contentTokens, normQ, parseQuery, tokenHits, type ParsedQuery, type SearchScope } from './query';
 import { keywordGroups, keywordPhrases, stem } from './keywords';
 import { coverBonus } from './covers';
+import { isAccessory, NOT_THE_BOOK } from './notTheBook';
 import { diversify, genreForQuery, kindAdjust, kindOfQuery, thinRecord } from './genreRank';
 
-/** Editions that are about a book, not the book ("Study Guide", "Summary of ...", boxed sets): ranked far down unless that is what was asked for. */
-const NOT_THE_BOOK = /\b(study guide|summary of|summary and analysis|sparknotes|cliffsnotes|workbook|analysis of|box(?:ed)? set|trivia|conversation starters|lesson plans?|teacher'?s? guide|readers? guide|large print|annotated|omnibus|graphic novel adaptation|import and export market|world forecasts?|market (?:research|report|forecast)s?|industry report|(?:19|20)\d\d (?:import|world|global|forecast))\b/i;
+/** Editions that are about a book, not the book (`notTheBook.ts`): ranked far down unless that is what was asked for. */
 
 /**
  * Books ABOUT a method or a field of study (proceedings, monographs, bibliographies, handbooks of ...): on a broad one-word search they
@@ -233,7 +233,7 @@ export function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly
   const wantKind = byKeywords ? kindOfQuery(q.text) : undefined;
   const isGenreSearch = byKeywords && !!genreForQuery(q.text);
   const sorted = dedupeBooks(books)
-    .filter(b => inScope(b, q) && !(skip.length && skip.some(x => x === b || sameWork(x, b))))
+    .filter(b => inScope(b, q) && !(skip.length && skip.some(x => x === b || sameWork(x, b))) && !(isGenreSearch && isAccessory(b.title)))
     .map((book, order) => ({
       book,
       order,
@@ -285,9 +285,13 @@ export function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
       // sorted by relevance, which fills a genre with old and obscure books. Each book keeps its place in this list (popularRank) for the ranking.
       { name: 'ol-popular', run: async (n, signal) => (await ol({ subject: text, sort: 'readinglog' }, n, signal, false)).map((h, i) => ({ ...h, book: { ...h.book, popularRank: i } })) },
       { name: 'google', run: (n, signal) => google(`subject:${text.includes(' ') ? `"${text}"` : text}`, n, signal) },
-      { name: 'ol-keyword', run: (n, signal) => ol({ q: wild }, n, signal, false) },
-      { name: 'google-keyword', run: (n, signal) => google(text, n, signal, false) },
     ];
+    // The two plain-text searches (title / description contains the word) find books that only have the word in their title ("Sports in Society", "How to Draw Manga"):
+    // fine for a topic ("dragons"), wrong for a genre word, where the subject searches above are the genre.
+    if (!genreForQuery(q.text)) {
+      tasks.push({ name: 'ol-keyword', run: (n, signal) => ol({ q: wild }, n, signal, false) });
+      tasks.push({ name: 'google-keyword', run: (n, signal) => google(text, n, signal, false) });
+    }
     if (more) {
       tasks.push({ name: 'ol-mapped', run: (n, signal) => ol({ subject: more }, n, signal, false) });
       tasks.push({ name: 'google-mapped', run: (n, signal) => google(more, n, signal, false) });
