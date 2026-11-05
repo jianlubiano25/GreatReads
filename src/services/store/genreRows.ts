@@ -12,6 +12,7 @@ import { openLibraryRatings } from '../books/sources/openLibrary';
 import { hardcoverRating } from '../books/sources/hardcover';
 import { readShared, writeShared } from './sharedDiscovery';
 import { fillMissingCovers } from '../books/covers';
+import { filterByGenreEvidence } from '../books/genreEvidence';
 import { kindAdjust } from '../books/genreRank';
 import { InsufficientShelfError, type ShelfSource } from './shelves';
 
@@ -155,7 +156,10 @@ async function genrePool(g: SearchGenre): Promise<PoolResult> {
         if (failed) return { books: stale && stale.length >= books.length ? stale : books, failed: true }; // not saved: a partial answer never replaces the last good list
         // An EMPTY answer (providers slow, timed out or rate-limited without saying so) is a failure, not a result: never save it, or the genre shows 0 results and no Hidden Gems for a whole day.
         if (!books.length) return { books: stale ?? [], failed: true };
-        const rated = await withFallbackRatings(await widenForGems(g, await addPoolQueries(g, books)));
+        // A book joins the list only when its own subjects name the genre (C18: Harry Potter in Sports, Dracula in Religion); an empty result is a failure, never saved
+        const fitting = filterByGenreEvidence(g, await widenForGems(g, await addPoolQueries(g, books)));
+        if (!fitting.length) return { books: stale ?? [], failed: true };
+        const rated = await withFallbackRatings(fitting);
         pools.set(g.query, rated);
         void writeShared('genre_pool', g.query, rated); // admin devices only; a good list is shared for everyone
         return { books: rated, failed: false };

@@ -41,7 +41,7 @@ export async function refreshEverything(): Promise<boolean> {
  * Kept even then (KEEP_ACROSS_BUILDS): the saved lists of self-refreshing shelves, their reset marks and the shelf covers (wiping them showed the hand-picked defaults and
  * cover placeholders and made one-time resets run again).
  */
-export const DATA_EPOCH = 'e2-2026-10-30';
+export const DATA_EPOCH = 'e3-2026-11-06';
 const EPOCH_KEY = 'readlife.dataEpoch1'; // one tiny control record; not a cache, so no cleanup clears it
 export function refreshDataForNewBuild(build: string, epoch: string = DATA_EPOCH): boolean {
   if (!build || build === 'dev') return false;
