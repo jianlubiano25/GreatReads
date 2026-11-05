@@ -216,12 +216,11 @@ export const TITLE_ONLY_PENALTY = 30;
 export function wellKnown(b: Pick<Book, 'popularRank' | 'ratingAverage' | 'ratingCount'>): boolean {
   return (b.popularRank !== undefined && b.popularRank < 15) || (Number(b.ratingAverage) >= 4 && Number(b.ratingCount) >= 500);
 }
-export function titleOnlyMatch(b: Pick<Book, 'title' | 'genre' | 'summary'>, q: ParsedQuery): number {
+export function titleOnlyMatch(b: Pick<Book, 'title'>, q: ParsedQuery): number {
   const groups = keywordGroups(contentTokens(q.tokens));
   if (!groups.length) return 0;
   const title = new Set(normQ(b.title || '').split(' ').map(stem));
-  const rest = new Set(normQ(`${isKnownGenre(b.genre) ? b.genre : ''} ${hasRealSummary(b.summary) ? b.summary : ''}`).split(' ').map(stem));
-  return groups.some(g => g.words.some(w => title.has(w)) && !g.words.some(w => rest.has(w))) ? 1 : 0;
+  return groups.some(g => g.words.some(w => title.has(w))) ? 1 : 0; // the word is in the title: that alone says nothing about the genre (a summary that repeats the word, like "The Cultural Politics of Chick Lit", does not make it a chick-lit novel)
 }
 
 /** `skip`: books an earlier page already showed (a later page never repeats them). */

@@ -173,3 +173,11 @@ test('genre search: a book with the genre word only in its title ranks below rea
 test('"Chick Lit" is now "Women\'s Fiction"; the old words still open it', async () => {
   for (const q of ['chick lit', 'chicklit', 'chick-lit', 'rom com']) assert.equal(genreForQuery(q)?.genre.label, "Women's Fiction", q);
 });
+
+test('titleOnlyMatch: a summary that repeats the genre word does not make a book of the genre ("The Cultural Politics of Chick Lit")', async () => {
+  const { titleOnlyMatch } = await import('./search');
+  const { parseQuery } = await import('./query');
+  const q = parseQuery('chick lit', '', true, 'keywords');
+  assert.equal(titleOnlyMatch({ title: 'The Cultural Politics of Chick Lit' } as any, q), 1);
+  assert.equal(titleOnlyMatch({ title: 'Big Little Lies' } as any, q), 0);
+});

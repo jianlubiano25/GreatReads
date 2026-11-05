@@ -274,3 +274,10 @@ export function mostReadSource(g: SearchGenre): ShelfSource {
     },
   };
 }
+
+/** The stored list for a genre query: this device's last good pool, else the shared one. No network when the device has it. Used to lead a typed genre search. */
+export async function storedGenreList(query: string): Promise<Book[] | null> {
+  const local = pools.peek(query)?.value;
+  if (local && local.length >= MIN_ROW) return local;
+  return readShared('genre_pool', query);
+}

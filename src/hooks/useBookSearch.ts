@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Book } from '../types';
-import { fillMissingCovers, getCoverPick, isWeakCover, resolveCover, searchBooksLive, searchLocal, type SearchScope } from '../services/books';
+import { dedupeBooks, fillMissingCovers, getCoverPick, isWeakCover, resolveCover, searchBooksLive, searchLocal, type SearchScope } from '../services/books';
 import { displayBook } from '../services/books/englishTitle';
 import { genreForQuery } from '../services/books/genreRank';
-import { readShared } from '../services/store/sharedDiscovery';
+import { storedGenreList } from '../services/store/genreRows';
 
 /** Wait this long after the last keystroke before asking the network (books already on the device are shown with no wait at all). */
 const TYPING_DELAY_MS = 150;
@@ -86,7 +86,11 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
     forced.current = false;
     const controller = new AbortController();
     setFailedSources([]);
-    const live = (raw: Book[]) => { const books = withPicks(raw).map(displayBook); if (!controller.signal.aborted) { setResults(books); latest.current = books; setStale(false); setEmpty(false); } };
+    // A typed genre: the genre's stored list (popular, well rated, OF the genre) stays FIRST for the whole search; the live search only adds more after it
+    // (before, the live answer replaced it, and books that merely have the word in their title took over the top of the list).
+    let genreFirst: Book[] = [];
+    const withGenre = (list: Book[]): Book[] => (genreFirst.length ? dedupeBooks([...genreFirst, ...list]) : list);
+    const live = (raw: Book[]) => { const books = withPicks(withGenre(raw)).map(displayBook); if (!controller.signal.aborted) { setResults(books); latest.current = books; setStale(false); setEmpty(false); } };
 
     // Instant: books already on this device. With none, the old list stays (dimmed) until the first answer.
     const instant = searchLocal(query, author, limit, known, scope);
@@ -100,9 +104,9 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
     let liveArrived = false;
     // A typed genre ("manga", "humor", "cozy"): the genre's stored list (the same one its genre page shows: popular, well rated, of the genre) appears at once, before the live search answers
     const genre = !author.trim() ? genreForQuery(query) : undefined;
-    if (genre && !instant.length) {
-      void readShared('genre_pool', genre.query).then(shared => {
-        if (shared?.length && !liveArrived && !controller.signal.aborted) { live(shared.slice(0, Math.max(limit, 20))); setStale(false); }
+    if (genre) {
+      void storedGenreList(genre.query).then(shared => {
+        if (shared?.length && !controller.signal.aborted) { genreFirst = shared; live(liveArrived ? latest.current : []); setStale(false); }
       });
     }
 
@@ -127,7 +131,7 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
           },
         });
         if (controller.signal.aborted) return;
-        const finalList = withPicks(finalRaw);
+        const finalList = withPicks(withGenre(finalRaw));
         setLoading(false);
         setStale(false);
         setEmpty(finalList.length === 0);
