@@ -157,3 +157,19 @@ test('hidden gems: a genre with too few gems is widened with its sub-genre searc
   assert.equal(out.length, 10);
   assert.deepEqual(asked, ['epic fantasy'], 'stops once enough gems');
 });
+
+test('genre search: a book with the genre word only in its title ranks below real books of the genre, unless it is popular or highly rated', async () => {
+  const { rank } = await import('./search');
+  const { parseQuery } = await import('./query');
+  const q = parseQuery('manga', '', true, 'keywords');
+  const real = (title: string) => book({ title, genre: 'Comics & Graphic Novels', summary: 'A long-running manga series about a boy and his friends. '.repeat(3), ratingAverage: 4.4, ratingCount: 900 });
+  const titleOnly = book({ title: 'Manga University: A Guide', genre: 'Education', summary: 'Courses.', ratingAverage: 3.5, ratingCount: 10 });
+  const famous = book({ title: 'Manga Classics: Pride and Prejudice', genre: 'Fiction', summary: 'Adaptation.', ratingAverage: 4.5, ratingCount: 2000 });
+  const out = rank([titleOnly, famous, real('Naruto'), real('One Piece')], q, 10).map(b => b.title);
+  assert.ok(out.indexOf('Manga University: A Guide') > out.indexOf('Naruto'));
+  assert.ok(out.indexOf('Manga University: A Guide') > out.indexOf('Manga Classics: Pride and Prejudice'), 'a popular title match is still welcome');
+});
+
+test('"Chick Lit" is now "Women\'s Fiction"; the old words still open it', async () => {
+  for (const q of ['chick lit', 'chicklit', 'chick-lit', 'rom com']) assert.equal(genreForQuery(q)?.genre.label, "Women's Fiction", q);
+});

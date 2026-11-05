@@ -15,7 +15,7 @@ import { localMatches, rememberSeen } from './localIndex';
 import { contentTokens, normQ, parseQuery, tokenHits, type ParsedQuery, type SearchScope } from './query';
 import { keywordGroups, keywordPhrases, stem } from './keywords';
 import { coverBonus } from './covers';
-import { diversify, kindAdjust, kindOfQuery, thinRecord } from './genreRank';
+import { diversify, genreForQuery, kindAdjust, kindOfQuery, thinRecord } from './genreRank';
 
 /** Editions that are about a book, not the book ("Study Guide", "Summary of ...", boxed sets): ranked far down unless that is what was asked for. */
 const NOT_THE_BOOK = /\b(study guide|summary of|summary and analysis|sparknotes|cliffsnotes|workbook|analysis of|box(?:ed)? set|trivia|conversation starters|lesson plans?|teacher'?s? guide|readers? guide|large print|annotated|omnibus|graphic novel adaptation|import and export market|world forecasts?|market (?:research|report|forecast)s?|industry report|(?:19|20)\d\d (?:import|world|global|forecast))\b/i;
@@ -182,10 +182,10 @@ function inScope(b: Book, q: ParsedQuery): boolean {
  * carries, worth up to 60. A word counts through its mapping too (keywords.ts: "cozy" also finds "heartwarming", "classics" also finds an old, widely
  * read book), and "classics" meets "classic". Ranking by this comes AFTER a strong title / author match and next to popularity, never before.
  */
-function keywordFit(b: Book, q: ParsedQuery): number {
+function keywordFit(b: Book, q: ParsedQuery, titleCounts = true): number {
   const groups = keywordGroups(contentTokens(q.tokens));
   if (!groups.length) return 0;
-  const about = new Set(normQ(`${isKnownGenre(b.genre) ? b.genre : ''} ${hasRealSummary(b.summary) ? b.summary : ''} ${b.title || ''}`).split(' ').map(stem));
+  const about = new Set(normQ(`${isKnownGenre(b.genre) ? b.genre : ''} ${hasRealSummary(b.summary) ? b.summary : ''} ${titleCounts ? b.title || '' : ''}`).split(' ').map(stem));
   const lastGroup = groups[groups.length - 1];
   const hits = groups.reduce((n, g) => {
     if (g.words.some(w => about.has(w)) || (g.classic && classicish(b))) return n + 1;
@@ -208,6 +208,22 @@ export function popularityBonus(b: Partial<Pick<Book, 'popularRank' | 'year'>>, 
   return place + recent;
 }
 
+/**
+ * A genre search ("manga", "humor", "cozy", "chick lit") wants books OF that genre. A book that only has the word in its title ("Manga University", "The Humor Code Workbook")
+ * is not that, so its title does not count towards the genre fit and it ranks lower, unless it is also truly popular or highly rated (then it is welcome).
+ */
+export const TITLE_ONLY_PENALTY = 30;
+export function wellKnown(b: Pick<Book, 'popularRank' | 'ratingAverage' | 'ratingCount'>): boolean {
+  return (b.popularRank !== undefined && b.popularRank < 15) || (Number(b.ratingAverage) >= 4 && Number(b.ratingCount) >= 500);
+}
+export function titleOnlyMatch(b: Pick<Book, 'title' | 'genre' | 'summary'>, q: ParsedQuery): number {
+  const groups = keywordGroups(contentTokens(q.tokens));
+  if (!groups.length) return 0;
+  const title = new Set(normQ(b.title || '').split(' ').map(stem));
+  const rest = new Set(normQ(`${isKnownGenre(b.genre) ? b.genre : ''} ${hasRealSummary(b.summary) ? b.summary : ''}`).split(' ').map(stem));
+  return groups.some(g => g.words.some(w => title.has(w)) && !g.words.some(w => rest.has(w))) ? 1 : 0;
+}
+
 /** `skip`: books an earlier page already showed (a later page never repeats them). */
 export function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly Book[] = [], skip: readonly Book[] = []): Book[] {
   // A broad search (ONE word, no author, no ISBN: "chess") ranks the widely read books ahead of obscure ones that merely contain the word.
@@ -216,6 +232,7 @@ export function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly
   const popular = q.scope !== 'author' && !q.author && !q.isbn && !q.full && q.tokens.length > 0 && (q.tokens.length === 1 || byKeywords); // keyword / mood searches are broad by nature, whatever their length
   // A genre search (the Search tab's genres, and their sub-genres) knows what kind of book it wants: fiction or non-fiction
   const wantKind = byKeywords ? kindOfQuery(q.text) : undefined;
+  const isGenreSearch = byKeywords && !!genreForQuery(q.text);
   const sorted = dedupeBooks(books)
     .filter(b => inScope(b, q) && !(skip.length && skip.some(x => x === b || sameWork(x, b))))
     .map((book, order) => ({
@@ -223,7 +240,7 @@ export function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly
       order,
       // "Death by Water" was split into a title and an author: the better of the two readings counts
       score: Math.max(searchRelevance(book, q.text, q.author, q.partial, q.scope === 'title' || q.scope === 'keywords', popular, byKeywords), q.full ? searchRelevance(book, q.full, '', q.partial, q.scope === 'title') : -Infinity)
-        + (byKeywords ? keywordFit(book, q) + thinRecord(book) + kindAdjust(book, wantKind) + popularityBonus(book) : 0)
+        + (byKeywords ? keywordFit(book, q, !isGenreSearch) + (isGenreSearch && titleOnlyMatch(book, q) && !wellKnown(book) ? -TITLE_ONLY_PENALTY : 0) + (isGenreSearch && Number(book.ratingAverage) >= 4 && Number(book.ratingCount) >= 100 ? 10 : 0) + thinRecord(book) + kindAdjust(book, wantKind) + popularityBonus(book) : 0)
         - (titleLooksForeign(book.title) && !titleLooksForeign(q.text) && !titleLooksForeign(q.full) ? FOREIGN_TITLE_PENALTY : 0) // English editions first, unless a foreign title was typed
         + (own.length && own.some(o => o === book || sameWork(o, book)) ? OWN_BONUS : 0),
     }))
