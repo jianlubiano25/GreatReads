@@ -21,7 +21,7 @@ export const SHARED_MAX = 40;
 export interface SlimBook { i: string | number; t: string; a: string; y?: string; g?: string; id?: BookIdentity; c?: string; ci?: number; ra?: number; rc?: number; rs?: 'openlibrary' | 'apple' | 'hardcover' }
 
 /** The version of the stored shape. Rows written by an older version (v1 dropped every Open Library rating, so Hidden Gems found none) are never read: they have another key. */
-export const SHARED_VERSION = 'v2';
+export const SHARED_VERSION = 'v3'; // v3: genre pools rebuilt from precise queries (poolQueries); v2 rows are never read
 /** How long a stored list stays readable. Genre lists change slowly; with 1 day only the lists filled in the last 24 hours existed (1 of 56 on 2026-11-05) and Hidden Gems went empty again. */
 export const SHARED_DAYS = 7;
 const versioned = (key: string) => `${SHARED_VERSION}|${key}`;
