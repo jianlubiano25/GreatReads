@@ -85,3 +85,5 @@ Moved out of HANDOFF.md / docs/handoff-reference.md on 2026-11-01 in one batch, 
 - 2026-11-03: admin tools show only with a signed-in admin AND developer mode ON (`services/adminUi.ts` `useAdminUi`: capture section, fill button, book-info name tools, cover viewer owner tools, catalog review); "Fill shared genre lists" now runs in the background (`store/fillGenres.ts`), progress shows on Discover; BUILD_NUMBER 17.
 
 - 2026-11-03: slow covers show the quickest other cover (saved candidate or fast Apple/Google/OL lookup) until the preferred one loads; added task F6 (live sync, no conflicts, remove cloud buttons); BUILD_NUMBER 18.
+
+- 2026-11-03: Hardcover server function `/api/hardcover` (token only in the Pages secret, one fixed read-only query, cached 1 day) + tests; not wired into the app yet; BUILD_NUMBER 19.

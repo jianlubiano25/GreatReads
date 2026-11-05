@@ -5,6 +5,8 @@ import { searchBooksLive } from '../books/search';
 import { shrunkRating } from '../books/model';
 import { applyInfo } from '../books/infoStore';
 import { externalRating, setRating } from '../books/ratings';
+import { parseQuery } from '../books/query';
+import { titleOnlyMatch, wellKnown } from '../books/search';
 import { openLibraryRatings } from '../books/sources/openLibrary';
 import { hardcoverRating } from '../books/sources/hardcover';
 import { readShared, writeShared } from './sharedDiscovery';
@@ -275,9 +277,22 @@ export function mostReadSource(g: SearchGenre): ShelfSource {
   };
 }
 
-/** The stored list for a genre query: this device's last good pool, else the shared one. No network when the device has it. Used to lead a typed genre search. */
+/**
+ * Lists stored before the ranking fix hold books that merely have the genre word in their title (v2|chick lit: "The Cultural Politics of Chick Lit", "Death By Chick Lit";
+ * v2|sports: "Sports in Society", "Stay Awesome Sports Journal"). Those stay in the pool (Hidden Gems / New rows have their own rules) but must not LEAD a typed search:
+ * they are dropped here unless truly popular or highly rated. When fewer than SEARCH_LEAD_MIN books remain, no list leads and the live ranking (which penalises them too) is used.
+ */
+export const SEARCH_LEAD_MIN = 8;
+export function cleanForSearch(g: Pick<SearchGenre, 'query'>, books: readonly Book[]): Book[] {
+  const q = parseQuery(g.query, '', true, 'keywords');
+  return books.filter(b => !titleOnlyMatch(b, q) || wellKnown(b));
+}
+
+/** The stored list for a genre query: this device's last good pool, else the shared one, cleaned for search. No network when the device has it. Used to lead a typed genre search. */
 export async function storedGenreList(query: string): Promise<Book[] | null> {
   const local = pools.peek(query)?.value;
-  if (local && local.length >= MIN_ROW) return local;
-  return readShared('genre_pool', query);
+  const raw = local && local.length >= MIN_ROW ? local : await readShared('genre_pool', query);
+  if (!raw?.length) return null;
+  const clean = cleanForSearch({ query }, raw);
+  return clean.length >= SEARCH_LEAD_MIN ? clean : null;
 }

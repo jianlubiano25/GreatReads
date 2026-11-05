@@ -111,3 +111,10 @@ test('withFallbackRatings: the number of Open Library lookups can be raised (gem
   assert.equal(asked, 24);
   assert.equal(out.filter(b => b.ratingCount === 90).length, 24);
 });
+
+test('cleanForSearch: a stored pool built before the ranking fix loses books that only have the genre word in the title (chick lit, sports)', async () => {
+  const { cleanForSearch } = await import('./genreRows');
+  const b = (title: string, over: any = {}) => ({ id: title, title, author: 'A', ...over }) as any;
+  const pool = [b('Big Little Lies'), b('The Cultural Politics of Chick Lit'), b('Death By Chick Lit'), b('Twenties Girl'), b('Chick Lit', { ratingAverage: 4.5, ratingCount: 2000 })];
+  assert.deepEqual(cleanForSearch({ query: 'chick lit' }, pool).map(x => x.title), ['Big Little Lies', 'Twenties Girl', 'Chick Lit']);
+});
