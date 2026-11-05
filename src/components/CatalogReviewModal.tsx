@@ -1,3 +1,4 @@
+import { useAdminUi } from '../services/adminUi';
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useModalA11y } from '../hooks/useModalA11y';
@@ -24,7 +25,7 @@ export type ShownInfo = { summary?: string; authorBio?: string; ratings?: Source
 export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onClose: () => void; book?: { title: string; author?: string }; initialKind?: Candidate['kind']; shown?: ShownInfo }) {
   useModalA11y(onClose);
   useSyncExternalStore(subscribeAuth, authVersion, authVersion);
-  const owner = !!currentUser() && isAdminKnown() === true;
+  const owner = useAdminUi();
   const [q, setQ] = useState('');
   const [works, setWorks] = useState<WorkRow[] | null>(null);
   const [work, setWork] = useState<WorkRow | null>(null);

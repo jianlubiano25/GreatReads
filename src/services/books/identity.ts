@@ -240,7 +240,16 @@ export const titlesMatch = (a = '', b = ''): boolean => {
 export function sameEdition(a: Pick<Book, 'id' | 'identity'>, b: Pick<Book, 'id' | 'identity'>): boolean {
   const x = identityOf(a);
   const y = identityOf(b);
-  return !!((x.isbn13 && x.isbn13 === y.isbn13) || (x.isbn10 && x.isbn10 === y.isbn10) || (x.olEdition && x.olEdition === y.olEdition) || (x.gbVolume && x.gbVolume === y.gbVolume));
+  // A shared ISBN only counts when it is a real one (check digit correct); a mistyped or made-up number must not join two different books
+  return !!((x.isbn13 && x.isbn13 === y.isbn13 && validIsbn(x.isbn13)) || (x.isbn10 && x.isbn10 === y.isbn10 && validIsbn(x.isbn10)) || (x.olEdition && x.olEdition === y.olEdition) || (x.gbVolume && x.gbVolume === y.gbVolume));
+}
+
+/** ISBN-10 / ISBN-13 check digit. */
+export function validIsbn(isbn = ''): boolean {
+  const s = isbn.replace(/[\s-]/g, '').toUpperCase();
+  if (/^\d{13}$/.test(s)) return (10 - [...s.slice(0, 12)].reduce((n, c, i) => n + Number(c) * (i % 2 ? 3 : 1), 0) % 10) % 10 === Number(s[12]);
+  if (/^\d{9}[\dX]$/.test(s)) return [...s].reduce((n, c, i) => n + (c === 'X' ? 10 : Number(c)) * (10 - i), 0) % 11 === 0;
+  return false;
 }
 
 /**

@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect, useRef, useSyncExternalStore } from 'react';
+import React, { useCallback, useState, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { Book } from '../types';
 import { BOOK_AWARDS } from '../data/defaultBooks';
 import { honorKind, mergeHonors } from '../services/store/honors';
@@ -6,7 +6,7 @@ import { externalRating, isNytCoverUrl, ratingOf, starFills } from '../services/
 import { infoKey, infoVersion, shownRating, subscribeInfo } from '../services/books/infoStore';
 import { placeholderStyleFor, titleSizeCqw, isFrontCoverShape } from '../services/books/placeholderCover';
 import { inspectCover } from '../services/books/covers';
-import { coverKey, ownCoverUrl, sizedCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, isCoverSettled, markCoverSettled, reportMissingCover, clearMissingCover, getCoverPickInfo, pickSizedUrl, markCoverPickFailed, peekCoverCandidate } from '../services/books';
+import { coverKey, sizedCoverUrl, resolveCover, subscribeCovers, getCoversVersion, getCoverFix, dropCoverFix, isCoverSettled, markCoverSettled, reportMissingCover, clearMissingCover, knownCover, markCoverPickFailed, peekCoverCandidate, loadCoverCandidates, rankCandidates } from '../services/books';
 
 export type AwardKind = 'w' | 's' | 'c'; // winner, shortlist, other pick (book club, series...)
 
@@ -84,8 +84,6 @@ export const primaryAward = (b: Book): { type: AwardKind; label: string } | unde
 const chipIcon = (t: AwardKind) => (t === 'c' ? '\u{1F4D6}' : t === 'w' ? '\u{1F3C6}' : '\u{1F396}\uFE0F');
 /** "NYT bestseller · 12 weeks" reads "NYT · 12 weeks" on a chip, and "NYT · new this week" in full (never cut: a chip too wide for its card wraps to a second line). The book info keeps the full label. */
 export const chipLabel = (label: string): string => label.replace(/^NYT bestseller(?= · )/, 'NYT');
-/** Does the book wear any honor chip? (The shelf card uses it to place your status chip.) */
-export const hasHonors = (b: Book): boolean => awardsFor(b).length > 0;
 const chipClass = (t: AwardKind) => `rl-bdg ${t === 'w' ? 'rl-bdg-w' : t === 'c' ? 'rl-bdg-c' : ''}`;
 
 /** Prize / shortlist chips, e.g. 🏆 Women's Prize 2021. `primary`: just the one main honor, on one line (Store shelves: every shelf stays the same height). */
@@ -111,6 +109,9 @@ export function AwardBadges({ book, primary }: { book: Book; primary?: boolean }
     </div>
   );
 }
+
+/** How long the preferred cover may take before a cover the picker already found is shown under it */
+const SLOW_COVER_MS = 1200;
 
 /** Author line size per cover size (title size is set from the cover's own width, see PlaceholderCover). */
 const AUTHOR_CQW: Record<string, number> = { xs: 11.5, nook: 0, md: 10.8, lg: 10.2, xl: 9.6 }; // about 20% larger than before
@@ -172,6 +173,7 @@ function PlaceholderCover({ book, size }: { book: Book; size: keyof typeof AUTHO
 // URLs that have already loaded once on this device. Used only to skip the fade-in for covers that appear instantly.
 // (Kept apart from 'readlife.preload', the short list index.html starts loading before the app code runs.)
 const LOADED_KEY = 'readlife.loaded';
+const STANDIN_GRACE_MS = 250;
 const loadedCovers = new Set<string>((() => {
   try {
     const saved = JSON.parse(localStorage.getItem(LOADED_KEY) || '[]');
@@ -182,16 +184,30 @@ const loadedCovers = new Set<string>((() => {
 })());
 
 let saveLoadedTimer: ReturnType<typeof setTimeout> | undefined;
+// Covers seen on this device (1000 most recent). A remembered cover loads eagerly and is decoded at once, so it is already there when it scrolls into view
+// instead of showing the stand-in for a moment.
+const saveLoadedNow = () => {
+  saveLoadedTimer = undefined;
+  try {
+    const all = Array.from(loadedCovers).slice(-1000);
+    localStorage.setItem(LOADED_KEY, JSON.stringify(all));
+    // The covers shown most recently (the Store's first screen, Discover, a genre page, search): index.html starts loading them before the app code runs, so on reopen they are in hand at once
+    localStorage.setItem('readlife.preload2', JSON.stringify(all.slice(-80)));
+  } catch {}
+};
+if (typeof window !== 'undefined') { // the list is written a moment after a burst of loads: also write it when the app is hidden or closed
+  window.addEventListener('pagehide', saveLoadedNow);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveLoadedNow(); });
+}
 function recordLoadedCover(url: string) {
-  if (!url || loadedCovers.has(url)) return;
+  if (!url) return;
+  const had = loadedCovers.delete(url); // shown again: moves to the end, so the end of the list is what was on screen most recently
   loadedCovers.add(url);
+  if (had && !saveLoadedTimer) saveLoadedTimer = setTimeout(saveLoadedNow, 4000);
+  if (had) return;
   // Many covers load in a burst: write the list once, a moment later
   clearTimeout(saveLoadedTimer);
-  saveLoadedTimer = setTimeout(() => {
-    try {
-      localStorage.setItem(LOADED_KEY, JSON.stringify(Array.from(loadedCovers).slice(-300)));
-    } catch {}
-  }, 1500);
+  saveLoadedTimer = setTimeout(saveLoadedNow, 1500);
 }
 
 /**
@@ -211,14 +227,12 @@ export const CoverFace = React.memo(function CoverFace(props: CoverFaceProps) {
 function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = false }: CoverFaceProps) {
   // Re-render when "Reload missing covers" repairs one or a cover is picked in the cover viewer. A picked cover wins over a repaired one, which wins over the original link
   useSyncExternalStore(subscribeCovers, getCoversVersion, getCoversVersion);
-  const pick = getCoverPickInfo(book);
-  // ONE URL per picture: a repaired cover is drawn at the card's size exactly like the same picture arriving through the book's own link (getCoverUrl). Raw, a repair
-  // (Apple's 600x900) and the book's updated link (360x540) were two URLs for one picture, so the cover loaded twice and visibly swapped.
-  const fix = pick ? '' : getCoverFix(book);
   // Whatever is already known is drawn at once (pick, repair, the book's own link, else a cover kept from an earlier lookup): nothing here waits on a lookup or a measurement.
-  const own = pick ? '' : ownCoverUrl(book, imgSize);
-  const kept = pick || fix || own ? '' : peekCoverCandidate(book);
-  const baseUrl = pick ? pickSizedUrl(pick.url, imgSize) : fix ? sizedCoverUrl(fix, imgSize) : own || (kept ? sizedCoverUrl(kept, imgSize) : '');
+  // One function for every screen (bookView.ts), so a card, the search list and the nook can never disagree about which cover a book has.
+  const known = knownCover(book, imgSize);
+  const pick = known.pick;
+  const fix = known.from === 'fix' ? known.url : '';
+  const baseUrl = known.url;
   type St = { base: string; tries: number; alt: string; dead: boolean };
   const [st, setSt] = useState<St>({ base: baseUrl, tries: 0, alt: '', dead: false });
   const cur: St = st.base === baseUrl ? st : { base: baseUrl, tries: 0, alt: '', dead: false };
@@ -231,7 +245,8 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
   // A cover the browser already has (HTTP cache) is complete the moment the <img> exists: show it straight away instead of
   // flashing the title placeholder first. (onLoad can fire before React attaches it, or not at all for cached images.)
   const imgRef = useRef<HTMLImageElement>(null);
-  useEffect(() => {
+  // Layout effect (before the screen paints): a cover the browser already has is marked loaded in the SAME frame it first appears, so reopening the app never shows the stand-in for a frame and fades the cover in.
+  useLayoutEffect(() => {
     const im = imgRef.current;
     const ready = !!im && im.complete && im.naturalWidth >= 8 && (!!pick || isFrontCoverShape(im.naturalWidth, im.naturalHeight));
     // Always set (not only to true): a NEW picture (a pick, a repair, a replacement) starts as "not loaded", so the stand-in stays until THIS picture is in hand\n    setImgLoaded(ready);
@@ -310,12 +325,52 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
   const url = src;
   const failed = cur.dead;
   const won = awardsFor(book).some(a => a.type === 'w');
-  const isEager = eager || size === 'lg' || size === 'xl';
   const wasKnown = url ? loadedCovers.has(url) : false; // seen before on this device: appears with no fade
+  const isEager = eager || size === 'lg' || size === 'xl' || wasKnown; // a remembered cover is asked for and decoded at once (a lazy <img> only starts after the first frame, which showed the stand-in on every reopen)
   const isReady = imgLoaded; // only a picture that really loaded replaces the stand-in (a remembered URL can still be slow or gone)
+  // A remembered cover that is on its way from the device (a few milliseconds) is waited for: the stand-in is drawn only if it has not come within STANDIN_GRACE_MS (the box behind it already has the stand-in's colour)
+  const [graceOver, setGraceOver] = useState(!wasKnown);
+  useEffect(() => {
+    if (!wasKnown) { setGraceOver(true); return; }
+    setGraceOver(false);
+    const t = setTimeout(() => setGraceOver(true), STANDIN_GRACE_MS);
+    return () => clearTimeout(t);
+  }, [src, wasKnown]);
+
+  // The preferred cover is slow (or stuck): after SLOW_COVER_MS the quickest other picture is shown underneath (a cover the picker already found, else a fast Apple/Google/Open Library lookup, Apple first),
+  // and the preferred one takes over the moment it has loaded. A starred / picked cover is never replaced: it is the preferred one.
+  const [slow, setSlow] = useState(false);
+  const [fbLoaded, setFbLoaded] = useState(false);
+  const [fbFound, setFbFound] = useState('');
+  useEffect(() => {
+    setSlow(false); setFbLoaded(false); setFbFound('');
+    if (!url || failed || known.from !== 'own' || cur.alt) return;
+    const t = setTimeout(() => setSlow(true), SLOW_COVER_MS);
+    return () => clearTimeout(t);
+  }, [url, failed, known.from, cur.alt]);
+  useEffect(() => {
+    if (!slow || imgLoaded || failed || known.from !== 'own' || peekCoverCandidate(book)) return;
+    const ac = new AbortController();
+    void loadCoverCandidates(book, list => {
+      if (ac.signal.aborted) return;
+      const first = rankCandidates(list).find(c => !c.foreign);
+      if (first) setFbFound(first.source === 'openlibrary' ? first.url.replace(/-L\.jpg/, '-M.jpg') : first.url);
+    }, ac.signal, { fast: true }).catch(() => []);
+    return () => ac.abort();
+  }, [slow, imgLoaded, failed, known.from, book.title, book.author]);
+  const fallbackUrl = (() => {
+    if (!slow || isReady || failed || known.from !== 'own') return '';
+    const k = peekCoverCandidate(book) || fbFound;
+    if (!k) return '';
+    const u = sizedCoverUrl(k, imgSize);
+    return u && u !== url ? u : '';
+  })();
 
   return (
     <>
+      {fallbackUrl ? (
+        <img key={fallbackUrl} src={fallbackUrl} alt="" className={`absolute inset-0 w-full h-full object-cover z-10 ${fbLoaded ? 'opacity-100' : 'opacity-0'}`} referrerPolicy="no-referrer" onLoad={e => { if (e.currentTarget.naturalWidth >= 8) setFbLoaded(true); }} />
+      ) : null}
       {near ? null : <span ref={sentinel} aria-hidden className="absolute inset-0 pointer-events-none" />}
       {url && !failed ? (
         <img
@@ -325,8 +380,8 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
           alt=""
           loading={isEager ? 'eager' : 'lazy'}
           fetchPriority={isEager ? 'high' : undefined}
-          decoding="async"
-          className={`absolute inset-0 w-full h-full object-cover z-20 ${wasKnown ? '' : 'transition-opacity duration-150'} ${isReady ? 'opacity-100' : 'opacity-0'}`}
+          decoding={wasKnown ? 'sync' : 'async'}
+          className={`absolute inset-0 w-full h-full object-cover z-20 ${isReady ? 'opacity-100' : 'opacity-0'}`} /* no fade: the stand-in goes away in the same frame, so the colour behind it (grey spine colour) is never seen */
           referrerPolicy="no-referrer"
           onLoad={e => {
             // A 1x1 placeholder counts as a failure; a real image clears any earlier miss
@@ -342,7 +397,7 @@ function CoverFaceFor({ book, size = 'md', imgSize = 'M', badge = true, eager = 
           onError={onErr}
         />
       ) : null}
-      {(!url || failed || !isReady) ? <PlaceholderCover book={book} size={size} /> : null}
+      {(!url || failed || (!isReady && graceOver && !(fallbackUrl && fbLoaded))) ? <PlaceholderCover book={book} size={size} /> : null}
       {badge && won && size !== 'xs' ? (
         <span className="rl-prize" title="Prize winner" aria-label="Prize winner">🏆</span>
       ) : null}

@@ -3,7 +3,9 @@ import { Book, BookStatus, WordItem } from '../types';
 import { DIFFICULTY_LABELS } from '../data/defaultBooks';
 import { BUILTIN_DICTIONARY } from '../data/defaultWords';
 import { speakWord } from '../services/dictionary';
+import { displayGenre } from '../services/books/catalogFill';
 import { CoverFace, RatingLine, AwardBadges } from './BookMeta';
+import { coverBackdrop } from '../services/books/placeholderCover';
 import { Ban, Bookmark, Check, Edit2, Library, Search, Trash2, Volume2 } from 'lucide-react';
 
 /*
@@ -112,7 +114,7 @@ export const NowReadingCard = React.memo(function NowReadingCard({
           type="button"
           onClick={() => onOpen(b)}
           className="book-cover-3d w-[124px] h-[186px] sm:w-[150px] sm:h-[225px] shrink-0 text-left p-3 flex flex-col justify-between text-white overflow-hidden shadow-lg"
-          style={{ backgroundColor: b.spineColor || accent }}
+          style={{ background: coverBackdrop(b) }}
           title="Tap to see author, year, pages & info"
           aria-label={`${b.title}: details`}
         >
@@ -127,7 +129,7 @@ export const NowReadingCard = React.memo(function NowReadingCard({
           <div className="text-sm text-[#706256] dark:text-[#a89a8a] line-clamp-2">{b.author}</div>
           <div className="flex flex-wrap gap-1.5 mt-0.5">
             {b.year ? <span className={chip}>{b.year}</span> : null}
-            {b.genre && b.genre !== 'Book' ? <span className={chip}>{b.genre}</span> : null}
+            {displayGenre(b.genre) ? <span className={chip}>{displayGenre(b.genre)}</span> : null}
             {b.difficulty ? <span className={chip}>{DIFFICULTY_LABELS[b.difficulty]}</span> : null}
           </div>
           <RatingLine book={b} className="mt-0.5" />
@@ -239,7 +241,7 @@ export const UpNextCard = React.memo(function UpNextCard({
         type="button"
         onClick={() => onOpen(b)}
         className="book-cover-3d w-14 h-20 shrink-0 rounded text-[9px] p-1.5 text-white flex flex-col justify-between overflow-hidden shadow"
-        style={{ backgroundColor: b.spineColor || '#2e5934' }}
+        style={{ background: coverBackdrop(b) }}
         aria-label={`${b.title}: details`}
       >
         <CoverFace book={b} size="xs" />
@@ -278,7 +280,7 @@ function ShelfCardTop({ book: b, onOpen }: { book: Book; onOpen: (b: Book) => vo
           type="button"
           onClick={() => onOpen(b)}
           className="book-cover-3d w-[86px] h-[126px] sm:w-[94px] sm:h-[138px] shrink-0 text-left p-2.5 flex flex-col justify-between text-white overflow-hidden shadow-md"
-          style={{ backgroundColor: b.spineColor || '#2e5934' }}
+          style={{ background: coverBackdrop(b) }}
           title="Tap to see author, year & page info"
           aria-label={`${b.title}: details`}
         >
@@ -291,7 +293,7 @@ function ShelfCardTop({ book: b, onOpen }: { book: Book; onOpen: (b: Book) => vo
           </h3>
           <p className="text-xs text-[#2e5934] dark:text-[#86b880] font-medium mt-0.5 truncate">{b.author}</p>
           <div className="text-[11px] text-[#706256] dark:text-[#a89a8a] mt-1">
-            {b.year ? `${b.year} · ` : ''}{b.pageCount ? `${b.pageCount} p. · ` : ''}{b.genre}
+            {[b.year, b.pageCount ? `${b.pageCount} p.` : '', displayGenre(b.genre)].filter(Boolean).join(' · ')}
           </div>
           <RatingLine book={b} compact className="mt-0.5" />
         </div>

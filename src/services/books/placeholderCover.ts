@@ -40,6 +40,12 @@ export function placeholderStyleFor(book: { title?: string; author?: string }): 
   return PLACEHOLDER_STYLES[hash(key) % PLACEHOLDER_STYLES.length];
 }
 
+/** The flat colour of a book's stand-in cover, as a CSS background: the same for the stand-in itself and for the box behind every cover, so there is ONE stand-in look and never a grey or spine-coloured flash. */
+export function coverBackdrop(book: { title?: string; author?: string }): string {
+  const st = placeholderStyleFor(book);
+  return `linear-gradient(180deg, ${st.bg} 0%, ${st.bg} 55%, ${st.shade} 100%)`;
+}
+
 /** How much larger the type is than the first version (about 20% at every size band) */
 export const TITLE_SCALE = 1.2;
 

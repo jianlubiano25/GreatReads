@@ -1,0 +1,63 @@
+Fiction|36
+Self-help|26
+Prize winner|22
+Mystery|17
+Reese's Book Club|10
+cookbooks|10
+Fantasy|9
+contemporary|8
+Graphic Novels|8
+young adult|7
+Romance|7
+Science fiction|6
+Service95 Book Club|6
+Classic|6
+humor|6
+Non-fiction|6
+biography|5
+crime|5
+Memoir|5
+Fantasy || Fiction|4
+Historical fiction|4
+Oprah's Book Club|4
+New release|3
+Fiction / Historical|3
+Biography & Autobiography || Non-fiction|3
+Science|3
+Fiction || Mystery|3
+Philosophy|3
+horror|3
+Fiction / Translated|3
+Fiction || Romance|2
+Memoir || Non-fiction|2
+Cooking Methods|1
+Self-help / Career|1
+Fiction / Myth|1
+Etiquette for men|1
+crime || horror|1
+Reader favourite|1
+The Inklings|1
+Fiction / Speculative|1
+Fiction / Romcom|1
+Business & Economics || Non-fiction|1
+Self-help / Creativity|1
+Non-fiction || Political Science|1
+Biography & Autobiography || Memoir || Non-fiction|1
+Non-fiction / Creativity|1
+Fiction / Satire|1
+Fiction / Literary|1
+Family & Relationships || Memoir || Non-fiction|1
+Fiction || Literary Criticism || Non-fiction|1
+Non-fiction || Social Science|1
+Fiction / Epistolary|1
+Fiction / Dystopian|1
+Psychology / Self-help|1
+Fiction / Sci-Fi|1
+Biography & Autobiography|1
+Fiction / Fantasy|1
+History || Non-fiction|1
+Fiction / Crime|1
+Inklings Book Club|1
+Philosophy / Self-help|1
+Non-fiction / Essays|1
+Fiction / Romance|1
