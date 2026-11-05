@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Book } from '../types';
 import { fillMissingCovers, getCoverPick, isWeakCover, resolveCover, searchBooksLive, searchLocal, type SearchScope } from '../services/books';
 import { displayBook } from '../services/books/englishTitle';
+import { genreForQuery } from '../services/books/genreRank';
+import { readShared } from '../services/store/sharedDiscovery';
 
 /** Wait this long after the last keystroke before asking the network (books already on the device are shown with no wait at all). */
 const TYPING_DELAY_MS = 150;
@@ -95,6 +97,14 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
     if (tooShort) { setLoading(false); return () => controller.abort(); } // a letter or two: the device answers, the network waits for a third letter or Enter
     setLoading(true);
     let earlyCovers = false;
+    let liveArrived = false;
+    // A typed genre ("manga", "humor", "cozy"): the genre's stored list (the same one its genre page shows: popular, well rated, of the genre) appears at once, before the live search answers
+    const genre = !author.trim() ? genreForQuery(query) : undefined;
+    if (genre && !instant.length) {
+      void readShared('genre_pool', genre.query).then(shared => {
+        if (shared?.length && !liveArrived && !controller.signal.aborted) { live(shared.slice(0, Math.max(limit, 20))); setStale(false); }
+      });
+    }
 
     const timer = setTimeout(async () => {
       try {
@@ -108,7 +118,7 @@ export function useBookSearch(query: string, opts: { author?: string; limit?: nu
           onUpdate: (books, p) => {
             if (!controller.signal.aborted && p.total) setTotal(p.total);
             if (!controller.signal.aborted) setFailedSources(p.failedSources || []);
-            if (books.length) live(books);
+            if (books.length) { liveArrived = true; live(books); }
             if (!earlyCovers && books.length && !controller.signal.aborted) { // covers for the first screen start now; the lookups are shared and remembered, so the list is not held up
               earlyCovers = true;
               withPicks(books.slice(0, EARLY_COVERS)).filter(b => b.title && ((!b.coverId && !b.coverUrl) || isWeakCover(b))).forEach(b => { void resolveCover(b); });

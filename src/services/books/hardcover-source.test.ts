@@ -26,3 +26,10 @@ test('withFallbackRatings: Hardcover fills a gap first and is labelled hardcover
   const out = await withFallbackRatings([mk('x'), mk('y', 'OL1W'), mk('z', 'OL2W')], async w => (w === 'OL2W' ? { average: 4.1, count: 50 } : null), 10, async t => (t === 'x' || t === 'y' ? { average: 4.4, count: 300 } : null));
   assert.deepEqual(out.map(b => b.ratingSource), ['hardcover', 'hardcover', 'openlibrary']);
 });
+
+test('a Hardcover rating is shown as Hardcover (like Open Library / Apple / Google) when nothing else rated the book', async () => {
+  const { mainRating, RATING_SOURCE_LABEL } = await import('./ratings');
+  const main = mainRating({ id: 'h1', source: 'openlibrary', ratingAverage: 4.3, ratingCount: 120, ratingSource: 'hardcover' } as any, []);
+  assert.equal(main?.source, 'hardcover');
+  assert.equal(RATING_SOURCE_LABEL[main!.source as 'hardcover'], 'Hardcover');
+});

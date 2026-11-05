@@ -81,3 +81,5 @@ Moved out of HANDOFF.md / docs/handoff-reference.md on 2026-11-01 in one batch, 
 - 2026-11-03: shelves that fail now retry by themselves (6 s, 18 s, 45 s) with a spinner (`shelf.autoRetry.<id>` in diagnostics); gems rows rate up to 24 more books when too few are rated (cookbooks, chick lit); NYT genre row falls back to most-read books and logs `nyt.failed.<list>.<reason>`; BUILD_NUMBER 15.
 
 - 2026-11-03: "New in 2026" no longer shows exam guides (Educart CBSE etc.) and needs >= 15 ratings; HANDOFF tasks C11-C13 (genre pages, admin shelf diagnostics); Hardcover plan noted in B8; BUILD_NUMBER 16.
+
+- 2026-11-03: admin tools show only with a signed-in admin AND developer mode ON (`services/adminUi.ts` `useAdminUi`: capture section, fill button, book-info name tools, cover viewer owner tools, catalog review); "Fill shared genre lists" now runs in the background (`store/fillGenres.ts`), progress shows on Discover; BUILD_NUMBER 17.
