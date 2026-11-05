@@ -77,3 +77,5 @@ Moved out of HANDOFF.md / docs/handoff-reference.md on 2026-11-01 in one batch, 
 - 2026-11-02: C9 part: admin button "Fill shared genre lists" (Profile, admin only) loads each genre missing from `discovery_cache` one at a time and writes it; test added; BUILD_NUMBER 13.
 
 - 2026-11-02: the admin "Fill shared genre lists" button now shows for any signed-in admin (it was hidden behind developer mode); BUILD_NUMBER 14.
+
+- 2026-11-03: shelves that fail now retry by themselves (6 s, 18 s, 45 s) with a spinner (`shelf.autoRetry.<id>` in diagnostics); gems rows rate up to 24 more books when too few are rated (cookbooks, chick lit); NYT genre row falls back to most-read books and logs `nyt.failed.<list>.<reason>`; BUILD_NUMBER 15.

@@ -113,7 +113,25 @@ test('hidden gems require a usable cover, the requested book kind, and ratings w
     valid('few ratings', { ratingCount: 39 }),
     valid('too many ratings', { ratingCount: 5001 }),
     valid('wrong kind', { genre: 'Psychology' }),
-  ], 'fiction').map(b => b.title), ['valid']);
+  ], 'fiction').map(b => b.title).slice(0, 1), ['valid'], 'the real rule comes first');
+  // never a book without a usable cover, a bad rating or of the wrong kind, even when the row is being filled up
+  const filled = hiddenGems([
+    valid('valid'),
+    valid('no cover', { coverUrl: undefined, coverId: 0 }),
+    valid('unsafe cover', { coverUrl: 'javascript:alert(1)' }),
+    valid('invalid rating', { ratingAverage: Infinity }),
+    valid('wrong kind', { genre: 'Psychology' }),
+    valid('low rating', { ratingAverage: 4.09 }),
+    valid('too many ratings', { ratingCount: 5001 }),
+    valid('terrible', { ratingAverage: 3.0 }),
+  ], 'fiction').map(b => b.title);
+  assert.deepEqual([...filled].sort(), ['low rating', 'too many ratings', 'valid']);
+});
+
+test('hidden gems fill a thin genre from the best rating down (three steps), strict ones first, no repeats', () => {
+  const mk = (title: string, ratingAverage: number, ratingCount: number) => book({ title, ratingAverage, ratingCount });
+  const out = hiddenGems([mk('c', 3.8, 20), mk('a', 4.5, 100), mk('b', 4.0, 30), mk('d', 3.5, 500), mk('e', 3.8, 3)], 'fiction').map(b => b.title);
+  assert.deepEqual(out, ['a', 'b', 'c'], 'a (rule) then b (3.9+, 15+) then c (3.7+, 10+); d too low, e too few ratings');
 });
 
 test('a book filed under Sports, Computers or Games is non-fiction, so a Fantasy search pushes it down', async () => {

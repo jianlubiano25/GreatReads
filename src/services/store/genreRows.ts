@@ -44,13 +44,31 @@ export function newReleases(pool: readonly Book[], kind: SearchGenre['kind'], ye
     .slice(0, ROW_SIZE);
 }
 
+/**
+ * Hidden Gems fill from the best down, in steps, so a genre is never empty just because few of its books are rated: first the real rule (average 4.1+, 40-5000 ratings),
+ * then, only to fill the row, slightly looser steps (3.9+ with 15-20000 ratings, then 3.7+ with 10+). Each step is ordered by the same shrunk rating, and a book appears once.
+ */
+export const GEM_STEPS = [
+  { min: GEM_MIN_AVERAGE, lo: GEM_MIN_RATINGS, hi: GEM_MAX_RATINGS },
+  { min: 3.9, lo: 15, hi: 20000 },
+  { min: 3.7, lo: 10, hi: 50000 },
+] as const;
+const inStep = (b: Book, kind: SearchGenre['kind'], st: (typeof GEM_STEPS)[number]) => {
+  const average = Number(b.ratingAverage), count = Number(b.ratingCount);
+  return hasCover(b) && rightKind(b, kind) && Number.isFinite(average) && average >= st.min && Number.isFinite(count) && count >= st.lo && count <= st.hi;
+};
 export function hiddenGems(pool: readonly Book[], kind: SearchGenre['kind']): Book[] {
-  return pool
-    .filter(b => isGem(b, kind))
-    .map((b, i) => ({ b, i, k: shrunkRating(b.ratingAverage, b.ratingCount) }))
-    .sort((x, y) => y.k - x.k || x.i - y.i)
-    .map(x => x.b)
-    .slice(0, ROW_SIZE);
+  const out: Book[] = [];
+  const used = new Set<Book>();
+  for (const st of GEM_STEPS) {
+    if (out.length >= ROW_SIZE) break;
+    const step = pool
+      .filter(b => !used.has(b) && inStep(b, kind, st))
+      .map((b, i) => ({ b, i, k: shrunkRating(b.ratingAverage, b.ratingCount) }))
+      .sort((x, y) => y.k - x.k || x.i - y.i);
+    for (const x of step) { if (out.length >= ROW_SIZE) break; out.push(x.b); used.add(x.b); }
+  }
+  return out;
 }
 
 /**

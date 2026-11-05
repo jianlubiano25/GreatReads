@@ -76,7 +76,7 @@ test('write: admin devices only, never empty or thin, never a much thinner list 
   const post = admin.calls.find(c => c.init?.method === 'POST')!;
   assert.equal(post.init.body.kind, 'genre_pool');
   assert.equal(post.init.body.payload.length, 20);
-  assert.ok(Date.parse(post.init.body.expires_at) - Date.parse(post.init.body.fetched_at) === 24 * 3600 * 1000, 'expires after a day');
+  assert.ok(Date.parse(post.init.body.expires_at) - Date.parse(post.init.body.fetched_at) === 7 * 24 * 3600 * 1000, 'expires after a week');
 
   const fuller = fake(true, p => (p.includes('select=item_count') ? { ok: true, data: [{ item_count: 40 }] } : { ok: true, data: null }));
   assert.equal(await writeShared('genre_pool', 'k', many.slice(0, 15), fuller.deps), false, '15 over 40 is much thinner');

@@ -22,6 +22,8 @@ export interface SlimBook { i: string | number; t: string; a: string; y?: string
 
 /** The version of the stored shape. Rows written by an older version (v1 dropped every Open Library rating, so Hidden Gems found none) are never read: they have another key. */
 export const SHARED_VERSION = 'v2';
+/** How long a stored list stays readable. Genre lists change slowly; with 1 day only the lists filled in the last 24 hours existed (1 of 56 on 2026-11-05) and Hidden Gems went empty again. */
+export const SHARED_DAYS = 7;
 const versioned = (key: string) => `${SHARED_VERSION}|${key}`;
 
 /** Which site a book's rating came from. Open Library search hits carry no `ratingSource` (only `source: 'openlibrary'` and an `ol_` id), so it is worked out here. Google's and the library's are never shared. */
@@ -101,7 +103,7 @@ export async function writeShared(kind: SharedKind, key: string, books: readonly
   const had = existing.data?.[0]?.item_count ?? 0;
   if (had && slim.length * 2 < had) return false; // never a much thinner list over a fuller one
   const at = new Date(deps.now()).toISOString();
-  const body = { kind, cache_key: versioned(key), payload: slim, fetched_at: at, expires_at: new Date(deps.now() + 24 * 60 * 60 * 1000).toISOString() };
+  const body = { kind, cache_key: versioned(key), payload: slim, fetched_at: at, expires_at: new Date(deps.now() + SHARED_DAYS * 24 * 60 * 60 * 1000).toISOString() };
   const w = await deps.rest(`discovery_cache?on_conflict=kind,cache_key`, { method: 'POST', body, prefer: 'resolution=merge-duplicates,return=minimal' });
   if (!w.ok) { bump('shared.writeFailed'); return false; }
   bump('shared.written');
