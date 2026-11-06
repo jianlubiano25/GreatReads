@@ -118,3 +118,9 @@ test('cleanForSearch: a stored pool built before the ranking fix loses books tha
   const pool = [b('Big Little Lies'), b('The Cultural Politics of Chick Lit'), b('Death By Chick Lit'), b('Twenties Girl'), b('Chick Lit', { ratingAverage: 4.5, ratingCount: 2000 })];
   assert.deepEqual(cleanForSearch({ query: 'chick lit' }, pool).map(x => x.title), ['Big Little Lies', 'Twenties Girl', 'Chick Lit']);
 });
+
+test('C18: genres built the new way (precise queries / subject check) use the new stored version; every other genre keeps the old one, so Fantasy keeps its good list', async () => {
+  const { sharedVersionOf } = await import('./genreRows');
+  for (const q of ['fantasy', 'romance', 'mystery', 'science fiction']) assert.equal(sharedVersionOf(q), 'v3', q);
+  for (const q of ['sports', 'music', 'graphic novels', 'religion', 'christian', "children's books", 'humor']) assert.equal(sharedVersionOf(q), 'v4', q);
+});

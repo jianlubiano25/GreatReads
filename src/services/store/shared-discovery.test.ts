@@ -33,13 +33,13 @@ test('Open Library hits (no ratingSource, only source + ol_ id) keep their ratin
   assert.equal(g.ra, undefined, 'Google ratings are still never shared');
 });
 
-test('shared rows are versioned: a row of the old shape (key without v4|) is never read or replaced', async () => {
+test('shared rows are versioned: a row of the old shape (key without v3|) is never read or replaced', async () => {
   resetSharedDiscoveryForTests();
   const ok = fake(true, p => (p.includes('select=item_count') ? { ok: true, data: [] } : { ok: true, data: [{ payload: slimBooks([book('A'), book('B'), book('C')]) }] }));
   await readShared('genre_pool', 'fantasy', ok.deps);
-  assert.match(ok.calls[0].path, /cache_key=eq\.v4%7Cfantasy/);
+  assert.match(ok.calls[0].path, /cache_key=eq\.v3%7Cfantasy/);
   await writeShared('genre_pool', 'fantasy', [book('A'), book('B'), book('C')], ok.deps);
-  assert.equal(ok.calls.find(c => c.init?.method === 'POST')!.init.body.cache_key, 'v4|fantasy');
+  assert.equal(ok.calls.find(c => c.init?.method === 'POST')!.init.body.cache_key, 'v3|fantasy');
 });
 
 test('read: a live row becomes books; a missing table is noticed once and not asked again for a while', async () => {
@@ -48,7 +48,7 @@ test('read: a live row becomes books; a missing table is noticed once and not as
   const ok = fake(false, () => ({ ok: true, data: [{ payload: slimBooks(rows) }] }));
   const got = await readShared('genre_pool', 'fantasy', ok.deps);
   assert.deepEqual(got?.map(b => b.title), ['A', 'B', 'C']);
-  assert.match(ok.calls[0].path, /^discovery_cache\?kind=eq\.genre_pool&cache_key=eq\.v4%7Cfantasy/);
+  assert.match(ok.calls[0].path, /^discovery_cache\?kind=eq\.genre_pool&cache_key=eq\.v3%7Cfantasy/);
 
   const missing = fake(false, () => ({ ok: false, status: 404, error: 'relation does not exist' }));
   assert.equal(await readShared('genre_pool', 'x', missing.deps), null);

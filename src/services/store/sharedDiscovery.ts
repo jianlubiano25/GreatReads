@@ -21,10 +21,12 @@ export const SHARED_MAX = 40;
 export interface SlimBook { i: string | number; t: string; a: string; y?: string; g?: string; id?: BookIdentity; c?: string; ci?: number; ra?: number; rc?: number; rs?: 'openlibrary' | 'apple' | 'hardcover' }
 
 /** The version of the stored shape. Rows written by an older version (v1 dropped every Open Library rating, so Hidden Gems found none) are never read: they have another key. */
-export const SHARED_VERSION = 'v4'; // v4: genre pools keep only books whose own subjects name the genre (C18); v3: genre pools rebuilt from precise queries (poolQueries); v2 rows are never read
+export const SHARED_VERSION = 'v3'; // v3: genre pools rebuilt from precise queries (poolQueries); v2 rows are never read
+/** Genre lists built with the subject check (C18) or the precise queries (C17) are stored under this version; every other list stays on SHARED_VERSION, whose rows were good. */
+export const GENRE_FILTER_VERSION = 'v4';
 /** How long a stored list stays readable. Genre lists change slowly; with 1 day only the lists filled in the last 24 hours existed (1 of 56 on 2026-11-05) and Hidden Gems went empty again. */
 export const SHARED_DAYS = 7;
-const versioned = (key: string) => `${SHARED_VERSION}|${key}`;
+const versioned = (key: string, version: string = SHARED_VERSION) => `${version}|${key}`;
 
 /** Which site a book's rating came from. Open Library search hits carry no `ratingSource` (only `source: 'openlibrary'` and an `ol_` id), so it is worked out here. Google's and the library's are never shared. */
 function ratingSiteOf(b: Book): 'openlibrary' | 'apple' | 'hardcover' | undefined {
@@ -81,10 +83,10 @@ export const resetSharedDiscoveryForTests = () => { offUntil = 0; };
 const enc = encodeURIComponent;
 
 /** A live shared list for this key, or null (nothing shared yet, expired, table not there, offline). Never throws. */
-export async function readShared(kind: SharedKind, key: string, deps: SharedDeps = real): Promise<Book[] | null> {
+export async function readShared(kind: SharedKind, key: string, deps: SharedDeps = real, version: string = SHARED_VERSION): Promise<Book[] | null> {
   if (deps === real && typeof window === 'undefined') return null; // scripts and tests never call Supabase from here
   if (deps.now() < offUntil) return null;
-  const r = await deps.rest<{ payload: unknown }[]>(`discovery_cache?kind=eq.${kind}&cache_key=eq.${enc(versioned(key))}&select=payload&limit=1`);
+  const r = await deps.rest<{ payload: unknown }[]>(`discovery_cache?kind=eq.${kind}&cache_key=eq.${enc(versioned(key, version))}&select=payload&limit=1`);
   if (!r.ok) { if (r.status === 404 || r.status === 400 || r.status === 0 || r.status >= 500) offUntil = deps.now() + OFF_MS; bump('shared.readFailed'); return null; }
   const books = hydrateBooks(r.data?.[0]?.payload);
   if (books.length < SHARED_MIN) { bump('shared.miss'); return null; }
@@ -93,17 +95,17 @@ export async function readShared(kind: SharedKind, key: string, deps: SharedDeps
 }
 
 /** Admin devices only: publish a good, full list for everyone. Returns true when written. Never throws. */
-export async function writeShared(kind: SharedKind, key: string, books: readonly Book[], deps: SharedDeps = real): Promise<boolean> {
+export async function writeShared(kind: SharedKind, key: string, books: readonly Book[], deps: SharedDeps = real, version: string = SHARED_VERSION): Promise<boolean> {
   if (deps === real && typeof window === 'undefined') return false;
   if (!deps.isAdmin() || deps.now() < offUntil) return false;
   const slim = slimBooks(books);
   if (slim.length < SHARED_MIN) return false; // never an empty or thin list
-  const existing = await deps.rest<{ item_count: number }[]>(`discovery_cache?kind=eq.${kind}&cache_key=eq.${enc(versioned(key))}&select=item_count&limit=1`);
+  const existing = await deps.rest<{ item_count: number }[]>(`discovery_cache?kind=eq.${kind}&cache_key=eq.${enc(versioned(key, version))}&select=item_count&limit=1`);
   if (!existing.ok) { if ([0, 400, 404].includes(existing.status) || existing.status >= 500) offUntil = deps.now() + OFF_MS; return false; }
   const had = existing.data?.[0]?.item_count ?? 0;
   if (had && slim.length * 2 < had) return false; // never a much thinner list over a fuller one
   const at = new Date(deps.now()).toISOString();
-  const body = { kind, cache_key: versioned(key), payload: slim, fetched_at: at, expires_at: new Date(deps.now() + SHARED_DAYS * 24 * 60 * 60 * 1000).toISOString() };
+  const body = { kind, cache_key: versioned(key, version), payload: slim, fetched_at: at, expires_at: new Date(deps.now() + SHARED_DAYS * 24 * 60 * 60 * 1000).toISOString() };
   const w = await deps.rest(`discovery_cache?on_conflict=kind,cache_key`, { method: 'POST', body, prefer: 'resolution=merge-duplicates,return=minimal' });
   if (!w.ok) { bump('shared.writeFailed'); return false; }
   bump('shared.written');

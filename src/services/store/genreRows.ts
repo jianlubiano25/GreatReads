@@ -10,7 +10,8 @@ import { isAccessory } from '../books/notTheBook';
 import { titleOnlyMatch, wellKnown } from '../books/search';
 import { openLibraryRatings } from '../books/sources/openLibrary';
 import { hardcoverRating } from '../books/sources/hardcover';
-import { readShared, writeShared } from './sharedDiscovery';
+import { readShared, writeShared, SHARED_VERSION, GENRE_FILTER_VERSION } from './sharedDiscovery';
+import { SEARCH_GENRES } from '../../data/searchGenres';
 import { fillMissingCovers } from '../books/covers';
 import { filterByGenreEvidence } from '../books/genreEvidence';
 import { kindAdjust } from '../books/genreRank';
@@ -136,6 +137,27 @@ export async function addPoolQueries(g: SearchGenre, books: Book[], more: (query
   return out;
 }
 
+/** Which stored version holds this genre's list: the new one for a genre built with `poolQueries` or `subjectTerms`, the old one (good rows) for every other genre. */
+export const sharedVersionOf = (query: string): string => {
+  const g = SEARCH_GENRES.find(x => x.query === query);
+  return g && (g.subjectTerms?.length || g.poolQueries?.length) ? GENRE_FILTER_VERSION : SHARED_VERSION;
+};
+
+/**
+ * ONE way to build a genre's list, used by the device (genrePool) and by the admin "Fill shared lists": the precise first query, the extra queries, the
+ * subject check. (Fill used to search the loose typed word on its own, so the shared lists never had the precise queries or the check.) A failed or empty
+ * search is returned as it is, before any extra work, and is never saved by the callers.
+ */
+export async function buildGenreBooks(g: SearchGenre): Promise<{ books: Book[]; failed: boolean }> {
+  let failed = false;
+  const books = await searchBooksLive(g.poolQueries?.[0] ?? g.query, {
+    scope: 'keywords', limit: 40, final: true, local: false,
+    onUpdate: (_books, state) => { if (state.done) failed = !!state.failedSources?.length; },
+  });
+  if (failed || !books.length) return { books, failed: true };
+  return { books: filterByGenreEvidence(g, await widenForGems(g, await addPoolQueries(g, books))), failed: false };
+}
+
 async function genrePool(g: SearchGenre): Promise<PoolResult> {
   const fresh = pools.get(g.query);
   if (fresh) return { books: fresh, failed: false };
@@ -146,22 +168,17 @@ async function genrePool(g: SearchGenre): Promise<PoolResult> {
       let failed = false;
       try {
         // The shared list (Supabase) comes before the slow public sites; it does nothing until the table exists (migration not applied yet)
-        const shared = await readShared('genre_pool', g.query);
+        const version = sharedVersionOf(g.query);
+        const shared = await readShared('genre_pool', g.query, undefined, version);
         // A shared list with no rating at all is not trusted (Hidden Gems could never use it): it is asked for live instead
         if (shared?.some(b => externalRating(b))) { pools.set(g.query, shared); return { books: shared, failed: false }; }
-        const books = await searchBooksLive(g.poolQueries?.[0] ?? g.query, {
-          scope: 'keywords', limit: 40, final: true, local: false,
-          onUpdate: (_books, state) => { if (state.done) failed = !!state.failedSources?.length; },
-        });
-        if (failed) return { books: stale && stale.length >= books.length ? stale : books, failed: true }; // not saved: a partial answer never replaces the last good list
-        // An EMPTY answer (providers slow, timed out or rate-limited without saying so) is a failure, not a result: never save it, or the genre shows 0 results and no Hidden Gems for a whole day.
-        if (!books.length) return { books: stale ?? [], failed: true };
-        // A book joins the list only when its own subjects name the genre (C18: Harry Potter in Sports, Dracula in Religion); an empty result is a failure, never saved
-        const fitting = filterByGenreEvidence(g, await widenForGems(g, await addPoolQueries(g, books)));
-        if (!fitting.length) return { books: stale ?? [], failed: true };
-        const rated = await withFallbackRatings(fitting);
+        const built = await buildGenreBooks(g);
+        if (built.failed) return { books: stale && stale.length >= built.books.length ? stale : built.books, failed: true }; // not saved: a partial answer never replaces the last good list
+        // A book joins the list only when its own subjects name the genre (C18); an EMPTY answer is a failure, never saved (a genre would show 0 results and no Hidden Gems for a day).
+        if (!built.books.length) return { books: stale ?? [], failed: true };
+        const rated = await withFallbackRatings(built.books);
         pools.set(g.query, rated);
-        void writeShared('genre_pool', g.query, rated); // admin devices only; a good list is shared for everyone
+        void writeShared('genre_pool', g.query, rated, undefined, sharedVersionOf(g.query)); // admin devices only; a good list is shared for everyone
         return { books: rated, failed: false };
       } catch {
         return { books: stale ?? [], failed: true };
@@ -240,16 +257,16 @@ export function genreRowSource(g: SearchGenre, row: Row): ShelfSource {
 export type FillResult = 'already' | 'filled' | 'failed' | 'not-admin';
 export interface FillDeps {
   read: (q: string) => Promise<Book[] | null>;
-  search: (q: string) => Promise<{ books: Book[]; failed: boolean }>;
+  search: (g: SearchGenre) => Promise<{ books: Book[]; failed: boolean }>;
   rate: (b: Book[]) => Promise<Book[]>;
   write: (q: string, b: Book[]) => Promise<boolean>;
   wait: (ms: number) => Promise<void>;
 }
 const realFill: FillDeps = {
-  read: q => readShared('genre_pool', q),
-  search: async q => { let failed = false; const books = await searchBooksLive(q, { scope: 'keywords', limit: 40, final: true, local: false, onUpdate: (_b, s) => { if (s.done) failed = !!s.failedSources?.length; } }); return { books, failed }; },
+  read: q => readShared('genre_pool', q, undefined, sharedVersionOf(q)),
+  search: g => buildGenreBooks(g),
   rate: b => withFallbackRatings(b),
-  write: (q, b) => writeShared('genre_pool', q, b),
+  write: (q, b) => writeShared('genre_pool', q, b, undefined, sharedVersionOf(q)),
   wait: ms => new Promise(r => setTimeout(r, ms)),
 };
 export const FILL_MIN_BOOKS = 20;
@@ -259,9 +276,9 @@ export async function fillSharedGenre(g: SearchGenre, deps: FillDeps = realFill)
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt) await deps.wait(4000 * attempt);
     let r: { books: Book[]; failed: boolean };
-    try { r = await deps.search(g.query); } catch { continue; }
+    try { r = await deps.search(g); } catch { continue; }
     if (r.books.length < (r.failed ? FILL_MIN_BOOKS : 3)) continue;
-    const rated = await deps.rate(await widenForGems(g, r.books));
+    const rated = await deps.rate(r.books); // buildGenreBooks already added the extra queries and widened the row
     if (!rated.some(b => externalRating(b))) continue;
     pools.set(g.query, rated);
     return (await deps.write(g.query, rated)) ? 'filled' : 'not-admin';
@@ -301,7 +318,7 @@ export function cleanForSearch(g: Pick<SearchGenre, 'query'>, books: readonly Bo
 /** The stored list for a genre query: this device's last good pool, else the shared one, cleaned for search. No network when the device has it. Used to lead a typed genre search. */
 export async function storedGenreList(query: string): Promise<Book[] | null> {
   const local = pools.peek(query)?.value;
-  const raw = local && local.length >= MIN_ROW ? local : await readShared('genre_pool', query);
+  const raw = local && local.length >= MIN_ROW ? local : await readShared('genre_pool', query, undefined, sharedVersionOf(query));
   if (!raw?.length) return null;
   const clean = cleanForSearch({ query }, raw);
   return clean.length >= SEARCH_LEAD_MIN ? clean : null;
