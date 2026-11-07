@@ -3,13 +3,14 @@ import { Search, ArrowLeft, SlidersHorizontal, Loader2 } from 'lucide-react';
 import type { Book } from '../types';
 import { useBookSearch } from '../hooks/useBookSearch';
 import { lockBodyScroll } from '../hooks/bodyScrollLock';
-import { activeFilterCount, applySearchView, DEFAULT_SEARCH_VIEW, genreOptions, getCoverPick, ownCoverUrl, isDefaultView, SEARCH_PUBLISHED_LABEL, SEARCH_SORT_LABEL, type SearchScope, type SearchSort, type SearchView } from '../services/books';
+import { activeFilterCount, applySearchView, DEFAULT_SEARCH_VIEW, genreOptions, knownCover, isDefaultView, SEARCH_PUBLISHED_LABEL, SEARCH_SORT_LABEL, type SearchScope, type SearchSort, type SearchView } from '../services/books';
 import { sameWork } from '../services/books/identity';
 import { didYouMean, suggestionVocab } from '../services/books/suggest';
 import { SEARCH_KIND_LABEL, SEARCH_LENGTH_LABEL } from '../services/books/searchView';
 import { ClearButton } from './ClearButton';
 import { ViewMoreBar } from './ViewMoreBar';
 import { CoverFace } from './BookMeta';
+import { coverBackdrop } from '../services/books/placeholderCover';
 
 /** Search shows 20 results (rows of three) at first; "View more" adds 20 more, "View all" shows everything loaded, "Load more results" asks the catalog for its next batch. */
 const SEARCH_STEP = 20;
@@ -82,7 +83,7 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
     return lockBodyScroll(); // shared with the modals: a book's details opened over the results can be closed before or after the search, either order
   }, [searching, active]);
 
-  const { results: searchResults, loading: isSearching, stale: searchStale, empty: searchEmpty, searchNow, total: searchTotal, hasMore: searchHasMore, loadingMore: searchLoadingMore, loadMore: loadMoreResults } = useBookSearch(query, { known, limit: SEARCH_LIMIT, scope });
+  const { results: searchResults, loading: isSearching, stale: searchStale, empty: searchEmpty, failedSources, searchNow, total: searchTotal, hasMore: searchHasMore, loadingMore: searchLoadingMore, loadMore: loadMoreResults } = useBookSearch(query, { known, limit: SEARCH_LIMIT, scope });
   const genres = useMemo(() => genreOptions(searchResults), [searchResults]);
   const shownResults = useMemo(() => applySearchView(searchResults, view), [searchResults, view]);
   const filtersOn = !isDefaultView(view);
@@ -101,7 +102,7 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
   useEffect(() => {
     if (!searching) return;
     for (const b of shownResults.slice(visibleCount, visibleCount + SEARCH_STEP)) {
-      const url = getCoverPick(b, coverSize) || ownCoverUrl(b, coverSize);
+      const url = knownCover(b, coverSize).url;
       if (url) new Image().src = url;
     }
   }, [searching, shownResults, visibleCount, coverSize]);
@@ -260,7 +261,9 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
 
           {searchResults.length === 0 && searchEmpty ? (
             <div className="p-8 text-center text-sm text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-xl border border-[#e3d7c3] dark:border-[#382f25]">
-              No books found{scope === 'all' ? '' : ` by ${scope}`}. Check the spelling, try All, or use the + button at the top to add it manually.
+              {failedSources.length
+                ? `Search could not reach ${failedSources.join(' and ')}. Results may be incomplete; check your connection and try again.`
+                : `No books found${scope === 'all' ? '' : ` by ${scope}`}. Check the spelling, try All, or use the + button at the top to add it manually.`}
             </div>
           ) : searchResults.length > 0 && shownResults.length === 0 ? (
             <div className="p-6 text-center text-sm text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-xl border border-[#e3d7c3] dark:border-[#382f25]">
@@ -276,7 +279,7 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
                       type="button"
                       onClick={() => openResult(b)}
                       className="book-cover-3d w-full aspect-[2/3] rounded-md text-left p-2 flex flex-col justify-between text-white overflow-hidden"
-                      style={{ backgroundColor: b.spineColor || '#2e5934' }}
+                      style={{ background: coverBackdrop(b) }}
                     >
                       <CoverFace book={b} size="md" imgSize={coverSize} eager />
                     </button>

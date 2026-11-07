@@ -12,7 +12,7 @@ const setOf = (w: { rejectedCovers?: string[] }): Set<string> => {
   return s;
 };
 
-export function isCoverRejected(book: { title?: string; author?: string; isbn13?: string; isbn10?: string }, url?: string): boolean {
+export function isCoverRejected(book: { title?: string; author?: string; isbn13?: string; isbn10?: string; identity?: { isbn13?: string; isbn10?: string } }, url?: string): boolean {
   if (!url || !/^https?:\/\//i.test(url)) return false;
   const w = getCatalogWork(book);
   return !!w?.rejectedCovers?.length && setOf(w).has(flatKey(url));

@@ -22,9 +22,11 @@ export interface JsonResult {
  * reported. Never throws. Lets callers tell "the key isn't set" from "rate limited" from "offline".
  */
 export async function getJsonDetailed(url: string, opts: GetOpts = {}): Promise<JsonResult> {
+  const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
   const out = await fetchJson(url, opts);
+  const ms = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
   if (!out.result.data && isTransient(out.result)) transient++;
-  recordRequest(url, out.result.status, out.result.data ? undefined : out.result.failure ?? 'empty', out.attempts); // measurement only
+  recordRequest(url, out.result.status, out.result.data ? undefined : out.result.failure ?? 'empty', out.attempts, ms); // measurement only
   return out.result;
 }
 

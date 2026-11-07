@@ -4,11 +4,16 @@
  *    A failure just means the saved copy keeps being used. The cover chain is: your own pick, then the catalog, then the old shared set, then live lookups.
  *  - Write (developer mode): your starred covers are added to the catalog and published in one safe step each.
  */
-import { applyCatalog, catalogCopy, pruneCatalog, type CatalogWork } from './books/catalogCovers';
+import { applyCatalog, catalogCopy, getCatalogWork, pruneCatalog, type CatalogWork } from './books/catalogCovers';
 import { coverKey } from './books/coverAnalysis';
 import { coverSourceOf, notifyCoversChanged } from './books';
 import { rest, rpc } from './supabase';
-import type { Book } from '../types';
+import { identityOf } from './books/identity';
+import { catalogIdsFrom, planEdition, planWorkIdentifiers, type EditionRow } from './books/catalogIdentity';
+import { classifyAll, classifyLabel, planEditionFill, planWorkFill, type EditionFillRow } from './books/catalogFill';
+import { providerFactsFor, type ProviderFacts } from './books/providerFacts';
+import { receiptKey, saveProviderReceipts } from './catalogReceipts';
+import type { Book, BookIdentity } from '../types';
 import type { SourceRating } from './books';
 
 const MIN_GAP = 10 * 60 * 1000;
@@ -52,35 +57,71 @@ export function syncCatalog(opts: { force?: boolean } = {}): Promise<boolean> {
 
 /* ---------------- the owner's side ---------------- */
 
-export type CatalogPublishResult = { ok: true } | { ok: false; error: string };
+/**
+ * MERGE GUARD. A work that was archived by a merge (status archived + identifiers.mergedInto = the canonical work's id) keeps its old work_key, so a lookup by
+ * key would still find it and attach new data to it, or publish it again. Every lookup by key goes through here: it hands back the CANONICAL work instead
+ * (up to 3 hops). A canonical work that cannot be found, or a loop, is refused (nothing is written anywhere). An archived work with no `mergedInto`
+ * (hidden by the owner) is returned as before. Pure rule: `resolveMerged`.
+ */
+export type MergeRow = { id: string; status?: string; identifiers?: Record<string, unknown> | null };
+export const mergedIntoOf = (w: MergeRow): string | undefined => (w.status === 'archived' && typeof w.identifiers?.mergedInto === 'string' && w.identifiers.mergedInto ? w.identifiers.mergedInto : undefined);
+/** `load` fetches one work by id (null when it does not exist). Returns the work to use, or an error text. */
+export async function resolveMerged(first: MergeRow, load: (id: string) => Promise<MergeRow | null | 'failed'>): Promise<{ id: string } | { error: string; retryable?: true }> {
+  let cur = first;
+  const seen = new Set([first.id]);
+  for (let hop = 0; hop < 3; hop++) {
+    const next = mergedIntoOf(cur);
+    if (!next) return { id: cur.id };
+    if (seen.has(next)) return { error: 'This book was merged into itself in the catalog. Nothing was changed.' };
+    seen.add(next);
+    const w = await load(next);
+    if (w === 'failed') return { error: 'Could not check the merged catalog book. Try again.', retryable: true };
+    if (!w) return { error: 'This book was merged into another catalog book that could not be found. Nothing was changed.' };
+    cur = w;
+  }
+  return mergedIntoOf(cur) ? { error: 'This book was merged through too many steps. Nothing was changed.' } : { id: cur.id };
+}
+export async function findWorkByKey(key: string): Promise<{ ok: true; id?: string } | { ok: false; status: number; error: string }> {
+  const r = await rest<MergeRow[]>(`catalog_works?work_key=eq.${encodeURIComponent(key)}&select=id,status,identifiers&limit=1`);
+  if (!r.ok) return r;
+  if (!r.data[0]) return { ok: true };
+  const res = await resolveMerged(r.data[0], async id => { const g = await rest<MergeRow[]>(`catalog_works?id=eq.${id}&select=id,status,identifiers&limit=1`); return g.ok ? g.data[0] ?? null : 'failed'; });
+  return 'id' in res ? { ok: true, id: res.id } : { ok: false, status: res.retryable ? 0 : 409, error: res.error };
+}
 
-/** Add a starred cover to the catalog and publish it (work created if new). A cover that was rejected before stays rejected. */
-export async function publishCoverToCatalog(book: { title: string; author?: string }, url: string): Promise<CatalogPublishResult> {
+export type CatalogPublishResult = { ok: true; ids?: { saved: string[]; skipped: string[] } } | { ok: false; error: string; ids?: { saved: string[]; skipped: string[] } };
+
+/**
+ * Add a starred cover to the catalog and publish it (work created if new). A cover that was rejected before stays rejected.
+ * When the book's ids are known they are recorded too, exactly as Save to catalog does (see saveIdentityToCatalog); `ids` reports what happened.
+ */
+export async function publishCoverToCatalog(book: { title: string; author?: string; identity?: BookIdentity }, url: string): Promise<CatalogPublishResult> {
   const key = coverKey(book);
   const enc = encodeURIComponent;
-  let work = await rest<{ id: string }[]>(`catalog_works?work_key=eq.${enc(key)}&select=id&limit=1`);
+  const work = await findWorkByKey(key); // a work archived by a merge hands over to its canonical work (never written to or published)
   if (!work.ok) return { ok: false, error: work.error };
-  let workId = work.data[0]?.id;
+  let workId = work.id;
   if (!workId) {
     const made = await rest<{ id: string }[]>('catalog_works', { method: 'POST', prefer: 'return=representation', body: { canonical_title: book.title.trim(), canonical_author: (book.author || '').trim() || null, work_key: key, status: 'draft' } });
     if (!made.ok) return { ok: false, error: made.status === 403 || made.status === 401 ? 'Not allowed: sign in as the owner.' : made.error };
     workId = made.data[0]?.id;
     if (!workId) return { ok: false, error: 'The catalog did not return the new book.' };
   }
+  const ids = await saveIdentityToCatalog(workId, book.identity); // first: a rejected or failed cover must not stop the book's ids being recorded
   const found = await rest<{ id: string; status: string }[]>(`catalog_cover_candidates?work_id=eq.${workId}&image_url=eq.${enc(url)}&select=id,status&limit=1`);
-  if (!found.ok) return { ok: false, error: found.error };
+  if (!found.ok) return { ok: false, error: found.error, ids };
   let coverId = found.data[0]?.id;
-  if (found.data[0]?.status === 'rejected') return { ok: false, error: 'That cover was rejected before, so it stays rejected.' };
+  if (found.data[0]?.status === 'rejected') return { ok: false, error: 'That cover was rejected before, so it stays rejected.', ids };
   if (!coverId) {
     const added = await rest<{ id: string }[]>('catalog_cover_candidates', { method: 'POST', prefer: 'return=representation', body: { work_id: workId, image_url: url, source_name: coverSourceOf(url), status: 'approved' } });
-    if (!added.ok) return { ok: false, error: added.error };
+    if (!added.ok) return { ok: false, error: added.error, ids };
     coverId = added.data[0]?.id;
-    if (!coverId) return { ok: false, error: 'The catalog did not return the new cover.' };
+    if (!coverId) return { ok: false, error: 'The catalog did not return the new cover.', ids };
   }
   const pub = await rpc('catalog_publish_cover', { p_cover_id: coverId });
-  if (!pub.ok) return { ok: false, error: pub.error };
+  if (!pub.ok) return { ok: false, error: pub.error, ids };
   const st = await rpc('catalog_set_work_status', { p_work_id: workId, p_status: 'published' });
-  return st.ok ? { ok: true } : { ok: false, error: st.error };
+  return st.ok ? { ok: true, ids } : { ok: false, error: st.error, ids };
 }
 
 /* ---------------- review (owner): browse every version of a book's cover / description / bio / rating, publish one, reject one ---------------- */
@@ -124,21 +165,84 @@ export async function rejectCandidate(c: Pick<Candidate, 'id' | 'table' | 'kind'
 }
 
 export async function setWorkStatus(workId: string, status: 'draft' | 'published' | 'archived'): Promise<CatalogPublishResult> {
+  if (status === 'published') { // a work archived by a merge is never published again (its canonical work is the one that shows)
+    const w = await rest<MergeRow[]>(`catalog_works?id=eq.${workId}&select=id,status,identifiers&limit=1`);
+    if (!w.ok) return { ok: false, error: w.error };
+    if (w.data[0] && mergedIntoOf(w.data[0])) return { ok: false, error: 'This book was merged into another catalog book, so it stays archived.' };
+  }
   const r = await rpc('catalog_set_work_status', { p_work_id: workId, p_status: status });
   return r.ok ? { ok: true } : { ok: false, error: r.error };
 }
 
 /**
- * Save what Book Info shows for this book (description, author bio, year, pages, genre and its main rating) into the catalog and publish it.
- * Values the owner already rejected are not brought back (the database refuses the same text again).
+ * Record this book's outside identifiers in the catalog: the Open Library work id on the work, and an edition row (ISBN-10/13, Open Library
+ * edition id, Google Books volume id) when any edition id is known. Exact ids only; invalid or conflicting ones are reported and never written,
+ * and nothing existing is overwritten, moved or merged. Needs the owner's sign-in (the database refuses anyone else).
  */
-export async function saveBookToCatalog(book: Pick<Book, 'title' | 'author' | 'summary' | 'authorBio' | 'year' | 'pageCount' | 'genre'>, ratings: SourceRating[]): Promise<{ ok: boolean; saved: string[]; skipped: string[] }> {
+export async function saveIdentityToCatalog(workId: string, identity: BookIdentity | undefined): Promise<{ saved: string[]; skipped: string[]; retry?: true }> {
+  const saved: string[] = [], skipped: string[] = [];
+  let retry = false; // true only when a request failed (offline, server): the ids themselves were not judged, so a later try is worthwhile
+  const out = () => ({ saved, skipped, ...(retry ? { retry: true as const } : {}) });
+  const { ids, rejected } = catalogIdsFrom(identity);
+  rejected.forEach(r => skipped.push(`identity:${r} not valid`));
+  if (!Object.keys(ids).length) return out();
+  // A conflicting id is never written over what the work has, but it is not lost either: the ids offered are kept as ONE unpublished note
+  // (field `alternateIds`, source app; the same note twice is ignored by the database). It is the evidence for a later, approved duplicate merge.
+  const keepAlternates = async () => {
+    const r = await rest('catalog_metadata_candidates', { method: 'POST', body: { work_id: workId, field_name: 'alternateIds', field_value: ids, source_name: 'app', status: 'candidate' } });
+    if (!r.ok && r.status !== 409 && (r.status === 0 || r.status >= 500)) retry = true;
+  };
+
+  if (ids.olWork) {
+    const w = await rest<{ identifiers: Record<string, unknown> | null }[]>(`catalog_works?id=eq.${workId}&select=identifiers&limit=1`);
+    if (!w.ok || !w.data[0]) { skipped.push('identity:work'); retry = true; }
+    else {
+      const plan = planWorkIdentifiers(w.data[0].identifiers, ids);
+      plan.conflicts.forEach(c => skipped.push(`identity:${c}`));
+      if (plan.conflicts.length) await keepAlternates();
+      if (plan.patch) {
+        // the other identifiers on the work (alt_keys, ...) stay; the database also refuses an olWork that another work already has (unique index)
+        const up = await rest(`catalog_works?id=eq.${workId}`, { method: 'PATCH', body: { identifiers: { ...(w.data[0].identifiers || {}), ...plan.patch } } });
+        if (up.ok) saved.push('olWork');
+        else if (up.status === 409) { skipped.push('identity:that Open Library id already belongs to another catalog book'); await keepAlternates(); }
+        else { skipped.push(`identity:olWork ${up.error}`); retry = true; }
+      }
+    }
+  }
+
+  const clauses = [
+    ids.isbn13 && `isbn13.eq.${ids.isbn13}`, ids.isbn10 && `isbn10.eq.${ids.isbn10}`,
+    ids.olEdition && `openlibrary_edition_id.eq.${ids.olEdition}`, ids.gbVolume && `google_volume_id.eq.${ids.gbVolume}`,
+  ].filter(Boolean);
+  if (!clauses.length) return out();
+  const found = await rest<EditionRow[]>(`catalog_editions?or=(${clauses.join(',')})&select=id,work_id,isbn13,isbn10,openlibrary_edition_id,google_volume_id&limit=10`);
+  if (!found.ok) { skipped.push(`identity:edition ${found.error}`); retry = true; return out(); }
+  const plan = planEdition(workId, ids, found.data);
+  if (plan.action === 'conflict') { skipped.push(`identity:${plan.reason}`); await keepAlternates(); }
+  else if (plan.action === 'insert') {
+    const r = await rest('catalog_editions', { method: 'POST', body: { work_id: workId, ...plan.body, source_name: 'app', status: 'published' } });
+    if (r.ok) saved.push('edition');
+    else if (r.status === 409) skipped.push('identity:edition already exists');
+    else { skipped.push(`identity:edition ${r.error}`); retry = true; }
+  } else if (plan.action === 'update') {
+    const r = await rest(`catalog_editions?id=eq.${plan.id}`, { method: 'PATCH', body: plan.body });
+    if (r.ok) saved.push('edition'); else { skipped.push(`identity:edition ${r.error}`); retry = true; }
+  }
+  return out();
+}
+
+/**
+ * Save what Book Info shows for this book (description, author bio, year, pages, genre and its main rating) into the catalog and publish it.
+ * Values the owner already rejected are not brought back (the database refuses the same text again). Its outside ids (Open Library work,
+ * ISBN, edition and Google volume ids) are recorded too; see saveIdentityToCatalog.
+ */
+export async function saveBookToCatalog(book: Pick<Book, 'id' | 'identity' | 'title' | 'author' | 'summary' | 'authorBio' | 'year' | 'pageCount' | 'genre'> & Partial<Pick<Book, 'awardLabel'>>, ratings: SourceRating[]): Promise<{ ok: boolean; saved: string[]; skipped: string[] }> {
   const saved: string[] = [], skipped: string[] = [];
   const key = coverKey(book);
   const enc = encodeURIComponent;
-  const found = await rest<{ id: string }[]>(`catalog_works?work_key=eq.${enc(key)}&select=id&limit=1`);
+  const found = await findWorkByKey(key);
   if (!found.ok) return { ok: false, saved, skipped: [found.error] };
-  let workId = found.data[0]?.id;
+  let workId = found.id;
   if (!workId) {
     const made = await rest<{ id: string }[]>('catalog_works', { method: 'POST', prefer: 'return=representation', body: { canonical_title: book.title.trim(), canonical_author: (book.author || '').trim() || null, work_key: key, status: 'draft' } });
     if (!made.ok) return { ok: false, saved, skipped: [made.error] };
@@ -172,12 +276,92 @@ export async function saveBookToCatalog(book: Pick<Book, 'title' | 'author' | 's
   await content('author_bio', book.authorBio);
   await meta('year', /^\d{3,4}$/.test(book.year || '') ? book.year : undefined);
   await meta('pageCount', book.pageCount || undefined);
-  await meta('genre', book.genre && book.genre !== 'Book' ? book.genre : undefined);
+  // a shelf name such as "Reese's Book Club" or "Prize winner" is an honor, not a genre: it is filed under honors below, never as a genre candidate
+  const genreLabel = book.genre && book.genre !== 'Book' && !classifyLabel(book.genre).some(c => c.kind === 'honor' || c.kind === 'tag' || c.kind === 'derived') ? book.genre : undefined;
+  await meta('genre', genreLabel);
 
   // every site's rating is kept (one per source); each is published on its own
   for (const r of ratings) if (await storeRating(workId, r, true)) saved.push(`rating:${r.source}`); else if (RATING_SRC[r.source] && r.average > 0) skipped.push(`rating:${r.source}`);
   if (saved.length) await setWorkStatus(workId, 'published');
+  // ids last and separate: they never decide whether the work gets published, and a conflict here never blocks the rest
+  const idr = await saveIdentityToCatalog(workId, identityOf(book));
+  saved.push(...idr.saved); skipped.push(...idr.skipped);
+  // then the extra facts (genres, honors, provider candidates, edition details): fill-only, never changes what is already there
+  const fr = await saveFactsToCatalog(workId, book);
+  saved.push(...fr.saved); skipped.push(...fr.skipped);
   return { ok: saved.length > 0, saved, skipped };
+}
+
+/** A provider fact kept as an UNPUBLISHED candidate with its source: devices never see it, nothing selected is replaced, the same value twice is ignored (unique index). */
+const FACT_FIELDS: { field: string; get: (f: ProviderFacts) => unknown }[] = [
+  { field: 'publisher', get: f => f.publisher }, { field: 'publishedDate', get: f => f.publishedDate },
+  { field: 'providerGenres', get: f => f.genres }, { field: 'providerSubjects', get: f => f.subjects },
+  { field: 'providerLanguage', get: f => f.language }, { field: 'providerAuthors', get: f => f.authors },
+  { field: 'altAuthorNames', get: f => f.altAuthorNames }, { field: 'providerPages', get: f => f.pages },
+  { field: 'providerRecord', get: f => ({ id: f.recordId, ...(f.sourceUrl ? { url: f.sourceUrl } : {}) }) },
+];
+
+/**
+ * Phase 1 "fill" step of Save to catalog. Owner only (the database refuses anyone else). Everything here only ADDS:
+ *  - work: new genres and honors are appended to what the work already has (nothing removed or reordered); a shelf name or award label goes to honors, never genres.
+ *  - candidates: what each provider said (publisher, exact date, categories, subjects, authors, alt author names, record id) as unpublished candidates with the provider as source.
+ *  - edition: only when this work already has an edition with the SAME Google volume id as the facts, its EMPTY publisher/date/year/pages/language are filled. A disagreeing filled value stays and the provider's value is kept as a candidate.
+ * Facts exist only for lookups made in this session (memory); with none, only the book's own genre/award label is filed. Never touches personal data, covers or other works.
+ */
+export async function saveFactsToCatalog(workId: string, book: Pick<Book, 'id' | 'identity' | 'genre'> & Partial<Pick<Book, 'awardLabel'>>, facts: ProviderFacts[] = providerFactsFor({ id: String(book.id), identity: book.identity })): Promise<{ saved: string[]; skipped: string[]; retry?: boolean }> {
+  const saved: string[] = [], skipped: string[] = [];
+  let retry = false;
+  const flag = (r: { status: number }) => { if (r.status === 0 || r.status === 429 || r.status >= 500) retry = true; };
+
+  // 0) receipts: what each provider said, stored once (trimmed, per docs/provider-terms.md) so it survives a reload and candidates can point at it
+  const receipts = await saveProviderReceipts(workId, facts);
+  skipped.push(...receipts.skipped); if (receipts.retry) retry = true;
+  if (receipts.created) saved.push(`provider receipts (${receipts.created})`);
+
+  // 1) genres and honors on the work
+  const labels = [book.genre, ...facts.filter(f => f.provider !== 'openlibrary').flatMap(f => f.genres || [])]; // Open Library subjects are too loose to be genres: candidates only
+  const c = classifyAll(labels);
+  const honors = [...(book.awardLabel ? [book.awardLabel] : []), ...c.honors];
+  if (c.genres.length || honors.length) {
+    const cur = await rest<{ genres: string[] | null; honors: string[] | null }[]>(`catalog_works?id=eq.${workId}&select=genres,honors&limit=1`);
+    if (!cur.ok || !cur.data[0]) { skipped.push('genres/honors: could not read the work'); if (!cur.ok) flag(cur); }
+    else {
+      const patch = planWorkFill(cur.data[0], { genres: c.genres, honors });
+      if (Object.keys(patch).length) {
+        const up = await rest(`catalog_works?id=eq.${workId}`, { method: 'PATCH', body: patch });
+        if (up.ok) saved.push(...Object.keys(patch)); else { skipped.push(`${Object.keys(patch).join('/')}: ${up.error}`); flag(up); }
+      }
+    }
+  }
+
+  // 2) provider candidates (unpublished) and shared-tag labels
+  let kept = 0;
+  const addCandidate = async (field: string, value: unknown, source: string, recordId?: string, url?: string, receiptId?: string) => {
+    const r = await rest('catalog_metadata_candidates', { method: 'POST', body: { work_id: workId, field_name: field, field_value: value, source_name: source, ...(recordId ? { source_record_id: recordId } : {}), ...(url ? { source_url: url } : {}), ...(receiptId ? { provider_record_id: receiptId, raw_value: value } : {}), status: 'candidate' } });
+    if (r.ok) kept++; else if (r.status !== 409) { skipped.push(`candidate:${field} ${r.error}`); flag(r); } // 409 = this exact value from this source is already kept
+  };
+  for (const f of facts) for (const { field, get } of FACT_FIELDS) {
+    const v = get(f);
+    if (v !== undefined && !(Array.isArray(v) && !v.length)) await addCandidate(field, v, f.provider, f.recordId, f.sourceUrl, receipts.ids.get(receiptKey(f)));
+  }
+  for (const t of c.tags) await addCandidate('tagLabel', t, 'app');
+  if (kept) saved.push(`provider facts (${kept})`);
+
+  // 3) edition details, only for the edition this exact Google volume is
+  const g = facts.find(f => f.provider === 'google');
+  if (g && /^[A-Za-z0-9_-]{6,24}$/.test(g.recordId)) {
+    const ed = await rest<(EditionFillRow & { id: string })[]>(`catalog_editions?work_id=eq.${workId}&google_volume_id=eq.${encodeURIComponent(g.recordId)}&select=id,publisher,publication_date,publication_year,page_count,language_code,format&limit=2`);
+    if (!ed.ok) { skipped.push('edition details: could not read the edition'); flag(ed); }
+    else if (ed.data.length === 1) {
+      const plan = planEditionFill(ed.data[0], { publisher: g.publisher, publishedDate: g.publishedDate, pages: g.pages, language: g.language });
+      if (Object.keys(plan.patch).length) {
+        const up = await rest(`catalog_editions?id=eq.${ed.data[0].id}`, { method: 'PATCH', body: plan.patch });
+        if (up.ok) saved.push('edition details'); else { skipped.push(`edition details: ${up.error}`); flag(up); }
+      }
+      plan.conflicts.forEach(x => skipped.push(`edition ${x} (kept both)`));
+    }
+  }
+  return { saved, skipped, ...(retry ? { retry: true } : {}) };
 }
 
 const RATING_SRC: Record<string, string> = { apple: 'apple_books', google: 'google_books', openlibrary: 'open_library' };
@@ -185,9 +369,9 @@ const RATING_SRC: Record<string, string> = { apple: 'apple_books', google: 'goog
 /** The catalog's id for this book, created as a hidden draft when it is not there yet (nothing is shown to readers until something is published). */
 export async function ensureWork(book: { title: string; author?: string }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const key = coverKey(book);
-  const found = await rest<{ id: string }[]>(`catalog_works?work_key=eq.${encodeURIComponent(key)}&select=id&limit=1`);
+  const found = await findWorkByKey(key);
   if (!found.ok) return { ok: false, error: found.status === 401 || found.status === 403 ? 'Sign in as the owner first (Profile → Account).' : found.error };
-  if (found.data[0]) return { ok: true, id: found.data[0].id };
+  if (found.id) return { ok: true, id: found.id };
   const made = await rest<{ id: string }[]>('catalog_works', { method: 'POST', prefer: 'return=representation', body: { canonical_title: book.title.trim(), canonical_author: (book.author || '').trim() || null, work_key: key, status: 'draft' } });
   if (!made.ok) return { ok: false, error: made.status === 401 || made.status === 403 ? 'Sign in as the owner first (Profile → Account).' : made.error };
   return made.data[0]?.id ? { ok: true, id: made.data[0].id } : { ok: false, error: 'The catalog did not return the book.' };
@@ -236,10 +420,25 @@ export async function rejectCoverForBook(book: { title: string; author?: string 
   return { ok: true };
 }
 
+/**
+ * Every cover stored for this book that was not rejected (published or still a candidate), for the owner's cover viewer: it shows these BEFORE any live lookup,
+ * so the viewer and the admin tools list the same covers. Same matcher as Book Info (catalog copy), else the book's key. Owner only (the database decides).
+ */
+export async function storedCovers(book: { title: string; author?: string; identity?: BookIdentity }): Promise<{ url: string; source: ReturnType<typeof coverSourceOf> }[]> {
+  let workId = getCatalogWork(book as { title: string; author?: string; identity?: { isbn13?: string; isbn10?: string } })?.id;
+  if (!workId) {
+    const w = await findWorkByKey(coverKey(book));
+    workId = w.ok ? w.id : undefined;
+  }
+  if (!workId) return [];
+  const r = await rest<{ image_url: string }[]>(`catalog_cover_candidates?work_id=eq.${workId}&status=neq.rejected&select=image_url&order=created_at.desc&limit=30`);
+  return r.ok ? r.data.filter(x => /^https:\/\//i.test(x.image_url)).map(x => ({ url: x.image_url, source: coverSourceOf(x.image_url) })) : [];
+}
+
 /** Cover addresses the owner already rejected for this book (the viewer hides them). */
 export async function rejectedCovers(book: { title: string; author?: string }): Promise<string[]> {
-  const w = await rest<{ id: string }[]>(`catalog_works?work_key=eq.${encodeURIComponent(coverKey(book))}&select=id&limit=1`);
-  if (!w.ok || !w.data[0]) return [];
-  const r = await rest<{ image_url: string }[]>(`catalog_cover_candidates?work_id=eq.${w.data[0].id}&status=eq.rejected&select=image_url`);
+  const w = await findWorkByKey(coverKey(book));
+  if (!w.ok || !w.id) return [];
+  const r = await rest<{ image_url: string }[]>(`catalog_cover_candidates?work_id=eq.${w.id}&status=eq.rejected&select=image_url`);
   return r.ok ? r.data.map(x => x.image_url) : [];
 }

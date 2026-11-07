@@ -7,7 +7,7 @@ import { findGoogle, googleVolume } from './sources/googleBooks';
 import { isEnglishLanguage, titleIsNonLatin } from './language';
 import { olCoverById, olCoverByIsbn, openLibraryEditionCovers, openLibraryEnglishCoverFor, findOpenLibrary, BUNDLE_TITLE } from './sources/openLibrary';
 import { coverKey, flatKey, probeImage } from './coverAnalysis';
-import { COVER_SOURCE_LABEL, type CoverSource } from './coverPicks';
+import type { CoverSource } from './coverPicks';
 import { isCoverRejected } from './rejectedCovers';
 
 /* ======================================================================================================
@@ -34,13 +34,11 @@ const SOURCE_RANK: Record<string, number> = { apple: 0, google: 1, openlibrary: 
  */
 export const rankCandidates = (list: CoverCandidate[]): CoverCandidate[] =>
   list.map((c, i) => ({ c, i })).sort((a, b) => Number(!!a.c.foreign) - Number(!!b.c.foreign) || (SOURCE_RANK[a.c.source] ?? 9) - (SOURCE_RANK[b.c.source] ?? 9) || a.i - b.i).map(x => x.c);
-export const coverSourceLabel = (s: CoverSource): string => COVER_SOURCE_LABEL[s];
 
 const MAX_CANDIDATES = 14;
 const MAX_OL = 8;
 
 /** One key per picture, whatever its size (the same Apple art at 200x300 and 600x900, the same Open Library cover as S / M / L): the key the picture's verdict is saved under. */
-export const imageKey = flatKey;
 
 type Finder = (b: Pick<Book, 'title' | 'author' | 'id' | 'identity' | 'coverId'>, author: string) => Promise<CoverCandidate[]>;
 
@@ -98,7 +96,7 @@ function startRun(book: Pick<Book, 'title' | 'author' | 'id' | 'identity' | 'cov
     let changed = false;
     for (const c of list) {
       if (run.found.length >= MAX_CANDIDATES) break;
-      if (!run.found.some(f => imageKey(f.url) === imageKey(c.url))) { run.found.push(c); changed = true; }
+      if (!run.found.some(f => flatKey(f.url) === flatKey(c.url))) { run.found.push(c); changed = true; }
     }
     if (changed) run.subs.forEach(s => s([...run.found])); // arrival order while the viewer is open (it keeps its own slide order); ranked once everything has answered
   };
