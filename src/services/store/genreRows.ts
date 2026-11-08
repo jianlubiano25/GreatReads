@@ -13,7 +13,8 @@ import { hardcoverRating } from '../books/sources/hardcover';
 import { readShared, writeShared, SHARED_VERSION, GENRE_FILTER_VERSION } from './sharedDiscovery';
 import { SEARCH_GENRES } from '../../data/searchGenres';
 import { fillMissingCovers } from '../books/covers';
-import { filterByGenreEvidence } from '../books/genreEvidence';
+import { bump } from '../books/perf';
+import { dropUnread, FILL_MIN_BOOKS, fillGateFailure, filterByGenreEvidence } from '../books/genreEvidence';
 import { kindAdjust } from '../books/genreRank';
 import { InsufficientShelfError, type ShelfSource } from './shelves';
 
@@ -176,7 +177,8 @@ async function genrePool(g: SearchGenre): Promise<PoolResult> {
         if (built.failed) return { books: stale && stale.length >= built.books.length ? stale : built.books, failed: true }; // not saved: a partial answer never replaces the last good list
         // A book joins the list only when its own subjects name the genre (C18); an EMPTY answer is a failure, never saved (a genre would show 0 results and no Hidden Gems for a day).
         if (!built.books.length) return { books: stale ?? [], failed: true };
-        const rated = await withFallbackRatings(built.books);
+        const rated = dropUnread(g, await withFallbackRatings(built.books)); // a reader genre keeps only books some readers rated
+        if (rated.length < MIN_ROW) return { books: stale ?? [], failed: true };
         pools.set(g.query, rated);
         void writeShared('genre_pool', g.query, rated, undefined, sharedVersionOf(g.query)); // admin devices only; a good list is shared for everyone
         return { books: rated, failed: false };
@@ -269,7 +271,7 @@ const realFill: FillDeps = {
   write: (q, b) => writeShared('genre_pool', q, b, undefined, sharedVersionOf(q)),
   wait: ms => new Promise(r => setTimeout(r, ms)),
 };
-export const FILL_MIN_BOOKS = 20;
+export { FILL_MIN_BOOKS };
 export async function fillSharedGenre(g: SearchGenre, deps: FillDeps = realFill): Promise<FillResult> {
   const have = await deps.read(g.query);
   if (have?.some(b => externalRating(b))) return 'already';
@@ -277,9 +279,10 @@ export async function fillSharedGenre(g: SearchGenre, deps: FillDeps = realFill)
     if (attempt) await deps.wait(4000 * attempt);
     let r: { books: Book[]; failed: boolean };
     try { r = await deps.search(g); } catch { continue; }
-    if (r.books.length < (r.failed ? FILL_MIN_BOOKS : 3)) continue;
-    const rated = await deps.rate(r.books); // buildGenreBooks already added the extra queries and widened the row
-    if (!rated.some(b => externalRating(b))) continue;
+    if (!r.books.length) continue;
+    // One rated book never makes a list complete: 20+ books, 60%+ rated, and (subject genres) 70%+ named by their own subjects, else the last good shared row stays (C19)
+    const rated = dropUnread(g, await deps.rate(r.books));
+    if (fillGateFailure(g, rated, b => !!externalRating(b))) { bump(`fill.gateFailed.${g.label}`); continue; }
     pools.set(g.query, rated);
     return (await deps.write(g.query, rated)) ? 'filled' : 'not-admin';
   }

@@ -121,6 +121,6 @@ test('cleanForSearch: a stored pool built before the ranking fix loses books tha
 
 test('C18: genres built the new way (precise queries / subject check) use the new stored version; every other genre keeps the old one, so Fantasy keeps its good list', async () => {
   const { sharedVersionOf } = await import('./genreRows');
-  for (const q of ['fantasy', 'romance', 'mystery', 'science fiction']) assert.equal(sharedVersionOf(q), 'v3', q);
-  for (const q of ['sports', 'music', 'graphic novels', 'religion', 'christian', "children's books", 'humor']) assert.equal(sharedVersionOf(q), 'v4', q);
+  for (const q of ['fantasy', 'romance', 'mystery', 'thriller']) assert.equal(sharedVersionOf(q), 'v3', q);
+  for (const q of ['sports', 'music', 'graphic novels', 'religion', 'christian', "children's books", 'humor', 'science fiction']) assert.equal(sharedVersionOf(q), 'v4', q);
 });
