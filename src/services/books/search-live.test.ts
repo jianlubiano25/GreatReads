@@ -123,7 +123,7 @@ test('a submitted search also asks Open Library for titles only; an author query
   reset();
   let seen = mockFetch(() => ({ docs: [], items: [] }));
   await searchBooksLive('harry potter', { final: true, local: false });
-  assert.equal(seen.length, 3);
+  assert.equal(seen.length, 5); // + most-read exact-title (Open Library) and the title phrase (Google), C20
   assert.ok(seen.some(s => s.url.searchParams.get('title') === 'harry potter*'));
   seen = mockFetch(() => ({ docs: [], items: [] }));
   await searchBooksLive('books by stephen king', { local: false });

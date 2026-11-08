@@ -309,6 +309,10 @@ export function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
     return [
       { name: 'ol', run: (n, signal) => ol({ title: wild }, n, signal) },
       { name: 'google', run: (n, signal) => google(text, n, signal) },
+      ...(final && text ? [
+        { name: 'ol-title-popular', run: (n: number, signal?: AbortSignal) => ol({ title: text, sort: 'readinglog' }, n, signal, false) },
+        { name: 'google-phrase', run: (n: number, signal?: AbortSignal) => google(`intitle:"${text}"`, n, signal, false) },
+      ] : []),
     ];
   }
   if (q.author && !text) {
@@ -334,6 +338,12 @@ export function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
   if (q.full) tasks.push({ name: 'google-full', run: (n, signal) => google(q.full, n, signal, false) }); // "x by y" read as one title too
   tasks.push(...english);
   if (final && q.tokens.length > 1) tasks.push({ name: 'ol-title', run: (n, signal) => ol({ title: wild }, n, signal, false) }); // titles only: far fewer unrelated hits
+  // A submitted title search also asks for the books people actually read with those words in the TITLE, and for the exact title phrase: a plain relevance
+  // page of "dark matter" is research records, so the novel never reached the ranking (it was on page 2). Candidates only; ranking decides the order.
+  if (final && !q.isbn && q.tokens.length > 0 && q.scope !== 'author') {
+    tasks.push({ name: 'ol-title-popular', run: (n, signal) => ol({ title: text, sort: 'readinglog' }, n, signal, false) });
+    tasks.push({ name: 'google-phrase', run: (n, signal) => google(`intitle:\"${text}\"`, n, signal, false) });
+  }
   return tasks;
 }
 

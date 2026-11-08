@@ -81,3 +81,21 @@ test('published catalog works are candidates for a normal search, before any net
   applyCatalog([], '2026-02-01');
   flushCatalogCopyForTests;
 });
+
+test('a submitted "dark matter" search asks for the most-read exact-title books too, so the novel is on page 1', async () => {
+  store.clear(); forgetRecentSearchesForTests(); forgetSeenForTests();
+  const ol = (key: string, title: string, author: string, extra: any = {}) => ({ key: `/works/${key}`, title, author_name: [author], first_publish_year: 2016, ...extra });
+  const research = Array.from({ length: 20 }, (_, i) => ol(`OL${i}W`, `Dark Matter and Dark Energy: Proceedings ${i}`, 'Univ Press'));
+  const seen: URL[] = [];
+  (globalThis as any).fetch = async (input: string) => {
+    const url = new URL(String(input), 'https://example.test');
+    seen.push(url);
+    let body: any = { items: [] };
+    if (url.hostname === 'openlibrary.org') body = { docs: url.searchParams.get('sort') === 'readinglog' ? [ol('OL99W', 'Dark Matter', 'Blake Crouch', { ratings_count: 5000, ratings_average: 4.1 })] : research };
+    return { ok: true, status: 200, json: async () => body };
+  };
+  const found = await searchBooksLive('dark matter', { limit: 10, final: true, local: false });
+  assert.ok(seen.some(u => u.searchParams.get('sort') === 'readinglog' && u.searchParams.get('title') === 'dark matter'));
+  assert.equal(found[0].title, 'Dark Matter');
+  assert.equal(found[0].author, 'Blake Crouch');
+});
