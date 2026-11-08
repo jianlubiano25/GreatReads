@@ -54,6 +54,7 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
   const [visibleCount, setVisibleCount] = useState(SEARCH_STEP);
   const [view, setView] = useState<SearchView>(DEFAULT_SEARCH_VIEW);
   const [filterOpen, setFilterOpen] = useState(false);
+  const filterOpenedAt = useRef(0); // the list's scroll position when the filter panel opened: only scrolling AWAY from it closes the panel (opening it while scrolled down used to close it at once)
   const searching = !!query.trim();
   // Focusing the box shows the scope buttons and the filter icon. Tapping anywhere OUTSIDE the search header closes them AND the filter panel; the query and the
   // chosen filters are kept, so tapping the box again brings the buttons back with the filter icon still lit (and counted) when a filter is applied.
@@ -112,7 +113,7 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
     <div
       className={searching ? 'fixed inset-0 z-[45] overflow-y-auto overscroll-contain bg-[#f5f0e6] dark:bg-[#181410]' : 'flex flex-col gap-2'}
       // The filter panel sits in the sticky header and would cover the results as they scroll under it: scrolling the list closes it
-      onScroll={searching && filterOpen ? e => { if (e.currentTarget.scrollTop > 8) setFilterOpen(false); } : undefined}
+      onScroll={searching && filterOpen ? e => { if (Math.abs(e.currentTarget.scrollTop - filterOpenedAt.current) > 48) setFilterOpen(false); } : undefined}
     >
       <div ref={headerRef} onFocus={openBar} className={searching ? 'sticky top-0 z-30 bg-[#f5f0e6] dark:bg-[#181410] px-3 pt-[max(env(safe-area-inset-top),0.75rem)] pb-2 flex flex-col gap-2 border-b border-[#e3d7c3] dark:border-[#382f25]' : 'flex flex-col gap-2'}>
         <div className="flex items-center gap-2">
@@ -157,7 +158,7 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
               type="button"
               aria-label="Filters and sorting"
               aria-expanded={filterOpen}
-              onClick={() => setFilterOpen(o => !o)}
+              onClick={e => { filterOpenedAt.current = e.currentTarget.closest<HTMLElement>('.overflow-y-auto')?.scrollTop ?? 0; setFilterOpen(o => !o); }}
               className={`relative w-10 h-9 shrink-0 rounded-xl border flex items-center justify-center transition-colors ${filterOpen || filtersOn ? 'bg-[#2e5934] text-white border-[#2e5934]' : 'bg-[#fbf7ee] dark:bg-[#231d17] border-[#e3d7c3] dark:border-[#382f25] text-[#2e5934] dark:text-[#9ed0a6]'}`}
             >
               <SlidersHorizontal className="w-4 h-4" />

@@ -440,6 +440,9 @@ export function searchLocal(title: string, author = '', limit = 10, known?: read
 const DAY_MS = 24 * 60 * 60 * 1000;
 const lastGood = persistentCache<Book[]>('readlife.searchlast1', { ttl: 7 * DAY_MS, max: 40, keepStale: 30 * DAY_MS, validate: Array.isArray });
 
+/** The "N books match" count Open Library last gave for a search: shown while (or when) it does not answer, so a busy moment never turns "of 524" into "of 26". */
+const lastTotals = persistentCache<number>('readlife.searchtotal1', { ttl: 7 * DAY_MS, max: 80, keepStale: 30 * DAY_MS, validate: (v: unknown): v is number => typeof v === 'number' });
+
 export async function searchBooksLive(title: string, o: LiveSearchOptions = {}): Promise<Book[]> {
   const limit = o.limit ?? 10;
   const scope = o.scope ?? 'all';
@@ -450,7 +453,7 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   const useLocal = o.local !== false && page === 1;
   let olTotal = 0;
   let googleTotal = 0;
-  const totalNow = () => olTotal || googleTotal;
+  const totalNow = () => olTotal || (page === 1 ? lastTotals.peek(q.key)?.value : 0) || googleTotal;
   const failedSources = new Set<string>();
   let sawLive = false;
   const emit = (books: Book[], from: string, done: boolean, total = totalNow()) => { if (from !== 'local' && from !== 'saved' && from !== 'shared') sawLive = true; if (!o.signal?.aborted) o.onUpdate?.(books, { done, from, total, failedSources: [...failedSources] }); };
@@ -525,6 +528,7 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
       if (recent.size > RECENT_MAX) recent.delete(recent.keys().next().value as string);
     }
   }
+  if (olTotal > 0 && !o.exclude?.length) lastTotals.set(q.key, olTotal);
   emit(finalList, 'done', true);
   return finalList;
 }
@@ -540,4 +544,4 @@ export async function searchBooks(title: string, author = '', limit = 10, signal
 }
 
 /** Tests only: forget the memory of recent searches. */
-export const forgetRecentSearchesForTests = () => { recent.clear(); lastGood.clear(); };
+export const forgetRecentSearchesForTests = () => { recent.clear(); lastGood.clear(); lastTotals.clear(); };

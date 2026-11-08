@@ -110,3 +110,13 @@ test('any book that only holds the typed words comes after the well-read exact t
   const t = top(dm, 'dark matter', 4);
   assert.deepEqual(t.slice(0, 2), ['Dark Matter', 'Dark Matter']);
 });
+
+test('among books with the exact typed title the one readers know leads, even with a sparse record (Dark Matter, many same-title records)', () => {
+  const tidy = (i: number) => book({ title: i % 2 ? 'Dark Matter' : `Dark Matter: Volume ${i}`, author: `Physicist ${i}`, ratingAverage: 4.5, ratingCount: 2 + (i % 3), pageCount: 400, summary: 'x'.repeat(200) });
+  const dm = [
+    ...Array.from({ length: 10 }, (_, i) => tidy(i)),
+    book({ title: 'Dark matter in the universe', author: 'John Bahcall', ratingCount: 30, ratingAverage: 4 }),
+    book({ title: 'Dark Matter', author: 'Blake Crouch', ratingCount: 300, ratingAverage: 4.0, summary: '', pageCount: 0, genre: '' }),
+  ];
+  assert.equal(rank(dm, parseQuery('dark matter', '', true, 'all'), 20)[0].author, 'Blake Crouch');
+});

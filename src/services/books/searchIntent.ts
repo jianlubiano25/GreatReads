@@ -8,13 +8,14 @@
  */
 import type { Book } from '../../types';
 import { authorKey, isUnknownAuthor, titleKey } from './identity';
-import { contentTokens, normQ, tokenHits, type ParsedQuery } from './query';
+import { authorWords, contentTokens, normQ, tokenHits, type ParsedQuery } from './query';
 
 export const INTENT_BONUS = 20;
 export const INTENT_OTHER_PENALTY = 25;
 export const ACADEMIC_PENALTY = 30;
 export const SHORT_FORM_PENALTY = 35;
 const FEW_READERS = 100;
+export const EXACT_READERS_MAX = 30;
 const ACADEMIC = /\b(proceedings|symposium|monograph|bibliograph\w*|dissertation|thesis|journal of|annals of|handbook of|textbook|treatise|encyclopedia of|lecture notes|conference|workshop|astrophysical|cosmological|searches for|constraints on|detection of|physics of|principles of|advances in|university press|(?:19|20)\d\d (?:edition|annual))\b/i;
 
 const titleWords = (b: Pick<Book, 'title'>) => normQ(b.title || '').replace(/^(the|a|an) /, '').split(' ').filter(Boolean);
@@ -30,14 +31,14 @@ export function titleHoldsQuery(b: Pick<Book, 'title'>, q: ParsedQuery): boolean
   return need.length > 0 && need.every((t, i) => tokenHits(t, words, q.partial && i === need.length - 1) > 0);
 }
 
-export interface Intent { key: string; max: number; anchor: number }
+export interface Intent { key: string; max: number; anchor: number; /** the typed words are somebody's name: books BY them lead (search.ts), so the title-readers bonus stays off */ named?: boolean }
 const NONE: Intent = { key: '', max: 0, anchor: 0 };
 const isExact = (b: Pick<Book, 'title'>, q: ParsedQuery) => titleWords(b).join(' ') === q.text.replace(/^(the|a|an) /, '');
 /** Readers of the best-known book whose title IS what was typed (0 when none has real readership): the anchor every other title match is measured against. */
 export function anchorOf(books: readonly Book[], q: ParsedQuery): number {
   if (!plain(q)) return 0;
   const best = Math.max(0, ...books.filter(b => isExact(b, q)).map(b => b.ratingCount || 0));
-  return best >= 500 ? best : 0;
+  return best >= 100 ? best : 0;
 }
 /** The author (authorKey) most of the title-matching books belong to, or ''. */
 export const dominantAuthor = (books: readonly Book[], q: ParsedQuery): string => intentOf(books, q).key;
@@ -45,6 +46,9 @@ export const dominantAuthor = (books: readonly Book[], q: ParsedQuery): string =
 export function intentOf(books: readonly Book[], q: ParsedQuery): Intent {
   if (!plain(q)) return NONE;
   const anchor = anchorOf(books, q);
+  const words = contentTokens(q.tokens);
+  const named = words.length >= 2 && books.some(b => !isUnknownAuthor(b.author) && words.every(w => tokenHits(w, authorWords(b.author), false) > 0));
+  if (named) return { ...NONE, named: true };
   const groups = new Map<string, { w: number; n: number; readers: number }>();
   let total = 0;
   for (const b of books) {
@@ -73,6 +77,8 @@ export function intentAdjust(b: Book, q: ParsedQuery, intent: Intent): number {
   const exact = titleWords(b).join(' ') === q.text.replace(/^(the|a|an) /, ''); // literally the title; "Harry Potter: Proceedings of ..." only has it as its short form
   const shortForm = !exact && titleKey(b.title) === titleKey(q.text); // search.ts credits it as an exact title: undone below for a book few readers know
   const readers = b.ratingCount || 0;
+  // Among books that carry the typed title (exactly, or as its short form) the one people read leads: readers are worth up to +30, so a sparse record of the real book still beats a tidy record nobody has rated
+  if (!intent.named && (exact || shortForm || titleKey(b.title) === titleKey(q.text))) adj += Math.min(EXACT_READERS_MAX, Math.log10(readers + 1) * 8);
   if (dom && holds && authorKey(b.author) === dom) adj += INTENT_BONUS;
   else if (holds && !exact && (dom || intent.anchor) && (readers < FEW_READERS || readers < Math.max(intent.max, intent.anchor) / 10)) {
     // Somebody typed a title that a well-read book carries exactly: a book that only HAS those words (a research record, a subtitle match) comes after it, whatever it is about
