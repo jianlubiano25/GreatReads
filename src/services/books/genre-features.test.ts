@@ -202,3 +202,14 @@ test('notebooks, planners and how-to-draw books never appear in a genre search; 
   for (const t of ['Study Guide for Dune', 'Summary of Atomic Habits', 'Boxed Set']) assert.ok(NOT_THE_BOOK.test(t) && SHELF_JUNK.test(t), t);
   assert.ok(SHELF_JUNK.test('Educart CBSE Class 10 Science') && NOT_THE_BOOK.test('Trivia for fans'));
 });
+
+test('a sub-genre chip is a genre of its own for its Hidden gems row (own search word, one object per chip)', async () => {
+  const { subGenreOf } = await import('../../components/GenrePicks');
+  const { SEARCH_GENRES } = await import('../../data/searchGenres');
+  const fantasy = SEARCH_GENRES.find(g => g.label === 'Fantasy')!;
+  const a = subGenreOf(fantasy, 'epic fantasy')!;
+  assert.equal(a.query, 'epic fantasy');
+  assert.equal(a.kind, 'fiction');
+  assert.equal(subGenreOf(fantasy, 'epic fantasy'), a);
+  assert.equal(subGenreOf(fantasy, 'fantasy'), null);
+});
