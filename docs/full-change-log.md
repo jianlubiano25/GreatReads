@@ -133,3 +133,4 @@ Files: `services/store/{refresh,refreshAll,shelves,dynamic,goodreadsChoice,bests
 - C12(b) DONE build 44: a sub-genre chip now shows its own Hidden gems row (`GenrePicks.subGenreOf`).
 - 2026-11-09: root rule for plain title searches: when a well-read book carries the typed title exactly (500+ ratings), any other book that only HAS those words and few readers goes below it, whatever its wording (no word list; Dark Matter research records); test; BUILD_NUMBER 36.
 - 2026-11-09: search: among books with the exact typed title the most-read leads (+30 by readers, off for author-name searches); last good "of N" count remembered (owner saw 524 become 26); filter panel no longer closes at once when opened while scrolled down; tests; BUILD_NUMBER 37.
+- 2026-11-09: search: exact-title books also count their place in Open Library's most-read order (popularRank) as readership, for books with no ratings there (owner: Dark Matter novel 20th); tests; BUILD_NUMBER 38.

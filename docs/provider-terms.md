@@ -13,3 +13,7 @@ Rules that follow:
 2. Never loop the providers over the whole catalog. The 779-book backfill uses what is already stored plus the owner's own lookups.
 3. Keep source name, record id and URL beside every stored provider fact so a takedown request can be met by deleting exactly that source's rows.
 4. The repo is public: no provider payloads, exports or private notes are committed.
+
+
+## Hardcover (added 2026-11-09, owner go; terms NOT yet read by us - owner to confirm)
+Owner decision: store what we can. What we store: provider record (book id, slug, link `https://hardcover.app/books/<slug>`, release year, reader count, cover URL as a LINK only), rating average + count as its own rating source (`hardcover`, never blended with Apple/Google/Open Library), authors. NOT stored: the description text, the cover image itself, any user data (private libraries, reviews, journals). Shown as "Hardcover". Token only as the Cloudflare secret `HARDCOVER_TOKEN`; calls only through `/api/hardcover`. If Hardcover's terms say otherwise, remove the rows with the rollback file `supabase/rollbacks/20261109000001_catalog_hardcover_provider.rollback.sql`.

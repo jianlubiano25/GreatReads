@@ -308,7 +308,7 @@ const FACT_FIELDS: { field: string; get: (f: ProviderFacts) => unknown }[] = [
  *  - edition: only when this work already has an edition with the SAME Google volume id as the facts, its EMPTY publisher/date/year/pages/language are filled. A disagreeing filled value stays and the provider's value is kept as a candidate.
  * Facts exist only for lookups made in this session (memory); with none, only the book's own genre/award label is filed. Never touches personal data, covers or other works.
  */
-export async function saveFactsToCatalog(workId: string, book: Pick<Book, 'id' | 'identity' | 'genre'> & Partial<Pick<Book, 'awardLabel'>>, facts: ProviderFacts[] = providerFactsFor({ id: String(book.id), identity: book.identity })): Promise<{ saved: string[]; skipped: string[]; retry?: boolean }> {
+export async function saveFactsToCatalog(workId: string, book: Pick<Book, 'id' | 'identity' | 'genre'> & Partial<Pick<Book, 'awardLabel' | 'title' | 'author'>>, facts: ProviderFacts[] = providerFactsFor({ id: String(book.id), title: book.title, author: book.author, identity: book.identity })): Promise<{ saved: string[]; skipped: string[]; retry?: boolean }> {
   const saved: string[] = [], skipped: string[] = [];
   let retry = false;
   const flag = (r: { status: number }) => { if (r.status === 0 || r.status === 429 || r.status >= 500) retry = true; };
@@ -344,6 +344,8 @@ export async function saveFactsToCatalog(workId: string, book: Pick<Book, 'id' |
     const v = get(f);
     if (v !== undefined && !(Array.isArray(v) && !v.length)) await addCandidate(field, v, f.provider, f.recordId, f.sourceUrl, receipts.ids.get(receiptKey(f)));
   }
+  // Hardcover's rating pair is kept as its own approved rating (one per source, not published here, never blended with the others)
+  for (const f of facts) if (f.provider === 'hardcover' && f.rating && f.rating.average > 0 && f.rating.average <= 5 && await storeRating(workId, { source: 'hardcover', average: f.rating.average, count: f.rating.count }, false)) saved.push('rating:hardcover');
   for (const t of c.tags) await addCandidate('tagLabel', t, 'app');
   if (kept) saved.push(`provider facts (${kept})`);
 
@@ -364,7 +366,7 @@ export async function saveFactsToCatalog(workId: string, book: Pick<Book, 'id' |
   return { saved, skipped, ...(retry ? { retry: true } : {}) };
 }
 
-const RATING_SRC: Record<string, string> = { apple: 'apple_books', google: 'google_books', openlibrary: 'open_library' };
+const RATING_SRC: Record<string, string> = { apple: 'apple_books', google: 'google_books', openlibrary: 'open_library', hardcover: 'hardcover' };
 
 /** The catalog's id for this book, created as a hidden draft when it is not there yet (nothing is shown to readers until something is published). */
 export async function ensureWork(book: { title: string; author?: string }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
@@ -378,7 +380,7 @@ export async function ensureWork(book: { title: string; author?: string }): Prom
 }
 
 /** Store one site's rating for the book (one row per source); published straight away when `publish`, else kept as an approved version to review. */
-export async function storeRating(workId: string, r: SourceRating, publish: boolean): Promise<boolean> {
+export async function storeRating(workId: string, r: { source: string; average: number; count?: number | null }, publish: boolean): Promise<boolean> {
   const src = RATING_SRC[r.source];
   if (!src || !(r.average > 0)) return false;
   const ex = await rest<{ id: string }[]>(`catalog_rating_candidates?work_id=eq.${workId}&source_name=eq.${src}&edition_id=is.null&select=id&limit=1`);

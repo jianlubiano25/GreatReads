@@ -6,7 +6,7 @@
  * With nothing stored, a save simply has no extra facts to keep (nothing is invented). Bounded, oldest first out.
  */
 
-export type FactProvider = 'apple' | 'google' | 'openlibrary';
+export type FactProvider = 'apple' | 'google' | 'openlibrary' | 'hardcover';
 export interface ProviderFacts {
   provider: FactProvider;
   /** The provider's own record id: Apple trackId, Google volume id, Open Library work id */
@@ -21,6 +21,9 @@ export interface ProviderFacts {
   authors?: string[];
   altAuthorNames?: string[];
   pages?: number;
+  /** Hardcover only (no ids to look it up by): the rating pair and the few facts its record gave: slug, readers, year, cover URL (a link, never the image or the description text) */
+  rating?: { average: number; count: number };
+  extra?: Record<string, string | number>;
   sourceUrl?: string;
   seenAt: string;
 }
@@ -38,7 +41,11 @@ let gate: (() => boolean) | undefined;
 let hydrated = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
 export function setProviderFactsPersistence(g?: () => boolean): void { gate = g; if (!g) hydrated = false; }
-const PROVIDERS = new Set(['apple', 'google', 'openlibrary']);
+const PROVIDERS = new Set(['apple', 'google', 'openlibrary', 'hardcover']);
+/** Hardcover has no id on our books: its record is found by title + author (same key the lookup used). */
+const hcByBook = new Map<string, string>();
+export const hardcoverBookKey = (title: string, author: string) => `${(title || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()}|${(author || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()}`;
+export const rememberHardcoverFor = (title: string, author: string, recordId: string) => { hcByBook.set(hardcoverBookKey(title, author), String(recordId)); while (hcByBook.size > 300) hcByBook.delete(hcByBook.keys().next().value as string); };
 function hydrate(): void {
   if (hydrated || !gate?.()) return;
   hydrated = true;
@@ -77,7 +84,7 @@ export function rememberProviderFacts(f: Omit<ProviderFacts, 'seenAt'>): void {
 }
 
 /** Facts for a book, found by the provider ids it carries (Apple "apple_123" id, Google volume id, Open Library work id). */
-export function providerFactsFor(book: { id?: string; identity?: { gbVolume?: string; olWork?: string } }): ProviderFacts[] {
+export function providerFactsFor(book: { id?: string; title?: string; author?: string; identity?: { gbVolume?: string; olWork?: string } }): ProviderFacts[] {
   hydrate();
   const out: ProviderFacts[] = [];
   const add = (p: FactProvider, id?: string) => { const f = id ? memo.get(keyOf(p, id)) : undefined; if (f) out.push(f); };
@@ -85,8 +92,9 @@ export function providerFactsFor(book: { id?: string; identity?: { gbVolume?: st
   add('apple', apple?.[1]);
   add('google', book.identity?.gbVolume || (/^gb_(.+)$/.exec(book.id || '') || [])[1]);
   add('openlibrary', book.identity?.olWork);
+  if (book.title) add('hardcover', hcByBook.get(hardcoverBookKey(book.title, book.author || '')));
   return out;
 }
 
 /** Tests only. */
-export const forgetProviderFactsForTests = () => { memo.clear(); hydrated = false; gate = undefined; if (timer) { clearTimeout(timer); timer = undefined; } };
+export const forgetProviderFactsForTests = () => { memo.clear(); hcByBook.clear(); hydrated = false; gate = undefined; if (timer) { clearTimeout(timer); timer = undefined; } };

@@ -1,5 +1,6 @@
 import { titleKey, authorKey } from '../identity';
 import { bump } from '../perf';
+import { rememberHardcoverFor, rememberProviderFacts } from '../providerFacts';
 
 /**
  * Hardcover ratings through OUR server function (/api/hardcover, which holds the token). Used only to fill a missing rating (Hidden Gems pools, ratings gaps);
@@ -21,6 +22,12 @@ let offUntil = 0;
 export const resetHardcoverForTests = () => { offUntil = 0; };
 
 export async function hardcoverRating(title: string, author: string, deps?: HardcoverDeps): Promise<{ average: number; count: number } | null> {
+  const hit = await hardcoverMatch(title, author, deps);
+  return hit ? { average: hit.average, count: hit.count } : null;
+}
+
+/** The matched Hardcover book: rating pair plus the facts kept as a provider record (remembered for the owner's Save to catalog / capture). */
+export async function hardcoverMatch(title: string, author: string, deps?: HardcoverDeps): Promise<{ average: number; count: number; id: string; slug?: string; year?: number; readers?: number; cover?: string } | null> {
   const d = deps ?? (typeof window === 'undefined' ? undefined : real);
   if (!d || !title || d.now() < offUntil) return null;
   const q = new URLSearchParams({ op: 'books', q: title, ...(author ? { author } : {}) });
@@ -35,5 +42,13 @@ export async function hardcoverRating(title: string, author: string, deps?: Hard
   const hit = books.find(b => titleKey(String(b.title || '')) === want && Number(b.rating) > 0 && Number(b.ratingsCount) > 0
     && (!wantAuthor || !(b.authors || []).length || (b.authors as string[]).some(a => authorKey(a) === wantAuthor)));
   if (hit) bump('hardcover.matched');
-  return hit ? { average: Number(hit.rating), count: Number(hit.ratingsCount) } : null;
+  if (!hit) return null;
+  const out = { average: Number(hit.rating), count: Number(hit.ratingsCount), id: String(hit.id ?? ''), slug: hit.slug ? String(hit.slug) : undefined, year: Number(hit.year) || undefined, readers: Number(hit.readers) || undefined, cover: typeof hit.cover === 'string' ? hit.cover : undefined };
+  if (out.id) {
+    rememberProviderFacts({ provider: 'hardcover', recordId: out.id, authors: Array.isArray(hit.authors) ? hit.authors.slice(0, 10) : undefined, publishedDate: out.year ? String(out.year) : undefined, rating: { average: out.average, count: out.count },
+      extra: { ...(out.slug ? { slug: out.slug } : {}), ...(out.readers ? { readers: out.readers } : {}), ...(out.year ? { year: out.year } : {}), ...(out.cover ? { cover: out.cover } : {}) },
+      ...(out.slug ? { sourceUrl: `https://hardcover.app/books/${out.slug}` } : {}) });
+    rememberHardcoverFor(title, author, out.id);
+  }
+  return out;
 }

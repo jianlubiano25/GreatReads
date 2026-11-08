@@ -44,7 +44,7 @@ const PUB_OFF_KEY = 'readlife.capturePubOff1';
 const MAX_QUEUE = 3000;
 const MAX_DONE = 60000;
 const GAP_MS = 80;
-const RATING_SRC: Record<string, string> = { apple: 'apple_books', google: 'google_books', openlibrary: 'open_library' };
+const RATING_SRC: Record<string, string> = { apple: 'apple_books', google: 'google_books', openlibrary: 'open_library', hardcover: 'hardcover' };
 
 /* ---------------- what was already sent (so nothing is sent twice) ---------------- */
 
@@ -133,7 +133,7 @@ export function identityMark(item: CaptureItem): string | null {
 const idPending = (item: CaptureItem): boolean => { const m = identityMark(item); return !!m && !doneSet().has(m); };
 /** Provider facts this device remembers for the book (this session or stored on this owner device) and which of them are not yet sent in their current form. */
 function factsOf(item: CaptureItem): { facts: ProviderFacts[]; pending: string[] } {
-  const facts = providerFactsFor({ id: item.bookId, identity: item.identity });
+  const facts = providerFactsFor({ id: item.bookId, title: item.title, author: item.author, identity: item.identity });
   const key = coverKey({ title: item.title, author: item.author });
   const marks = facts.map(f => `f|${key}|${f.provider}|${f.recordId}|${hashText(receiptSignature(f))}`);
   return { facts, pending: marks.filter(m => !doneSet().has(m)) };

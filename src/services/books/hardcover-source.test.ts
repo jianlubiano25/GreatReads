@@ -33,3 +33,26 @@ test('a Hardcover rating is shown as Hardcover (like Open Library / Apple / Goog
   assert.equal(main?.source, 'hardcover');
   assert.equal(RATING_SOURCE_LABEL[main!.source as 'hardcover'], 'Hardcover');
 });
+
+test('a Hardcover match is remembered as a fourth provider record (id, link, readers, year, cover URL, rating) and found again by title + author', async () => {
+  const { hardcoverMatch } = await import('./sources/hardcover');
+  const { providerFactsFor, forgetProviderFactsForTests } = await import('./providerFacts');
+  const { receiptRow, receiptKind } = await import('../catalogReceipts');
+  resetHardcoverForTests(); forgetProviderFactsForTests();
+  const body = { books: [{ id: 312460, slug: 'dune', title: 'Dune', authors: ['Frank Herbert'], rating: 4.27, ratingsCount: 5000, readers: 90000, year: 1965, cover: 'https://assets.hardcover.app/x.jpg', description: 'long text that must not be kept' }] };
+  const hit = await hardcoverMatch('Dune', 'Frank Herbert', deps(200, body));
+  assert.equal(hit?.id, '312460');
+  const facts = providerFactsFor({ title: 'Dune', author: 'Frank Herbert' });
+  assert.equal(facts.length, 1);
+  assert.equal(facts[0].provider, 'hardcover');
+  assert.deepEqual(facts[0].rating, { average: 4.27, count: 5000 });
+  assert.equal(facts[0].sourceUrl, 'https://hardcover.app/books/dune');
+  assert.equal(receiptKind('hardcover'), 'work');
+  const row: any = receiptRow(facts[0], 'work-1');
+  assert.equal(row.provider, 'hardcover');
+  assert.equal(row.payload.extra.readers, 90000);
+  assert.equal(row.payload.extra.cover, 'https://assets.hardcover.app/x.jpg');
+  assert.ok(!JSON.stringify(row.payload).includes('long text'), 'the description text is never stored');
+  assert.deepEqual(providerFactsFor({ title: 'Dune', author: 'Someone Else' }), []);
+  forgetProviderFactsForTests();
+});

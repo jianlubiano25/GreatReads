@@ -11,7 +11,7 @@ import { rest } from './supabase';
 import type { FactProvider, ProviderFacts } from './books/providerFacts';
 
 export const REFRESH_DAYS = 90;
-export const receiptKind = (p: FactProvider): 'listing' | 'volume' | 'work' => (p === 'apple' ? 'listing' : p === 'google' ? 'volume' : 'work');
+export const receiptKind = (p: FactProvider): 'listing' | 'volume' | 'work' => (p === 'apple' ? 'listing' : p === 'google' ? 'volume' : 'work'); // Hardcover's book is a 'work'
 export const receiptKey = (f: Pick<ProviderFacts, 'provider' | 'recordId'>): string => `${f.provider}:${f.recordId}`;
 
 /** The trimmed payload: only what the app extracted (no descriptions, no raw response). Lists are capped. */
@@ -25,6 +25,8 @@ export function receiptPayload(f: ProviderFacts): Record<string, unknown> {
   if (f.authors?.length) o.authors = f.authors.slice(0, 10);
   if (f.altAuthorNames?.length) o.altAuthorNames = f.altAuthorNames.slice(0, 20);
   if (f.pages) o.pages = f.pages;
+  if (f.rating) o.rating = { average: f.rating.average, count: f.rating.count };
+  if (f.extra) o.extra = Object.fromEntries(Object.entries(f.extra).slice(0, 10));
   return o;
 }
 /** Changes when what the provider said changes (not when it was merely seen again). */
