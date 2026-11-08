@@ -12,10 +12,12 @@ import { isBlocked } from './quality';
 import { titleLooksForeign } from './language';
 import { rememberExcluded } from './eligibility';
 import { localMatches, rememberSeen } from './localIndex';
-import { contentTokens, normQ, parseQuery, tokenHits, type ParsedQuery, type SearchScope } from './query';
+import { authorWords, contentTokens, normQ, parseQuery, tokenHits, type ParsedQuery, type SearchScope } from './query';
 import { keywordGroups, keywordPhrases, stem } from './keywords';
 import { coverBonus } from './covers';
 import { isAccessory, NOT_THE_BOOK } from './notTheBook';
+import { catalogSearchCandidates } from './catalogCandidates';
+import { intentAdjust, intentOf } from './searchIntent';
 import { diversify, genreForQuery, kindAdjust, kindOfQuery, thinRecord } from './genreRank';
 
 /** Editions that are about a book, not the book (`notTheBook.ts`): ranked far down unless that is what was asked for. */
@@ -58,7 +60,7 @@ export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial =
   const a = normQ(b.author || '');
   const qTokens = q.split(' ').filter(Boolean);
   const tWords = t.split(' ').filter(Boolean);
-  const aWords = a.split(' ').filter(Boolean);
+  const aWords = authorWords(b.author || '');
   const need = contentTokens(qTokens);
   const lastNeed = need[need.length - 1];
   let score = 0;
@@ -93,7 +95,8 @@ export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial =
     if (!titleOnly && need.length && authorHits.every(h => h > 0)) {
       const fullName = need.length >= 2 && authorHits.every(h => h === 1);
       // "Threshing": a machinery report with "Threshing" in its title AND in its author name must not beat the book called "Threshing"
-      if (fullName) score += AUTHOR_FULL_NAME;
+      // initials count too ("j.k. rowling": content words alone are just "rowling")
+      if (fullName || (qTokens.length >= 2 && qTokens.every(w => tokenHits(w, aWords, false) === 1))) score += AUTHOR_FULL_NAME;
       else if (tier < 55) score += AUTHOR_PARTIAL;
     }
   }
@@ -171,7 +174,7 @@ function inScope(b: Book, q: ParsedQuery): boolean {
   }
   if (q.scope === 'author') {
     const qa = q.author.split(' ').filter(Boolean);
-    const words = normQ(b.author).split(' ').filter(Boolean);
+    const words = authorWords(b.author);
     return qa.every((w, i) => tokenHits(w, words, i === qa.length - 1) > 0);
   }
   return true;
@@ -232,7 +235,9 @@ export function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly
   // A genre search (the Search tab's genres, and their sub-genres) knows what kind of book it wants: fiction or non-fiction
   const wantKind = byKeywords ? kindOfQuery(q.text) : undefined;
   const isGenreSearch = byKeywords && !!genreForQuery(q.text);
-  const sorted = dedupeBooks(books)
+  const deduped = dedupeBooks(books);
+  const dom = intentOf(deduped, q); // title / series intent: the author most of the matching titles belong to
+  const sorted = deduped
     .filter(b => inScope(b, q) && !(skip.length && skip.some(x => x === b || sameWork(x, b))) && !(isGenreSearch && isAccessory(b.title)))
     .map((book, order) => ({
       book,
@@ -241,6 +246,7 @@ export function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly
       score: Math.max(searchRelevance(book, q.text, q.author, q.partial, q.scope === 'title' || q.scope === 'keywords', popular, byKeywords), q.full ? searchRelevance(book, q.full, '', q.partial, q.scope === 'title') : -Infinity)
         + (byKeywords ? keywordFit(book, q, !isGenreSearch) + (isGenreSearch && titleOnlyMatch(book, q) && !wellKnown(book) ? -TITLE_ONLY_PENALTY : 0) + (isGenreSearch && Number(book.ratingAverage) >= 4 && Number(book.ratingCount) >= 100 ? 10 : 0) + thinRecord(book) + kindAdjust(book, wantKind) + popularityBonus(book) : 0)
         - (titleLooksForeign(book.title) && !titleLooksForeign(q.text) && !titleLooksForeign(q.full) ? FOREIGN_TITLE_PENALTY : 0) // English editions first, unless a foreign title was typed
+        + intentAdjust(book, q, dom)
         + (own.length && own.some(o => o === book || sameWork(o, book)) ? OWN_BONUS : 0),
     }))
     .sort((x, y) => y.score - x.score || x.order - y.order)
@@ -343,7 +349,7 @@ function authorNamed(q: ParsedQuery, hits: Hit[]): string {
   const last = q.tokens[q.tokens.length - 1];
   for (const h of hits) {
     if (isUnknownAuthor(h.book.author)) continue;
-    const words = normQ(h.book.author).split(' ').filter(Boolean);
+    const words = authorWords(h.book.author);
     if (q.tokens.every(t => tokenHits(t, words, q.partial && t === last) > 0) && q.tokens.filter(t => tokenHits(t, words, false) === 1).length >= q.tokens.length - 1) return h.book.author;
   }
   return '';
@@ -442,7 +448,8 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
 
   const mine = useLocal && o.known?.length ? localMatches(q, limit, o.known) : [];
   const seenHere = useLocal ? localMatches(q, limit) : [];
-  const local = [...mine, ...seenHere];
+  const fromCatalog = useLocal ? catalogSearchCandidates(q, limit) : []; // published catalog works fit by title / author (device copy, no network) join the candidates; never remembered as seen
+  const local = [...mine, ...seenHere, ...fromCatalog];
   if (local.length) emit(rank(local, q, limit, mine), 'local', false, 0);
 
   const memoKey = q.key;

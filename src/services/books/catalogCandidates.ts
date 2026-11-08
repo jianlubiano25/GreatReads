@@ -8,7 +8,7 @@ import type { SearchGenre } from '../../data/searchGenres';
 import { catalogCopy, type CatalogWork } from './catalogCovers';
 import { subjectEvidence } from './genreEvidence';
 import { isKnownGenre } from './model';
-import { contentTokens, normQ, tokenHits, type ParsedQuery } from './query';
+import { authorWords, contentTokens, normQ, tokenHits, type ParsedQuery } from './query';
 
 const SITES: Record<string, NonNullable<Book['ratingSource']>> = { apple_books: 'apple', apple: 'apple', google_books: 'google', google: 'google', open_library: 'openlibrary', openlibrary: 'openlibrary', hardcover: 'hardcover' };
 
@@ -85,7 +85,7 @@ export function catalogSearchCandidates(q: ParsedQuery, limit = 20, works: reado
   for (const w of works) {
     if (!live(w)) continue;
     const title = wordsOf(w.title, ...(w.aliases || []));
-    const author = wordsOf(w.author, ...(w.authorAliases || []));
+    const author = [w.author, ...(w.authorAliases || [])].flatMap(a => authorWords(a || ''));
     if (qa.length && !qa.every((t, i) => tokenHits(t, author, i === qa.length - 1) > 0)) continue;
     if (need.length) {
       const pool = q.scope === 'title' ? title : q.scope === 'author' && !qa.length ? author : [...title, ...author];
