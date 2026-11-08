@@ -2,7 +2,7 @@ import { PLACEHOLDER_STYLES, coverBackdrop } from '../services/books/placeholder
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { displayBooks, refreshNames, subscribeNames } from '../services/books/englishTitle';
 import { mapPool } from '../services/books/http';
-import { bump } from '../services/books/perf';
+import { bump, clearShelfFailure, recordShelfFailure } from '../services/books/perf';
 import { Book } from '../types';
 import { InsufficientShelfError, type ShelfSource } from '../services/store/shelves';
 import { CoverFace, RatingLine, AwardBadges } from './BookMeta';
@@ -76,6 +76,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
   const [failed, setFailed] = useState(false);
   const [insufficient, setInsufficient] = useState(false);
   const [attempt, setAttempt] = useState(0); // "Try again" reloads the shelf
+  const autoTriesRef = useRef(0);
   const [autoTries, setAutoTries] = useState(0); // a shelf that failed tries again by itself (after 6 s, 18 s, 45 s), with a spinner, before showing "Try again"
   const [visible, setVisible] = useState(!lazy);
   const holder = useRef<HTMLDivElement>(null);
@@ -125,10 +126,11 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
     };
     source.load(b => live && draw(b))
       // The answer replaces what was drawn first (a saved list shown while this loaded), unless a newer update already arrived
-      .then(b => { if (live && !latest) setLoaded(prev => { const cur = prev ?? shown.current; return cur && sameShelf(cur, b) ? prev ?? cur : b; }); })
+      .then(b => { clearShelfFailure(id); if (live && !latest) setLoaded(prev => { const cur = prev ?? shown.current; return cur && sameShelf(cur, b) ? prev ?? cur : b; }); })
       // A failed refresh never takes away a list that is already on screen
       .catch(error => {
         if (!live) return;
+        if (!(error instanceof InsufficientShelfError)) recordShelfFailure(id, error, autoTriesRef.current);
         if (error instanceof InsufficientShelfError) {
           setLoaded(null);
           setInsufficient(true);
@@ -137,6 +139,7 @@ export const StoreShelf = React.memo(function StoreShelf({ id, title, source, bo
     return () => { live = false; clearTimeout(timer); };
   }, [id, visible, source, fixedBooks, attempt]);
 
+  useEffect(() => { autoTriesRef.current = autoTries; }, [autoTries]);
   useEffect(() => {
     if (!failed || autoTries >= AUTO_RETRY_MS.length) return;
     const t = setTimeout(() => { bump(`shelf.autoRetry.${id}`); setAutoTries(n => n + 1); setAttempt(n => n + 1); }, AUTO_RETRY_MS[autoTries]);

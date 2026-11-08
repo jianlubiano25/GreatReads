@@ -112,3 +112,7 @@ Moved out of HANDOFF.md / docs/handoff-reference.md on 2026-11-01 in one batch, 
 - 2026-11-03: C8: NYT lists the NYT still names but stopped publishing (old Science/Travel/Crime & Punishment) are told apart from real upstream faults (`listIsStale` in `functions/api/nyt.js`, `isDeadNytList` in `sources/nyt.ts`): treated as unavailable, not retried; 2 tests in `nytUnavailable.test.ts`; BUILD_NUMBER 22.
 - 2026-11-05: found `discovery_cache` rows lived 1 day (1 of 56 live) -> now 7 days (`SHARED_DAYS`); owner must press Fill again once; Hidden Gems fill in 3 steps so no genre is empty; BUILD_NUMBER 25.
 - 2026-11-05: Hardcover diagnostics counters (C15); genre searches no longer rank by the word in the title (C16 part); Chick Lit is now Womens Fiction; BUILD_NUMBER 26.
+
+- C13 **Admin view of failing shelves** (owner: retry for everyone, details only for admin): the diagnostics already list `shelf.autoRetry.<id>` and `nyt.failed.<list>.<reason>`; add a short "Shelves that failed" list to Copy diagnostics (shelf id, reason, tries). Files `books/perf.ts`, `components/StoreShelf.tsx`.
+(DONE build 43: shelvesFailing list in Copy diagnostics - shelf id, reason, auto-retries; cleared when the shelf loads again.)
+- 2026-11-08: C19b catalog-first genre candidates in fills; C20 search relevance (catalog candidates, title/series intent, academic penalty, initials); tests; no version bump, no migrations, no production writes.
