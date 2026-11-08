@@ -30,13 +30,21 @@ export function titleHoldsQuery(b: Pick<Book, 'title'>, q: ParsedQuery): boolean
   return need.length > 0 && need.every((t, i) => tokenHits(t, words, q.partial && i === need.length - 1) > 0);
 }
 
-export interface Intent { key: string; max: number }
-const NONE: Intent = { key: '', max: 0 };
+export interface Intent { key: string; max: number; anchor: number }
+const NONE: Intent = { key: '', max: 0, anchor: 0 };
+const isExact = (b: Pick<Book, 'title'>, q: ParsedQuery) => titleWords(b).join(' ') === q.text.replace(/^(the|a|an) /, '');
+/** Readers of the best-known book whose title IS what was typed (0 when none has real readership): the anchor every other title match is measured against. */
+export function anchorOf(books: readonly Book[], q: ParsedQuery): number {
+  if (!plain(q)) return 0;
+  const best = Math.max(0, ...books.filter(b => isExact(b, q)).map(b => b.ratingCount || 0));
+  return best >= 500 ? best : 0;
+}
 /** The author (authorKey) most of the title-matching books belong to, or ''. */
 export const dominantAuthor = (books: readonly Book[], q: ParsedQuery): string => intentOf(books, q).key;
 /** The dominant author and the readers of their best-known matching book (a same-title book by somebody else with a tenth of that is not what was meant). */
 export function intentOf(books: readonly Book[], q: ParsedQuery): Intent {
   if (!plain(q)) return NONE;
+  const anchor = anchorOf(books, q);
   const groups = new Map<string, { w: number; n: number; readers: number }>();
   let total = 0;
   for (const b of books) {
@@ -51,9 +59,9 @@ export function intentOf(books: readonly Book[], q: ParsedQuery): Intent {
   let best = '';
   let top: { w: number; n: number; readers: number } | undefined;
   for (const [k, g] of groups) if (!top || g.w > top.w) { best = k; top = g; }
-  if (!top || total <= 0 || top.w / total < 0.6 || top.readers < 500) return NONE; // real readership decides: ten unrated records by one name are not a series
+  if (!top || total <= 0 || top.w / total < 0.6 || top.readers < 500) return anchor ? { ...NONE, anchor } : NONE; // real readership decides: ten unrated records by one name are not a series
   const max = Math.max(...books.filter(b => authorKey(b.author) === best && titleHoldsQuery(b, q)).map(b => b.ratingCount || 0));
-  return { key: best, max };
+  return { key: best, max, anchor };
 }
 
 /** Score adjustment for one book (0 when nothing applies). `dom` comes from `intentOf` over the whole candidate list. */
@@ -64,9 +72,11 @@ export function intentAdjust(b: Book, q: ParsedQuery, intent: Intent): number {
   const holds = titleHoldsQuery(b, q);
   const exact = titleWords(b).join(' ') === q.text.replace(/^(the|a|an) /, ''); // literally the title; "Harry Potter: Proceedings of ..." only has it as its short form
   const shortForm = !exact && titleKey(b.title) === titleKey(q.text); // search.ts credits it as an exact title: undone below for a book few readers know
-  if (dom && holds) {
-    if (authorKey(b.author) === dom) adj += INTENT_BONUS;
-    else if (!exact && ((b.ratingCount || 0) < FEW_READERS || (b.ratingCount || 0) < intent.max / 10)) adj -= INTENT_OTHER_PENALTY + (shortForm ? SHORT_FORM_PENALTY : 0);
+  const readers = b.ratingCount || 0;
+  if (dom && holds && authorKey(b.author) === dom) adj += INTENT_BONUS;
+  else if (holds && !exact && (dom || intent.anchor) && (readers < FEW_READERS || readers < Math.max(intent.max, intent.anchor) / 10)) {
+    // Somebody typed a title that a well-read book carries exactly: a book that only HAS those words (a research record, a subtitle match) comes after it, whatever it is about
+    adj -= INTENT_OTHER_PENALTY + (shortForm ? SHORT_FORM_PENALTY : 0);
   }
   if (!exact && (b.ratingCount || 0) < FEW_READERS && ACADEMIC.test(`${b.title} ${(b.summary || '').slice(0, 200)}`) && !ACADEMIC.test(q.text)) adj -= ACADEMIC_PENALTY;
   return adj;

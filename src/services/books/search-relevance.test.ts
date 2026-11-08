@@ -99,3 +99,14 @@ test('a submitted "dark matter" search asks for the most-read exact-title books 
   assert.equal(found[0].title, 'Dark Matter');
   assert.equal(found[0].author, 'Blake Crouch');
 });
+
+test('any book that only holds the typed words comes after the well-read exact title, whatever its wording (root rule, not a word list)', () => {
+  const dm = [
+    book({ title: 'Dark Matter: Motivations, Candidates and Constraints', author: 'Some Physicist', ratingCount: 3 }),
+    book({ title: 'The Dark Matter Puzzle', author: 'Other Writer', ratingCount: 0 }),
+    book({ title: 'Dark Matter', author: 'Blake Crouch', ratingAverage: 4.1, ratingCount: 120000 }),
+    book({ title: 'Dark Matter', author: 'Michelle Paver', ratingAverage: 3.8, ratingCount: 7000 }),
+  ];
+  const t = top(dm, 'dark matter', 4);
+  assert.deepEqual(t.slice(0, 2), ['Dark Matter', 'Dark Matter']);
+});

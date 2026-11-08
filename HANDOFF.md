@@ -89,6 +89,7 @@ Layers: (1) shared catalog, admin-owned; (2) personal sync, one mechanism, cloud
 `docs/handoff-reference.md` (what exists, live data facts, Task A/B/C, merge status, M4b evidence), `docs/full-change-log.md` (all older log entries), `docs/work-packages.md`, `docs/cover-one-path-plan.md`, `docs/catalog-field-map.md`, `docs/catalog-live-schema.md`, `docs/catalog-vocabulary.md`, `docs/provider-terms.md`, `docs/catalog-merge-preview-2026-10-30.md`.
 
 ## Change log (last 8; older in docs/full-change-log.md)
+- 2026-11-09: root rule for plain title searches: when a well-read book carries the typed title exactly (500+ ratings), any other book that only HAS those words and few readers goes below it, whatever its wording (no word list; Dark Matter research records); test; BUILD_NUMBER 36.
 - 2026-11-08: C19b catalog-first genre candidates in fills; C20 search relevance (catalog candidates, title/series intent, academic penalty, initials); tests; no version bump, no migrations, no production writes.
 - 2026-11-05: genre words no longer run the title/description text searches (root cause of title-word books); one shared junk-title list; accessories removed from genre results; dead code removed; BUILD_NUMBER 30.
 - 2026-11-05: stored genre lists no longer lead a search with title-word books (cleanForSearch); BUILD_NUMBER 29.
@@ -97,4 +98,3 @@ Layers: (1) shared catalog, admin-owned; (2) personal sync, one mechanism, cloud
 - 2026-11-05: Hardcover diagnostics counters (C15); genre searches no longer rank by the word in the title (C16 part); Chick Lit is now Womens Fiction; BUILD_NUMBER 26.
 - 2026-11-05: found `discovery_cache` rows lived 1 day (1 of 56 live) -> now 7 days (`SHARED_DAYS`); owner must press Fill again once; Hidden Gems fill in 3 steps so no genre is empty; BUILD_NUMBER 25.
 - 2026-11-03: C8: NYT lists the NYT still names but stopped publishing (old Science/Travel/Crime & Punishment) are told apart from real upstream faults (`listIsStale` in `functions/api/nyt.js`, `isDeadNytList` in `sources/nyt.ts`): treated as unavailable, not retried; 2 tests in `nytUnavailable.test.ts`; BUILD_NUMBER 22.
-- 2026-11-03: `/api/hardcover` no longer calls every GraphQL error "unauthorized" (owner got `unauthorized` although Hardcover counted 26 requests = the token works; a wrong field name was being blamed on the token); it now returns `detail` with Hardcover's own message; BUILD_NUMBER 21.

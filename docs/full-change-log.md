@@ -89,3 +89,4 @@ Moved out of HANDOFF.md / docs/handoff-reference.md on 2026-11-01 in one batch, 
 - 2026-11-03: Hardcover server function `/api/hardcover` (token only in the Pages secret, one fixed read-only query, cached 1 day) + tests; not wired into the app yet; BUILD_NUMBER 19.
 
 - 2026-11-03: Hardcover rating source: Hidden Gems pools ask Hardcover (via /api/hardcover) first, then Open Library, for missing ratings; new `ratingSource: 'hardcover'` (label Hardcover); tests; BUILD_NUMBER 20.
+- 2026-11-03: `/api/hardcover` no longer calls every GraphQL error "unauthorized" (owner got `unauthorized` although Hardcover counted 26 requests = the token works; a wrong field name was being blamed on the token); it now returns `detail` with Hardcover's own message; BUILD_NUMBER 21.
