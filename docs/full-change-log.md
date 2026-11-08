@@ -2,6 +2,7 @@
 
 Moved out of HANDOFF.md / docs/handoff-reference.md on 2026-11-01 in one batch, text unchanged. HANDOFF.md keeps only the last 5-8 one-liners; when it grows past 8, move the oldest here (add at the TOP of this list).
 
+- 2026-11-05: genre words no longer run the title/description text searches (root cause of title-word books); one shared junk-title list; accessories removed from genre results; dead code removed; BUILD_NUMBER 30.
 - 2026-11-05: stored genre lists no longer lead a search with title-word books (cleanForSearch); BUILD_NUMBER 29.
 - 2026-11-05: typed genre search keeps the stored genre list first (live results no longer replace it, owner screenshots chick lit / sports); BUILD_NUMBER 28.
 - 2026-11-05: typed genre searches show the genre stored list instantly (C16 done); Hardcover ratings show the Hardcover label (test); BUILD_NUMBER 27.

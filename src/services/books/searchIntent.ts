@@ -18,7 +18,7 @@ const FEW_READERS = 100;
 /** Among books titled exactly what was typed the most-read leads: 18 points per tenfold of ratings (4,000 ratings ~ 65, 100 ~ 36), so a cover or summary (<= ~20 together) cannot put a barely-read record above the real book (Dark Matter was 6th at 8 points per tenfold, cap 30). Off for author-name searches. */
 export const EXACT_READERS_MAX = 66;
 const EXACT_READERS_PER_DECADE = 18;
-export const AUTHOR_NOT_NAME_PENALTY = 70;
+export const AUTHOR_NOT_NAME_PENALTY = 170; // undoes search.ts AUTHOR_FULL_NAME entirely: the words are not a person's name
 const ACADEMIC = /\b(proceedings|symposium|monograph|bibliograph\w*|dissertation|thesis|journal of|annals of|handbook of|textbook|treatise|encyclopedia of|lecture notes|conference|workshop|astrophysical|cosmological|searches for|constraints on|detection of|physics of|principles of|advances in|university press|(?:19|20)\d\d (?:edition|annual))\b/i;
 
 const titleWords = (b: Pick<Book, 'title'>) => normQ(b.title || '').replace(/^(the|a|an) /, '').split(' ').filter(Boolean);
@@ -52,7 +52,7 @@ export function intentOf(books: readonly Book[], q: ParsedQuery): Intent {
   const words = contentTokens(q.tokens);
   // The words are somebody's NAME only when that author's books are read at least as much as the books titled exactly that ("jane austen"); an obscure author or
   // publisher who happens to be called "Dark Matter" must not switch the title rules off
-  const byName = words.length >= 2 ? books.filter(b => !isUnknownAuthor(b.author) && words.every(w => tokenHits(w, authorWords(b.author), false) > 0)) : [];
+  const byName = words.length >= 2 ? books.filter(b => !isUnknownAuthor(b.author) && !ACADEMIC.test(b.author || '') && words.every(w => tokenHits(w, authorWords(b.author), false) > 0)) : [];
   const nameReaders = byName.reduce((n, b) => n + (b.ratingCount || 0), 0);
   const exactReaders = Math.max(0, ...books.filter(b => isExact(b, q)).map(b => b.ratingCount || 0));
   if (byName.length && nameReaders >= exactReaders && (nameReaders > 0 || exactReaders === 0)) return { ...NONE, named: true };
@@ -85,7 +85,7 @@ export function intentAdjust(b: Book, q: ParsedQuery, intent: Intent): number {
   const shortForm = !exact && titleKey(b.title) === titleKey(q.text); // search.ts credits it as an exact title: undone below for a book few readers know
   const readers = b.ratingCount || 0;
   // Not a name search, yet this book matches only through an author called like the title ("Dark Matter" the zine maker): search.ts gives a full author name more than an exact title, undone here
-  if (!intent.named && !exact && !shortForm) {
+  if (!intent.named) { // also for a book that carries the exact title ("Dark matter" by "Italian Conference on Dark Matter" got the full-author-name points and led the list)
     const need = contentTokens(q.tokens);
     if (need.length >= 2 && !isUnknownAuthor(b.author) && need.every(w => tokenHits(w, authorWords(b.author), false) > 0)) adj -= AUTHOR_NOT_NAME_PENALTY;
   }
@@ -96,6 +96,8 @@ export function intentAdjust(b: Book, q: ParsedQuery, intent: Intent): number {
     // Somebody typed a title that a well-read book carries exactly: a book that only HAS those words (a research record, a subtitle match) comes after it, whatever it is about
     adj -= INTENT_OTHER_PENALTY + (shortForm ? SHORT_FORM_PENALTY : 0);
   }
-  if (!exact && (b.ratingCount || 0) < FEW_READERS && ACADEMIC.test(`${b.title} ${(b.summary || '').slice(0, 200)}`) && !ACADEMIC.test(q.text)) adj -= ACADEMIC_PENALTY;
+  // A research record: its title or summary says so, or its AUTHOR is a conference / institute ("Dark matter" by "Italian Conference on Dark Matter" led the list with no ratings).
+  // A book that carries the exact title is only judged by its title / author (a novel's summary may mention a conference), others by title, summary and author.
+  if ((b.ratingCount || 0) < FEW_READERS && !ACADEMIC.test(q.text) && (exact ? ACADEMIC.test(`${b.title} ${b.author || ''}`) : ACADEMIC.test(`${b.title} ${(b.summary || '').slice(0, 200)} ${b.author || ''}`))) adj -= ACADEMIC_PENALTY;
   return adj;
 }

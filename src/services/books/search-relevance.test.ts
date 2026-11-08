@@ -145,3 +145,14 @@ test('among books titled exactly what was typed, the most-read leads even when o
   ];
   assert.equal(rank(dm, parseQuery('dark matter', '', true, 'all'), 20)[0].author, 'Blake Crouch');
 });
+
+test('an exact-title proceedings record by a conference does not lead the novel (Dark matter, owner screenshot)', () => {
+  const dm = [
+    book({ title: 'Dark matter', author: 'Italian Conference on Dark Matter (1st 1997 Trieste, Italy)', year: '1998', pageCount: 500, ratingCount: 0 }),
+    book({ title: 'Dark Matter', author: 'Blake Crouch', ratingAverage: 4, ratingCount: 0, summary: '', pageCount: 0, genre: '' }),
+    book({ title: 'Dark Matter', author: 'Michelle Paver', ratingAverage: 3.8, ratingCount: 4 }),
+  ];
+  const order = rank(dm, parseQuery('Dark matter', '', true, 'all'), 20).map(b => b.author);
+  assert.notEqual(order[0], 'Italian Conference on Dark Matter (1st 1997 Trieste, Italy)');
+  assert.equal(order[order.length - 1], 'Italian Conference on Dark Matter (1st 1997 Trieste, Italy)');
+});
