@@ -237,13 +237,17 @@ export function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly
   const isGenreSearch = byKeywords && !!genreForQuery(q.text);
   const deduped = dedupeBooks(books);
   const dom = intentOf(deduped, q); // title / series intent: the author most of the matching titles belong to
+  // Several books can carry exactly the typed title ("Dark Matter": a 4,000-rating novel and a dozen research records). They earn the same title points, so a cover, a
+  // summary or a page count used to separate them (the novel was 6th). Among exact-title books READERSHIP now decides first: 10 points per tenfold of ratings, up to 36
+  // (3,000+ ratings). Not when the words are an author's name ("jane austen": her books lead) and not in topic searches.
+  const exactLead = (b: Book): number => !dom.named && !byKeywords && q.text && !q.author && titleKey(b.title) === titleKey(q.text) ? Math.min(36, 10 * Math.log10((b.ratingCount || 0) + 1)) : 0;
   const sorted = deduped
     .filter(b => inScope(b, q) && !(skip.length && skip.some(x => x === b || sameWork(x, b))) && !(isGenreSearch && isAccessory(b.title)))
     .map((book, order) => ({
       book,
       order,
       // "Death by Water" was split into a title and an author: the better of the two readings counts
-      score: Math.max(searchRelevance(book, q.text, q.author, q.partial, q.scope === 'title' || q.scope === 'keywords', popular, byKeywords), q.full ? searchRelevance(book, q.full, '', q.partial, q.scope === 'title') : -Infinity)
+      score: exactLead(book) + Math.max(searchRelevance(book, q.text, q.author, q.partial, q.scope === 'title' || q.scope === 'keywords', popular, byKeywords), q.full ? searchRelevance(book, q.full, '', q.partial, q.scope === 'title') : -Infinity)
         + (byKeywords ? keywordFit(book, q, !isGenreSearch) + (isGenreSearch && titleOnlyMatch(book, q) && !wellKnown(book) ? -TITLE_ONLY_PENALTY : 0) + (isGenreSearch && Number(book.ratingAverage) >= 4 && Number(book.ratingCount) >= 100 ? 10 : 0) + thinRecord(book) + kindAdjust(book, wantKind) + popularityBonus(book) : 0)
         - (titleLooksForeign(book.title) && !titleLooksForeign(q.text) && !titleLooksForeign(q.full) ? FOREIGN_TITLE_PENALTY : 0) // English editions first, unless a foreign title was typed
         + intentAdjust(book, q, dom)

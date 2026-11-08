@@ -137,3 +137,11 @@ test('an obscure author or publisher called "Dark Matter" does not turn the titl
   ];
   assert.equal(rank(dm, parseQuery('dark matter', '', true, 'all'), 20)[0].author, 'Blake Crouch');
 });
+
+test('among books titled exactly what was typed, the most-read leads even when others have covers and fuller metadata (Dark Matter was 6th)', () => {
+  const dm = [
+    ...Array.from({ length: 5 }, (_, i) => book({ title: 'Dark Matter', author: `Author ${i}`, ratingAverage: 4.8, ratingCount: 120, pageCount: 400, coverUrl: 'https://x/c.jpg' })),
+    book({ title: 'Dark Matter', author: 'Blake Crouch', ratingAverage: 4.0, ratingCount: 4000, summary: '', pageCount: 0, genre: '' }),
+  ];
+  assert.equal(rank(dm, parseQuery('dark matter', '', true, 'all'), 20)[0].author, 'Blake Crouch');
+});
