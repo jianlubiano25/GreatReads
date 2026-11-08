@@ -120,3 +120,11 @@ test('among books with the exact typed title the one readers know leads, even wi
   ];
   assert.equal(rank(dm, parseQuery('dark matter', '', true, 'all'), 20)[0].author, 'Blake Crouch');
 });
+
+test('an exact-title book with no ratings but a top place in the most-read order still leads the same-title records', () => {
+  const dm = [
+    ...Array.from({ length: 12 }, (_, i) => book({ title: 'Dark Matter', author: `Physicist ${i}`, ratingAverage: 4.5, ratingCount: 0, popularRank: 20 + i })),
+    book({ title: 'Dark Matter', author: 'Blake Crouch', ratingCount: 0, popularRank: 0 }),
+  ];
+  assert.equal(rank(dm, parseQuery('dark matter', '', true, 'all'), 20)[0].author, 'Blake Crouch');
+});

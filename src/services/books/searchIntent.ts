@@ -78,7 +78,7 @@ export function intentAdjust(b: Book, q: ParsedQuery, intent: Intent): number {
   const shortForm = !exact && titleKey(b.title) === titleKey(q.text); // search.ts credits it as an exact title: undone below for a book few readers know
   const readers = b.ratingCount || 0;
   // Among books that carry the typed title (exactly, or as its short form) the one people read leads: readers are worth up to +30, so a sparse record of the real book still beats a tidy record nobody has rated
-  if (!intent.named && (exact || shortForm || titleKey(b.title) === titleKey(q.text))) adj += Math.min(EXACT_READERS_MAX, Math.log10(readers + 1) * 8);
+  if (!intent.named && (exact || shortForm || titleKey(b.title) === titleKey(q.text))) adj += Math.max(Math.min(EXACT_READERS_MAX, Math.log10(readers + 1) * 8), b.popularRank === undefined || !exact ? 0 : Math.max(0, EXACT_READERS_MAX * (1 - b.popularRank / 20))); // ratings, or the place in Open Library's most-read order (many books have no ratings there)
   if (dom && holds && authorKey(b.author) === dom) adj += INTENT_BONUS;
   else if (holds && !exact && (dom || intent.anchor) && (readers < FEW_READERS || readers < Math.max(intent.max, intent.anchor) / 10)) {
     // Somebody typed a title that a well-read book carries exactly: a book that only HAS those words (a research record, a subtitle match) comes after it, whatever it is about

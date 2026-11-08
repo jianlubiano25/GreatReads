@@ -310,7 +310,7 @@ export function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
       { name: 'ol', run: (n, signal) => ol({ title: wild }, n, signal) },
       { name: 'google', run: (n, signal) => google(text, n, signal) },
       ...(final && text ? [
-        { name: 'ol-title-popular', run: (n: number, signal?: AbortSignal) => ol({ title: text, sort: 'readinglog' }, n, signal, false) },
+        { name: 'ol-title-popular', run: async (n: number, signal?: AbortSignal) => (await ol({ title: text, sort: 'readinglog' }, n, signal, false)).map((h, i) => ({ ...h, book: { ...h.book, popularRank: i } })) },
         { name: 'google-phrase', run: (n: number, signal?: AbortSignal) => google(`intitle:"${text}"`, n, signal, false) },
       ] : []),
     ];
@@ -341,7 +341,7 @@ export function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
   // A submitted title search also asks for the books people actually read with those words in the TITLE, and for the exact title phrase: a plain relevance
   // page of "dark matter" is research records, so the novel never reached the ranking (it was on page 2). Candidates only; ranking decides the order.
   if (final && !q.isbn && q.tokens.length > 0 && q.scope !== 'author') {
-    tasks.push({ name: 'ol-title-popular', run: (n, signal) => ol({ title: text, sort: 'readinglog' }, n, signal, false) });
+    tasks.push({ name: 'ol-title-popular', run: async (n, signal) => (await ol({ title: text, sort: 'readinglog' }, n, signal, false)).map((h, i) => ({ ...h, book: { ...h.book, popularRank: i } })) }); // its place in Open Library's most-read order is kept (popularRank): readers that Open Library does not count as ratings
     tasks.push({ name: 'google-phrase', run: (n, signal) => google(`intitle:\"${text}\"`, n, signal, false) });
   }
   return tasks;
