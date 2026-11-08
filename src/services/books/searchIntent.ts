@@ -15,7 +15,9 @@ export const INTENT_OTHER_PENALTY = 25;
 export const ACADEMIC_PENALTY = 30;
 export const SHORT_FORM_PENALTY = 35;
 const FEW_READERS = 100;
-export const EXACT_READERS_MAX = 30;
+/** Among books titled exactly what was typed the most-read leads: 18 points per tenfold of ratings (4,000 ratings ~ 65, 100 ~ 36), so a cover or summary (<= ~20 together) cannot put a barely-read record above the real book (Dark Matter was 6th at 8 points per tenfold, cap 30). Off for author-name searches. */
+export const EXACT_READERS_MAX = 66;
+const EXACT_READERS_PER_DECADE = 18;
 export const AUTHOR_NOT_NAME_PENALTY = 70;
 const ACADEMIC = /\b(proceedings|symposium|monograph|bibliograph\w*|dissertation|thesis|journal of|annals of|handbook of|textbook|treatise|encyclopedia of|lecture notes|conference|workshop|astrophysical|cosmological|searches for|constraints on|detection of|physics of|principles of|advances in|university press|(?:19|20)\d\d (?:edition|annual))\b/i;
 
@@ -87,8 +89,8 @@ export function intentAdjust(b: Book, q: ParsedQuery, intent: Intent): number {
     const need = contentTokens(q.tokens);
     if (need.length >= 2 && !isUnknownAuthor(b.author) && need.every(w => tokenHits(w, authorWords(b.author), false) > 0)) adj -= AUTHOR_NOT_NAME_PENALTY;
   }
-  // Among books that carry the typed title (exactly, or as its short form) the one people read leads: readers are worth up to +30, so a sparse record of the real book still beats a tidy record nobody has rated
-  if (!intent.named && (exact || shortForm || titleKey(b.title) === titleKey(q.text))) adj += Math.max(Math.min(EXACT_READERS_MAX, Math.log10(readers + 1) * 8), b.popularRank === undefined || !exact ? 0 : Math.max(0, EXACT_READERS_MAX * (1 - b.popularRank / 20))); // ratings, or the place in Open Library's most-read order (many books have no ratings there)
+  // Among books that carry the typed title (exactly, or as its short form) the one people read leads: readers are worth up to +66, so a sparse record of the real book still beats a tidy record nobody has rated
+  if (!intent.named && (exact || shortForm || titleKey(b.title) === titleKey(q.text))) adj += Math.max(Math.min(EXACT_READERS_MAX, Math.log10(readers + 1) * EXACT_READERS_PER_DECADE), b.popularRank === undefined || !exact ? 0 : Math.max(0, EXACT_READERS_MAX * (1 - b.popularRank / 20))); // ratings, or the place in Open Library's most-read order (many books have no ratings there)
   if (dom && holds && authorKey(b.author) === dom) adj += INTENT_BONUS;
   else if (holds && !exact && (dom || intent.anchor) && (readers < FEW_READERS || readers < Math.max(intent.max, intent.anchor) / 10)) {
     // Somebody typed a title that a well-read book carries exactly: a book that only HAS those words (a research record, a subtitle match) comes after it, whatever it is about
