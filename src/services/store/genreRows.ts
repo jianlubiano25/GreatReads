@@ -14,6 +14,8 @@ import { readShared, writeShared, SHARED_VERSION, GENRE_FILTER_VERSION } from '.
 import { SEARCH_GENRES } from '../../data/searchGenres';
 import { fillMissingCovers } from '../books/covers';
 import { bump } from '../books/perf';
+import { catalogGenreCandidates } from '../books/catalogCandidates';
+import { dedupeBooks } from '../books/merge';
 import { dropUnread, FILL_MIN_BOOKS, fillGateFailure, filterByGenreEvidence } from '../books/genreEvidence';
 import { kindAdjust } from '../books/genreRank';
 import { InsufficientShelfError, type ShelfSource } from './shelves';
@@ -156,7 +158,9 @@ export async function buildGenreBooks(g: SearchGenre): Promise<{ books: Book[]; 
     onUpdate: (_books, state) => { if (state.done) failed = !!state.failedSources?.length; },
   });
   if (failed || !books.length) return { books, failed: true };
-  return { books: filterByGenreEvidence(g, await widenForGems(g, await addPoolQueries(g, books))), failed: false };
+  // Published catalog works whose own genres name this genre join the provider results (the provider record comes first, so its id stays); a failed or empty provider answer was returned above and is never masked by the catalog
+  const withCatalog = dedupeBooks([...(await widenForGems(g, await addPoolQueries(g, books))), ...catalogGenreCandidates(g)]);
+  return { books: filterByGenreEvidence(g, withCatalog), failed: false };
 }
 
 async function genrePool(g: SearchGenre): Promise<PoolResult> {
