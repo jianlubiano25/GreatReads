@@ -16,6 +16,7 @@ export const ACADEMIC_PENALTY = 30;
 export const SHORT_FORM_PENALTY = 35;
 const FEW_READERS = 100;
 export const EXACT_READERS_MAX = 30;
+export const AUTHOR_NOT_NAME_PENALTY = 70;
 const ACADEMIC = /\b(proceedings|symposium|monograph|bibliograph\w*|dissertation|thesis|journal of|annals of|handbook of|textbook|treatise|encyclopedia of|lecture notes|conference|workshop|astrophysical|cosmological|searches for|constraints on|detection of|physics of|principles of|advances in|university press|(?:19|20)\d\d (?:edition|annual))\b/i;
 
 const titleWords = (b: Pick<Book, 'title'>) => normQ(b.title || '').replace(/^(the|a|an) /, '').split(' ').filter(Boolean);
@@ -47,8 +48,12 @@ export function intentOf(books: readonly Book[], q: ParsedQuery): Intent {
   if (!plain(q)) return NONE;
   const anchor = anchorOf(books, q);
   const words = contentTokens(q.tokens);
-  const named = words.length >= 2 && books.some(b => !isUnknownAuthor(b.author) && words.every(w => tokenHits(w, authorWords(b.author), false) > 0));
-  if (named) return { ...NONE, named: true };
+  // The words are somebody's NAME only when that author's books are read at least as much as the books titled exactly that ("jane austen"); an obscure author or
+  // publisher who happens to be called "Dark Matter" must not switch the title rules off
+  const byName = words.length >= 2 ? books.filter(b => !isUnknownAuthor(b.author) && words.every(w => tokenHits(w, authorWords(b.author), false) > 0)) : [];
+  const nameReaders = byName.reduce((n, b) => n + (b.ratingCount || 0), 0);
+  const exactReaders = Math.max(0, ...books.filter(b => isExact(b, q)).map(b => b.ratingCount || 0));
+  if (byName.length && nameReaders >= exactReaders && (nameReaders > 0 || exactReaders === 0)) return { ...NONE, named: true };
   const groups = new Map<string, { w: number; n: number; readers: number }>();
   let total = 0;
   for (const b of books) {
@@ -77,6 +82,11 @@ export function intentAdjust(b: Book, q: ParsedQuery, intent: Intent): number {
   const exact = titleWords(b).join(' ') === q.text.replace(/^(the|a|an) /, ''); // literally the title; "Harry Potter: Proceedings of ..." only has it as its short form
   const shortForm = !exact && titleKey(b.title) === titleKey(q.text); // search.ts credits it as an exact title: undone below for a book few readers know
   const readers = b.ratingCount || 0;
+  // Not a name search, yet this book matches only through an author called like the title ("Dark Matter" the zine maker): search.ts gives a full author name more than an exact title, undone here
+  if (!intent.named && !exact && !shortForm) {
+    const need = contentTokens(q.tokens);
+    if (need.length >= 2 && !isUnknownAuthor(b.author) && need.every(w => tokenHits(w, authorWords(b.author), false) > 0)) adj -= AUTHOR_NOT_NAME_PENALTY;
+  }
   // Among books that carry the typed title (exactly, or as its short form) the one people read leads: readers are worth up to +30, so a sparse record of the real book still beats a tidy record nobody has rated
   if (!intent.named && (exact || shortForm || titleKey(b.title) === titleKey(q.text))) adj += Math.max(Math.min(EXACT_READERS_MAX, Math.log10(readers + 1) * 8), b.popularRank === undefined || !exact ? 0 : Math.max(0, EXACT_READERS_MAX * (1 - b.popularRank / 20))); // ratings, or the place in Open Library's most-read order (many books have no ratings there)
   if (dom && holds && authorKey(b.author) === dom) adj += INTENT_BONUS;

@@ -89,6 +89,7 @@ Layers: (1) shared catalog, admin-owned; (2) personal sync, one mechanism, cloud
 `docs/handoff-reference.md` (what exists, live data facts, Task A/B/C, merge status, M4b evidence), `docs/full-change-log.md` (all older log entries), `docs/work-packages.md`, `docs/cover-one-path-plan.md`, `docs/catalog-field-map.md`, `docs/catalog-live-schema.md`, `docs/catalog-vocabulary.md`, `docs/provider-terms.md`, `docs/catalog-merge-preview-2026-10-30.md`.
 
 ## Change log (last 8; older in docs/full-change-log.md)
+- 2026-11-09: search: diagnostics showed an author/publisher called "Dark Matter" made the app treat the words as a person's name (author search ran, title rules off); a name now counts only when that author is read at least as much as the exact-title books; otherwise an author-name-only match loses its author tier; tests; BUILD_NUMBER 39.
 - 2026-11-09: search: exact-title books also count their place in Open Library's most-read order (popularRank) as readership, for books with no ratings there (owner: Dark Matter novel 20th); tests; BUILD_NUMBER 38.
 - 2026-11-09: search: among books with the exact typed title the most-read leads (+30 by readers, off for author-name searches); last good "of N" count remembered (owner saw 524 become 26); filter panel no longer closes at once when opened while scrolled down; tests; BUILD_NUMBER 37.
 - 2026-11-09: root rule for plain title searches: when a well-read book carries the typed title exactly (500+ ratings), any other book that only HAS those words and few readers goes below it, whatever its wording (no word list; Dark Matter research records); test; BUILD_NUMBER 36.
@@ -97,4 +98,3 @@ Layers: (1) shared catalog, admin-owned; (2) personal sync, one mechanism, cloud
 - 2026-11-05: stored genre lists no longer lead a search with title-word books (cleanForSearch); BUILD_NUMBER 29.
 - 2026-11-05: typed genre search keeps the stored genre list first (live results no longer replace it, owner screenshots chick lit / sports); BUILD_NUMBER 28.
 - 2026-11-05: typed genre searches show the genre stored list instantly (C16 done); Hardcover ratings show the Hardcover label (test); BUILD_NUMBER 27.
-- 2026-11-05: Hardcover diagnostics counters (C15); genre searches no longer rank by the word in the title (C16 part); Chick Lit is now Womens Fiction; BUILD_NUMBER 26.

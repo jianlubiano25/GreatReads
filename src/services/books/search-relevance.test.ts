@@ -128,3 +128,12 @@ test('an exact-title book with no ratings but a top place in the most-read order
   ];
   assert.equal(rank(dm, parseQuery('dark matter', '', true, 'all'), 20)[0].author, 'Blake Crouch');
 });
+
+test('an obscure author or publisher called "Dark Matter" does not turn the title rules off', () => {
+  const dm = [
+    ...Array.from({ length: 6 }, (_, i) => book({ title: `Dark Matter Zine ${i}`, author: 'Dark Matter', ratingCount: 0 })),
+    ...Array.from({ length: 8 }, (_, i) => book({ title: 'Dark Matter', author: `Physicist ${i}`, ratingAverage: 4.5, ratingCount: 3, pageCount: 400 })),
+    book({ title: 'Dark Matter', author: 'Blake Crouch', ratingCount: 400, ratingAverage: 4, summary: '', pageCount: 0, genre: '' }),
+  ];
+  assert.equal(rank(dm, parseQuery('dark matter', '', true, 'all'), 20)[0].author, 'Blake Crouch');
+});
