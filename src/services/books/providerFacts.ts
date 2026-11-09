@@ -24,6 +24,8 @@ export interface ProviderFacts {
   pages?: number;
   /** Hardcover only (no ids to look it up by): the rating pair and the few facts its record gave: slug, readers, year, cover URL (a link, never the image or the description text) */
   rating?: { average: number; count: number };
+  /** Hardcover only: the author's biography text from its author record (kept as an unpublished candidate, never shown) */
+  authorBio?: string;
   extra?: Record<string, string | number>;
   /** Hardcover only: its description text. Kept as an UNPUBLISHED content candidate for the owner's review (never in the receipt payload, never published automatically). */
   description?: string;

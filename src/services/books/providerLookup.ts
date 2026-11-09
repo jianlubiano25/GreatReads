@@ -7,7 +7,7 @@ import { providerFactsFor, type FactProvider } from './providerFacts';
 import { findGoogle } from './sources/googleBooks';
 import { lookupApple } from './sources/appleBooks';
 import { findOpenLibrary } from './sources/openLibrary';
-import { hardcoverMatch } from './sources/hardcover';
+import { hardcoverAuthorBio, hardcoverMatch } from './sources/hardcover';
 
 export interface LookupBook { id?: string | number; title: string; author?: string; identity?: { isbn13?: string; isbn10?: string; gbVolume?: string; olWork?: string } }
 export interface LookupDeps {
@@ -20,7 +20,7 @@ const live: LookupDeps = {
   google: q => findGoogle(q, {}),
   apple: q => lookupApple(q),
   openlibrary: q => findOpenLibrary(q),
-  hardcover: (t, a) => hardcoverMatch(t, a),
+  hardcover: async (t, a) => { await hardcoverMatch(t, a); await hardcoverAuthorBio(t, a); },
 };
 let enabled = true;
 /** Tests that must prove nothing is asked of a provider switch the look-ups off (and back on). */

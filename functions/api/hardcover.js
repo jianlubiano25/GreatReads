@@ -1,4 +1,4 @@
-// Cloudflare Pages Function: GET /api/hardcover?op=books&q=<title words>[&author=<name>]
+// Cloudflare Pages Function: GET /api/hardcover?op=books&q=<title words>[&author=<name>]  |  ?op=author&q=<author name> (Hardcover's author record: bio, link, books count)
 // Keeps the Hardcover API token on the server (Cloudflare Pages -> Settings -> Variables and Secrets -> HARDCOVER_TOKEN, Production, then redeploy).
 // Hardcover says its API is for a code backend only (never a browser), 60 requests a minute, 30 s per query, tokens expire each January 1.
 // Only ONE fixed read-only query shape is sent (the caller's words go in as GraphQL variables, never into the query text), results are cached at the edge for a day,
@@ -78,16 +78,29 @@ export function shapeDoc(d) {
   return out;
 }
 
+/** One author hit in the app's shape; a field Hardcover does not send is left out (its bio field name is unconfirmed: bio, then description). */
+export function shapeAuthor(d) {
+  const out = { id: d?.id !== undefined ? Number(d.id) || String(d.id) : undefined, slug: d?.slug, name: d?.name };
+  const bio = d?.bio ?? d?.description;
+  if (typeof bio === 'string' && bio.trim()) out.bio = fixMojibake(bio).slice(0, 2000);
+  if (Number(d?.books_count) > 0) out.booksCount = Number(d.books_count);
+  if (Number(d?.born_year) > 0) out.bornYear = Number(d.born_year);
+  const image = d?.image && (typeof d.image === 'string' ? d.image : d.image.url);
+  if (typeof image === 'string' && /^https:\/\//.test(image)) out.image = image;
+  return out;
+}
+
 export async function onRequestGet({ request, env }) {
   const url = new URL(request.url);
   const q = clean(url.searchParams.get('q'));
   const author = norm(url.searchParams.get('author'));
-  if (url.searchParams.get('op') !== 'books' || q.length < 2) return json({ error: 'bad_request' }, 400);
+  const op = url.searchParams.get('op');
+  if ((op !== 'books' && op !== 'author') || q.length < 2) return json({ error: 'bad_request' }, 400);
   const token = String(env.HARDCOVER_TOKEN || '').replace(/^Bearer\s+/i, '').trim();
   if (!token) return json({ error: 'not_configured' }, 503);
 
   const cache = typeof caches !== 'undefined' ? caches.default : null;
-  const key = new Request(`https://greatreads-hardcover.invalid/books?q=${encodeURIComponent(q.toLowerCase())}&a=${encodeURIComponent(author)}`);
+  const key = new Request(`https://greatreads-hardcover.invalid/${op}?q=${encodeURIComponent(q.toLowerCase())}&a=${encodeURIComponent(author)}`);
   try { const hit = cache && (await cache.match(key)); if (hit) return hit; } catch {}
 
   let data;
@@ -99,7 +112,7 @@ export async function onRequestGet({ request, env }) {
       signal: ctl.signal,
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, 'user-agent': 'GreatReads/1.0 (book discovery app)' },
-      body: JSON.stringify({ query: QUERY, variables: { q: author ? `${q} ${author}`.slice(0, 160) : q, type: 'Book', per: 10 } }),
+      body: JSON.stringify({ query: QUERY, variables: { q: op === 'author' ? q : author ? `${q} ${author}`.slice(0, 160) : q, type: op === 'author' ? 'Author' : 'Book', per: op === 'author' ? 5 : 10 } }),
     });
   } catch (e) {
     return json({ error: ctl.signal.aborted ? 'timeout' : 'upstream_error', detail: String(e?.message || e).slice(0, 200) }, ctl.signal.aborted ? 504 : 502);
@@ -121,6 +134,13 @@ export async function onRequestGet({ request, env }) {
   let results = data?.data?.search?.results;
   if (typeof results === 'string') { try { results = JSON.parse(results); } catch { results = null; } }
   const hits = Array.isArray(results?.hits) ? results.hits : [];
+  if (op === 'author') {
+    const authors = hits.map(h => shapeAuthor(h?.document || h)).filter(a => a.name);
+    const out = { authors };
+    const r = json(out, 200, 'public, max-age=3600');
+    if (cache && authors.length) { try { await cache.put(key, new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=86400' } })); } catch {} }
+    return r;
+  }
   let books = hits.map(h => shapeDoc(h?.document || h)).filter(b => b.title);
   if (author) books = books.filter(b => b.authors.some(a => { const n = norm(a); return n.includes(author) || author.includes(n); }));
   const resp = json({ books }, 200, 'public, max-age=3600');

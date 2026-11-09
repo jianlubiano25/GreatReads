@@ -92,3 +92,14 @@ test('a description saved with its bytes misread (â€œ) is read back right; o
   assert.equal(fixMojibake('Caf\u00e9 and “quotes” are fine'), 'Caf\u00e9 and “quotes” are fine');
   assert.equal((shapeDoc({ id: 1, title: 'D', description: 'â€œHiâ€' }) as any).description, '\u201cHi\u201d');
 });
+
+test('op=author: asks Hardcover\'s Author search and returns bio, link and books count when they exist (field names tolerated: bio or description)', async () => {
+  const seen = upstream(200, { data: { search: { results: { hits: [{ document: { id: 5, slug: 'frank-herbert', name: 'Frank Herbert', bio: 'Frank Herbert was an American author of science fiction. â€œDuneâ€ made him famous.', books_count: 120, born_year: 1920, image: { url: 'https://assets.hardcover.app/a.jpg' } } }, { document: { id: 6, name: 'No Bio', description: 'x'.repeat(50) } }] } } } });
+  const res = await call('/api/hardcover?op=author&q=Frank%20Herbert', { HARDCOVER_TOKEN: 't' });
+  const body: any = await res.json();
+  assert.equal(JSON.parse(seen[0].init.body).variables.type, 'Author');
+  assert.equal(body.authors[0].slug, 'frank-herbert');
+  assert.match(body.authors[0].bio, /“Dune” made him famous/);
+  assert.deepEqual([body.authors[0].booksCount, body.authors[0].bornYear], [120, 1920]);
+  assert.equal(body.authors[1].bio, 'x'.repeat(50), 'description is used when there is no bio');
+});

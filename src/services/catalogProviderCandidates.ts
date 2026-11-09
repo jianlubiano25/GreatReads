@@ -16,6 +16,7 @@ export function providerCandidateRows(workId: string, facts: ProviderFacts[]): {
   for (const f of facts) {
     const src = { source_name: f.provider, source_record_id: f.recordId, ...(f.sourceUrl ? { source_url: f.sourceUrl } : {}) };
     if (goodText(f.description)) rows.push({ table: 'catalog_content_versions', sameSource: 'content_type=eq.book_description', body: { work_id: workId, content_type: 'book_description', language_code: 'en', content: f.description.trim(), status: 'candidate', ...src } });
+    if (goodText(f.authorBio)) rows.push({ table: 'catalog_content_versions', sameSource: 'content_type=eq.author_bio', body: { work_id: workId, content_type: 'author_bio', language_code: 'en', content: f.authorBio.trim(), status: 'candidate', ...src } });
     const cover = f.extra?.cover;
     if (isHttps(cover)) rows.push({ table: 'catalog_cover_candidates', sameSource: `image_url=eq.${encodeURIComponent(cover)}`, body: { work_id: workId, image_url: cover, status: 'candidate', ...src } });
   }

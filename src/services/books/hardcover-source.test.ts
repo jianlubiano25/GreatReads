@@ -82,3 +82,20 @@ test('providerCandidateRows: Hardcover description and cover link become unpubli
   assert.deepEqual(rows.map(r => r.table), ['catalog_content_versions', 'catalog_cover_candidates']);
   assert.ok(rows.every(r => r.body.status === 'candidate' && r.body.source_name === 'hardcover' && r.body.source_record_id === '7'));
 });
+
+test('hardcoverAuthorBio: the author record\'s bio is attached to the book\'s Hardcover facts and saved as an unpublished author_bio candidate from Hardcover', async () => {
+  const { hardcoverMatch, hardcoverAuthorBio } = await import('./sources/hardcover');
+  const { providerFactsFor, forgetProviderFactsForTests } = await import('./providerFacts');
+  const { providerCandidateRows } = await import('../catalogProviderCandidates');
+  resetHardcoverForTests(); forgetProviderFactsForTests();
+  await hardcoverMatch('Dune', 'Frank Herbert', deps(200, { books: [{ id: 312460, slug: 'dune', title: 'Dune', authors: ['Frank Herbert'], rating: 4.3, ratingsCount: 100 }] }));
+  const bio = 'Frank Herbert was an American author best known for the science fiction novel Dune and its sequels.';
+  assert.equal(await hardcoverAuthorBio('Dune', 'Frank Herbert', deps(200, { authors: [{ name: 'Frank Herbert', bio }] })), bio);
+  const facts = providerFactsFor({ title: 'Dune', author: 'Frank Herbert' });
+  const rows = providerCandidateRows('w1', facts).filter(r => r.body.content_type === 'author_bio');
+  assert.equal(rows.length, 1);
+  assert.deepEqual([rows[0].body.source_name, rows[0].body.status, rows[0].body.content], ['hardcover', 'candidate', bio]);
+  assert.equal(await hardcoverAuthorBio('Dune', 'Frank Herbert', deps(200, { authors: [{ name: 'Someone Else', bio }] })), '', 'another author is not used');
+  assert.equal(await hardcoverAuthorBio('Dune', 'Frank Herbert', deps(200, { authors: [{ name: 'Frank Herbert' }] })), '', 'no bio field: nothing');
+  forgetProviderFactsForTests();
+});

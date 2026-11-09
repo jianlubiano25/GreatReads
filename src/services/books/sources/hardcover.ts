@@ -1,6 +1,6 @@
 import { titleKey, authorKey } from '../identity';
 import { bump } from '../perf';
-import { rememberHardcoverFor, rememberProviderFacts } from '../providerFacts';
+import { providerFactsFor, rememberHardcoverFor, rememberProviderFacts } from '../providerFacts';
 
 /**
  * Hardcover ratings through OUR server function (/api/hardcover, which holds the token). Used only to fill a missing rating (Hidden Gems pools, ratings gaps);
@@ -53,4 +53,24 @@ export async function hardcoverMatch(title: string, author: string, deps?: Hardc
     rememberHardcoverFor(title, author, out.id);
   }
   return out;
+}
+
+
+/**
+ * Hardcover's own record of the book's author (D7 step 4): its biography, kept on this book's Hardcover provider facts (so capture / Save to catalog store it as an
+ * unpublished author_bio candidate from Hardcover). Needs the book's Hardcover match first (hardcoverMatch). Returns the bio text, or '' (no author record, no bio
+ * field, the function off). Never throws.
+ */
+export async function hardcoverAuthorBio(title: string, author: string, deps?: HardcoverDeps): Promise<string> {
+  const d = deps ?? (typeof window !== 'undefined' ? real : undefined);
+  const name = (author || '').trim();
+  if (!d || !name || /^unknown/i.test(name) || d.now() < offUntil) return '';
+  const { status, body } = await d.fetchJson(`/api/hardcover?op=author&q=${encodeURIComponent(name)}`).catch(() => ({ status: 0, body: null }));
+  if (status !== 200) return '';
+  const want = authorKey(name);
+  const hit = (body?.authors || []).find((a: any) => authorKey(String(a?.name || '')) === want && typeof a?.bio === 'string' && a.bio.trim().length >= 40);
+  if (!hit) return '';
+  const facts = providerFactsFor({ title, author }).find(f => f.provider === 'hardcover');
+  if (facts) rememberProviderFacts({ ...facts, authorBio: String(hit.bio).trim() });
+  return String(hit.bio).trim();
 }
