@@ -7,7 +7,7 @@ const mem = new Map<string, string>();
 
 // @ts-ignore plain JS module with no type declarations
 import { onRequestGet as nyt } from '../../../functions/api/nyt.js';
-import { classifyNytFailure, loadNytList, lastNytFailure, forgetNytList } from '../books/sources/nyt';
+import { classifyNytFailure, isDeadNytList, loadNytList, lastNytFailure, forgetNytList } from '../books/sources/nyt';
 import { NYT_EXTRA_SHELVES, NYT_SHELVES } from './lists';
 import { checkNytLists } from './nytListNames';
 import { routeFetch, nytList } from './testkit';
@@ -98,4 +98,31 @@ test('check:nyt matches the Store lists against names.json, finds the Paperback 
   assert.ok(pb, 'a name the NYT does not publish is reported');
   assert.ok(pb!.suggestions.includes('nonfiction-paperback-new'), 'with a published name that looks like it');
   assert.ok(r.found.some(f => f.id === 'nyt-fiction') && r.found.some(f => f.id === 'nyt-nonfiction'), 'working shelves are untouched');
+});
+
+test('C8 function: a name the NYT still lists but stopped publishing (old newest_published_date) is list_not_found + discontinued; a recent one stays an upstream fault', async () => {
+  const names = { results: [
+    { list_name_encoded: 'science', updated: 'MONTHLY', newest_published_date: '2019-03-01' },
+    { list_name_encoded: 'hardcover-fiction', updated: 'WEEKLY', newest_published_date: new Date().toISOString().slice(0, 10) },
+  ] };
+  upstream(u => (u.includes('/lists/names.json') ? { status: 200, body: names } : { status: 404, body: {} }));
+  const dead = await call('science');
+  assert.equal(dead.status, 404);
+  assert.deepEqual(await dead.json(), { error: 'list_not_found', upstream: 404, published: true, discontinued: true, newest: '2019-03-01' });
+  const live = await call('hardcover-fiction');
+  assert.equal(live.status, 502);
+  assert.equal((await live.json()).error, 'upstream_error');
+});
+
+test('C8 client: a list the NYT still answers with an old edition is unavailable (never "Popular now"), is not saved and is not asked again', async () => {
+  const list = 'travel-t1';
+  const old = nytList([['Old Book', 'Ann Author', '9780000000002']]);
+  old.results.published_date = '2018-05-06';
+  const calls = routeFetch([u => (u.pathname === '/api/nyt' ? { body: old } : undefined)]);
+  const r = await loadNytList(list);
+  assert.deepEqual([r.entries, r.failure], [null, 'list_unavailable']);
+  const asked = calls.length;
+  assert.equal((await loadNytList(list)).failure, 'list_unavailable');
+  assert.equal(calls.length, asked);
+  assert.equal(isDeadNytList([{ publishedDate: '2026-10-04' }], Date.parse('2026-11-03')), false);
 });

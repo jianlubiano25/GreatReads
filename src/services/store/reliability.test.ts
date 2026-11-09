@@ -246,3 +246,13 @@ test('NYT function: a rate limit or outage serves the last good list; a bad key 
     delete (globalThis as any).caches;
   }
 });
+
+test('cleanTitle / cleanWiki never leave [[ or ]] in a title (Hugo shelf)', async () => {
+  const { cleanTitle, cleanWiki } = await import('./wikiLists');
+  assert.equal(cleanTitle('[[The Moon Is a Harsh Mistress]]'), 'The Moon Is a Harsh Mistress');
+  assert.equal(cleanTitle('[[Rendezvous with Rama|Rama]]'), 'Rama');
+  assert.equal(cleanTitle('[[Dune (novel)|Dune]] [1]'), 'Dune');
+  assert.equal(cleanTitle('Half open [[Title'), 'Half open Title');
+  assert.equal(cleanTitle('Title]]'), 'Title');
+  assert.equal(cleanWiki("''[[Ender's Game]]'' [[ x"), "Ender's Game x");
+});

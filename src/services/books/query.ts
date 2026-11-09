@@ -99,3 +99,11 @@ export const contentTokens = (tokens: readonly string[]): string[] => {
   const real = tokens.filter(t => t.length > 1 && !STOP.has(t));
   return real.length ? real : [...tokens];
 };
+
+/** The words of an author's name for matching: "J. K. Rowling" also answers to "jk rowling" (initials joined). */
+export const authorWords = (author: string): string[] => {
+  const w = normQ(author || '').split(' ').filter(Boolean);
+  const out = [...w];
+  for (let i = 0; i + 1 < w.length; i++) if (w[i].length === 1 && w[i + 1].length === 1) { let j = i; let joined = ''; while (j < w.length && w[j].length === 1) joined += w[j++]; out.push(joined); i = j - 1; }
+  return out;
+};

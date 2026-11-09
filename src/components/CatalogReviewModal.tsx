@@ -1,3 +1,4 @@
+import { useAdminUi } from '../services/adminUi';
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useModalA11y } from '../hooks/useModalA11y';
@@ -19,12 +20,12 @@ const pill = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-black/5 dark
 const btn = 'py-2 px-3 rounded-xl text-xs font-semibold border active:scale-95 transition-all disabled:opacity-40';
 
 /** What Book Info shows right now for the book (so it can be stored as a version) */
-export type ShownInfo = { summary?: string; authorBio?: string; ratings?: SourceRating[] };
+export type ShownInfo = { summary?: string; authorBio?: string; ratings?: Array<Pick<SourceRating, 'average' | 'count'> & { source: string }> };
 
 export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onClose: () => void; book?: { title: string; author?: string }; initialKind?: Candidate['kind']; shown?: ShownInfo }) {
   useModalA11y(onClose);
   useSyncExternalStore(subscribeAuth, authVersion, authVersion);
-  const owner = !!currentUser() && isAdminKnown() === true;
+  const owner = useAdminUi();
   const [q, setQ] = useState('');
   const [works, setWorks] = useState<WorkRow[] | null>(null);
   const [work, setWork] = useState<WorkRow | null>(null);

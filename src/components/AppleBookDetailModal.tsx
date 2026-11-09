@@ -1,3 +1,4 @@
+import { useAdminUi } from '../services/adminUi';
 import { moreLikeThis } from '../services/books/genreRank';
 import React, { Suspense, lazy, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
@@ -9,10 +10,13 @@ import { useBookInfo } from '../hooks/useBookInfo';
 import { saveBookToCatalog } from '../services/catalog';
 import { CatalogReviewModal } from './CatalogReviewModal';
 import { authVersion, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
-import { unlinkAuthorGroup, displayBook, nameAlternates, nameChoiceOf, setNameChoice, subscribeNames, mainRating, otherRatings, RATING_SOURCE_LABEL, isCoverAdminOn, subscribeCoverAdmin, type SourceRating } from '../services/books';
+import { hardcoverRating } from '../services/books/sources/hardcover';
+import { unlinkAuthorGroup, displayBook, nameAlternates, nameChoiceOf, setNameChoice, subscribeNames, mainRating, otherRatings, RATING_SOURCE_LABEL, isCoverAdminOn, subscribeCoverAdmin } from '../services/books';
 import { CoverFace, StarRating, compactCount, honorsListFor } from './BookMeta';
 import { X, BookOpen, Star, Award, ChevronDown, Check, Bookmark, Image as ImageIcon, RefreshCw, Code, Languages } from 'lucide-react';
+import { displayGenre } from '../services/books/catalogFill';
 import { ensureBookInfo, resetInfoWaits, type InfoField } from '../services/books/infoStore';
+import { coverBackdrop } from '../services/books/placeholderCover';
 
 // The cover viewer is only fetched the first time someone opens it
 const CoverPickerModal = lazy(() => import('./CoverPickerModal').then(m => ({ default: m.CoverPickerModal })));
@@ -72,7 +76,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [showCovers, setShowCovers] = useState(false);
   useSyncExternalStore(subscribeAuth, authVersion, authVersion);
-  const isOwner = !!currentUser() && isAdminKnown() === true;
+  const isOwner = useAdminUi();
   const alts = isOwner ? nameAlternates(book) : { titles: [], authors: [] };
   const picked = nameChoiceOf(book);
   const [catalogNote, setCatalogNote] = useState('');
@@ -118,6 +122,16 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   const main = mainRating(book, siteRatings); // Library -> Apple -> Open Library -> Google; the other sites are listed beside it
   const mainSource = main?.source;
   const otherSites = otherRatings(siteRatings, mainSource);
+  // Hardcover's own rating, asked once when the book opens (the server function caches a day and backs off when it is not set up); listed beside the others, never blended
+  const [hcRating, setHcRating] = useState<{ average: number; count: number } | null>(null);
+  useEffect(() => {
+    let live = true;
+    setHcRating(null);
+    if (book.title) void hardcoverRating(book.title, book.author || '').then(r => { if (live && r && r.average >= 1 && r.count > 0) setHcRating(r); }).catch(() => {});
+    return () => { live = false; };
+  }, [book.title, book.author]);
+  const hcRow = hcRating && mainSource !== 'hardcover' ? hcRating : null;
+  const shownRatings = hcRating ? [...siteRatings, { source: 'hardcover', average: hcRating.average, count: hcRating.count }] : siteRatings;
   const ratingsText = (r: { count?: number }) => (r.count ? `${compactCount(r.count)} ${r.count === 1 ? 'rating' : 'ratings'}` : '');
 
   const awards = honorsListFor(book);
@@ -206,7 +220,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           <div className="relative shrink-0">
             <div
               className="book-cover-modal-3d w-[150px] h-[222px] sm:w-[170px] sm:h-[250px] flex flex-col justify-between p-4 text-white overflow-hidden relative shadow-lg"
-              style={{ backgroundColor: book.spineColor || shelfInfo.color }}
+              style={{ background: coverBackdrop(book) }}
             >
               <CoverFace book={book} size="xl" imgSize="M" badge={false} eager={true} />
             </div>
@@ -316,7 +330,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           <div className="flex flex-col items-center justify-center p-1 sm:px-3 sm:flex-1 border-r border-[#e3d7c3]/60 dark:border-[#382f25]">
             <span className="text-[10px] sm:text-[11px] uppercase font-bold tracking-wider text-[#706256] dark:text-[#a89a8a]">Genre</span>
             <span className="font-bold text-sm sm:text-base text-[#201a15] dark:text-[#f0e6d6] truncate max-w-[85px] sm:max-w-none my-0.5">
-              {book.genre && book.genre !== 'Book' ? book.genre : book.shelf === 'mine' ? dash('genre') : shelfInfo.label}
+              {displayGenre(book.genre) || dash('genre')}
             </span>
             <span className="text-[10px] sm:text-[11px] text-[#706256] dark:text-[#a89a8a] truncate max-w-[80px] sm:max-w-none">
               {shelfSubLabel}
@@ -417,7 +431,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
               </button>
               </span>
             </div>
-            {!main && !otherSites.length ? <p className="text-sm text-[#706256] dark:text-[#a89a8a]">No ratings found yet.</p> : null}
+            {!main && !otherSites.length && !hcRow ? <p className="text-sm text-[#706256] dark:text-[#a89a8a]">No ratings found yet.</p> : null}
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
               {main ? (
                 <div className="flex items-center gap-4">
@@ -428,7 +442,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
                   </div>
                 </div>
               ) : null}
-              {otherSites.length ? (
+              {otherSites.length || hcRow ? (
                 <ul className="flex flex-col gap-1 text-xs text-[#706256] dark:text-[#a89a8a]" aria-label="Ratings from other sites">
                   {otherSites.map(r => (
                     <li key={r.source} className="flex items-center gap-1.5">
@@ -437,6 +451,13 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
                       <span>{r.average.toFixed(1)}{r.count ? ` · ${ratingsText(r)}` : ''}</span>
                     </li>
                   ))}
+                  {hcRow ? (
+                    <li key="hardcover" className="flex items-center gap-1.5">
+                      <span className="font-semibold">{RATING_SOURCE_LABEL.hardcover}</span>
+                      <StarRating value={hcRow.average} className="text-xs" />
+                      <span>{hcRow.average.toFixed(1)}{` · ${ratingsText(hcRow)}`}</span>
+                    </li>
+                  ) : null}
                 </ul>
               ) : null}
             </div>
@@ -465,7 +486,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
             ['Author', book.author],
             ['Published', book.year && book.year !== 'N/A' ? book.year : ''],
             [book.identity?.isbn13 ? 'ISBN-13' : 'ISBN-10', book.identity?.isbn13 || book.identity?.isbn10 || ''],
-            ['Genre', book.genre],
+            ['Genre', displayGenre(book.genre)],
             ['Length', displayPages ? `${displayPages} pages` : ''],
             ['Level', book.difficulty ? DIFFICULTY_LABELS[book.difficulty] : ''],
           ] as [string, string][]).filter(r => r[1]).map(([k, v]) => (
@@ -541,7 +562,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
         </div>
       </div>
     </div>
-    {coverTools && review && <CatalogReviewModal onClose={() => setReview(null)} book={book} initialKind={review} shown={{ summary: book.summary, authorBio: book.authorBio, ratings: siteRatings }} />}
+    {coverTools && review && <CatalogReviewModal onClose={() => setReview(null)} book={book} initialKind={review} shown={{ summary: book.summary, authorBio: book.authorBio, ratings: shownRatings }} />}
     {catalogNote && <div role="status" aria-live="polite" className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] max-w-[90vw] px-3 py-2 rounded-xl text-xs bg-[#201a15] text-white shadow-lg" onClick={() => setCatalogNote('')}>{catalogNote}</div>}
     {coverTools && showCovers && (
       <Suspense fallback={null}>

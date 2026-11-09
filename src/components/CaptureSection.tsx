@@ -1,3 +1,4 @@
+import { useAdminUi } from '../services/adminUi';
 import React, { useState, useSyncExternalStore } from 'react';
 import type { Book } from '../types';
 import { backfillNow } from '../services/captureDevice';
@@ -15,7 +16,8 @@ export const CaptureSection: React.FC<{ books: Book[]; onOpenReview?: () => void
   const st = useSyncExternalStore(subscribeCapture, captureStatus, captureStatus);
   const [wanted, setWanted] = useState(captureWanted);
   const [pub, setPub] = useState(autoPublishWanted);
-  if (!currentUser() || isAdminKnown() !== true) return null;
+  const adminUi = useAdminUi();
+  if (!adminUi) return null;
   const active = captureOn();
   return (
     <div className="pt-3 border-t border-[#e3d7c3] dark:border-[#382f25] space-y-2">
@@ -31,6 +33,7 @@ export const CaptureSection: React.FC<{ books: Book[]; onOpenReview?: () => void
       <p role="status" className="text-xs text-[#706256] dark:text-[#a89a8a]">
         {!wanted ? 'Paused.' : st.error ? st.error : st.running ? `Sending to the catalog… ${st.queued} book${st.queued === 1 ? '' : 's'} waiting.` : st.sent || st.published ? `Up to date. ${st.sent} stored, ${st.published} published this session.` : 'Up to date.'}
       </p>
+      {!!st.idSkipped && <p className="text-xs text-amber-800 dark:text-amber-300">{st.idSkipped} book{st.idSkipped === 1 ? ' has' : 's have'} an ID that was not saved (invalid, or already on another catalog book). Nothing was merged or changed. {st.idNotes?.slice(0, 3).join(' · ')}</p>}
       <button type="button" className={btn} disabled={!active || st.running} onClick={() => void backfillNow(books)}>Send and publish everything on this device now</button>
       {onOpenReview && <button type="button" className={btn} onClick={onOpenReview}>Review catalog (publish or reject)</button>}
     </div>

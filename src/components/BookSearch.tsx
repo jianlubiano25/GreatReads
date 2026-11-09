@@ -3,13 +3,14 @@ import { Search, ArrowLeft, SlidersHorizontal, Loader2 } from 'lucide-react';
 import type { Book } from '../types';
 import { useBookSearch } from '../hooks/useBookSearch';
 import { lockBodyScroll } from '../hooks/bodyScrollLock';
-import { activeFilterCount, applySearchView, DEFAULT_SEARCH_VIEW, genreOptions, getCoverPick, ownCoverUrl, isDefaultView, SEARCH_PUBLISHED_LABEL, SEARCH_SORT_LABEL, type SearchScope, type SearchSort, type SearchView } from '../services/books';
+import { activeFilterCount, applySearchView, DEFAULT_SEARCH_VIEW, genreOptions, knownCover, isDefaultView, SEARCH_PUBLISHED_LABEL, SEARCH_SORT_LABEL, type SearchScope, type SearchSort, type SearchView } from '../services/books';
 import { sameWork } from '../services/books/identity';
 import { didYouMean, suggestionVocab } from '../services/books/suggest';
 import { SEARCH_KIND_LABEL, SEARCH_LENGTH_LABEL } from '../services/books/searchView';
 import { ClearButton } from './ClearButton';
 import { ViewMoreBar } from './ViewMoreBar';
 import { CoverFace } from './BookMeta';
+import { coverBackdrop } from '../services/books/placeholderCover';
 
 /** Search shows 20 results (rows of three) at first; "View more" adds 20 more, "View all" shows everything loaded, "Load more results" asks the catalog for its next batch. */
 const SEARCH_STEP = 20;
@@ -53,6 +54,7 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
   const [visibleCount, setVisibleCount] = useState(SEARCH_STEP);
   const [view, setView] = useState<SearchView>(DEFAULT_SEARCH_VIEW);
   const [filterOpen, setFilterOpen] = useState(false);
+  const filterOpenedAt = useRef({ top: 0, at: 0 }); // the list's scroll position when the filter panel opened: only scrolling AWAY from it closes the panel (opening it while scrolled down used to close it at once)
   const searching = !!query.trim();
   // Focusing the box shows the scope buttons and the filter icon. Tapping anywhere OUTSIDE the search header closes them AND the filter panel; the query and the
   // chosen filters are kept, so tapping the box again brings the buttons back with the filter icon still lit (and counted) when a filter is applied.
@@ -82,7 +84,7 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
     return lockBodyScroll(); // shared with the modals: a book's details opened over the results can be closed before or after the search, either order
   }, [searching, active]);
 
-  const { results: searchResults, loading: isSearching, stale: searchStale, empty: searchEmpty, searchNow, total: searchTotal, hasMore: searchHasMore, loadingMore: searchLoadingMore, loadMore: loadMoreResults } = useBookSearch(query, { known, limit: SEARCH_LIMIT, scope });
+  const { results: searchResults, loading: isSearching, stale: searchStale, empty: searchEmpty, failedSources, searchNow, total: searchTotal, hasMore: searchHasMore, loadingMore: searchLoadingMore, loadMore: loadMoreResults } = useBookSearch(query, { known, limit: SEARCH_LIMIT, scope });
   const genres = useMemo(() => genreOptions(searchResults), [searchResults]);
   const shownResults = useMemo(() => applySearchView(searchResults, view), [searchResults, view]);
   const filtersOn = !isDefaultView(view);
@@ -101,7 +103,7 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
   useEffect(() => {
     if (!searching) return;
     for (const b of shownResults.slice(visibleCount, visibleCount + SEARCH_STEP)) {
-      const url = getCoverPick(b, coverSize) || ownCoverUrl(b, coverSize);
+      const url = knownCover(b, coverSize).url;
       if (url) new Image().src = url;
     }
   }, [searching, shownResults, visibleCount, coverSize]);
@@ -111,7 +113,13 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
     <div
       className={searching ? 'fixed inset-0 z-[45] overflow-y-auto overscroll-contain bg-[#f5f0e6] dark:bg-[#181410]' : 'flex flex-col gap-2'}
       // The filter panel sits in the sticky header and would cover the results as they scroll under it: scrolling the list closes it
-      onScroll={searching && filterOpen ? e => { if (e.currentTarget.scrollTop > 8) setFilterOpen(false); } : undefined}
+      onScroll={searching && filterOpen ? e => {
+        const o = filterOpenedAt.current;
+        // The panel grows the sticky header and the browser shifts the scroll position to compensate: that shift (the first moments after opening) is not the reader scrolling
+        if (Date.now() - o.at < 500) { o.top = e.currentTarget.scrollTop; return; }
+        if (Math.abs(e.currentTarget.scrollTop - o.top) > 48) setFilterOpen(false);
+      } : undefined}
+      style={searching ? { overflowAnchor: 'none' } : undefined}
     >
       <div ref={headerRef} onFocus={openBar} className={searching ? 'sticky top-0 z-30 bg-[#f5f0e6] dark:bg-[#181410] px-3 pt-[max(env(safe-area-inset-top),0.75rem)] pb-2 flex flex-col gap-2 border-b border-[#e3d7c3] dark:border-[#382f25]' : 'flex flex-col gap-2'}>
         <div className="flex items-center gap-2">
@@ -156,7 +164,7 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
               type="button"
               aria-label="Filters and sorting"
               aria-expanded={filterOpen}
-              onClick={() => setFilterOpen(o => !o)}
+              onClick={e => { filterOpenedAt.current = { top: e.currentTarget.closest<HTMLElement>('.overflow-y-auto')?.scrollTop ?? 0, at: Date.now() }; setFilterOpen(o => !o); }}
               className={`relative w-10 h-9 shrink-0 rounded-xl border flex items-center justify-center transition-colors ${filterOpen || filtersOn ? 'bg-[#2e5934] text-white border-[#2e5934]' : 'bg-[#fbf7ee] dark:bg-[#231d17] border-[#e3d7c3] dark:border-[#382f25] text-[#2e5934] dark:text-[#9ed0a6]'}`}
             >
               <SlidersHorizontal className="w-4 h-4" />
@@ -260,7 +268,9 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
 
           {searchResults.length === 0 && searchEmpty ? (
             <div className="p-8 text-center text-sm text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-xl border border-[#e3d7c3] dark:border-[#382f25]">
-              No books found{scope === 'all' ? '' : ` by ${scope}`}. Check the spelling, try All, or use the + button at the top to add it manually.
+              {failedSources.length
+                ? `Search could not reach ${failedSources.join(' and ')}. Results may be incomplete; check your connection and try again.`
+                : `No books found${scope === 'all' ? '' : ` by ${scope}`}. Check the spelling, try All, or use the + button at the top to add it manually.`}
             </div>
           ) : searchResults.length > 0 && shownResults.length === 0 ? (
             <div className="p-6 text-center text-sm text-[#706256] dark:text-[#a89a8a] bg-[#fbf7ee] dark:bg-[#231d17] rounded-xl border border-[#e3d7c3] dark:border-[#382f25]">
@@ -276,7 +286,7 @@ export function BookSearch({ active, known, query, setQuery, scope, setScope, ha
                       type="button"
                       onClick={() => openResult(b)}
                       className="book-cover-3d w-full aspect-[2/3] rounded-md text-left p-2 flex flex-col justify-between text-white overflow-hidden"
-                      style={{ backgroundColor: b.spineColor || '#2e5934' }}
+                      style={{ background: coverBackdrop(b) }}
                     >
                       <CoverFace book={b} size="md" imgSize={coverSize} eager />
                     </button>

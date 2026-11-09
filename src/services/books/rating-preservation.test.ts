@@ -145,7 +145,6 @@ test('settleSiteRating: fresh valid pair wins; nothing usable keeps the old vali
 const isOl = (u: URL) => u.hostname === 'openlibrary.org';
 const isGoogle = (u: URL) => u.hostname === 'www.googleapis.com';
 const isApple = (u: URL) => u.hostname === 'itunes.apple.com';
-const DAY = 24 * 60 * 60 * 1000;
 const qA = { title: 'Keep Alpha', author: 'Kay Writer', apple: true } as const;
 const qB = { title: 'Keep Beta', author: 'Kay Writer', apple: true } as const;
 const olFound = (title: string, key: string) => (u: URL) => (isOl(u) && u.pathname === '/search.json' ? { body: { docs: [{ key, title, author_name: ['Kay Writer'], first_publish_year: 2018, cover_i: 77, number_of_pages_median: 250 }] } } : isOl(u) ? { body: { docs: [], summary: {} } } : undefined);
