@@ -5,6 +5,7 @@ import { bookKey, identityOf, isUnknownAuthor, primaryAuthor } from './identity'
 import { externalRating, type SourceRating } from './ratings';
 import { difficultyFor, genreFromSubjects, hasRealSummary, isKnownGenre, plainText } from './model';
 import { looksEnglish } from './language';
+import { noteTextSource } from './textSource';
 import { prefetchedSourceRatings } from './prefetchIndex';
 import { forgetResolved, resolveBook } from './resolve';
 import { lookupApple } from './sources/appleBooks';
@@ -29,14 +30,19 @@ export async function lookupSummary(book: Book): Promise<string> {
   const english = (text?: string, max = 600) => { const t = text ? plainText(text) : ''; return t.length > 60 && looksEnglish(t) ? t.slice(0, max) : ''; };
   const gb = await findGoogle({ title: book.title, author, isbn: id.isbn13 || id.isbn10 }, {}, ['text']).catch(() => null);
   let summary = gb && isEnglishVolume(gb) ? english(gb.flags.description) : '';
+  let from = 'google_books';
   if (weak(summary)) {
     const apple = (await lookupApple({ title: book.title, author }).catch(() => ({ hit: null }))).hit;
     summary = english(apple?.flags.description);
+    from = 'apple_books';
   }
   if (weak(summary)) {
     const workId = id.olWork || (await findOpenLibrary({ title: book.title, author, isbn: id.isbn13 }))?.book.identity?.olWork;
     summary = workId ? (await openLibraryDescription(workId)) || '' : '';
+    from = 'open_library';
+    if (summary && workId) { noteTextSource(summary, from, `https://openlibrary.org/works/${workId}`); return summary; }
   }
+  if (summary) noteTextSource(summary, from);
   return summary;
 }
 
@@ -44,7 +50,11 @@ export async function lookupSummary(book: Book): Promise<string> {
 export async function lookupAuthorBio(book: Book): Promise<string> {
   if (isUnknownAuthor(book.author)) return '';
   const w = (await getJsonDetailed(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(primaryAuthor(book.author).replace(/ /g, '_'))}`, { timeout: 8000 })).data;
-  if (w && w.type !== 'disambiguation' && w.extract) return String(w.extract).split(/(?<=\.)\s/).slice(0, 3).join(' ');
+  if (w && w.type !== 'disambiguation' && w.extract) {
+    const bio = String(w.extract).split(/(?<=\.)\s/).slice(0, 3).join(' ');
+    noteTextSource(bio, 'wikipedia', `https://en.wikipedia.org/wiki/${encodeURIComponent(primaryAuthor(book.author).replace(/ /g, '_'))}`);
+    return bio;
+  }
   return '';
 }
 

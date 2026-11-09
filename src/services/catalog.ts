@@ -4,6 +4,7 @@
  *    A failure just means the saved copy keeps being used. The cover chain is: your own pick, then the catalog, then the old shared set, then live lookups.
  *  - Write (developer mode): your starred covers are added to the catalog and published in one safe step each.
  */
+import { textSourceOf } from './books/textSource';
 import { saveTermCandidates } from './catalogTerms';
 import { saveProviderCandidates } from './catalogProviderCandidates';
 import { RATING_SOURCE } from './books/providers';
@@ -255,7 +256,7 @@ export async function saveBookToCatalog(book: Pick<Book, 'id' | 'identity' | 'ti
 
   const content = async (type: 'book_description' | 'author_bio', text?: string) => {
     if (!text || text.length < 40) return;
-    const ins = await rest<{ id: string }[]>('catalog_content_versions', { method: 'POST', prefer: 'return=representation', body: { work_id: workId, content_type: type, language_code: 'en', content: text, source_name: 'app', status: 'approved' } });
+    const ins = await rest<{ id: string }[]>('catalog_content_versions', { method: 'POST', prefer: 'return=representation', body: { work_id: workId, content_type: type, language_code: 'en', content: text, ...sourceFields(text), status: 'approved' } });
     let id = ins.ok ? ins.data[0]?.id : undefined;
     if (!id) { // the same text may already be stored: publish that one unless it was rejected
       const ex = await rest<{ id: string; status: string }[]>(`catalog_content_versions?work_id=eq.${workId}&content_type=eq.${type}&content=eq.${enc(text)}&select=id,status&limit=1`);
@@ -361,15 +362,24 @@ export async function saveFactsToCatalog(workId: string, book: Pick<Book, 'id' |
   skipped.push(...tc.skipped); if (tc.retry) retry = true;
   if (tc.kept) saved.push(`term candidates (${tc.kept})`);
 
-  // 3) edition details, only for the edition this exact Google volume is
+  // 3) edition details (D7 step 6), only for the edition a provider's own id points at: Google's volume id gives publisher, exact date, pages and language;
+  //    an Open Library edition id gives its language. Fill-only (planEditionFill): an empty field is filled, a different filled value stays and both are kept as candidates.
   const g = facts.find(f => f.provider === 'google');
-  if (g && /^[A-Za-z0-9_-]{6,24}$/.test(g.recordId)) {
-    const ed = await rest<(EditionFillRow & { id: string })[]>(`catalog_editions?work_id=eq.${workId}&google_volume_id=eq.${encodeURIComponent(g.recordId)}&select=id,publisher,publication_date,publication_year,page_count,language_code,format&limit=2`);
+  const o = facts.find(f => f.provider === 'openlibrary');
+  const gId = g && /^[A-Za-z0-9_-]{6,24}$/.test(g.recordId) ? g.recordId : '';
+  const olEd = /^OL\d+M$/.test(book.identity?.olEdition || '') ? book.identity!.olEdition! : '';
+  const by = [gId && ['google_volume_id', encodeURIComponent(gId)], olEd && ['openlibrary_edition_id', olEd]].filter(Boolean) as string[][];
+  if (by.length) {
+    const filter = by.length === 1 ? `${by[0][0]}=eq.${by[0][1]}` : `or=(${by.map(([c, v]) => `${c}.eq.${v}`).join(',')})`;
+    const ed = await rest<(EditionFillRow & { id: string; google_volume_id: string | null; openlibrary_edition_id: string | null })[]>(`catalog_editions?work_id=eq.${workId}&${filter}&select=id,publisher,publication_date,publication_year,page_count,language_code,format,google_volume_id,openlibrary_edition_id&limit=4`);
     if (!ed.ok) { skipped.push('edition details: could not read the edition'); flag(ed); }
-    else if (ed.data.length === 1) {
-      const plan = planEditionFill(ed.data[0], { publisher: g.publisher, publishedDate: g.publishedDate, pages: g.pages, language: g.language });
+    else for (const row of ed.data) {
+      const fromGoogle = !!g && !!gId && row.google_volume_id === gId;
+      const fromOl = !!o && !!olEd && row.openlibrary_edition_id === olEd;
+      if (!fromGoogle && !fromOl) continue;
+      const plan = planEditionFill(row, { publisher: fromGoogle ? g!.publisher : undefined, publishedDate: fromGoogle ? g!.publishedDate : undefined, pages: fromGoogle ? g!.pages : undefined, language: (fromGoogle ? g!.language : undefined) ?? (fromOl ? o!.language : undefined) });
       if (Object.keys(plan.patch).length) {
-        const up = await rest(`catalog_editions?id=eq.${ed.data[0].id}`, { method: 'PATCH', body: plan.patch });
+        const up = await rest(`catalog_editions?id=eq.${row.id}`, { method: 'PATCH', body: plan.patch });
         if (up.ok) saved.push('edition details'); else { skipped.push(`edition details: ${up.error}`); flag(up); }
       }
       plan.conflicts.forEach(x => skipped.push(`edition ${x} (kept both)`));
@@ -379,6 +389,8 @@ export async function saveFactsToCatalog(workId: string, book: Pick<Book, 'id' |
 }
 
 const RATING_SRC: Record<string, string> = RATING_SOURCE;
+/** source_name (+ source_url) for a description / bio: the provider it came from when Book Info noted it, else 'app'. */
+const sourceFields = (text: string) => { const s = textSourceOf(text); return { source_name: s.name, ...(s.url ? { source_url: s.url } : {}) }; };
 
 /** The catalog's id for this book, created as a hidden draft when it is not there yet (nothing is shown to readers until something is published). */
 export async function ensureWork(book: { title: string; author?: string }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
@@ -412,7 +424,7 @@ export async function storeRating(workId: string, r: { source: string; average: 
 /** Keep a description or author bio as a stored version (approved, not live) so it can be compared and published from the review screen. */
 export async function storeText(workId: string, type: 'book_description' | 'author_bio', text: string): Promise<boolean> {
   if (!text || text.length < 40) return false;
-  const ins = await rest('catalog_content_versions', { method: 'POST', body: { work_id: workId, content_type: type, language_code: 'en', content: text, source_name: 'app', status: 'approved' } });
+  const ins = await rest('catalog_content_versions', { method: 'POST', body: { work_id: workId, content_type: type, language_code: 'en', content: text, ...sourceFields(text), status: 'approved' } });
   return ins.ok || ins.status === 409; // 409: this exact text is already stored
 }
 

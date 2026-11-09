@@ -9,6 +9,7 @@
  *  - A new book is created as a draft and becomes visible when something of it is published.
  *  - Slow and quiet on purpose (one request at a time, a small pause between them); a failure just stops it and it picks up again later.
  */
+import { textSourceOf } from './books/textSource';
 import { genreOrEmpty } from './books/catalogFill';
 import { coverKey } from './books/coverAnalysis';
 import { RATING_SOURCE } from './books/providers';
@@ -110,7 +111,7 @@ export function rowsFor(item: CaptureItem, workId: string): Row[] {
     rows.push({ table: 'catalog_cover_candidates', id: `c|${key}|${hashText(url)}`, body: { work_id: workId, image_url: url, source_name: coverSourceOf(url), status: 'candidate' } });
   }
   for (const [type, text] of [['book_description', item.summary], ['author_bio', item.authorBio]] as const) {
-    if (goodText(text)) rows.push({ table: 'catalog_content_versions', id: `t|${key}|${type}|${hashText(text)}`, body: { work_id: workId, content_type: type, language_code: 'en', content: text, source_name: 'app', status: 'candidate' } });
+    if (goodText(text)) rows.push({ table: 'catalog_content_versions', id: `t|${key}|${type}|${hashText(text)}`, body: { work_id: workId, content_type: type, language_code: 'en', content: text, source_name: textSourceOf(text).name, ...(textSourceOf(text).url ? { source_url: textSourceOf(text).url } : {}), status: 'candidate' } });
   }
   const meta = (field: string, value: unknown) => rows.push({ table: 'catalog_metadata_candidates', id: `m|${key}|${field}|${hashText(String(value))}`, body: { work_id: workId, field_name: field, field_value: value, source_name: 'app', status: 'candidate' } });
   if (/^\d{3,4}$/.test(item.year || '')) meta('year', item.year);
