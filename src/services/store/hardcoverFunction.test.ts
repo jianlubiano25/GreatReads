@@ -90,5 +90,5 @@ test('shapeDoc: a search hit becomes the app shape; results may also arrive as a
 test('a description saved with its bytes misread (â€œ) is read back right; ordinary text is left alone', () => {
   assert.equal(fixMojibake('the â€œspiceâ€ melange, Paulâ€™s family, Muadâ€™Dib'), 'the \u201cspice\u201d melange, Paul\u2019s family, Mu\u0061d\u2019Dib');
   assert.equal(fixMojibake('Caf\u00e9 and “quotes” are fine'), 'Caf\u00e9 and “quotes” are fine');
-  assert.equal(shapeDoc({ id: 1, title: 'D', description: 'â€œHiâ€' }).description, '\u201cHi\u201d');
+  assert.equal((shapeDoc({ id: 1, title: 'D', description: 'â€œHiâ€' }) as any).description, '\u201cHi\u201d');
 });
