@@ -138,3 +138,5 @@ Files: `services/store/{refresh,refreshAll,shelves,dynamic,goodreadsChoice,bests
 - 2026-11-09: E1 term tables saved to the repo; catalog_awards + catalog_work_awards applied to production (owner go); scratch check.
 - 2026-11-09: providers.ts shared definition; Hardcover genres/pages/date/description/cover link captured as unpublished candidates; function query fallback; tests.
 - 2026-11-09: provider genre/subject labels -> term candidates (catalog_work_terms), alias rules with required/implied genre; tests.
+
+- 2026-11-09: search "Best match": the existing exact-title readers term (`searchIntent.ts`) is stronger (18 points per tenfold of ratings, max 66, was 8 / 30) so the 4,000-rating Dark Matter novel no longer sits 6th behind exact-title books with covers/summaries; Hugo-shelf `[[ ]]` title leak fixed (`cleanTitle`/`cleanWiki`); tests; BUILD_NUMBER 41.

@@ -36,3 +36,8 @@ test('with no alias a label that IS a term name maps to it; an unknown label map
   assert.equal(r.find(x => x.term_id === 'g-fan')!.raw_label, 'Fantasy');
   assert.deepEqual(mapLabelsToTerms('apple', ['', '   ', 'x'.repeat(200)], [], vocab), []);
 });
+
+test('a category path gives its parts; its root is the context an alias may require, and a lone label without that context still maps to nothing', () => {
+  assert.deepEqual(ids(mapLabelsToTerms('google', ['Fiction / Dystopian'], [], vocab)), ['g-fic', 'g-sf', 's-dys']);
+  assert.deepEqual(ids(mapLabelsToTerms('google', ['Dystopian'], [], vocab)), [], 'no Fiction context: stays a plain provider label');
+});

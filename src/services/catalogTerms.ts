@@ -18,11 +18,14 @@ const KINDS = new Set(['genre', 'subgenre', 'subject']);
 
 /** The terms one provider's labels mean for a work that has `workGenres` (pure). Several labels may give the same term once; the first label that does wins. */
 export function mapLabelsToTerms(provider: ProviderFacts['provider'], labels: readonly string[], workGenres: readonly string[], vocab: Vocab): TermCandidate[] {
-  const have = new Set(workGenres.map(norm));
+  // Google files books under paths ("Fiction / Dystopian"): each part is a label too, and the root counts as context for an alias that requires it
+  const roots: string[] = [], all: string[] = [];
+  for (const raw of labels) { const parts = raw.split(/\s*\/\s*/).filter(Boolean); if (parts.length > 1) { roots.push(norm(parts[0])); all.push(...parts); } all.push(raw); }
+  const have = new Set([...workGenres.map(norm), ...roots]);
   const genreTerm = (name: string) => vocab.terms.find(t => t.kind === 'genre' && norm(t.name) === norm(name));
   const out = new Map<string, TermCandidate>();
   const add = (term_id: string | undefined, raw_label: string) => { if (term_id && !out.has(term_id)) out.set(term_id, { term_id, source: provider, raw_label }); };
-  for (const raw of labels) {
+  for (const raw of all) {
     const n = norm(raw);
     if (!n || n.length > 80) continue;
     const aliases = vocab.aliases.filter(a => a.label_norm === n && (a.source === 'any' || a.source === provider));

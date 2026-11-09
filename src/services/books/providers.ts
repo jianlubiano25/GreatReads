@@ -1,6 +1,15 @@
 /**
  * The four book providers and how the catalog spells them: ONE place, so a provider is added or renamed here and nowhere else.
  * Open Library (OL), Google Books (GB), Apple Books (AB), Hardcover (HC). Capture (capture.ts), Save to catalog (catalog.ts) and the receipts (catalogReceipts.ts) all read this.
+ *
+ * Where each part of the four-provider pipeline lives (every step is owner-only, unpublished, idempotent and fill-only; one shared entry, `saveFactsToCatalog` in catalog.ts, is
+ * used by BOTH Save to catalog and the background capture / "Send and publish everything on this device"):
+ *   what a provider said (memory)   books/providerFacts.ts      (adapters in books/sources/ note it; never a request of its own)
+ *   receipt per provider record     catalogReceipts.ts          -> catalog_provider_records
+ *   facts as metadata candidates    catalog.ts FACT_FIELDS      -> catalog_metadata_candidates (source + record id + receipt)
+ *   description / cover link        catalogProviderCandidates.ts -> catalog_content_versions, catalog_cover_candidates
+ *   genre / subject -> catalog term catalogTerms.ts (mapLabelsToTerms is pure; vocabulary in catalog_terms + catalog_term_aliases) -> catalog_work_terms
+ *   ratings (one per site)          catalog.ts storeRating      -> catalog_rating_candidates (RATING_SOURCE below)
  */
 export const PROVIDERS = ['apple', 'google', 'openlibrary', 'hardcover'] as const;
 export type Provider = (typeof PROVIDERS)[number];
