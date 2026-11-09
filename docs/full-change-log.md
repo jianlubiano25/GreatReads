@@ -137,3 +137,4 @@ Files: `services/store/{refresh,refreshAll,shelves,dynamic,goodreadsChoice,bests
 - 2026-11-09: search: exact-title books also count their place in Open Library's most-read order (popularRank) as readership, for books with no ratings there (owner: Dark Matter novel 20th); tests; BUILD_NUMBER 38.
 - 2026-11-09: E1 term tables saved to the repo; catalog_awards + catalog_work_awards applied to production (owner go); scratch check.
 - 2026-11-09: providers.ts shared definition; Hardcover genres/pages/date/description/cover link captured as unpublished candidates; function query fallback; tests.
+- 2026-11-09: provider genre/subject labels -> term candidates (catalog_work_terms), alias rules with required/implied genre; tests.

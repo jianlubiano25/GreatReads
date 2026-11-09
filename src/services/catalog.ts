@@ -4,6 +4,7 @@
  *    A failure just means the saved copy keeps being used. The cover chain is: your own pick, then the catalog, then the old shared set, then live lookups.
  *  - Write (developer mode): your starred covers are added to the catalog and published in one safe step each.
  */
+import { saveTermCandidates } from './catalogTerms';
 import { saveProviderCandidates } from './catalogProviderCandidates';
 import { RATING_SOURCE } from './books/providers';
 import { applyCatalog, catalogCopy, getCatalogWork, pruneCatalog, type CatalogWork } from './books/catalogCovers';
@@ -355,6 +356,10 @@ export async function saveFactsToCatalog(workId: string, book: Pick<Book, 'id' |
   const pc = await saveProviderCandidates(workId, facts);
   skipped.push(...pc.skipped); if (pc.retry) retry = true;
   if (pc.kept) saved.push(`provider description/cover candidates (${pc.kept})`);
+  // each provider's genre / subject labels as vocabulary-term candidates (catalog_work_terms; the genres on the work are unchanged)
+  const tc = await saveTermCandidates(workId, facts, [book.genre, ...c.genres].filter(Boolean) as string[], receipts.ids);
+  skipped.push(...tc.skipped); if (tc.retry) retry = true;
+  if (tc.kept) saved.push(`term candidates (${tc.kept})`);
 
   // 3) edition details, only for the edition this exact Google volume is
   const g = facts.find(f => f.provider === 'google');
