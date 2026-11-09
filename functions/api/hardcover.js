@@ -42,14 +42,19 @@ export async function onRequestGet({ request, env }) {
   try { const hit = cache && (await cache.match(key)); if (hit) return hit; } catch {}
 
   let res;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 9000); // a slow Hardcover query must end as a small JSON answer, never a page that hangs
   try {
     res = await fetch(ENDPOINT, {
+      signal: ctl.signal,
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, 'user-agent': 'GreatReads/1.0 (book discovery app)' },
       body: JSON.stringify({ query: QUERY, variables: { title: q, limit: 10 } }),
     });
-  } catch {
-    return json({ error: 'upstream_error' }, 502);
+  } catch (e) {
+    return json({ error: ctl.signal.aborted ? 'timeout' : 'upstream_error', detail: String(e?.message || e).slice(0, 200) }, ctl.signal.aborted ? 504 : 502);
+  } finally {
+    clearTimeout(timer);
   }
   if (res.status === 401 || res.status === 403) return json({ error: 'unauthorized', upstream: res.status }, 502);
   if (res.status === 429) return json({ error: 'rate_limited' }, 429);

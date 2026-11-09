@@ -20,7 +20,7 @@ const pill = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-black/5 dark
 const btn = 'py-2 px-3 rounded-xl text-xs font-semibold border active:scale-95 transition-all disabled:opacity-40';
 
 /** What Book Info shows right now for the book (so it can be stored as a version) */
-export type ShownInfo = { summary?: string; authorBio?: string; ratings?: SourceRating[] };
+export type ShownInfo = { summary?: string; authorBio?: string; ratings?: Array<Pick<SourceRating, 'average' | 'count'> & { source: string }> };
 
 export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onClose: () => void; book?: { title: string; author?: string }; initialKind?: Candidate['kind']; shown?: ShownInfo }) {
   useModalA11y(onClose);

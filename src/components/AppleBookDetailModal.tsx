@@ -10,6 +10,7 @@ import { useBookInfo } from '../hooks/useBookInfo';
 import { saveBookToCatalog } from '../services/catalog';
 import { CatalogReviewModal } from './CatalogReviewModal';
 import { authVersion, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
+import { hardcoverRating } from '../services/books/sources/hardcover';
 import { unlinkAuthorGroup, displayBook, nameAlternates, nameChoiceOf, setNameChoice, subscribeNames, mainRating, otherRatings, RATING_SOURCE_LABEL, isCoverAdminOn, subscribeCoverAdmin } from '../services/books';
 import { CoverFace, StarRating, compactCount, honorsListFor } from './BookMeta';
 import { X, BookOpen, Star, Award, ChevronDown, Check, Bookmark, Image as ImageIcon, RefreshCw, Code, Languages } from 'lucide-react';
@@ -121,6 +122,16 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   const main = mainRating(book, siteRatings); // Library -> Apple -> Open Library -> Google; the other sites are listed beside it
   const mainSource = main?.source;
   const otherSites = otherRatings(siteRatings, mainSource);
+  // Hardcover's own rating, asked once when the book opens (the server function caches a day and backs off when it is not set up); listed beside the others, never blended
+  const [hcRating, setHcRating] = useState<{ average: number; count: number } | null>(null);
+  useEffect(() => {
+    let live = true;
+    setHcRating(null);
+    if (book.title) void hardcoverRating(book.title, book.author || '').then(r => { if (live && r && r.average >= 1 && r.count > 0) setHcRating(r); }).catch(() => {});
+    return () => { live = false; };
+  }, [book.title, book.author]);
+  const hcRow = hcRating && mainSource !== 'hardcover' ? hcRating : null;
+  const shownRatings = hcRating ? [...siteRatings, { source: 'hardcover', average: hcRating.average, count: hcRating.count }] : siteRatings;
   const ratingsText = (r: { count?: number }) => (r.count ? `${compactCount(r.count)} ${r.count === 1 ? 'rating' : 'ratings'}` : '');
 
   const awards = honorsListFor(book);
@@ -420,7 +431,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
               </button>
               </span>
             </div>
-            {!main && !otherSites.length ? <p className="text-sm text-[#706256] dark:text-[#a89a8a]">No ratings found yet.</p> : null}
+            {!main && !otherSites.length && !hcRow ? <p className="text-sm text-[#706256] dark:text-[#a89a8a]">No ratings found yet.</p> : null}
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
               {main ? (
                 <div className="flex items-center gap-4">
@@ -431,7 +442,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
                   </div>
                 </div>
               ) : null}
-              {otherSites.length ? (
+              {otherSites.length || hcRow ? (
                 <ul className="flex flex-col gap-1 text-xs text-[#706256] dark:text-[#a89a8a]" aria-label="Ratings from other sites">
                   {otherSites.map(r => (
                     <li key={r.source} className="flex items-center gap-1.5">
@@ -440,6 +451,13 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
                       <span>{r.average.toFixed(1)}{r.count ? ` · ${ratingsText(r)}` : ''}</span>
                     </li>
                   ))}
+                  {hcRow ? (
+                    <li key="hardcover" className="flex items-center gap-1.5">
+                      <span className="font-semibold">{RATING_SOURCE_LABEL.hardcover}</span>
+                      <StarRating value={hcRow.average} className="text-xs" />
+                      <span>{hcRow.average.toFixed(1)}{` · ${ratingsText(hcRow)}`}</span>
+                    </li>
+                  ) : null}
                 </ul>
               ) : null}
             </div>
@@ -544,7 +562,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
         </div>
       </div>
     </div>
-    {coverTools && review && <CatalogReviewModal onClose={() => setReview(null)} book={book} initialKind={review} shown={{ summary: book.summary, authorBio: book.authorBio, ratings: siteRatings }} />}
+    {coverTools && review && <CatalogReviewModal onClose={() => setReview(null)} book={book} initialKind={review} shown={{ summary: book.summary, authorBio: book.authorBio, ratings: shownRatings }} />}
     {catalogNote && <div role="status" aria-live="polite" className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] max-w-[90vw] px-3 py-2 rounded-xl text-xs bg-[#201a15] text-white shadow-lg" onClick={() => setCatalogNote('')}>{catalogNote}</div>}
     {coverTools && showCovers && (
       <Suspense fallback={null}>
