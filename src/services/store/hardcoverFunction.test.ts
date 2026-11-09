@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 // @ts-ignore plain JS module with no type declarations
-import { onRequestGet as hc, shapeBook, shapeDoc } from '../../../functions/api/hardcover.js';
+import { onRequestGet as hc, shapeBook, shapeDoc, fixMojibake } from '../../../functions/api/hardcover.js';
 
 const call = (path: string, env: Record<string, string> = {}) => hc({ request: new Request(`https://greatreads.pages.dev${path}`), env });
 function upstream(status: number, body: unknown) {
@@ -85,4 +85,10 @@ test('shapeDoc: a search hit becomes the app shape; results may also arrive as a
   upstream(200, { data: { search: { results: JSON.stringify({ hits: [{ document: { id: 9, title: 'Emma', author_names: ['Jane Austen'], rating: 4, ratings_count: 20 } }] }) } } });
   const body: any = await (await call('/api/hardcover?op=books&q=emma-string-test', { HARDCOVER_TOKEN: 't' })).json();
   assert.equal(body.books[0].title, 'Emma');
+});
+
+test('a description saved with its bytes misread (â€œ) is read back right; ordinary text is left alone', () => {
+  assert.equal(fixMojibake('the â€œspiceâ€ melange, Paulâ€™s family, Muadâ€™Dib'), 'the \u201cspice\u201d melange, Paul\u2019s family, Mu\u0061d\u2019Dib');
+  assert.equal(fixMojibake('Caf\u00e9 and “quotes” are fine'), 'Caf\u00e9 and “quotes” are fine');
+  assert.equal(shapeDoc({ id: 1, title: 'D', description: 'â€œHiâ€' }).description, '\u201cHi\u201d');
 });

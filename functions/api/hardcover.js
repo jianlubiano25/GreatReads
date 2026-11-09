@@ -24,6 +24,23 @@ export function genresOf(tags) {
   return list.filter(t => t && typeof t.tag === 'string' && t.tag.trim()).sort((x, y) => Number(y.count || 0) - Number(x.count || 0)).slice(0, 8).map(t => t.tag.trim().slice(0, 60));
 }
 
+// Some Hardcover descriptions were saved with their UTF-8 bytes read as Windows-1252 ("â€œ" for a curly quote). Read them back the right way; text that is not of that shape is left as it is.
+const CP1252 = { 0x20ac: 0x80, 0x201a: 0x82, 0x0192: 0x83, 0x201e: 0x84, 0x2026: 0x85, 0x2020: 0x86, 0x2021: 0x87, 0x02c6: 0x88, 0x2030: 0x89, 0x0160: 0x8a, 0x2039: 0x8b, 0x0152: 0x8c, 0x017d: 0x8e, 0x2018: 0x91, 0x2019: 0x92, 0x201c: 0x93, 0x201d: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97, 0x02dc: 0x98, 0x2122: 0x99, 0x0161: 0x9a, 0x203a: 0x9b, 0x0153: 0x9c, 0x017e: 0x9e, 0x0178: 0x9f };
+export function fixMojibake(text) {
+  const t = String(text ?? '');
+  if (!/[\u00c2\u00c3\u00e2][\u0080-\u00bf\u20ac\u201a\u0192\u201e\u2026\u2020\u2021\u02c6\u2030\u0160\u2039\u0152\u017d\u2018\u2019\u201c\u201d\u2022\u2013\u2014\u02dc\u2122\u0161\u203a\u0153\u017e\u0178]/.test(t)) return t;
+  try {
+    const bytes = Uint8Array.from([...t].map(ch => { const c = ch.codePointAt(0); if (c < 0x100) return c; if (CP1252[c] !== undefined) return CP1252[c]; throw new Error('not cp1252'); }));
+    const out = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return out;
+  } catch {
+    // a byte (0x9D, the closing double quote's last one) is often lost on the way: fix the usual punctuation by pattern
+    return t.replace(/\u00e2\u20ac\u0153/g, '\u201c').replace(/\u00e2\u20ac\u2122/g, '\u2019').replace(/\u00e2\u20ac\u02dc/g, '\u2018')
+      .replace(/\u00e2\u20ac\u201d/g, '\u2014').replace(/\u00e2\u20ac\u201c/g, '\u2013').replace(/\u00e2\u20ac\u00a6/g, '\u2026').replace(/\u00e2\u20ac\u2026/g, '\u2026')
+      .replace(/\u00e2\u20ac\u009d?/g, '\u201d');
+  }
+}
+
 /** One book in the shape the app uses; a field Hardcover does not send is simply left out. */
 export function shapeBook(b) {
   const image = b?.cached_image && (b.cached_image.url || (typeof b.cached_image === 'string' ? b.cached_image : ''));
@@ -33,7 +50,7 @@ export function shapeBook(b) {
   if (b?.users_read_count) out.readers = Number(b.users_read_count);
   if (b?.release_year) out.year = Number(b.release_year);
   if (typeof image === 'string' && /^https:\/\//.test(image)) out.cover = image;
-  if (b?.description) out.description = String(b.description).slice(0, 1500);
+  if (b?.description) out.description = fixMojibake(b.description).slice(0, 1500);
   if (b?.subtitle) out.subtitle = String(b.subtitle).slice(0, 200);
   if (Number(b?.pages) > 0 && Number(b.pages) < 20000) out.pages = Number(b.pages);
   if (typeof b?.release_date === 'string' && /^\d{4}(-\d{2}(-\d{2})?)?$/.test(b.release_date)) out.releaseDate = b.release_date;
@@ -52,7 +69,7 @@ export function shapeDoc(d) {
   if (readers > 0) out.readers = readers;
   if (Number(d?.release_year) > 0) out.year = Number(d.release_year);
   if (typeof image === 'string' && /^https:\/\//.test(image)) out.cover = image;
-  if (d?.description) out.description = String(d.description).slice(0, 1500);
+  if (d?.description) out.description = fixMojibake(d.description).slice(0, 1500);
   if (d?.subtitle) out.subtitle = String(d.subtitle).slice(0, 200);
   if (Number(d?.pages) > 0 && Number(d.pages) < 20000) out.pages = Number(d.pages);
   if (typeof d?.release_date === 'string' && /^\d{4}(-\d{2}(-\d{2})?)?$/.test(d.release_date)) out.releaseDate = d.release_date;
