@@ -4,6 +4,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+import { setProviderLookups } from './books/providerLookup';
+setProviderLookups(false); // this file proves receipts are saved from facts the device already holds; the bounded look-up has its own tests (providerLookup.test.ts)
 const store = new Map<string, string>();
 (globalThis as any).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
 store.set('readlife.sb1', JSON.stringify({ access: 'a', refresh: 'r', exp: Date.now() + 3600_000, user: { id: 'u1', email: 'me@example.com' } }));
@@ -88,7 +90,7 @@ test('the device item carries the book id so remembered facts are found; merging
   assert.equal('bookId' in dev.mergeItems({ title: 'A' }, { title: 'A' }), false);
 });
 
-test('the capture path never asks a provider for anything (docs/provider-terms.md): no provider source imported, no provider URL in it', () => {
+test('the capture files never talk to a provider themselves (docs/provider-terms.md): no provider adapter imported, no provider URL; the only gate is providerLookup.ts (owner, one book at a time)', () => {
   for (const f of ['src/services/capture.ts', 'src/services/captureDevice.ts', 'src/services/catalogReceipts.ts']) {
     const code = readFileSync(f, 'utf8');
     assert.ok(!/sources\/(appleBooks|googleBooks|openLibrary)/.test(code), `${f} imports a provider adapter`);

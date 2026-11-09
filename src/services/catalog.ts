@@ -5,6 +5,7 @@
  *  - Write (developer mode): your starred covers are added to the catalog and published in one safe step each.
  */
 import { textSourceOf } from './books/textSource';
+import { ensureProviderFacts } from './books/providerLookup';
 import { saveTermCandidates } from './catalogTerms';
 import { saveProviderCandidates } from './catalogProviderCandidates';
 import { RATING_SOURCE } from './books/providers';
@@ -313,7 +314,10 @@ const FACT_FIELDS: { field: string; get: (f: ProviderFacts) => unknown }[] = [
  *  - edition: only when this work already has an edition with the SAME Google volume id as the facts, its EMPTY publisher/date/year/pages/language are filled. A disagreeing filled value stays and the provider's value is kept as a candidate.
  * Facts exist only for lookups made in this session (memory); with none, only the book's own genre/award label is filed. Never touches personal data, covers or other works.
  */
-export async function saveFactsToCatalog(workId: string, book: Pick<Book, 'id' | 'identity' | 'genre'> & Partial<Pick<Book, 'awardLabel' | 'title' | 'author'>>, facts: ProviderFacts[] = providerFactsFor({ id: String(book.id), title: book.title, author: book.author, identity: book.identity })): Promise<{ saved: string[]; skipped: string[]; retry?: boolean }> {
+export async function saveFactsToCatalog(workId: string, book: Pick<Book, 'id' | 'identity' | 'genre'> & Partial<Pick<Book, 'awardLabel' | 'title' | 'author'>>, given?: ProviderFacts[]): Promise<{ saved: string[]; skipped: string[]; retry?: boolean }> {
+  // a book with no provider data yet is looked up once (Google, Apple, Open Library, Hardcover) so there is something to save; facts passed in (tests) are used as given
+  if (!given && book.title) await ensureProviderFacts({ id: book.id, title: book.title, author: book.author, identity: book.identity });
+  const facts = given ?? providerFactsFor({ id: String(book.id), title: book.title, author: book.author, identity: book.identity });
   const saved: string[] = [], skipped: string[] = [];
   let retry = false;
   const flag = (r: { status: number }) => { if (r.status === 0 || r.status === 429 || r.status >= 500) retry = true; };
