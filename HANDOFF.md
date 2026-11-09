@@ -47,7 +47,7 @@ Files: `services/{catalog,capture,captureDevice}.ts`, `services/books/{catalogId
 
 ## GROUP E - Vocabulary, people & awards
 Files: `docs/catalog-vocabulary.md`, `supabase/migrations` (new), `services/books/catalogFill.ts`, `services/store/{honors,curated}.ts`, `services/catalog.ts` (read model).
-- E1 **Term tables** (WP3): `catalog_terms`, `catalog_term_aliases`, `catalog_work_terms`, `catalog_awards`, `catalog_work_awards` + rollback + scratch check; seed from the mapping table; backfill candidates; `genres`/`honors` arrays stay the read model [migration needs go].
+- E1 **Term tables** (WP3): DONE 2026-11-09 (owner go). Production already held `catalog_terms`, `catalog_term_aliases`, `catalog_work_terms` + the mapping seed (39 terms, 11 aliases) from an earlier session whose migration file never reached the repo: now saved as `20261109000002_catalog_term_tables.sql` (+ rollback). Awards tables `catalog_awards`, `catalog_work_awards` (year, won/shortlisted/nominated, source, candidate/approved, receipt link) APPLIED today as `20261109000003_catalog_awards.sql` (+ rollback). Scratch check `supabase/tests/e1-terms-awards-scratch-check.mjs` (15 pass). All empty except the seed; nothing reads or writes them yet (`genres`/`honors` arrays stay the read model). NEXT: capture writes provider labels into them as CANDIDATES (see D7 steps 5-7).
 - E2 **"New release"** = tag derived from publication dates; **"Reader favourite"** = honor attributed to its reader/curator/source when known (owner rules); tags column `tags text[]` (owner decision D8).
 - E3 **People, name aliases, contributors** (WP5). E4 **Series, structured awards, New Release in the UI** (WP7).
 
@@ -65,6 +65,7 @@ Layers: (1) shared catalog, admin-owned; (2) personal sync, one mechanism, cloud
 `docs/handoff-reference.md` (what exists, live data facts, Task A/B/C, merge status, M4b evidence), `docs/full-change-log.md` (all older log entries), `docs/work-packages.md`, `docs/cover-one-path-plan.md`, `docs/catalog-field-map.md`, `docs/catalog-live-schema.md`, `docs/catalog-vocabulary.md`, `docs/provider-terms.md`, `docs/catalog-merge-preview-2026-10-30.md`.
 
 ## Change log (last 8; older in docs/full-change-log.md)
+- 2026-11-09: E1 finished: term tables (already live, file now in repo) + awards tables applied; scratch check; no app change.
 - 2026-11-09: D7 follow-up: Book Info "Ratings" now lists Hardcover beside the other sites (asked once per opened book, never blended, never the main rating); the admin rating view can store it; `/api/hardcover` now gives up after 9 s with `{error:'timeout'}` instead of hanging (owner's test URL did not load; cause still unknown, read the new error text); BUILD_NUMBER 47.
 - 2026-11-09: D7 steps 1-3: Hardcover added as the 4th provider (migration 20261109000001 applied: two allowed-value checks only; app saves its record + rating; description text and image never stored; terms note in provider-terms.md); tests; BUILD_NUMBER 46.
 - 2026-11-09: D7 plan written and verified (read-only SQL; outside audit checked, corrections listed) in docs/d7-four-provider-plan.md; no database or app change; BUILD_NUMBER 45.

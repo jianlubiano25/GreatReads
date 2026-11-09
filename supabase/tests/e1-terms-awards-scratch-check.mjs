@@ -1,0 +1,45 @@
+// Scratch-database check for the E1 migrations + rollbacks (term tables, awards). Never touches Supabase.
+// Run: mkdir /tmp/pgtest && cd /tmp/pgtest && npm i @electric-sql/pglite && cp <repo>/supabase/tests/e1-terms-awards-scratch-check.mjs t.mjs && REPO=<repo> node t.mjs
+import { PGlite } from '@electric-sql/pglite';
+import fs from 'fs';
+const db = new PGlite();
+const R = process.env.REPO || '.';
+const read = p => fs.readFileSync(`${R}/supabase/${p}`, 'utf8');
+const m1 = read('migrations/20261109000002_catalog_term_tables.sql'), r1 = read('rollbacks/20261109000002_catalog_term_tables.rollback.sql');
+const m2 = read('migrations/20261109000003_catalog_awards.sql'), r2 = read('rollbacks/20261109000003_catalog_awards.rollback.sql');
+let pass = 0, fail = 0; const ok = (c, m) => { c ? pass++ : (fail++, console.log('FAIL', m)); };
+const q = async sql => (await db.query(sql)).rows;
+const throws = async sql => { try { await db.exec(sql); return false; } catch { return true; } };
+const n = async t => (await q(`select count(*)::int n from ${t}`))[0].n;
+await db.exec(`
+create role anon; create role authenticated;
+create schema if not exists auth; create function auth.uid() returns uuid language sql as $$ select nullif(current_setting('app.uid',true),'')::uuid $$;
+create function public.catalog_set_updated_at() returns trigger language plpgsql as $$ begin new.updated_at = now(); return new; end $$;
+create table public.catalog_works (id uuid primary key default gen_random_uuid(), canonical_title text, status text default 'published');
+create table public.catalog_admins (user_id uuid primary key);
+create table public.catalog_provider_records (id uuid primary key default gen_random_uuid());
+insert into public.catalog_works(id, canonical_title) values ('00000000-0000-0000-0000-0000000000a1', 'Nettle & Bone');
+`);
+await db.exec(m1); await db.exec(m1); ok(true, 'term tables apply twice (idempotent)');
+ok(await n('catalog_terms') === 39 && await n('catalog_term_aliases') === 11, `seed counts ${await n('catalog_terms')}/${await n('catalog_term_aliases')}`);
+await db.exec(m2); await db.exec(m2); ok(true, 'awards apply twice (idempotent)');
+const W = '00000000-0000-0000-0000-0000000000a1';
+await db.exec(`insert into catalog_awards(name,slug) values ('Hugo Award','hugo-award')`);
+const A = (await q(`select id from catalog_awards`))[0].id;
+await db.exec(`insert into catalog_work_awards(work_id,award_id,award_year,result,source) values ('${W}','${A}',2026,'won','hardcover')`);
+ok((await q(`select status s from catalog_work_awards`))[0].s === 'candidate', 'a work award starts as a candidate');
+ok(await throws(`insert into catalog_work_awards(work_id,award_id,award_year,result,source) values ('${W}','${A}',2026,'won','hardcover')`), 'same work+award+year+source rejected');
+await db.exec(`insert into catalog_work_awards(work_id,award_id,award_year,result,source) values ('${W}','${A}',2026,'won','google')`);
+ok(await throws(`insert into catalog_work_awards(work_id,award_id,result) values ('${W}','${A}','lost')`), 'unknown result rejected');
+ok(await throws(`insert into catalog_work_awards(work_id,award_id,award_year) values ('${W}','${A}',5)`), 'year range');
+ok(await throws(`insert into catalog_work_awards(work_id,award_id,source) values ('${W}','${A}','amazon')`), 'unknown source rejected');
+ok(await throws(`insert into catalog_awards(name,slug) values ('x','hugo-award')`), 'award slug unique');
+await db.exec(`delete from catalog_works where id='${W}'`);
+ok(await n('catalog_work_awards') === 0 && await n('catalog_awards') === 1, 'deleting a work removes its award links, not the award');
+ok((await q(`select count(*)::int n from pg_class where relname in ('catalog_terms','catalog_term_aliases','catalog_work_terms','catalog_awards','catalog_work_awards') and relrowsecurity`))[0].n === 5, 'RLS on all five');
+await db.exec(r2); ok((await q(`select count(*)::int n from pg_tables where tablename like '%award%'`))[0].n === 0, 'awards rollback removes both tables');
+ok(await n('catalog_terms') === 39, 'awards rollback leaves the term tables');
+await db.exec(r1); ok((await q(`select count(*)::int n from pg_tables where tablename in ('catalog_terms','catalog_term_aliases','catalog_work_terms')`))[0].n === 0, 'terms rollback removes its tables');
+ok((await q(`select count(*)::int n from pg_tables where tablename in ('catalog_works','catalog_admins','catalog_provider_records')`))[0].n === 3, 'rollbacks leave existing tables');
+console.log(`pass=${pass} fail=${fail}`);
+process.exit(fail ? 1 : 0);
