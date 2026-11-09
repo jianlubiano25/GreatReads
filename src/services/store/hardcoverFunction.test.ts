@@ -57,3 +57,28 @@ test('shapeBook leaves out a rating without a count and non-https covers', () =>
   assert.equal(b.rating, undefined);
   assert.equal(b.cover, undefined);
 });
+
+test('shapeBook keeps Hardcover\'s genres (most voted first, no moods), pages and release date; a bad date is dropped', () => {
+  const b: any = shapeBook({ id: 4, title: 'Dune', pages: 412, release_date: '1965-08-01', subtitle: 'Book One', cached_tags: { Genre: [{ tag: 'Classics', count: 5 }, { tag: 'Science fiction', count: 90 }], Mood: [{ tag: 'Adventurous', count: 300 }] } });
+  assert.deepEqual(b.genres, ['Science fiction', 'Classics']);
+  assert.equal(b.pages, 412);
+  assert.equal(b.releaseDate, '1965-08-01');
+  assert.equal(b.subtitle, 'Book One');
+  assert.equal((shapeBook({ id: 5, title: 'X', release_date: 'soon', pages: 0 }) as any).releaseDate, undefined);
+});
+
+test('the fuller query is tried first and a schema that lacks one of its fields falls back to the base query (ratings never break)', async () => {
+  const asked: string[] = [];
+  const orig = (globalThis as any).fetch;
+  (globalThis as any).fetch = async (_u: string, init: any) => {
+    const query = JSON.parse(init.body).query as string;
+    asked.push(query);
+    return query.includes('cached_tags') ? { ok: true, status: 200, json: async () => ({ errors: [{ message: "field 'cached_tags' not found in type: 'books'" }] }) } : { ok: true, status: 200, json: async () => ({ data: { books: [{ id: 1, title: 'Dune', rating: 4.2, ratings_count: 10, cached_contributors: [{ author: { name: 'Frank Herbert' } }] }] } }) };
+  };
+  try {
+    const res = await hc({ request: new Request('https://x.test/api/hardcover?op=books&q=dune-fallback-test'), env: { HARDCOVER_TOKEN: 't' } } as any);
+    const body: any = await res.json();
+    assert.equal(asked.length, 2);
+    assert.equal(body.books[0].title, 'Dune');
+  } finally { (globalThis as any).fetch = orig; }
+});

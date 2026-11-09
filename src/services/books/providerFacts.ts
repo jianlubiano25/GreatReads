@@ -6,7 +6,8 @@
  * With nothing stored, a save simply has no extra facts to keep (nothing is invented). Bounded, oldest first out.
  */
 
-export type FactProvider = 'apple' | 'google' | 'openlibrary' | 'hardcover';
+import type { Provider } from './providers';
+export type FactProvider = Provider;
 export interface ProviderFacts {
   provider: FactProvider;
   /** The provider's own record id: Apple trackId, Google volume id, Open Library work id */
@@ -24,6 +25,8 @@ export interface ProviderFacts {
   /** Hardcover only (no ids to look it up by): the rating pair and the few facts its record gave: slug, readers, year, cover URL (a link, never the image or the description text) */
   rating?: { average: number; count: number };
   extra?: Record<string, string | number>;
+  /** Hardcover only: its description text. Kept as an UNPUBLISHED content candidate for the owner's review (never in the receipt payload, never published automatically). */
+  description?: string;
   sourceUrl?: string;
   seenAt: string;
 }

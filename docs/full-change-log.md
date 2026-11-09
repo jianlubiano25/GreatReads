@@ -136,3 +136,4 @@ Files: `services/store/{refresh,refreshAll,shelves,dynamic,goodreadsChoice,bests
 - 2026-11-09: search: among books with the exact typed title the most-read leads (+30 by readers, off for author-name searches); last good "of N" count remembered (owner saw 524 become 26); filter panel no longer closes at once when opened while scrolled down; tests; BUILD_NUMBER 37.
 - 2026-11-09: search: exact-title books also count their place in Open Library's most-read order (popularRank) as readership, for books with no ratings there (owner: Dark Matter novel 20th); tests; BUILD_NUMBER 38.
 - 2026-11-09: E1 term tables saved to the repo; catalog_awards + catalog_work_awards applied to production (owner go); scratch check.
+- 2026-11-09: providers.ts shared definition; Hardcover genres/pages/date/description/cover link captured as unpublished candidates; function query fallback; tests.

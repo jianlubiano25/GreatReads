@@ -11,6 +11,7 @@
  */
 import { genreOrEmpty } from './books/catalogFill';
 import { coverKey } from './books/coverAnalysis';
+import { RATING_SOURCE } from './books/providers';
 import { coverSourceOf, isHttps } from './books/coverPicks';
 import { catalogIdsFrom } from './books/catalogIdentity';
 import { findWorkByKey, mergedIntoOf, saveFactsToCatalog, saveIdentityToCatalog, type MergeRow } from './catalog';
@@ -44,7 +45,7 @@ const PUB_OFF_KEY = 'readlife.capturePubOff1';
 const MAX_QUEUE = 3000;
 const MAX_DONE = 60000;
 const GAP_MS = 80;
-const RATING_SRC: Record<string, string> = { apple: 'apple_books', google: 'google_books', openlibrary: 'open_library', hardcover: 'hardcover' };
+const RATING_SRC: Record<string, string> = RATING_SOURCE;
 
 /* ---------------- what was already sent (so nothing is sent twice) ---------------- */
 

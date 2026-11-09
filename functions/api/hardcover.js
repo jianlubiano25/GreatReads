@@ -7,14 +7,22 @@ const json = (body, status = 200, cache = 'no-store') =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': cache } });
 
 const ENDPOINT = 'https://api.hardcover.app/v1/graphql';
-const QUERY = `query Books($title: String!, $limit: Int!) {
+const FIELDS = 'id slug title rating ratings_count users_read_count release_year cached_image description cached_contributors';
+// The fuller record (C: all data kept as candidates). If this Hardcover schema does not know one of the extra fields, the base query is asked instead, so ratings never break.
+const QUERIES = [FIELDS + ' subtitle pages release_date cached_tags', FIELDS].map(f => `query Books($title: String!, $limit: Int!) {
   books(where: { title: { _ilike: $title } }, order_by: { users_read_count: desc }, limit: $limit) {
-    id slug title rating ratings_count users_read_count release_year cached_image description cached_contributors
+    ${f}
   }
-}`;
+}`);
 
 const clean = s => String(s || '').replace(/[\u0000-\u001f%_\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
 const norm = s => clean(s).toLowerCase().replace(/[^a-z0-9 ]/g, '');
+
+/** Hardcover's reader-voted genre tags (cached_tags.Genre = [{ tag, count }]), most voted first, at most 8. Moods and content warnings are not genres. */
+export function genresOf(tags) {
+  const list = tags && typeof tags === 'object' && Array.isArray(tags.Genre) ? tags.Genre : [];
+  return list.filter(t => t && typeof t.tag === 'string' && t.tag.trim()).sort((x, y) => Number(y.count || 0) - Number(x.count || 0)).slice(0, 8).map(t => t.tag.trim().slice(0, 60));
+}
 
 /** One book in the shape the app uses; a field Hardcover does not send is simply left out. */
 export function shapeBook(b) {
@@ -26,6 +34,11 @@ export function shapeBook(b) {
   if (b?.release_year) out.year = Number(b.release_year);
   if (typeof image === 'string' && /^https:\/\//.test(image)) out.cover = image;
   if (b?.description) out.description = String(b.description).slice(0, 1500);
+  if (b?.subtitle) out.subtitle = String(b.subtitle).slice(0, 200);
+  if (Number(b?.pages) > 0 && Number(b.pages) < 20000) out.pages = Number(b.pages);
+  if (typeof b?.release_date === 'string' && /^\d{4}(-\d{2}(-\d{2})?)?$/.test(b.release_date)) out.releaseDate = b.release_date;
+  const genres = genresOf(b?.cached_tags);
+  if (genres.length) out.genres = genres;
   return out;
 }
 
@@ -41,32 +54,36 @@ export async function onRequestGet({ request, env }) {
   const key = new Request(`https://greatreads-hardcover.invalid/books?q=${encodeURIComponent(q.toLowerCase())}&a=${encodeURIComponent(author)}`);
   try { const hit = cache && (await cache.match(key)); if (hit) return hit; } catch {}
 
-  let res;
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 9000); // a slow Hardcover query must end as a small JSON answer, never a page that hangs
-  try {
-    res = await fetch(ENDPOINT, {
-      signal: ctl.signal,
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, 'user-agent': 'GreatReads/1.0 (book discovery app)' },
-      body: JSON.stringify({ query: QUERY, variables: { title: q, limit: 10 } }),
-    });
-  } catch (e) {
-    return json({ error: ctl.signal.aborted ? 'timeout' : 'upstream_error', detail: String(e?.message || e).slice(0, 200) }, ctl.signal.aborted ? 504 : 502);
-  } finally {
-    clearTimeout(timer);
-  }
-  if (res.status === 401 || res.status === 403) return json({ error: 'unauthorized', upstream: res.status }, 502);
-  if (res.status === 429) return json({ error: 'rate_limited' }, 429);
-  if (!res.ok) { let detail = ''; try { detail = String(await res.text()).slice(0, 300); } catch {} return json({ error: 'upstream_error', upstream: res.status, detail }, 502); }
   let data;
-  try { data = await res.json(); } catch { return json({ error: 'upstream_error' }, 502); }
-  // GraphQL reports problems inside a 200 answer. Only a message that is clearly about the token says "unauthorized"; anything else (a field name Hardcover does not know,
-  // a limit) is an upstream_error with Hardcover's own message (`detail`: a few words of text, never the token) so it can be fixed.
-  if (data?.errors?.length) {
-    const first = String(data.errors[0]?.message || '').slice(0, 300);
-    const tokenProblem = /jwt|invalid token|token (?:is )?(?:invalid|expired)|expired token|unauthori[sz]ed|not authenticated|missing authorization|invalid authorization/i.test(first);
-    return json({ error: tokenProblem ? 'unauthorized' : 'upstream_error', detail: first }, 502);
+  for (let i = 0; i < QUERIES.length; i++) {
+    let res;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 9000); // a slow Hardcover query must end as a small JSON answer, never a page that hangs
+    try {
+      res = await fetch(ENDPOINT, {
+        signal: ctl.signal,
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, 'user-agent': 'GreatReads/1.0 (book discovery app)' },
+        body: JSON.stringify({ query: QUERIES[i], variables: { title: q, limit: 10 } }),
+      });
+    } catch (e) {
+      return json({ error: ctl.signal.aborted ? 'timeout' : 'upstream_error', detail: String(e?.message || e).slice(0, 200) }, ctl.signal.aborted ? 504 : 502);
+    } finally {
+      clearTimeout(timer);
+    }
+    if (res.status === 401 || res.status === 403) return json({ error: 'unauthorized', upstream: res.status }, 502);
+    if (res.status === 429) return json({ error: 'rate_limited' }, 429);
+    if (!res.ok) { let detail = ''; try { detail = String(await res.text()).slice(0, 300); } catch {} return json({ error: 'upstream_error', upstream: res.status, detail }, 502); }
+    try { data = await res.json(); } catch { return json({ error: 'upstream_error' }, 502); }
+    // GraphQL reports problems inside a 200 answer. Only a message that is clearly about the token says "unauthorized"; anything else is an upstream_error with Hardcover's own
+    // message (`detail`: a few words of text, never the token) so it can be fixed. A field this schema does not know sends the BASE query instead (the fuller one is last tried first).
+    if (data?.errors?.length) {
+      const first = String(data.errors[0]?.message || '').slice(0, 300);
+      const tokenProblem = /jwt|invalid token|token (?:is )?(?:invalid|expired)|expired token|unauthori[sz]ed|not authenticated|missing authorization|invalid authorization/i.test(first);
+      if (!tokenProblem && i < QUERIES.length - 1 && /field|cannot query|not found|unknown|validation/i.test(first)) continue;
+      return json({ error: tokenProblem ? 'unauthorized' : 'upstream_error', detail: first }, 502);
+    }
+    break;
   }
   let books = (data?.data?.books || []).map(shapeBook);
   if (author) books = books.filter(b => b.authors.some(a => { const n = norm(a); return n.includes(author) || author.includes(n); }));

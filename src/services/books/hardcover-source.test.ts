@@ -56,3 +56,29 @@ test('a Hardcover match is remembered as a fourth provider record (id, link, rea
   assert.deepEqual(providerFactsFor({ title: 'Dune', author: 'Someone Else' }), []);
   forgetProviderFactsForTests();
 });
+
+test('hardcoverMatch remembers all of Hardcover\'s data (genres, pages, date, description, link, cover) as facts for the owner\'s candidates', async () => {
+  const { hardcoverMatch } = await import('./sources/hardcover');
+  const { providerFactsFor } = await import('./providerFacts');
+  resetHardcoverForTests();
+  const body = { books: [{ id: 7, slug: 'dune', title: 'Dune', authors: ['Frank Herbert'], rating: 4.27, ratingsCount: 5000, readers: 90000, year: 1965, releaseDate: '1965-08-01', pages: 412, genres: ['Science fiction', 'Classics'], cover: 'https://img.example/dune.jpg', description: 'Set on the desert planet Arrakis, Dune is the story of Paul Atreides.', subtitle: 'Book One' }] };
+  await hardcoverMatch('Dune', 'Frank Herbert', deps(200, body));
+  const f = providerFactsFor({ id: 'x', title: 'Dune', author: 'Frank Herbert' }).find(x => x.provider === 'hardcover')!;
+  assert.deepEqual(f.genres, ['Science fiction', 'Classics']);
+  assert.equal(f.pages, 412);
+  assert.equal(f.publishedDate, '1965-08-01');
+  assert.match(f.description || '', /Arrakis/);
+  assert.equal(f.extra?.cover, 'https://img.example/dune.jpg');
+  assert.equal(f.extra?.subtitle, 'Book One');
+  assert.equal(f.sourceUrl, 'https://hardcover.app/books/dune');
+  assert.equal(JSON.stringify((await import('../catalogReceipts')).receiptPayload(f)).includes('Arrakis'), false, 'the description is never in the receipt payload');
+});
+
+test('providerCandidateRows: Hardcover description and cover link become unpublished candidates with their source; nothing else does', async () => {
+  const { providerCandidateRows } = await import('../catalogProviderCandidates');
+  const hc: any = { provider: 'hardcover', recordId: '7', sourceUrl: 'https://hardcover.app/books/dune', description: 'Set on the desert planet Arrakis, Dune is the story of Paul Atreides.', extra: { cover: 'https://img.example/dune.jpg' }, seenAt: '2026-11-09' };
+  const ap: any = { provider: 'apple', recordId: '9', genres: ['Fiction'], seenAt: '2026-11-09' };
+  const rows = providerCandidateRows('w1', [hc, ap, { ...hc, recordId: '8', description: 'too short', extra: { cover: 'http://insecure/x.jpg' } }]);
+  assert.deepEqual(rows.map(r => r.table), ['catalog_content_versions', 'catalog_cover_candidates']);
+  assert.ok(rows.every(r => r.body.status === 'candidate' && r.body.source_name === 'hardcover' && r.body.source_record_id === '7'));
+});

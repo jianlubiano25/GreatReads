@@ -27,7 +27,7 @@ export async function hardcoverRating(title: string, author: string, deps?: Hard
 }
 
 /** The matched Hardcover book: rating pair plus the facts kept as a provider record (remembered for the owner's Save to catalog / capture). */
-export async function hardcoverMatch(title: string, author: string, deps?: HardcoverDeps): Promise<{ average: number; count: number; id: string; slug?: string; year?: number; readers?: number; cover?: string } | null> {
+export async function hardcoverMatch(title: string, author: string, deps?: HardcoverDeps): Promise<{ average: number; count: number; id: string; slug?: string; year?: number; readers?: number; cover?: string; pages?: number; genres?: string[] } | null> {
   const d = deps ?? (typeof window === 'undefined' ? undefined : real);
   if (!d || !title || d.now() < offUntil) return null;
   const q = new URLSearchParams({ op: 'books', q: title, ...(author ? { author } : {}) });
@@ -43,10 +43,12 @@ export async function hardcoverMatch(title: string, author: string, deps?: Hardc
     && (!wantAuthor || !(b.authors || []).length || (b.authors as string[]).some(a => authorKey(a) === wantAuthor)));
   if (hit) bump('hardcover.matched');
   if (!hit) return null;
-  const out = { average: Number(hit.rating), count: Number(hit.ratingsCount), id: String(hit.id ?? ''), slug: hit.slug ? String(hit.slug) : undefined, year: Number(hit.year) || undefined, readers: Number(hit.readers) || undefined, cover: typeof hit.cover === 'string' ? hit.cover : undefined };
+  const out = { average: Number(hit.rating), count: Number(hit.ratingsCount), id: String(hit.id ?? ''), slug: hit.slug ? String(hit.slug) : undefined, year: Number(hit.year) || undefined, readers: Number(hit.readers) || undefined, cover: typeof hit.cover === 'string' ? hit.cover : undefined, pages: Number(hit.pages) || undefined, genres: Array.isArray(hit.genres) ? hit.genres.map(String).slice(0, 8) : undefined };
   if (out.id) {
-    rememberProviderFacts({ provider: 'hardcover', recordId: out.id, authors: Array.isArray(hit.authors) ? hit.authors.slice(0, 10) : undefined, publishedDate: out.year ? String(out.year) : undefined, rating: { average: out.average, count: out.count },
-      extra: { ...(out.slug ? { slug: out.slug } : {}), ...(out.readers ? { readers: out.readers } : {}), ...(out.year ? { year: out.year } : {}), ...(out.cover ? { cover: out.cover } : {}) },
+    // everything Hardcover said about the book, as facts for the owner's catalog candidates (Save to catalog / capture): nothing is published from here
+    rememberProviderFacts({ provider: 'hardcover', recordId: out.id, authors: Array.isArray(hit.authors) ? hit.authors.slice(0, 10) : undefined, publishedDate: typeof hit.releaseDate === 'string' ? hit.releaseDate : out.year ? String(out.year) : undefined, rating: { average: out.average, count: out.count },
+      ...(out.genres?.length ? { genres: out.genres } : {}), ...(out.pages ? { pages: out.pages } : {}), ...(typeof hit.description === 'string' && hit.description.trim() ? { description: hit.description.trim().slice(0, 1500) } : {}),
+      extra: { ...(out.slug ? { slug: out.slug } : {}), ...(out.readers ? { readers: out.readers } : {}), ...(out.year ? { year: out.year } : {}), ...(out.cover ? { cover: out.cover } : {}), ...(hit.subtitle ? { subtitle: String(hit.subtitle).slice(0, 200) } : {}) },
       ...(out.slug ? { sourceUrl: `https://hardcover.app/books/${out.slug}` } : {}) });
     rememberHardcoverFor(title, author, out.id);
   }

@@ -4,6 +4,8 @@
  *    A failure just means the saved copy keeps being used. The cover chain is: your own pick, then the catalog, then the old shared set, then live lookups.
  *  - Write (developer mode): your starred covers are added to the catalog and published in one safe step each.
  */
+import { saveProviderCandidates } from './catalogProviderCandidates';
+import { RATING_SOURCE } from './books/providers';
 import { applyCatalog, catalogCopy, getCatalogWork, pruneCatalog, type CatalogWork } from './books/catalogCovers';
 import { coverKey } from './books/coverAnalysis';
 import { coverSourceOf, notifyCoversChanged } from './books';
@@ -299,6 +301,7 @@ const FACT_FIELDS: { field: string; get: (f: ProviderFacts) => unknown }[] = [
   { field: 'providerLanguage', get: f => f.language }, { field: 'providerAuthors', get: f => f.authors },
   { field: 'altAuthorNames', get: f => f.altAuthorNames }, { field: 'providerPages', get: f => f.pages },
   { field: 'providerRecord', get: f => ({ id: f.recordId, ...(f.sourceUrl ? { url: f.sourceUrl } : {}) }) },
+  { field: 'providerExtra', get: f => (f.extra && Object.keys(f.extra).length ? f.extra : undefined) }, // Hardcover: slug, readers, year, cover link, subtitle
 ];
 
 /**
@@ -348,6 +351,10 @@ export async function saveFactsToCatalog(workId: string, book: Pick<Book, 'id' |
   for (const f of facts) if (f.provider === 'hardcover' && f.rating && f.rating.average > 0 && f.rating.average <= 5 && await storeRating(workId, { source: 'hardcover', average: f.rating.average, count: f.rating.count }, false)) saved.push('rating:hardcover');
   for (const t of c.tags) await addCandidate('tagLabel', t, 'app');
   if (kept) saved.push(`provider facts (${kept})`);
+  // a provider's description text / cover link (Hardcover): unpublished candidates for the review catalog
+  const pc = await saveProviderCandidates(workId, facts);
+  skipped.push(...pc.skipped); if (pc.retry) retry = true;
+  if (pc.kept) saved.push(`provider description/cover candidates (${pc.kept})`);
 
   // 3) edition details, only for the edition this exact Google volume is
   const g = facts.find(f => f.provider === 'google');
@@ -366,7 +373,7 @@ export async function saveFactsToCatalog(workId: string, book: Pick<Book, 'id' |
   return { saved, skipped, ...(retry ? { retry: true } : {}) };
 }
 
-const RATING_SRC: Record<string, string> = { apple: 'apple_books', google: 'google_books', openlibrary: 'open_library', hardcover: 'hardcover' };
+const RATING_SRC: Record<string, string> = RATING_SOURCE;
 
 /** The catalog's id for this book, created as a hidden draft when it is not there yet (nothing is shown to readers until something is published). */
 export async function ensureWork(book: { title: string; author?: string }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {

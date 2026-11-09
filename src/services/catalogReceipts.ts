@@ -7,11 +7,12 @@
  * Idempotent and fill-only: a receipt is created once; an existing one is only given a missing work link, refreshed when its refresh date has passed,
  * or flagged needs_review when it points at a different work. It is never moved, overwritten with another work, or deleted. No personal tables.
  */
+import { RECEIPT_KIND } from './books/providers';
 import { rest } from './supabase';
 import type { FactProvider, ProviderFacts } from './books/providerFacts';
 
 export const REFRESH_DAYS = 90;
-export const receiptKind = (p: FactProvider): 'listing' | 'volume' | 'work' => (p === 'apple' ? 'listing' : p === 'google' ? 'volume' : 'work'); // Hardcover's book is a 'work'
+export const receiptKind = (p: FactProvider): 'listing' | 'volume' | 'work' => RECEIPT_KIND[p];
 export const receiptKey = (f: Pick<ProviderFacts, 'provider' | 'recordId'>): string => `${f.provider}:${f.recordId}`;
 
 /** The trimmed payload: only what the app extracted (no descriptions, no raw response). Lists are capped. */
