@@ -41,3 +41,8 @@ test('a category path gives its parts; its root is the context an alias may requ
   assert.deepEqual(ids(mapLabelsToTerms('google', ['Fiction / Dystopian'], [], vocab)), ['g-fic', 'g-sf', 's-dys']);
   assert.deepEqual(ids(mapLabelsToTerms('google', ['Dystopian'], [], vocab)), [], 'no Fiction context: stays a plain provider label');
 });
+
+test('a collection term (book club, prize, bestseller list) is matched by name and by alias like any other term', () => {
+  const v: Vocab = { terms: [T('c-oprah', 'collection', "Oprah's Book Club"), T('c-nyt', 'collection', 'New York Times bestseller')], aliases: [{ source: 'any', label_norm: 'new york times bestseller', term_id: 'c-nyt', requires_genre: null, implies_genre: null }] };
+  assert.deepEqual(ids(mapLabelsToTerms('openlibrary', ["Oprah's Book Club", 'New York Times bestseller', 'Large type books'], [], v)), ['c-nyt', 'c-oprah']);
+});

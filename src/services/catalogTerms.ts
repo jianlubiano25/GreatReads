@@ -14,7 +14,7 @@ export interface TermCandidate { term_id: string; source: ProviderFacts['provide
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
 const slugOf = (s: string) => norm(s).replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-const KINDS = new Set(['genre', 'subgenre', 'subject']);
+const KINDS = new Set(['genre', 'subgenre', 'subject', 'collection']); // collection = book clubs, prizes, bestseller lists
 
 /** The terms one provider's labels mean for a work that has `workGenres` (pure). Several labels may give the same term once; the first label that does wins. */
 export function mapLabelsToTerms(provider: ProviderFacts['provider'], labels: readonly string[], workGenres: readonly string[], vocab: Vocab): TermCandidate[] {
