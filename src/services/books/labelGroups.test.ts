@@ -16,16 +16,16 @@ const f = (provider: ProviderFacts['provider'], genres: string[], subjects: stri
 test('labels group by term kind, keep unknown labels as tags, show which providers said it', () => {
   const g = labelGroups(['Science Fiction'], [f('google', ['Sci-Fi', 'Dystopian'], ['Desert planets']), f('hardcover', ['Science Fiction', 'Space', 'Epic'])], vocab);
   const by = Object.fromEntries(g.map(x => [x.name, x.chips]));
-  assert.deepEqual(by['Genre'].map(c => c.label), ['Science Fiction']);
-  assert.deepEqual(by['Genre'][0].sources.sort(), ['app', 'google', 'hardcover']);
-  assert.deepEqual(by['Sub-genre'].map(c => c.label), ['Dystopian']);
-  assert.deepEqual(by['Subjects'].map(c => c.label), ['Space']);
-  assert.deepEqual(by['Tags'].map(c => c.label).sort(), ['Desert planets', 'Epic']);
+  assert.deepEqual(by['Genres'].map(c => c.label), ['Science Fiction']);
+  assert.deepEqual(by['Genres'][0].sources.sort(), ['app', 'google', 'hardcover']);
+  assert.deepEqual(by['Subgenres'].map(c => c.label), ['Dystopian']);
+  assert.deepEqual(by['Subjects & themes'].map(c => c.label), ['Space']);
+  assert.deepEqual(by['Keywords & tags'].map(c => c.label).sort(), ['Desert planets', 'Epic']);
 });
 
 test('without the vocabulary every label still shows, as tags; nothing is repeated', () => {
   const g = labelGroups(['Fantasy'], [f('apple', ['Fantasy', 'Magic'])], null);
-  assert.deepEqual(g.map(x => x.name), ['Genre', 'Tags']);
+  assert.deepEqual(g.map(x => x.name), ['Genres', 'Keywords & tags']);
   assert.deepEqual(g[1].chips.map(c => c.label), ['Magic']);
 });
 

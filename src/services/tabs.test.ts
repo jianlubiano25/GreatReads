@@ -176,18 +176,19 @@ test('Book info: one control (Add to My Library, or your status once it is yours
   assert.ok(!/Add to My Library/.test(owned));
   assert.equal((owned.match(/aria-haspopup="dialog"/g) || []).length, 1, 'still a single button');
   const rate = html.indexOf('Rate this book');
-  const honors = html.indexOf('Honors &amp; Awards');
+  const honors = html.indexOf('Awards &amp; honors');
   const about = html.indexOf('About this book');
   assert.ok(rate > 0 && honors > 0 && about > 0, 'all three sections are drawn');
   assert.ok(about < rate, 'Rate this book comes right below About this book');
   assert.ok(html.indexOf('Add to My Library') < about, 'and the Add to My Library button stays above it');
   const withMore = renderToStaticMarkup(h(AppleBookDetailModal, { book: awarded, inLibrary: false, onRate: noop, onMoreLikeThis: noop, onClose: noop, onOpenLibrarySheet: noop }));
-  assert.ok(withMore.indexOf('About this book') < withMore.indexOf('More like this') && withMore.indexOf('More like this') < withMore.indexOf('Rate this book'), 'About, then More like this, then Rate this book');
+  assert.ok(withMore.indexOf('About this book') < withMore.indexOf('Rate this book') && withMore.indexOf('Rate this book') < withMore.indexOf('More like this'), 'About, then Rate this book, then (after the author and the keywords) More like this');
+  assert.ok(withMore.indexOf('Awards &amp; honors') < withMore.indexOf('About this book'), 'the classification comes before About');
   // the same title size: both headings use the same size, weight and letter-spacing classes (Honors also lays its trophy icon out with flex)
   const heading = (name: string) => html.slice(html.lastIndexOf('<h4', html.indexOf(name)), html.indexOf(name)).match(/class="([^"]*)"/)![1];
   const SIZE = 'text-xs font-bold uppercase tracking-wider';
   assert.ok(heading('Rate this book').startsWith(SIZE));
-  assert.ok(heading('Honors &amp; Awards').startsWith(SIZE));
+  assert.ok(heading('Book classification').startsWith(SIZE));
 });
 
 test('Book info: the Add to My Library button is always the same width (the info column takes the full width on a phone)', () => {

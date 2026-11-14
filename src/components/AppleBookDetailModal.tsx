@@ -17,8 +17,8 @@ import { X, BookOpen, Star, Award, ChevronDown, Check, Bookmark, Image as ImageI
 import { displayGenre } from '../services/books/catalogFill';
 import { ensureBookInfo, resetInfoWaits, type InfoField } from '../services/books/infoStore';
 import { providerFactsFor } from '../services/books/providerFacts';
-import { PROVIDER_LABEL, isProvider } from '../services/books/providers';
 import { labelGroups } from '../services/books/labelGroups';
+import { ChipGroup, GroupTitle, TONE } from './LabelChips';
 import { getVocab, type Vocab } from '../services/catalogTerms';
 import { coverBackdrop } from '../services/books/placeholderCover';
 
@@ -148,6 +148,8 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [book.id, book.title, book.author, book.genre, vocab, hcRating],
   );
+  const classGroups = labelSets.filter(g => g.name !== 'Keywords & tags');
+  const tagGroup = labelSets.find(g => g.name === 'Keywords & tags');
   const displayPages = propTotalPages || book.pageCount || 0;
   const shelfInfo = SHELF_LABELS[book.shelf] || { label: book.genre || 'Book', emoji: '📖', color: book.spineColor || '#2e5934' };
   // Under the genre: the curated shelf (🧠 Heal) — or where a store book came from.
@@ -367,43 +369,24 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           </div>
         </div>
 
-        {/* Awards Section if available */}
-        {awards && awards.length > 0 && (
-          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25] bg-[#f5f0e6]/50 dark:bg-[#181410]/50">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] mb-2 flex items-center gap-1.5">
-              <Award className="w-3.5 h-3.5 text-amber-500" />
-              <span>Honors &amp; Awards</span>
-            </h4>
-            <div className="flex flex-wrap gap-2">
-              {awards.map((aw, idx) => (
-                <span
-                  key={idx}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-[#e8efe7] dark:bg-[#243422] text-[#2e5934] dark:text-[#86b880] border border-[#2e5934]/20"
-                >
-                  <span>{aw.type === 'w' ? '🏆' : aw.type === 'c' ? '📖' : '🎖️'}</span>
-                  <span>{aw.label}</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {labelSets.length > 0 && (
-          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25]" data-testid="label-groups">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] mb-2">Genres &amp; tags</h4>
-            {labelSets.map(g => (
-              <div key={g.name} className="mb-2 last:mb-0">
-                <div className="text-[11px] font-semibold text-[#706256] dark:text-[#a89a8a] mb-1">{g.name}</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {g.chips.map(c => (
-                    <span key={c.label} title={c.sources.map(x => (isProvider(x) ? PROVIDER_LABEL[x] : 'Your library')).join(', ')}
-                      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs bg-[#f5f0e6] dark:bg-[#181410] text-[#201a15] dark:text-[#f0e6d6] border border-[#e3d7c3] dark:border-[#382f25]">
-                      {c.label}
+        {/* BOOK CLASSIFICATION (before About the Author): genres, subgenres, subjects & themes, collections, awards & honors */}
+        {(classGroups.length > 0 || (awards && awards.length > 0)) && (
+          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25]" data-testid="book-classification">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] mb-3">Book classification</h4>
+            {classGroups.map(g => <ChipGroup key={g.name} group={g} />)}
+            {awards && awards.length > 0 && (
+              <div className="mb-2 last:mb-0">
+                <GroupTitle icon={Award} title="Awards &amp; honors" tone="gold" />
+                <div className="flex flex-wrap gap-2">
+                  {awards.map((aw, idx) => (
+                    <span key={idx} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${TONE.gold}`}>
+                      <span>{aw.type === 'w' ? '🏆' : aw.type === 'c' ? '📖' : '🎖️'}</span>
+                      <span>{aw.label}</span>
                     </span>
                   ))}
                 </div>
               </div>
-            ))}
+            )}
           </div>
         )}
 
@@ -430,15 +413,6 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
             </button>
           )}
         </div>
-
-        {/* More books like this one sits right below the About section, then your own rating */}
-        {onMoreLikeThis && moreLikeThis(book) && (
-          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25] flex justify-center">
-            <button type="button" onClick={onMoreLikeThis} className="min-h-[44px] px-5 py-2 rounded-full border border-[#2e5934] dark:border-[#86b880] text-sm font-semibold text-[#2e5934] dark:text-[#86b880] hover:bg-[#e8efe7] dark:hover:bg-[#243422]">
-              More like this
-            </button>
-          </div>
-        )}
 
         {onRate && <RateThisBook title={book.title} value={userRating} onRate={onRate} />}
 
@@ -542,6 +516,22 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
             <p className="text-[17px] leading-[1.65] text-[#201a15]/80 dark:text-[#f0e6d6]/80">
               {book.authorBio}
             </p>
+          </div>
+        )}
+
+        {/* Keywords & tags: immediately below About the Author, then More like this */}
+        {tagGroup && (
+          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25]" data-testid="book-keywords">
+            <ChipGroup group={tagGroup} />
+          </div>
+        )}
+
+        {/* More books like this one sits below Keywords & tags */}
+        {onMoreLikeThis && moreLikeThis(book) && (
+          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25] flex justify-center">
+            <button type="button" onClick={onMoreLikeThis} className="min-h-[44px] px-5 py-2 rounded-full border border-[#2e5934] dark:border-[#86b880] text-sm font-semibold text-[#2e5934] dark:text-[#86b880] hover:bg-[#e8efe7] dark:hover:bg-[#243422]">
+              More like this
+            </button>
           </div>
         )}
 
