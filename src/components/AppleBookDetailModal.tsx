@@ -16,6 +16,10 @@ import { CoverFace, StarRating, compactCount, honorsListFor } from './BookMeta';
 import { X, BookOpen, Star, Award, ChevronDown, Check, Bookmark, Image as ImageIcon, RefreshCw, Code, Languages } from 'lucide-react';
 import { displayGenre } from '../services/books/catalogFill';
 import { ensureBookInfo, resetInfoWaits, type InfoField } from '../services/books/infoStore';
+import { providerFactsFor } from '../services/books/providerFacts';
+import { PROVIDER_LABEL, isProvider } from '../services/books/providers';
+import { labelGroups } from '../services/books/labelGroups';
+import { getVocab, type Vocab } from '../services/catalogTerms';
 import { coverBackdrop } from '../services/books/placeholderCover';
 
 // The cover viewer is only fetched the first time someone opens it
@@ -135,6 +139,15 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   const ratingsText = (r: { count?: number }) => (r.count ? `${compactCount(r.count)} ${r.count === 1 ? 'rating' : 'ratings'}` : '');
 
   const awards = honorsListFor(book);
+  // Genre, sub-genre, subjects and tags: every label the providers gave this book (on this device), grouped by what the vocabulary says each one is
+  const [vocab, setVocab] = useState<Vocab | null>(null);
+  useEffect(() => { let live = true; void getVocab().then(v => { if (live) setVocab(v); }).catch(() => {}); return () => { live = false; }; }, []);
+  const labelSets = useMemo(
+    () => labelGroups(book.genre && book.genre !== 'N/A' ? [displayGenre(book.genre) || book.genre] : [], providerFactsFor({ ...book, id: String(book.id) }), vocab),
+    // hcRating changes when Hardcover's facts arrive
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [book.id, book.title, book.author, book.genre, vocab, hcRating],
+  );
   const displayPages = propTotalPages || book.pageCount || 0;
   const shelfInfo = SHELF_LABELS[book.shelf] || { label: book.genre || 'Book', emoji: '📖', color: book.spineColor || '#2e5934' };
   // Under the genre: the curated shelf (🧠 Heal) — or where a store book came from.
@@ -372,6 +385,25 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
                 </span>
               ))}
             </div>
+          </div>
+        )}
+
+        {labelSets.length > 0 && (
+          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25]" data-testid="label-groups">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] mb-2">Genres &amp; tags</h4>
+            {labelSets.map(g => (
+              <div key={g.name} className="mb-2 last:mb-0">
+                <div className="text-[11px] font-semibold text-[#706256] dark:text-[#a89a8a] mb-1">{g.name}</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {g.chips.map(c => (
+                    <span key={c.label} title={c.sources.map(x => (isProvider(x) ? PROVIDER_LABEL[x] : 'Your library')).join(', ')}
+                      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs bg-[#f5f0e6] dark:bg-[#181410] text-[#201a15] dark:text-[#f0e6d6] border border-[#e3d7c3] dark:border-[#382f25]">
+                      {c.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 

@@ -44,6 +44,8 @@ export function mapLabelsToTerms(provider: ProviderFacts['provider'], labels: re
 }
 
 let vocabMemo: Promise<Vocab | null> | undefined;
+/** The vocabulary for display (Book Information), read once and remembered; null when it cannot be read. */
+export async function getVocab(): Promise<Vocab | null> { vocabMemo ??= loadVocab(); const v = await vocabMemo; if (!v) vocabMemo = undefined; return v; }
 export const resetVocabForTests = () => { vocabMemo = undefined; };
 async function loadVocab(): Promise<Vocab | null> {
   const t = await rest<TermRow[]>('catalog_terms?select=id,kind,name,slug&status=eq.active&limit=2000');
