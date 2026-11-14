@@ -1,7 +1,7 @@
--- DRAFT FOR OWNER REVIEW (2026-11-10): NOT APPLIED. Two fill-only, database-only steps that connect data the catalog already holds. No network, no deletes, no overwrite.
+-- APPLIED 2026-11-10 (owner go). Two fill-only, database-only steps that connect data the catalog already holds. No network, no deletes, no overwrite.
 --   A) link Google provider records to the edition that carries the same Google volume id (catalog_provider_records.edition_id, only where it is null today)
 --   B) set works.language_code from provider records when a work's records agree on ONE language (only where it is null today)
--- Rollback: supabase/rollbacks/20261110_connect_receipts_and_language.rollback.sql
+-- Rollback: supabase/rollbacks/20261110000004_connect_receipts_and_language.rollback.sql
 
 -- A) receipt -> edition
 update public.catalog_provider_records p
