@@ -10,7 +10,7 @@
  *  - Slow and quiet on purpose (one request at a time, a small pause between them); a failure just stops it and it picks up again later.
  */
 import { textSourceOf } from './books/textSource';
-import { ensureProviderFacts, missingProviders, providerLookupsOn } from './books/providerLookup';
+import { ensureProviderFacts, lookupBudgetLeft, missingProviders, providerLookupsOn } from './books/providerLookup';
 import { genreOrEmpty } from './books/catalogFill';
 import { coverKey } from './books/coverAnalysis';
 import { RATING_SOURCE } from './books/providers';
@@ -143,7 +143,7 @@ function factsOf(item: CaptureItem): { facts: ProviderFacts[]; pending: string[]
 }
 /** A book with provider facts missing gets one look-up round (providerLookup.ts), then is marked so it is not asked again. */
 const lookupMark = (item: CaptureItem) => `p|${coverKey({ title: item.title, author: item.author })}`;
-const lookupPending = (item: CaptureItem): boolean => providerLookupsOn() && !!item.title?.trim() && !doneSet().has(lookupMark(item)) && missingProviders({ id: item.bookId, title: item.title, author: item.author, identity: item.identity }).length > 0;
+const lookupPending = (item: CaptureItem): boolean => providerLookupsOn() && lookupBudgetLeft() && !!item.title?.trim() && !doneSet().has(lookupMark(item)) && missingProviders({ id: item.bookId, title: item.title, author: item.author, identity: item.identity }).length > 0;
 const needsSending = (item: CaptureItem): boolean => rowsFor(item, 'x').some(r => !doneSet().has(r.id)) || idPending(item) || factsOf(item).pending.length > 0 || lookupPending(item);
 
 /* ---------------- the work (book) ids ---------------- */

@@ -316,7 +316,7 @@ const FACT_FIELDS: { field: string; get: (f: ProviderFacts) => unknown }[] = [
  */
 export async function saveFactsToCatalog(workId: string, book: Pick<Book, 'id' | 'identity' | 'genre'> & Partial<Pick<Book, 'awardLabel' | 'title' | 'author'>>, given?: ProviderFacts[]): Promise<{ saved: string[]; skipped: string[]; retry?: boolean }> {
   // a book with no provider data yet is looked up once (Google, Apple, Open Library, Hardcover) so there is something to save; facts passed in (tests) are used as given
-  if (!given && book.title) await ensureProviderFacts({ id: book.id, title: book.title, author: book.author, identity: book.identity });
+  if (!given && book.title) await ensureProviderFacts({ id: book.id, title: book.title, author: book.author, identity: book.identity }, undefined, { force: true });
   const facts = given ?? providerFactsFor({ id: String(book.id), title: book.title, author: book.author, identity: book.identity });
   const saved: string[] = [], skipped: string[] = [];
   let retry = false;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ensureProviderFacts, forgetProviderLookupsForTests, missingProviders } from './providerLookup';
+import { ensureProviderFacts, forgetProviderLookupsForTests, lookupBudgetLeft, LOOKUP_BOOKS_PER_PAGE_LOAD, missingProviders } from './providerLookup';
 import { forgetProviderFactsForTests, rememberProviderFacts } from './providerFacts';
 
 const deps = (log: string[], failOn = '') => ({
@@ -34,4 +34,15 @@ test('a provider that already has facts is not asked again; one that fails does 
 test('a book without a title is never looked up', async () => {
   forgetProviderLookupsForTests();
   assert.deepEqual(await ensureProviderFacts({ title: '  ' }, deps([])), []);
+});
+
+test('background look-ups stop after the page-load budget; Save to catalog on one book is never refused for it', async () => {
+  forgetProviderLookupsForTests(); forgetProviderFactsForTests();
+  for (let i = 0; i < LOOKUP_BOOKS_PER_PAGE_LOAD; i++) await ensureProviderFacts({ id: `b${i}`, title: `Book ${i}`, author: 'A' }, deps([]));
+  assert.equal(lookupBudgetLeft(), false);
+  const log: string[] = [];
+  assert.deepEqual(await ensureProviderFacts({ id: 'late', title: 'One more', author: 'A' }, deps(log)), [], 'background: budget used up');
+  assert.deepEqual(log, []);
+  assert.equal((await ensureProviderFacts({ id: 'late', title: 'One more', author: 'A' }, deps(log), { force: true })).length, 4, 'owner pressed Save to catalog');
+  forgetProviderLookupsForTests();
 });

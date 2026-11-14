@@ -27,7 +27,11 @@ let enabled = true;
 export const setProviderLookups = (on: boolean) => { enabled = on; };
 export const providerLookupsOn = () => enabled;
 const asked = new Set<string>();
-export const forgetProviderLookupsForTests = () => asked.clear();
+/** Owner go 2026-11-10 ("small, no bulk fetching"): background capture looks up at most this many books per page load; the next page load continues with the next books. */
+export const LOOKUP_BOOKS_PER_PAGE_LOAD = 15;
+let used = 0;
+export const lookupBudgetLeft = () => used < LOOKUP_BOOKS_PER_PAGE_LOAD;
+export const forgetProviderLookupsForTests = () => { asked.clear(); used = 0; };
 
 /** Which providers the app has no remembered facts for yet. */
 export function missingProviders(book: LookupBook): FactProvider[] {
@@ -36,10 +40,12 @@ export function missingProviders(book: LookupBook): FactProvider[] {
 }
 
 /** Asks each missing provider once (in order, never in parallel); returns the providers that were asked. */
-export async function ensureProviderFacts(book: LookupBook, deps: LookupDeps = live): Promise<FactProvider[]> {
+/** `force`: the owner pressed Save to catalog for this very book, so the page-load budget does not apply. */
+export async function ensureProviderFacts(book: LookupBook, deps: LookupDeps = live, opts: { force?: boolean } = {}): Promise<FactProvider[]> {
   const key = `${(book.title || '').toLowerCase().trim()}|${(book.author || '').toLowerCase().trim()}`;
-  if (!enabled || !book.title?.trim() || asked.has(key)) return [];
+  if (!enabled || !book.title?.trim() || asked.has(key) || (!opts.force && !lookupBudgetLeft())) return [];
   asked.add(key);
+  if (!opts.force) used++;
   const author = book.author && !/^unknown/i.test(book.author) ? book.author : '';
   const isbn = book.identity?.isbn13 || book.identity?.isbn10;
   const out: FactProvider[] = [];
