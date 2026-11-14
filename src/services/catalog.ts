@@ -6,7 +6,7 @@
  */
 import { textSourceOf } from './books/textSource';
 import { ensureProviderFacts } from './books/providerLookup';
-import { saveTermCandidates } from './catalogTerms';
+import { saveTermCandidates, saveLabelRows } from './catalogTerms';
 import { saveProviderCandidates } from './catalogProviderCandidates';
 import { RATING_SOURCE } from './books/providers';
 import { applyCatalog, catalogCopy, getCatalogWork, pruneCatalog, type CatalogWork } from './books/catalogCovers';
@@ -365,6 +365,10 @@ export async function saveFactsToCatalog(workId: string, book: Pick<Book, 'id' |
   const tc = await saveTermCandidates(workId, facts, [book.genre, ...c.genres].filter(Boolean) as string[], receipts.ids);
   skipped.push(...tc.skipped); if (tc.retry) retry = true;
   if (tc.kept) saved.push(`term candidates (${tc.kept})`);
+  // ...and every label as its own row (catalog_work_labels), mapped or not
+  const lc = await saveLabelRows(workId, facts, receipts.ids);
+  skipped.push(...lc.skipped); if (lc.retry) retry = true;
+  if (lc.kept) saved.push(`provider labels (${lc.kept})`);
 
   // 3) edition details (D7 step 6), only for the edition a provider's own id points at: Google's volume id gives publisher, exact date, pages and language;
   //    an Open Library edition id gives its language. Fill-only (planEditionFill): an empty field is filled, a different filled value stays and both are kept as candidates.

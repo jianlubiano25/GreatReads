@@ -7,7 +7,7 @@
 import { rest } from './supabase';
 import type { ProviderFacts } from './books/providerFacts';
 
-export interface TermRow { id: string; kind: string; name: string; slug: string }
+export interface TermRow { id: string; kind: string; name: string; slug: string; status?: string }
 export interface AliasRow { source: string; label_norm: string; term_id: string; requires_genre: string | null; implies_genre: string | null }
 export interface Vocab { terms: TermRow[]; aliases: AliasRow[] }
 export interface TermCandidate { term_id: string; source: ProviderFacts['provider']; raw_label: string }
@@ -69,4 +69,38 @@ export async function saveTermCandidates(workId: string, facts: ProviderFacts[],
     }
   }
   return { kept, skipped, retry };
+}
+
+export interface LabelRow { work_id: string; source: string; label: string; label_norm: string; label_kind: 'genre' | 'subject' | 'tag'; term_id: string | null; status: 'candidate'; provider_record_id?: string }
+
+/** One row per work + provider + label for EVERY label the providers gave (mapped to a term or not), so nothing a provider said is lost (pure). */
+export function labelRowsFor(workId: string, facts: readonly ProviderFacts[], vocab: Vocab | null, receiptIds: Map<string, string>): LabelRow[] {
+  const out = new Map<string, LabelRow>();
+  for (const f of facts) {
+    const receipt = receiptIds.get(`${f.provider}:${f.recordId}`);
+    const add = (raw: string, kind: LabelRow['label_kind']) => {
+      for (const part of [raw]) {
+        const label = part.replace(/\s+/g, ' ').trim().slice(0, 120); const n = norm(label);
+        if (!n) continue;
+        const key = `${f.provider}|${n}`;
+        if (out.has(key)) continue;
+        const term = vocab?.terms.find(t => t.status !== 'inactive' && KINDS.has(t.kind) && norm(t.name) === n);
+        out.set(key, { work_id: workId, source: f.provider, label, label_norm: n, label_kind: kind, term_id: term?.id ?? null, status: 'candidate', ...(receipt ? { provider_record_id: receipt } : {}) });
+      }
+    };
+    for (const g of f.genres || []) add(g, 'genre');
+    for (const s of f.subjects || []) add(s, 'subject');
+  }
+  return [...out.values()];
+}
+
+/** Keep every label (fill-only: a label already stored for this work + provider is left as it is). */
+export async function saveLabelRows(workId: string, facts: ProviderFacts[], receiptIds: Map<string, string>): Promise<{ kept: number; skipped: string[]; retry: boolean }> {
+  vocabMemo ??= loadVocab();
+  const vocab = await vocabMemo; if (!vocab) vocabMemo = undefined; // labels are still saved, just without their term
+  const rows = labelRowsFor(workId, facts, vocab, receiptIds);
+  if (!rows.length) return { kept: 0, skipped: [], retry: false };
+  const r = await rest('catalog_work_labels?on_conflict=work_id,source,label_norm', { method: 'POST', body: rows, prefer: 'resolution=ignore-duplicates,return=minimal' });
+  if (r.ok) return { kept: rows.length, skipped: [], retry: false };
+  return { kept: 0, skipped: [`labels: ${r.error}`], retry: r.status === 0 || r.status === 429 || r.status >= 500 };
 }

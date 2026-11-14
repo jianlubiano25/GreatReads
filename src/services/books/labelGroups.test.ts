@@ -30,3 +30,14 @@ test('without the vocabulary every label still shows, as tags; nothing is repeat
 });
 
 test('no labels, no sections', () => { assert.deepEqual(labelGroups([], [], vocab), []); });
+
+import { labelRowsFor } from '../catalogTerms';
+test('every provider label becomes one row, mapped ones carry their term, repeats are dropped', () => {
+  const rows = labelRowsFor('w1', [f('google', ['Science Fiction', 'Desert planets', 'science  fiction'], ['Space']), f('hardcover', ['Epic'])], vocab, new Map([['google:1', 'r1']]));
+  assert.equal(rows.length, 4);
+  assert.equal(rows.find(r => r.label === 'Science Fiction')!.term_id, 'g1');
+  assert.equal(rows.find(r => r.label === 'Space')!.label_kind, 'subject');
+  assert.equal(rows.find(r => r.label === 'Desert planets')!.term_id, null);
+  assert.equal(rows.find(r => r.label === 'Epic')!.provider_record_id, undefined);
+  assert.equal(rows.find(r => r.label === 'Space')!.provider_record_id, 'r1');
+});
