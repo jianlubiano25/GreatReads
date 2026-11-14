@@ -103,3 +103,22 @@ test('op=author: asks Hardcover\'s Author search and returns bio, link and books
   assert.deepEqual([body.authors[0].booksCount, body.authors[0].bornYear], [120, 1920]);
   assert.equal(body.authors[1].bio, 'x'.repeat(50), 'description is used when there is no bio');
 });
+
+test('op=author: when the search hit has no bio, the author record is read by id (plain _eq); a refusal keeps the authors and says why', async () => {
+  const hits = { data: { search: { results: { hits: [{ document: { id: 171873, slug: 'frank-herbert', name: 'Frank Herbert', books_count: 179 } }] } } } };
+  const calls: any[] = [];
+  const answers: { status: number; body: any }[] = [{ status: 200, body: hits }, { status: 200, body: { data: { authors: [{ id: 171873, name: 'Frank Herbert', bio: 'Frank Herbert (1920-1986) was an American science fiction author, best known for Dune.' }] } } }];
+  const realFetch = globalThis.fetch;
+  (globalThis as any).fetch = async (u: string, init: any) => { calls.push(JSON.parse(init.body)); const a = answers.shift()!; return new Response(JSON.stringify(a.body), { status: a.status }); };
+  try {
+    const body: any = await (await call('/api/hardcover?op=author&q=bio-by-id-test', { HARDCOVER_TOKEN: 't' })).json();
+    assert.match(body.authors[0].bio, /best known for Dune/);
+    assert.match(calls[1].query, /_eq/);
+    assert.ok(!/_ilike|_like/.test(calls[1].query));
+    assert.deepEqual(calls[1].variables, { id: 171873 });
+    answers.push({ status: 200, body: hits }, { status: 200, body: { errors: [{ message: "field 'bio' not found in type: 'authors'" }] } });
+    const bad: any = await (await call('/api/hardcover?op=author&q=bio-refused-test', { HARDCOVER_TOKEN: 't' })).json();
+    assert.equal(bad.authors[0].name, 'Frank Herbert');
+    assert.match(bad.bioError, /bio/);
+  } finally { (globalThis as any).fetch = realFetch; }
+});

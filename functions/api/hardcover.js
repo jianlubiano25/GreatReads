@@ -15,6 +15,10 @@ const QUERY = `query Search($q: String!, $type: String!, $per: Int!) {
   }
 }`;
 
+const AUTHOR_QUERY = `query AuthorBio($id: Int!) {
+  authors(where: { id: { _eq: $id } }, limit: 1) { id name bio }
+}`;
+
 const clean = s => String(s || '').replace(/[\u0000-\u001f%_\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
 const norm = s => clean(s).toLowerCase().replace(/[^a-z0-9 ]/g, '');
 
@@ -136,7 +140,19 @@ export async function onRequestGet({ request, env }) {
   const hits = Array.isArray(results?.hits) ? results.hits : [];
   if (op === 'author') {
     const authors = hits.map(h => shapeAuthor(h?.document || h)).filter(a => a.name);
+    // The Author search carries no biography (checked live 2026-11-11), so the top hit's bio is read from its author record by id: a plain `_eq` filter (the blocked operators are the text-match ones).
+    // The field name `bio` is not confirmed; when Hardcover refuses it, the answer still carries the authors and a short `bioError` that says why.
     const out = { authors };
+    if (authors[0]?.id && !authors[0].bio) {
+      try {
+        const r2 = await fetch(ENDPOINT, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, 'user-agent': 'GreatReads/1.0 (book discovery app)' }, body: JSON.stringify({ query: AUTHOR_QUERY, variables: { id: Number(authors[0].id) } }), signal: AbortSignal.timeout(6000) });
+        const d2 = await r2.json().catch(() => null);
+        const row = d2?.data?.authors?.[0];
+        if (typeof row?.bio === 'string' && row.bio.trim()) authors[0].bio = fixMojibake(row.bio).slice(0, 2000);
+        else if (d2?.errors?.length) out.bioError = String(d2.errors[0]?.message || '').slice(0, 200);
+        else if (!r2.ok) out.bioError = `status ${r2.status}`;
+      } catch (e) { out.bioError = String(e?.message || e).slice(0, 120); }
+    }
     const r = json(out, 200, 'public, max-age=3600');
     if (cache && authors.length) { try { await cache.put(key, new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=86400' } })); } catch {} }
     return r;
