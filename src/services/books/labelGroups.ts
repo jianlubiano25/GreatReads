@@ -5,6 +5,7 @@
  */
 import type { ProviderFacts } from './providerFacts';
 import { mapLabelsToTerms, type Vocab } from '../catalogTerms';
+import { awardFromLabel } from './awardLabels';
 
 export type LabelGroupName = 'Genres' | 'Subgenres' | 'Subjects & themes' | 'Collections' | 'Keywords & tags';
 export interface LabelChip { label: string; sources: string[] }
@@ -13,6 +14,17 @@ export interface LabelGroup { name: LabelGroupName; chips: LabelChip[] }
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
 const KIND_GROUP: Record<string, LabelGroupName> = { genre: 'Genres', subgenre: 'Subgenres', subject: 'Subjects & themes', collection: 'Collections' };
 const ORDER: LabelGroupName[] = ['Genres', 'Subgenres', 'Subjects & themes', 'Collections', 'Keywords & tags'];
+
+/** The awards the providers name ("Hugo Award winner" -> Hugo Award), once each, with who said it. They are shown under Awards & honors, never as tags. */
+export function providerAwards(facts: readonly ProviderFacts[]): LabelChip[] {
+  const out = new Map<string, LabelChip>();
+  for (const f of facts) for (const raw of [...(f.genres || []), ...(f.subjects || [])]) {
+    const a = awardFromLabel(raw); if (!a) continue;
+    const key = `${a.slug}|${a.year || ""}`; const chip = out.get(key) || { label: a.year ? `${a.name} ${a.year}` : a.name, sources: [] };
+    if (!chip.sources.includes(f.provider)) chip.sources.push(f.provider); out.set(key, chip);
+  }
+  return [...out.values()];
+}
 
 export function labelGroups(workGenres: readonly string[], facts: readonly ProviderFacts[], vocab: Vocab | null): LabelGroup[] {
   const groups = new Map<LabelGroupName, Map<string, LabelChip>>(ORDER.map(n => [n, new Map()]));
@@ -25,7 +37,8 @@ export function labelGroups(workGenres: readonly string[], facts: readonly Provi
   for (const g of workGenres) put('Genres', g, 'app');
   const placed = new Set<string>(); // `provider|label` already put under a term
   for (const f of facts) {
-    const labels = [...(f.genres || []), ...(f.subjects || [])];
+    const isAward = (x: string) => !!awardFromLabel(x);
+    const labels = [...(f.genres || []), ...(f.subjects || [])].filter(x => !isAward(x));
     if (vocab) {
       for (const c of mapLabelsToTerms(f.provider, labels, workGenres, vocab)) {
         const term = vocab.terms.find(t => t.id === c.term_id);
@@ -35,8 +48,8 @@ export function labelGroups(workGenres: readonly string[], facts: readonly Provi
       }
     }
     // Everything else the provider said stays visible, as its own words
-    for (const raw of f.genres || []) if (!placed.has(`${f.provider}|${norm(raw)}`)) put('Keywords & tags', raw, f.provider);
-    for (const raw of f.subjects || []) if (!placed.has(`${f.provider}|${norm(raw)}`)) put('Keywords & tags', raw, f.provider);
+    for (const raw of (f.genres || []).filter(x => !isAward(x))) if (!placed.has(`${f.provider}|${norm(raw)}`)) put('Keywords & tags', raw, f.provider);
+    for (const raw of (f.subjects || []).filter(x => !isAward(x))) if (!placed.has(`${f.provider}|${norm(raw)}`)) put('Keywords & tags', raw, f.provider);
   }
   // A label already shown as a Genre/Sub-genre/Subject is not repeated under Tags
   const taken = new Set<string>(); for (const n of ['Genres', 'Subgenres', 'Subjects & themes', 'Collections'] as LabelGroupName[]) for (const k of groups.get(n)!.keys()) taken.add(k);

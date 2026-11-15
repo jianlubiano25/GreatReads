@@ -50,3 +50,13 @@ test('library headings split at commas: "Fiction, fantasy, epic" gives Fantasy a
   assert.ok(by['Genres'].includes('Fantasy'));
   assert.deepEqual(by['Subgenres'], ['Epic fantasy']);
 });
+
+import { providerAwards } from './labelGroups';
+test('award labels go to Awards & honors, once, and never show as tags', () => {
+  const facts = [f('openlibrary', ['Hugo Award winner'], ['award:hugo_award=1966', 'Space']), f('hardcover', ['Hugo Award'])];
+  const a = providerAwards(facts);
+  assert.deepEqual(a.map(c => c.label).sort(), ['Hugo Award', 'Hugo Award 1966']);
+  assert.deepEqual(a.find(c => c.label === 'Hugo Award')!.sources.sort(), ['hardcover', 'openlibrary']);
+  const g = labelGroups([], facts, vocab);
+  assert.ok(!g.some(x => x.chips.some(c => /hugo/i.test(c.label))));
+});

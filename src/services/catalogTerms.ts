@@ -6,6 +6,7 @@
  */
 import { rest } from './supabase';
 import type { ProviderFacts } from './books/providerFacts';
+import { awardFromLabel } from './books/awardLabels';
 
 export interface TermRow { id: string; kind: string; name: string; slug: string; status?: string }
 export interface AliasRow { source: string; label_norm: string; term_id: string; requires_genre: string | null; implies_genre: string | null }
@@ -103,4 +104,28 @@ export async function saveLabelRows(workId: string, facts: ProviderFacts[], rece
   const r = await rest('catalog_work_labels?on_conflict=work_id,source,label_norm', { method: 'POST', body: rows, prefer: 'resolution=ignore-duplicates,return=minimal' });
   if (r.ok) return { kept: rows.length, skipped: [], retry: false };
   return { kept: 0, skipped: [`labels: ${r.error}`], retry: r.status === 0 || r.status === 429 || r.status >= 500 };
+}
+
+/** Award labels from the providers ("Hugo Award winner") as named awards + unpublished candidate rows for the work (catalog_awards, catalog_work_awards). Fill-only. */
+export async function saveAwardRows(workId: string, facts: ProviderFacts[], receiptIds: Map<string, string>): Promise<{ kept: number; skipped: string[]; retry: boolean }> {
+  const found = new Map<string, { name: string; slug: string; year: number | null; result: string; source: string; receipt?: string }>();
+  for (const f of facts) for (const raw of [...(f.genres || []), ...(f.subjects || [])]) {
+    const a = awardFromLabel(raw); if (!a) continue;
+    found.set(`${a.slug}|${a.year || 0}|${f.provider}`, { ...a, source: f.provider, receipt: receiptIds.get(`${f.provider}:${f.recordId}`) });
+  }
+  if (!found.size) return { kept: 0, skipped: [], retry: false };
+  const retryOf = (r: { ok: false; status: number }) => r.status === 0 || r.status === 429 || r.status >= 500;
+  const awards = [...new Map([...found.values()].map(a => [a.slug, { name: a.name, slug: a.slug }])).values()];
+  const up = await rest('catalog_awards?on_conflict=slug', { method: 'POST', body: awards, prefer: 'resolution=ignore-duplicates,return=minimal' });
+  if (!up.ok) return { kept: 0, skipped: [`awards: ${up.error}`], retry: retryOf(up) };
+  const ids = await rest<{ id: string; slug: string }[]>(`catalog_awards?select=id,slug&slug=in.(${awards.map(a => a.slug).join(',')})`);
+  if (!ids.ok) return { kept: 0, skipped: [`awards: ${ids.error}`], retry: retryOf(ids) };
+  const idOf = new Map(ids.data.map(a => [a.slug, a.id]));
+  const rows = [...found.values()].filter(a => idOf.has(a.slug)).map(a => ({ work_id: workId, award_id: idOf.get(a.slug), award_year: a.year, result: a.result, source: a.source, status: 'candidate', raw_label: a.name.slice(0, 120), ...(a.receipt ? { provider_record_id: a.receipt } : {}) }));
+  let kept = 0; const skipped: string[] = []; let retry = false;
+  for (const row of rows) { // one by one: the unique key is an expression index, so a duplicate answers 409 and is simply already there
+    const r = await rest('catalog_work_awards', { method: 'POST', body: row });
+    if (r.ok) kept++; else if (r.status !== 409) { skipped.push(`awards: ${r.error}`); if (retryOf(r)) retry = true; }
+  }
+  return { kept, skipped, retry };
 }

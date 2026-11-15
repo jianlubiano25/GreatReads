@@ -17,8 +17,9 @@ import { X, BookOpen, Star, Award, ChevronDown, Check, Bookmark, Image as ImageI
 import { displayGenre } from '../services/books/catalogFill';
 import { ensureBookInfo, resetInfoWaits, type InfoField } from '../services/books/infoStore';
 import { providerFactsFor } from '../services/books/providerFacts';
-import { labelGroups } from '../services/books/labelGroups';
+import { labelGroups, providerAwards } from '../services/books/labelGroups';
 import { ChipGroup, GroupTitle, TONE } from './LabelChips';
+import { PROVIDER_LABEL, isProvider } from '../services/books/providers';
 import { getVocab, type Vocab } from '../services/catalogTerms';
 import { coverBackdrop } from '../services/books/placeholderCover';
 
@@ -147,6 +148,11 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
     // hcRating changes when Hardcover's facts arrive
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [book.id, book.title, book.author, book.genre, vocab, hcRating],
+  );
+  const providerAwardChips = useMemo(
+    () => providerAwards(providerFactsFor({ ...book, id: String(book.id) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [book.id, book.title, book.author, hcRating],
   );
   const classGroups = labelSets.filter(g => g.name !== 'Keywords & tags');
   const tagGroup = labelSets.find(g => g.name === 'Keywords & tags');
@@ -370,18 +376,24 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
         </div>
 
         {/* BOOK CLASSIFICATION (before About the Author): genres, subgenres, subjects & themes, collections, awards & honors */}
-        {(classGroups.length > 0 || (awards && awards.length > 0)) && (
+        {(classGroups.length > 0 || (awards && awards.length > 0) || providerAwardChips.length > 0) && (
           <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25]" data-testid="book-classification">
             <h4 className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] mb-3">Book classification</h4>
             {classGroups.map(g => <ChipGroup key={g.name} group={g} />)}
-            {awards && awards.length > 0 && (
+            {((awards && awards.length > 0) || providerAwardChips.length > 0) && (
               <div className="mb-2 last:mb-0">
                 <GroupTitle icon={Award} title="Awards &amp; honors" tone="gold" />
                 <div className="flex flex-wrap gap-2">
-                  {awards.map((aw, idx) => (
+                  {(awards || []).map((aw, idx) => (
                     <span key={idx} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${TONE.gold}`}>
                       <span>{aw.type === 'w' ? '🏆' : aw.type === 'c' ? '📖' : '🎖️'}</span>
                       <span>{aw.label}</span>
+                    </span>
+                  ))}
+                  {providerAwardChips.filter(c => !(awards || []).some(aw => aw.label.toLowerCase().includes(c.label.toLowerCase()))).map(c => (
+                    <span key={c.label} title={c.sources.map(x => (isProvider(x) ? PROVIDER_LABEL[x] : 'Your library')).join(', ')} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${TONE.gold}`}>
+                      <span>🏆</span>
+                      <span>{c.label}</span>
                     </span>
                   ))}
                 </div>

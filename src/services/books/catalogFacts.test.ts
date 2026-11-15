@@ -119,7 +119,7 @@ test('safety: the fill step never deletes, never touches personal tables, never 
   const calls = fake([{ id: 'w1', genres: [], honors: [] }], [ed()]);
   await saveFactsToCatalog('w1', { ...base, genre: 'Prize winner', awardLabel: 'Booker 2025' }, [gFacts()]);
   assert.ok(calls.every(c => c.method !== 'DELETE'));
-  assert.ok(calls.every(c => /^catalog_(works|editions|metadata_candidates|provider_records|terms|term_aliases|work_terms|work_labels|content_versions|cover_candidates)$/.test(c.table)), 'no user_* or rpc calls');
+  assert.ok(calls.every(c => /^catalog_(works|editions|metadata_candidates|provider_records|terms|term_aliases|work_terms|work_labels|awards|work_awards|content_versions|cover_candidates)$/.test(c.table)), 'no user_* or rpc calls');
   assert.ok(calls.filter(c => c.table === 'catalog_work_terms' && c.method === 'POST').every(c => c.body.status === 'candidate'), 'a term from a provider is only ever a candidate');
   assert.ok(calls.filter(c => c.table === 'catalog_work_labels' && c.method === 'POST').every(c => (Array.isArray(c.body) ? c.body : [c.body]).every((r: any) => r.status === 'candidate')), 'a provider label is only ever a candidate');
   assert.ok(calls.filter(c => ['catalog_terms', 'catalog_term_aliases'].includes(c.table)).every(c => c.method === 'GET' || !c.method), 'the vocabulary is only read here');
