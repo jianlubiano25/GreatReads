@@ -8,7 +8,8 @@ import { mapLabelsToTerms, type Vocab } from '../catalogTerms';
 import { awardFromLabel } from './awardLabels';
 
 export type LabelGroupName = 'Genres' | 'Subgenres' | 'Subjects & themes' | 'Collections' | 'Keywords & tags';
-export interface LabelChip { label: string; sources: string[] }
+/** `published`: readers see it (the book's own genre, or an approved row in the catalog). Everything else the providers suggested is a candidate only the owner can see. */
+export interface LabelChip { label: string; sources: string[]; published: boolean }
 export interface LabelGroup { name: LabelGroupName; chips: LabelChip[] }
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -16,30 +17,30 @@ export const KIND_GROUP: Record<string, LabelGroupName> = { genre: 'Genres', sub
 const ORDER: LabelGroupName[] = ['Genres', 'Subgenres', 'Subjects & themes', 'Collections', 'Keywords & tags'];
 
 /** The awards the providers name ("Hugo Award winner" -> Hugo Award), once each, with who said it. They are shown under Awards & honors, never as tags. */
-export function providerAwards(facts: readonly ProviderFacts[], stored: readonly { label: string; source: string }[] = []): LabelChip[] {
+export function providerAwards(facts: readonly ProviderFacts[], stored: readonly { label: string; source: string; published?: boolean }[] = []): LabelChip[] {
   const out = new Map<string, LabelChip>();
-  for (const x of stored) { const k = `s|${norm(x.label)}`; const chip = out.get(k) || { label: x.label, sources: [] }; if (!chip.sources.includes(x.source)) chip.sources.push(x.source); out.set(k, chip); }
+  for (const x of stored) { const k = `s|${norm(x.label)}`; const chip = out.get(k) || { label: x.label, sources: [], published: false }; if (x.published) chip.published = true; if (!chip.sources.includes(x.source)) chip.sources.push(x.source); out.set(k, chip); }
   for (const f of facts) for (const raw of [...(f.genres || []), ...(f.subjects || [])]) {
     const a = awardFromLabel(raw); if (!a) continue;
-    const key = `${a.slug}|${a.year || ""}`; const chip = out.get(key) || { label: a.year ? `${a.name} ${a.year}` : a.name, sources: [] };
+    const key = `${a.slug}|${a.year || ""}`; const chip = out.get(key) || { label: a.year ? `${a.name} ${a.year}` : a.name, sources: [], published: false };
     if (!chip.sources.includes(f.provider)) chip.sources.push(f.provider); out.set(key, chip);
   }
   return [...out.values()];
 }
 
 /** What the database already holds for the book (catalog_work_labels / catalog_work_terms), read by `storedClassification`. */
-export interface StoredLabel { group: LabelGroupName; label: string; source: string }
+export interface StoredLabel { group: LabelGroupName; label: string; source: string; published?: boolean }
 
 export function labelGroups(workGenres: readonly string[], facts: readonly ProviderFacts[], vocab: Vocab | null, stored: readonly StoredLabel[] = []): LabelGroup[] {
   const groups = new Map<LabelGroupName, Map<string, LabelChip>>(ORDER.map(n => [n, new Map()]));
-  const put = (g: LabelGroupName, label: string, source: string) => {
+  const put = (g: LabelGroupName, label: string, source: string, published = false) => {
     const text = label.replace(/\s+/g, ' ').trim();
     if (!text || text.length > 80) return;
     const m = groups.get(g)!; const k = norm(text);
-    const chip = m.get(k) || { label: text, sources: [] }; if (!chip.sources.includes(source)) chip.sources.push(source); m.set(k, chip);
+    const chip = m.get(k) || { label: text, sources: [], published: false }; if (published) chip.published = true; if (!chip.sources.includes(source)) chip.sources.push(source); m.set(k, chip);
   };
-  for (const g of workGenres) put('Genres', g, 'app');
-  for (const x of stored) if (!awardFromLabel(x.label)) put(x.group, x.label, x.source);
+  for (const g of workGenres) put('Genres', g, 'app', true);
+  for (const x of stored) if (!awardFromLabel(x.label)) put(x.group, x.label, x.source, !!x.published);
   const placed = new Set<string>(); // `provider|label` already put under a term
   for (const f of facts) {
     const isAward = (x: string) => !!awardFromLabel(x);
@@ -60,4 +61,15 @@ export function labelGroups(workGenres: readonly string[], facts: readonly Provi
   const taken = new Set<string>(); for (const n of ['Genres', 'Subgenres', 'Subjects & themes', 'Collections'] as LabelGroupName[]) for (const k of groups.get(n)!.keys()) taken.add(k);
   for (const k of [...groups.get('Keywords & tags')!.keys()]) if (taken.has(k)) groups.get('Keywords & tags')!.delete(k);
   return ORDER.map(name => ({ name, chips: [...groups.get(name)!.values()].slice(0, name === 'Keywords & tags' ? 24 : 12) })).filter(g => g.chips.length);
+}
+
+/** What a viewer sees: readers (and the owner by default) get only published chips; the owner can switch the rest on. `hidden` = how many chips are held back. Pure. */
+export function visibleGroups(groups: readonly LabelGroup[], showUnpublished: boolean): { groups: LabelGroup[]; hidden: number } {
+  let hidden = 0;
+  const out = groups.map(g => { const chips = showUnpublished ? g.chips : g.chips.filter(c => c.published); hidden += g.chips.length - chips.length; return { ...g, chips }; }).filter(g => g.chips.length);
+  return { groups: out, hidden };
+}
+export function visibleChips(chips: readonly LabelChip[], showUnpublished: boolean): { chips: LabelChip[]; hidden: number } {
+  const keep = showUnpublished ? [...chips] : chips.filter(c => c.published);
+  return { chips: keep, hidden: chips.length - keep.length };
 }

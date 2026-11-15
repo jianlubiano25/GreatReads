@@ -60,3 +60,15 @@ test('award labels go to Awards & honors, once, and never show as tags', () => {
   const g = labelGroups([], facts, vocab);
   assert.ok(!g.some(x => x.chips.some(c => /hugo/i.test(c.label))));
 });
+
+import { visibleGroups, visibleChips } from './labelGroups';
+test('readers see only published chips: the book\'s own genre and approved catalog rows; the providers\' suggestions are held back', () => {
+  const groups = labelGroups(['Fantasy'], [f('google', ['Fantasy', 'Dystopian'], ['Desert planets'])], vocab, [{ group: 'Subjects & themes', label: 'Space', source: 'hardcover', published: true }, { group: 'Genres', label: 'Science Fiction', source: 'openlibrary', published: false }]);
+  const seen = visibleGroups(groups, false);
+  assert.deepEqual(seen.groups.flatMap(g => g.chips.map(c => c.label)).sort(), ['Fantasy', 'Space']);
+  assert.ok(seen.hidden >= 3, 'the rest is counted');
+  const all = visibleGroups(groups, true);
+  assert.equal(all.hidden, 0);
+  assert.ok(all.groups.flatMap(g => g.chips).some(c => c.label === 'Desert planets' && !c.published));
+  assert.deepEqual(visibleChips([{ label: 'A', sources: [], published: true }, { label: 'B', sources: [], published: false }], false), { chips: [{ label: 'A', sources: [], published: true }], hidden: 1 });
+});

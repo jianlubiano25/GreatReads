@@ -17,8 +17,8 @@ import { X, BookOpen, Star, Award, ChevronDown, Check, Bookmark, Image as ImageI
 import { displayGenre } from '../services/books/catalogFill';
 import { ensureBookInfo, resetInfoWaits, type InfoField } from '../services/books/infoStore';
 import { providerFactsFor } from '../services/books/providerFacts';
-import { labelGroups, providerAwards } from '../services/books/labelGroups';
-import { ChipGroup, GroupTitle, TONE } from './LabelChips';
+import { labelGroups, providerAwards, visibleGroups, visibleChips } from '../services/books/labelGroups';
+import { ChipGroup, GroupTitle, TONE, Fold } from './LabelChips';
 import { PROVIDER_LABEL, isProvider } from '../services/books/providers';
 import { getVocab, type Vocab } from '../services/catalogTerms';
 import { coverBackdrop } from '../services/books/placeholderCover';
@@ -161,8 +161,15 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [book.id, book.title, book.author, hcRating, stored],
   );
-  const classGroups = labelSets.filter(g => g.name !== 'Keywords & tags');
-  const tagGroup = labelSets.find(g => g.name === 'Keywords & tags');
+  // Readers (and the owner by default) see only what is published; the owner can switch the providers' not-yet-published suggestions on
+  const [showDraft, setShowDraft] = useState(false);
+  const draftOn = isOwner && showDraft;
+  const awardChipsAll = providerAwardChips.filter(c => !(awards || []).some(aw => aw.label.toLowerCase().includes(c.label.toLowerCase())));
+  const shownLabels = visibleGroups(labelSets, draftOn);
+  const shownAwards = visibleChips(awardChipsAll, draftOn);
+  const unpublishedCount = labelSets.reduce((n, g) => n + g.chips.filter(c => !c.published).length, 0) + awardChipsAll.filter(c => !c.published).length;
+  const classGroups = shownLabels.groups.filter(g => g.name !== 'Keywords & tags');
+  const tagGroup = shownLabels.groups.find(g => g.name === 'Keywords & tags');
   const displayPages = propTotalPages || book.pageCount || 0;
   const shelfInfo = SHELF_LABELS[book.shelf] || { label: book.genre || 'Book', emoji: '📖', color: book.spineColor || '#2e5934' };
   // Under the genre: the curated shelf (🧠 Heal) — or where a store book came from.
@@ -383,11 +390,10 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
         </div>
 
         {/* BOOK CLASSIFICATION (before About the Author): genres, subgenres, subjects & themes, collections, awards & honors */}
-        {(classGroups.length > 0 || (awards && awards.length > 0) || providerAwardChips.length > 0) && (
-          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25]" data-testid="book-classification">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] mb-3">Book classification</h4>
+        {(classGroups.length > 0 || (awards && awards.length > 0) || shownAwards.chips.length > 0 || (isOwner && unpublishedCount > 0)) && (
+          <Fold title="Book classification" testId="book-classification">
             {classGroups.map(g => <ChipGroup key={g.name} group={g} />)}
-            {((awards && awards.length > 0) || providerAwardChips.length > 0) && (
+            {((awards && awards.length > 0) || shownAwards.chips.length > 0) && (
               <div className="mb-2 last:mb-0">
                 <GroupTitle icon={Award} title="Awards &amp; honors" tone="gold" />
                 <div className="flex flex-wrap gap-2">
@@ -397,8 +403,8 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
                       <span>{aw.label}</span>
                     </span>
                   ))}
-                  {providerAwardChips.filter(c => !(awards || []).some(aw => aw.label.toLowerCase().includes(c.label.toLowerCase()))).map(c => (
-                    <span key={c.label} title={c.sources.map(x => (isProvider(x) ? PROVIDER_LABEL[x] : 'Your library')).join(', ')} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${TONE.gold}`}>
+                  {shownAwards.chips.map(c => (
+                    <span key={c.label} title={`${c.published ? '' : 'Not published yet (only you see this). '}${c.sources.map(x => (isProvider(x) ? PROVIDER_LABEL[x] : 'Your library')).join(', ')}`} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${TONE.gold} ${c.published ? '' : 'border-dashed opacity-70'}`}>
                       <span>🏆</span>
                       <span>{c.label}</span>
                     </span>
@@ -406,7 +412,12 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
                 </div>
               </div>
             )}
-          </div>
+            {isOwner && unpublishedCount > 0 && (
+              <button type="button" onClick={() => setShowDraft(v => !v)} className="mt-2 text-[11px] underline text-[#706256] dark:text-[#a89a8a]" data-testid="show-unpublished">
+                {showDraft ? 'Hide the ones not published' : `Show ${unpublishedCount} not published (only you see these)`}
+              </button>
+            )}
+          </Fold>
         )}
 
         {/* Synopsis / Description Section */}
@@ -540,9 +551,9 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
 
         {/* Keywords & tags: immediately below About the Author, then More like this */}
         {tagGroup && (
-          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25]" data-testid="book-keywords">
-            <ChipGroup group={tagGroup} />
-          </div>
+          <Fold title="Keywords &amp; tags" testId="book-keywords">
+            <ChipGroup group={tagGroup} hideTitle />
+          </Fold>
         )}
 
         {/* More books like this one sits below Keywords & tags */}

@@ -44,14 +44,15 @@ test('storedClassification reads the work\'s labels, terms and awards and groups
   (globalThis as any).fetch = async (u: string) => {
     const path = String(u).split('/rest/v1/')[1] || '';
     if (path.startsWith('catalog_works?work_key')) return new Response(JSON.stringify([{ id: 'w1', status: 'published', identifiers: {} }]), { status: 200 });
-    if (path.startsWith('catalog_work_labels')) return new Response(JSON.stringify([{ label: 'Desert planets', source: 'openlibrary', catalog_terms: null }, { label: 'Fantasy fiction', source: 'openlibrary', catalog_terms: { kind: 'genre', name: 'Fantasy' } }]), { status: 200 });
-    if (path.startsWith('catalog_work_terms')) return new Response(JSON.stringify([{ source: 'hardcover', catalog_terms: { kind: 'subgenre', name: 'Epic fantasy' } }]), { status: 200 });
-    if (path.startsWith('catalog_work_awards')) return new Response(JSON.stringify([{ award_year: 1966, source: 'openlibrary', catalog_awards: { name: 'Hugo Award' } }]), { status: 200 });
+    if (path.startsWith('catalog_work_labels')) return new Response(JSON.stringify([{ label: 'Desert planets', source: 'openlibrary', status: 'candidate', catalog_terms: null }, { label: 'Fantasy fiction', source: 'openlibrary', status: 'approved', catalog_terms: { kind: 'genre', name: 'Fantasy' } }]), { status: 200 });
+    if (path.startsWith('catalog_work_terms')) return new Response(JSON.stringify([{ source: 'hardcover', status: 'candidate', catalog_terms: { kind: 'subgenre', name: 'Epic fantasy' } }]), { status: 200 });
+    if (path.startsWith('catalog_work_awards')) return new Response(JSON.stringify([{ award_year: 1966, source: 'openlibrary', status: 'candidate', catalog_awards: { name: 'Hugo Award' } }]), { status: 200 });
     return new Response('[]', { status: 200 });
   };
   try {
     const v = await storedClassification({ title: 'Dune Test Book', author: 'Frank Herbert' });
     assert.deepEqual(v.labels.map(l => `${l.group}:${l.label}`).sort(), ['Genres:Fantasy', 'Keywords & tags:Desert planets', 'Subgenres:Epic fantasy']);
-    assert.deepEqual(v.awards, [{ label: 'Hugo Award 1966', source: 'openlibrary' }]);
+    assert.deepEqual(v.awards, [{ label: 'Hugo Award 1966', source: 'openlibrary', published: false }]);
+    assert.deepEqual(v.labels.filter(l => l.published).map(l => l.label), ['Fantasy'], 'only the approved row is published');
   } finally { (globalThis as any).fetch = realFetch; resetClassificationForTests(); }
 });

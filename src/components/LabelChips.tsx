@@ -1,5 +1,5 @@
 import React from 'react';
-import { Award, BookOpen, Layers, Lightbulb, Library, Tag } from 'lucide-react';
+import { Award, BookOpen, ChevronDown, Layers, Lightbulb, Library, Tag } from 'lucide-react';
 import type { LabelGroup, LabelGroupName } from '../services/books/labelGroups';
 import { PROVIDER_LABEL, isProvider } from '../services/books/providers';
 
@@ -32,21 +32,34 @@ export function GroupTitle({ icon: Icon, title, tone, iconColor }: { icon: React
   );
 }
 
-export function ChipGroup({ group }: { group: LabelGroup }) {
+export function ChipGroup({ group, hideTitle }: { group: LabelGroup; hideTitle?: boolean }) {
   const st = STYLE[group.name];
   const Icon = st.icon;
   return (
     <div className="mb-3 last:mb-0">
-      <GroupTitle icon={Icon} title={group.name} tone={st.tone} iconColor={st.iconColor} />
+      {!hideTitle && <GroupTitle icon={Icon} title={group.name} tone={st.tone} iconColor={st.iconColor} />}
       <div className="flex flex-wrap gap-2">
         {group.chips.map(c => (
-          <span key={c.label} title={c.sources.map(x => (isProvider(x) ? PROVIDER_LABEL[x] : 'Your library')).join(', ')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${TONE[st.tone]}`}>
+          <span key={c.label} title={`${c.published ? '' : 'Not published yet (only you see this). '}${c.sources.map(x => (isProvider(x) ? PROVIDER_LABEL[x] : 'Your library')).join(', ')}`}
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${TONE[st.tone]} ${c.published ? '' : 'border-dashed opacity-70'}`}>
             <Icon className={`w-3 h-3 ${st.iconColor}`} />
             <span>{c.label}</span>
           </span>
         ))}
       </div>
     </div>
+  );
+}
+
+/** A section the reader can fold away (native details/summary: works without script, remembers nothing). */
+export function Fold({ title, count, children, testId, defaultOpen = true }: { title: string; count?: number; children: React.ReactNode; testId?: string; defaultOpen?: boolean }) {
+  return (
+    <details open={defaultOpen} className="group px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25]" data-testid={testId}>
+      <summary className="flex items-center justify-between cursor-pointer list-none [&::-webkit-details-marker]:hidden mb-0 group-open:mb-3">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a]">{title}{count !== undefined ? ` · ${count}` : ''}</h4>
+        <ChevronDown className="w-4 h-4 text-[#706256] dark:text-[#a89a8a] transition-transform group-open:rotate-180" />
+      </summary>
+      {children}
+    </details>
   );
 }
