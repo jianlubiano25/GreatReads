@@ -41,3 +41,12 @@ test('every provider label becomes one row, mapped ones carry their term, repeat
   assert.equal(rows.find(r => r.label === 'Epic')!.provider_record_id, undefined);
   assert.equal(rows.find(r => r.label === 'Space')!.provider_record_id, 'r1');
 });
+
+test('library headings split at commas: "Fiction, fantasy, epic" gives Fantasy and, with Fantasy as context, Epic fantasy', () => {
+  const v2 = { terms: [...vocab.terms, { id: 'g2', kind: 'genre', name: 'Fantasy', slug: 'fantasy' }, { id: 's2', kind: 'subgenre', name: 'Epic fantasy', slug: 'epic-fantasy' }],
+    aliases: [{ source: 'any', label_norm: 'epic', term_id: 's2', requires_genre: 'Fantasy', implies_genre: null }] };
+  const g = labelGroups([], [f('openlibrary', ['Fiction, fantasy, epic', 'Fiction, general'])], v2);
+  const by = Object.fromEntries(g.map(x => [x.name, x.chips.map(c => c.label)]));
+  assert.ok(by['Genres'].includes('Fantasy'));
+  assert.deepEqual(by['Subgenres'], ['Epic fantasy']);
+});
