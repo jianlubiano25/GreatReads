@@ -148,3 +148,4 @@ Files: `services/store/{refresh,refreshAll,shelves,dynamic,goodreadsChoice,bests
 - 2026-11-09: D7 steps 1-3: Hardcover added as the 4th provider (migration 20261109000001 applied: two allowed-value checks only; app saves its record + rating; description text and image never stored; terms note in provider-terms.md); tests; BUILD_NUMBER 46.
 - 2026-11-09: D7 follow-up: Book Info "Ratings" now lists Hardcover beside the other sites (asked once per opened book, never blended, never the main rating); the admin rating view can store it; `/api/hardcover` now gives up after 9 s with `{error:'timeout'}` instead of hanging (owner's test URL did not load; cause still unknown, read the new error text); BUILD_NUMBER 47.
 - 2026-11-09: E1 finished: term tables (already live, file now in repo) + awards tables applied; scratch check; no app change.
+- 2026-11-16: Review catalog Terms tab (approve/reject term candidates).

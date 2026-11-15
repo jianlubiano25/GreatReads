@@ -1,6 +1,7 @@
 import { useAdminUi } from '../services/adminUi';
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { TermReview } from './TermReview';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { ensureWork, listWorks, loadCandidates, publishCandidate, rejectCandidate, setWorkStatus, storeRating, storeText, syncCatalog, type Candidate, type WorkRow } from '../services/catalog';
 import { authVersion, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
@@ -32,6 +33,7 @@ export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onCl
   const [cands, setCands] = useState<Candidate[]>([]);
   const [kind, setKind] = useState<Candidate['kind']>('cover');
   const [idx, setIdx] = useState(0);
+  const [terms, setTerms] = useState(false); // the Terms tab (genres, subgenres, subjects, collections from the providers)
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -110,20 +112,22 @@ export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onCl
             <>
               <div className="flex gap-1.5 flex-wrap" role="tablist">
                 {KINDS.map(k => (
-                  <button key={k.kind} role="tab" aria-selected={kind === k.kind} type="button" onClick={() => { setKind(k.kind); setIdx(0); }} className={`px-3 py-1 rounded-full text-xs font-semibold border ${kind === k.kind ? 'bg-[#2e5934] text-white border-[#2e5934]' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}>
+                  <button key={k.kind} role="tab" aria-selected={!terms && kind === k.kind} type="button" onClick={() => { setKind(k.kind); setIdx(0); setTerms(false); }} className={`px-3 py-1 rounded-full text-xs font-semibold border ${!terms && kind === k.kind ? 'bg-[#2e5934] text-white border-[#2e5934]' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}>
                     {k.label} ({cands.filter(c => c.kind === k.kind).length})
                   </button>
                 ))}
+                <button role="tab" aria-selected={terms} type="button" onClick={() => { setTerms(true); setMsg(null); }} className={`px-3 py-1 rounded-full text-xs font-semibold border ${terms ? 'bg-[#2e5934] text-white border-[#2e5934]' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}>Terms</button>
               </div>
-              {shown && (kind === 'book_description' || kind === 'author_bio' || kind === 'rating') && (
+              {terms && <TermReview workId={work.id} onMsg={setMsg} />}
+              {!terms && shown && (kind === 'book_description' || kind === 'author_bio' || kind === 'rating') && (
                 <button type="button" disabled={busy} className={`${btn} w-full border-[#e3d7c3] dark:border-[#382f25]`} onClick={() => void act(async () => {
                   const text = kind === 'book_description' ? shown.summary : kind === 'author_bio' ? shown.authorBio : undefined;
                   if (kind === 'rating') { let n = 0; for (const r of shown.ratings || []) if (await storeRating(work.id, r, false)) n++; return n ? { ok: true } : { ok: false, error: 'No ratings to store.' }; }
                   return (await storeText(work.id, kind, text || '')) ? { ok: true } : { ok: false, error: 'Nothing usable to store (too short or empty).' };
                 }, 'Stored as a version. Publish it below when you are happy with it.')}>Store what Book Info shows now as a version</button>
               )}
-              {!cur && <p className="text-sm text-[#706256] dark:text-[#a89a8a] py-6 text-center">No versions stored for this yet.</p>}
-              {cur && (
+              {!terms && !cur && <p className="text-sm text-[#706256] dark:text-[#a89a8a] py-6 text-center">No versions stored for this yet.</p>}
+              {!terms && cur && (
                 <div className="rounded-xl border border-[#e3d7c3] dark:border-[#382f25] p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <button type="button" aria-label="Previous version" disabled={idx <= 0} onClick={() => setIdx(i => i - 1)} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 disabled:opacity-30"><ChevronLeft className="w-5 h-5" /></button>
@@ -145,7 +149,7 @@ export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onCl
                 </div>
               )}
               <div className="flex items-center justify-between text-[11px]">
-                <button type="button" className="underline text-[#706256] dark:text-[#a89a8a]" onClick={() => { setWork(null); setWorks(null); setCands([]); setMsg(null); }}>All books</button>
+                <button type="button" className="underline text-[#706256] dark:text-[#a89a8a]" onClick={() => { setWork(null); setWorks(null); setCands([]); setMsg(null); setTerms(false); }}>All books</button>
                 <button type="button" disabled={busy} className="underline text-[#706256] dark:text-[#a89a8a]" onClick={() => void act(() => setWorkStatus(work.id, work.status === 'published' ? 'draft' : 'published').then(r => { if (r.ok) setWork({ ...work, status: work.status === 'published' ? 'draft' : 'published' }); return r; }), work.status === 'published' ? 'Hidden from readers.' : 'Visible to readers.')}>
                   {work.status === 'published' ? 'Hide this book from readers' : 'Publish this book'}
                 </button>
