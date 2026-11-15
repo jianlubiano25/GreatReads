@@ -4,7 +4,8 @@ import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { TermReview } from './TermReview';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { ensureWork, listWorks, loadCandidates, publishCandidate, rejectCandidate, setWorkStatus, storeRating, storeText, syncCatalog, type Candidate, type WorkRow } from '../services/catalog';
-import { authVersion, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
+import { authVersion, checkAdmin, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
+import { isCoverAdminOn } from '../services/books';
 import type { SourceRating } from '../services/books';
 
 /**
@@ -27,6 +28,13 @@ export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onCl
   useModalA11y(onClose);
   useSyncExternalStore(subscribeAuth, authVersion, authVersion);
   const owner = useAdminUi();
+  // Why the owner tools are not on, said exactly: not signed in / developer mode off / access not confirmed yet (asked again here) / not on the admin list
+  const signedIn = !!currentUser();
+  const adminState = isAdminKnown();
+  const devOn = isCoverAdminOn();
+  const [checking, setChecking] = useState(false);
+  const recheck = () => { setChecking(true); void checkAdmin().finally(() => setChecking(false)); };
+  useEffect(() => { if (signedIn && adminState !== true) recheck(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [signedIn]);
   const [q, setQ] = useState('');
   const [works, setWorks] = useState<WorkRow[] | null>(null);
   const [work, setWork] = useState<WorkRow | null>(null);
@@ -89,7 +97,20 @@ export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onCl
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 space-y-3">
-          {!owner && <p className="text-sm text-[#706256] dark:text-[#a89a8a] py-4">Sign in as the owner first: Profile → Account.</p>}
+          {!owner && (
+            <div className="text-sm text-[#706256] dark:text-[#a89a8a] py-4 space-y-2">
+              {!signedIn ? <p>Sign in as the owner first: Profile → Account.</p>
+                : checking ? <p>Checking your owner access…</p>
+                : adminState !== true ? (
+                  <>
+                    <p>{adminState === false ? 'This account is not on the admin list.' : 'Could not confirm your owner access (the check did not get an answer).'}</p>
+                    <button type="button" className={`${btn} border-[#e3d7c3] dark:border-[#382f25]`} onClick={recheck}>Check again</button>
+                  </>
+                )
+                : !devOn ? <p>Developer mode is off. Tap your name five times quickly to switch the owner tools on.</p>
+                : <p>Opening…</p>}
+            </div>
+          )}
           {!work && owner && !book && (
             <>
               <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search title or author" aria-label="Search the catalog" className="w-full px-3 py-2 rounded-xl text-sm bg-white dark:bg-[#1a1511] border border-[#e3d7c3] dark:border-[#382f25]" />

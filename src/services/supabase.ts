@@ -295,7 +295,8 @@ export function subscribeLibraryRealtime(userId: string, onChange: (table: strin
 export async function checkAdmin(): Promise<boolean> {
   if (!currentUser()) { admin = false; return false; }
   const r = await rpc<boolean>('catalog_is_admin');
-  admin = r.ok && r.data === true;
+  // Only the database saying "no" means not an admin. A failed or slow check (offline, a token being renewed) is "not known yet", so it is asked again, never remembered as "no".
+  admin = r.ok ? r.data === true : undefined;
   emit();
-  return admin;
+  return admin === true;
 }
