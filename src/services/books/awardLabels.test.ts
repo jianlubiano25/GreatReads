@@ -36,3 +36,22 @@ test('saveAwardRows keeps each award once as a candidate row with its provider',
     assert.ok(posts.every(p => p.body.status === 'candidate' && p.body.source === 'openlibrary' && p.body.provider_record_id === 'rec1'));
   } finally { (globalThis as any).fetch = realFetch; }
 });
+
+import { storedClassification, resetClassificationForTests } from '../catalog';
+test('storedClassification reads the work\'s labels, terms and awards and groups them by term kind', async () => {
+  resetClassificationForTests();
+  const realFetch = globalThis.fetch;
+  (globalThis as any).fetch = async (u: string) => {
+    const path = String(u).split('/rest/v1/')[1] || '';
+    if (path.startsWith('catalog_works?work_key')) return new Response(JSON.stringify([{ id: 'w1', status: 'published', identifiers: {} }]), { status: 200 });
+    if (path.startsWith('catalog_work_labels')) return new Response(JSON.stringify([{ label: 'Desert planets', source: 'openlibrary', catalog_terms: null }, { label: 'Fantasy fiction', source: 'openlibrary', catalog_terms: { kind: 'genre', name: 'Fantasy' } }]), { status: 200 });
+    if (path.startsWith('catalog_work_terms')) return new Response(JSON.stringify([{ source: 'hardcover', catalog_terms: { kind: 'subgenre', name: 'Epic fantasy' } }]), { status: 200 });
+    if (path.startsWith('catalog_work_awards')) return new Response(JSON.stringify([{ award_year: 1966, source: 'openlibrary', catalog_awards: { name: 'Hugo Award' } }]), { status: 200 });
+    return new Response('[]', { status: 200 });
+  };
+  try {
+    const v = await storedClassification({ title: 'Dune Test Book', author: 'Frank Herbert' });
+    assert.deepEqual(v.labels.map(l => `${l.group}:${l.label}`).sort(), ['Genres:Fantasy', 'Keywords & tags:Desert planets', 'Subgenres:Epic fantasy']);
+    assert.deepEqual(v.awards, [{ label: 'Hugo Award 1966', source: 'openlibrary' }]);
+  } finally { (globalThis as any).fetch = realFetch; resetClassificationForTests(); }
+});

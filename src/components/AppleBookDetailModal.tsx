@@ -7,7 +7,7 @@ import type { HistoryPatch } from '../services/bookHistory';
 import { RateThisBook, YourReading } from './BookJourney';
 import { DIFFICULTY_LABELS, SHELF_LABELS } from '../data/defaultBooks';
 import { useBookInfo } from '../hooks/useBookInfo';
-import { saveBookToCatalog } from '../services/catalog';
+import { saveBookToCatalog, storedClassification, type StoredClassification } from '../services/catalog';
 import { CatalogReviewModal } from './CatalogReviewModal';
 import { authVersion, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
 import { hardcoverRating } from '../services/books/sources/hardcover';
@@ -143,16 +143,23 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   // Genre, sub-genre, subjects and tags: every label the providers gave this book (on this device), grouped by what the vocabulary says each one is
   const [vocab, setVocab] = useState<Vocab | null>(null);
   useEffect(() => { let live = true; void getVocab().then(v => { if (live) setVocab(v); }).catch(() => {}); return () => { live = false; }; }, []);
+  // ...and what the catalog already holds for this book (read from the database; the owner sees candidates, everyone else only approved ones)
+  const [stored, setStored] = useState<StoredClassification | null>(null);
+  useEffect(() => {
+    let live = true; setStored(null);
+    if (book.title) void storedClassification({ title: book.title, author: book.author, identity: book.identity }).then(v => { if (live) setStored(v); }).catch(() => {});
+    return () => { live = false; };
+  }, [book.title, book.author]);
   const labelSets = useMemo(
-    () => labelGroups(book.genre && book.genre !== 'N/A' ? [displayGenre(book.genre) || book.genre] : [], providerFactsFor({ ...book, id: String(book.id) }), vocab),
+    () => labelGroups(book.genre && book.genre !== 'N/A' ? [displayGenre(book.genre) || book.genre] : [], providerFactsFor({ ...book, id: String(book.id) }), vocab, stored?.labels),
     // hcRating changes when Hardcover's facts arrive
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [book.id, book.title, book.author, book.genre, vocab, hcRating],
+    [book.id, book.title, book.author, book.genre, vocab, hcRating, stored],
   );
   const providerAwardChips = useMemo(
-    () => providerAwards(providerFactsFor({ ...book, id: String(book.id) })),
+    () => providerAwards(providerFactsFor({ ...book, id: String(book.id) }), stored?.awards),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [book.id, book.title, book.author, hcRating],
+    [book.id, book.title, book.author, hcRating, stored],
   );
   const classGroups = labelSets.filter(g => g.name !== 'Keywords & tags');
   const tagGroup = labelSets.find(g => g.name === 'Keywords & tags');

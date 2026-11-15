@@ -7,6 +7,7 @@
 import { textSourceOf } from './books/textSource';
 import { ensureProviderFacts } from './books/providerLookup';
 import { saveTermCandidates, saveLabelRows, saveAwardRows } from './catalogTerms';
+import { KIND_GROUP, type StoredLabel } from './books/labelGroups';
 import { saveProviderCandidates } from './catalogProviderCandidates';
 import { RATING_SOURCE } from './books/providers';
 import { applyCatalog, catalogCopy, getCatalogWork, pruneCatalog, type CatalogWork } from './books/catalogCovers';
@@ -479,3 +480,29 @@ export async function rejectedCovers(book: { title: string; author?: string }): 
   const r = await rest<{ image_url: string }[]>(`catalog_cover_candidates?work_id=eq.${w.id}&status=eq.rejected&select=image_url`);
   return r.ok ? r.data.map(x => x.image_url) : [];
 }
+
+/** What the catalog already holds about the book's classification (labels, vocabulary terms, awards), for Book Information. Read only; the database decides what the viewer may see (the owner sees candidates, everyone else only approved ones). */
+export interface StoredClassification { labels: StoredLabel[]; awards: { label: string; source: string }[] }
+const classMemo = new Map<string, { at: number; v: StoredClassification }>();
+export async function storedClassification(book: { title: string; author?: string; identity?: BookIdentity }): Promise<StoredClassification> {
+  const empty: StoredClassification = { labels: [], awards: [] };
+  const key = coverKey(book);
+  const hit = classMemo.get(key); if (hit && Date.now() - hit.at < 5 * 60_000) return hit.v;
+  let workId = getCatalogWork(book as { title: string; author?: string; identity?: { isbn13?: string; isbn10?: string } })?.id;
+  if (!workId) { const w = await findWorkByKey(key); workId = w.ok ? w.id : undefined; }
+  if (!workId) return empty;
+  type T = { kind: string; name: string } | null;
+  const [labels, terms, awards] = await Promise.all([
+    rest<{ label: string; source: string; catalog_terms: T }[]>(`catalog_work_labels?work_id=eq.${workId}&status=neq.rejected&select=label,source,catalog_terms(kind,name)&limit=400`),
+    rest<{ source: string; catalog_terms: T }[]>(`catalog_work_terms?work_id=eq.${workId}&status=neq.rejected&select=source,catalog_terms(kind,name)&limit=400`),
+    rest<{ award_year: number | null; source: string; catalog_awards: { name: string } | null }[]>(`catalog_work_awards?work_id=eq.${workId}&status=neq.rejected&select=award_year,source,catalog_awards(name)&limit=100`),
+  ]);
+  const out: StoredClassification = { labels: [], awards: [] };
+  const grp = (t: T): StoredLabel['group'] => (t && KIND_GROUP[t.kind]) || 'Keywords & tags';
+  if (labels.ok) for (const l of labels.data) out.labels.push({ group: grp(l.catalog_terms), label: l.catalog_terms?.name || l.label, source: l.source });
+  if (terms.ok) for (const t of terms.data) if (t.catalog_terms) out.labels.push({ group: grp(t.catalog_terms), label: t.catalog_terms.name, source: t.source });
+  if (awards.ok) for (const a of awards.data) if (a.catalog_awards) out.awards.push({ label: a.award_year ? `${a.catalog_awards.name} ${a.award_year}` : a.catalog_awards.name, source: a.source });
+  if (labels.ok && terms.ok && awards.ok) classMemo.set(key, { at: Date.now(), v: out }); // a failed read is not remembered
+  return out;
+}
+export const resetClassificationForTests = () => classMemo.clear();
