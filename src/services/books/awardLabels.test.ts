@@ -56,3 +56,21 @@ test('storedClassification reads the work\'s labels, terms and awards and groups
     assert.deepEqual(v.labels.filter(l => l.published).map(l => l.label), ['Fantasy'], 'only the approved row is published');
   } finally { (globalThis as any).fetch = realFetch; resetClassificationForTests(); }
 });
+
+test('storedClassification keeps rejected rows out of the chips but returns their labels so the live provider data cannot bring them back', async () => {
+  resetClassificationForTests();
+  const realFetch = globalThis.fetch;
+  (globalThis as any).fetch = async (u: string) => {
+    const path = String(u).split('/rest/v1/')[1] || '';
+    if (path.startsWith('catalog_works?work_key')) return new Response(JSON.stringify([{ id: 'w2', status: 'published', identifiers: {} }]), { status: 200 });
+    if (path.startsWith('catalog_work_labels')) return new Response(JSON.stringify([{ label: 'Large type books', source: 'openlibrary', status: 'rejected', catalog_terms: null }, { label: 'Desert planets', source: 'openlibrary', status: 'candidate', catalog_terms: null }]), { status: 200 });
+    if (path.startsWith('catalog_work_terms')) return new Response(JSON.stringify([{ source: 'hardcover', status: 'rejected', catalog_terms: { kind: 'subject', name: 'Cozy' } }]), { status: 200 });
+    if (path.startsWith('catalog_work_awards')) return new Response('[]', { status: 200 });
+    return new Response('[]', { status: 200 });
+  };
+  try {
+    const v = await storedClassification({ title: 'Rejected Test Book', author: 'Someone' });
+    assert.deepEqual(v.labels.map(l => l.label), ['Desert planets']);
+    assert.deepEqual(v.rejected.sort(), ['cozy', 'large type books']);
+  } finally { (globalThis as any).fetch = realFetch; resetClassificationForTests(); }
+});

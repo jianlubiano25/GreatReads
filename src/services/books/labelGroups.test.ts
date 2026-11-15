@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { labelGroups } from './labelGroups';
+import { labelGroups, norm, withCollectionHonors } from './labelGroups';
 import type { ProviderFacts } from './providerFacts';
 
 const vocab = {
@@ -71,4 +71,25 @@ test('readers see only published chips: the book\'s own genre and approved catal
   assert.equal(all.hidden, 0);
   assert.ok(all.groups.flatMap(g => g.chips).some(c => c.label === 'Desert planets' && !c.published));
   assert.deepEqual(visibleChips([{ label: 'A', sources: [], published: true }, { label: 'B', sources: [], published: false }], false), { chips: [{ label: 'A', sources: [], published: true }], hidden: 1 });
+});
+
+test('a label the owner rejected never comes back from the providers\' live data', () => {
+  const facts = [{ provider: 'hardcover', recordId: '1', seenAt: '', genres: ['Fantasy'], subjects: ['Dragons', 'Cozy'] } as any];
+  const all = labelGroups(['Fiction'], facts, null);
+  assert.ok(JSON.stringify(all).includes('Dragons'));
+  const rej = labelGroups(['Fiction'], facts, null, [], new Set([norm('Dragons')]));
+  assert.ok(!JSON.stringify(rej).includes('Dragons'));
+  assert.ok(JSON.stringify(rej).includes('Cozy'));
+});
+
+test('the book\'s own (shelf) genre is marked as the main genre, once', () => {
+  const g = labelGroups(['Science fiction'], [{ provider: 'google', recordId: '1', seenAt: '', genres: ['Fiction / Science Fiction'] } as any], null).find(x => x.name === 'Genres')!;
+  assert.equal(g.chips.filter(c => c.main).length, 1);
+  assert.equal(g.chips.find(c => c.main)!.label, 'Science fiction');
+});
+
+test('book-club picks and lists go under Collections; prizes are not touched', () => {
+  const out = withCollectionHonors([{ name: 'Genres', chips: [{ label: 'Fiction', sources: ['app'], published: true }] }], [{ type: 'c', label: "Reese's Book Club" }, { type: 'w', label: 'Booker Prize' }]);
+  assert.deepEqual(out.map(g => g.name), ['Genres', 'Collections']);
+  assert.deepEqual(out[1].chips.map(c => c.label), ["Reese's Book Club"]);
 });

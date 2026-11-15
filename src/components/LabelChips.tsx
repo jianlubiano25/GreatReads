@@ -40,9 +40,9 @@ export function ChipGroup({ group, hideTitle }: { group: LabelGroup; hideTitle?:
       {!hideTitle && <GroupTitle icon={Icon} title={group.name} tone={st.tone} iconColor={st.iconColor} />}
       <div className="flex flex-wrap gap-2">
         {group.chips.map(c => (
-          <span key={c.label} title={`${c.published ? '' : 'Not published yet (only you see this). '}${c.sources.map(x => (isProvider(x) ? PROVIDER_LABEL[x] : 'Your library')).join(', ')}`}
+          <span key={c.label} title={`${c.main ? 'Main genre (the one used on shelves). ' : ''}${c.published ? '' : 'Not published yet (only you see this). '}${c.sources.map(x => (isProvider(x) ? PROVIDER_LABEL[x] : 'Your library')).join(', ')}`}
             className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${TONE[st.tone]} ${c.published ? '' : 'border-dashed opacity-70'}`}>
-            <Icon className={`w-3 h-3 ${st.iconColor}`} />
+            {c.main ? <span aria-label="main genre" className="text-amber-500 leading-none">★</span> : <Icon className={`w-3 h-3 ${st.iconColor}`} />}
             <span>{c.label}</span>
           </span>
         ))}

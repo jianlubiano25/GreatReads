@@ -17,8 +17,8 @@ import { X, BookOpen, Star, Award, ChevronDown, Check, Bookmark, Image as ImageI
 import { displayGenre } from '../services/books/catalogFill';
 import { ensureBookInfo, resetInfoWaits, type InfoField } from '../services/books/infoStore';
 import { providerFactsFor } from '../services/books/providerFacts';
-import { labelGroups, providerAwards, visibleGroups, visibleChips } from '../services/books/labelGroups';
-import { ChipGroup, GroupTitle, TONE, Fold } from './LabelChips';
+import { labelGroups, providerAwards, visibleGroups, visibleChips, withCollectionHonors } from '../services/books/labelGroups';
+import { ChipGroup, GroupTitle, TONE } from './LabelChips';
 import { PROVIDER_LABEL, isProvider } from '../services/books/providers';
 import { getVocab, type Vocab } from '../services/catalogTerms';
 import { coverBackdrop } from '../services/books/placeholderCover';
@@ -150,20 +150,22 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
     if (book.title) void storedClassification({ title: book.title, author: book.author, identity: book.identity }).then(v => { if (live) setStored(v); }).catch(() => {});
     return () => { live = false; };
   }, [book.title, book.author]);
+  const rejectedLabels = useMemo(() => new Set(stored?.rejected || []), [stored]);
   const labelSets = useMemo(
-    () => labelGroups(book.genre && book.genre !== 'N/A' ? [displayGenre(book.genre) || book.genre] : [], providerFactsFor({ ...book, id: String(book.id) }), vocab, stored?.labels),
+    () => withCollectionHonors(labelGroups(book.genre && book.genre !== 'N/A' ? [displayGenre(book.genre) || book.genre] : [], providerFactsFor({ ...book, id: String(book.id) }), vocab, stored?.labels, rejectedLabels), honorsListFor(book)),
     // hcRating changes when Hardcover's facts arrive
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [book.id, book.title, book.author, book.genre, vocab, hcRating, stored],
+    [book.id, book.title, book.author, book.genre, vocab, hcRating, stored, rejectedLabels],
   );
   const providerAwardChips = useMemo(
-    () => providerAwards(providerFactsFor({ ...book, id: String(book.id) }), stored?.awards),
+    () => providerAwards(providerFactsFor({ ...book, id: String(book.id) }), stored?.awards, rejectedLabels),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [book.id, book.title, book.author, hcRating, stored],
+    [book.id, book.title, book.author, hcRating, stored, rejectedLabels],
   );
-  // Readers (and the owner by default) see only what is published; the owner can switch the providers' not-yet-published suggestions on
-  const [showDraft, setShowDraft] = useState(false);
+  // Readers see only what is published (the database decides). The owner sees everything the providers suggested that is not rejected, dashed when not published yet, and adjusts it in the <> Review catalog (Classification tab)
+  const [showDraft, setShowDraft] = useState(true);
   const draftOn = isOwner && showDraft;
+  const prizeAwards = (awards || []).filter(a => a.type !== 'c'); // book-club picks and other lists are shown under Collections
   const awardChipsAll = providerAwardChips.filter(c => !(awards || []).some(aw => aw.label.toLowerCase().includes(c.label.toLowerCase())));
   const shownLabels = visibleGroups(labelSets, draftOn);
   const shownAwards = visibleChips(awardChipsAll, draftOn);
@@ -390,16 +392,17 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
         </div>
 
         {/* BOOK CLASSIFICATION (before About the Author): genres, subgenres, subjects & themes, collections, awards & honors */}
-        {(classGroups.length > 0 || (awards && awards.length > 0) || shownAwards.chips.length > 0 || (isOwner && unpublishedCount > 0)) && (
-          <Fold title="Book classification" testId="book-classification">
+        {(classGroups.length > 0 || prizeAwards.length > 0 || shownAwards.chips.length > 0 || (isOwner && unpublishedCount > 0)) && (
+          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25]" data-testid="book-classification">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] mb-3">Book classification</h4>
             {classGroups.map(g => <ChipGroup key={g.name} group={g} />)}
-            {((awards && awards.length > 0) || shownAwards.chips.length > 0) && (
+            {(prizeAwards.length > 0 || shownAwards.chips.length > 0) && (
               <div className="mb-2 last:mb-0">
                 <GroupTitle icon={Award} title="Awards &amp; honors" tone="gold" />
                 <div className="flex flex-wrap gap-2">
-                  {(awards || []).map((aw, idx) => (
+                  {prizeAwards.map((aw, idx) => (
                     <span key={idx} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${TONE.gold}`}>
-                      <span>{aw.type === 'w' ? '🏆' : aw.type === 'c' ? '📖' : '🎖️'}</span>
+                      <span>{aw.type === 'w' ? '🏆' : '🎖️'}</span>
                       <span>{aw.label}</span>
                     </span>
                   ))}
@@ -414,10 +417,10 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
             )}
             {isOwner && unpublishedCount > 0 && (
               <button type="button" onClick={() => setShowDraft(v => !v)} className="mt-2 text-[11px] underline text-[#706256] dark:text-[#a89a8a]" data-testid="show-unpublished">
-                {showDraft ? 'Hide the ones not published' : `Show ${unpublishedCount} not published (only you see these)`}
+                {showDraft ? `Hide the ${unpublishedCount} not published (only you see these)` : `Show ${unpublishedCount} not published (only you see these)`}
               </button>
             )}
-          </Fold>
+          </div>
         )}
 
         {/* Synopsis / Description Section */}
@@ -551,9 +554,9 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
 
         {/* Keywords & tags: immediately below About the Author, then More like this */}
         {tagGroup && (
-          <Fold title="Keywords &amp; tags" testId="book-keywords">
-            <ChipGroup group={tagGroup} hideTitle />
-          </Fold>
+          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25]" data-testid="book-keywords">
+            <ChipGroup group={tagGroup} />
+          </div>
         )}
 
         {/* More books like this one sits below Keywords & tags */}
