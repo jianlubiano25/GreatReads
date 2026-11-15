@@ -26,3 +26,28 @@ test('one approved row makes the item approved; a label that already has a vocab
   assert.equal(items.length, 1);
   assert.equal(items[0].status, 'approved');
 });
+
+import { countByStatus, setItemsStatus, STATUS_LABEL } from './catalogTermReview';
+
+test('owner wording and counts: approved = Published, candidate = Not published', () => {
+  assert.equal(STATUS_LABEL.approved, 'Published');
+  assert.equal(STATUS_LABEL.candidate, 'Not published');
+  const items = toItems([term('1', 'approved', 'app', 'genre', 'Mystery'), term('2', 'candidate', 'apple', 'subject', 'Murder'), term('3', 'rejected', 'google', 'subject', 'Suburbs')], [], []);
+  assert.deepEqual(countByStatus(items), { approved: 1, candidate: 1, rejected: 1 });
+});
+
+test('publishing several items at once sends one request per table and reports a failure', async () => {
+  const calls: { url: string; body: unknown }[] = [];
+  const store = new Map<string, string>();
+  (globalThis as any).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
+  store.set('readlife.sb1', JSON.stringify({ access: 'a', refresh: 'r', exp: Date.now() + 3600_000, user: { id: 'u1', email: 'me@example.com' } }));
+  let fail = false;
+  (globalThis as any).fetch = async (url: string, init: any) => { calls.push({ url, body: JSON.parse(init.body) }); return fail ? new Response('{"message":"no"}', { status: 403 }) : new Response(null, { status: 204 }); };
+  const r = await setItemsStatus([{ table: 'catalog_work_terms', ids: ['t1', 't2'] }, { table: 'catalog_work_terms', ids: ['t3'] }, { table: 'catalog_work_labels', ids: ['l1'] }], 'approved');
+  assert.equal(r.ok, true);
+  assert.equal(calls.length, 2, 'one PATCH per table');
+  assert.ok(calls[0].url.includes('catalog_work_terms?id=in.(t1,t2,t3)'));
+  assert.deepEqual(calls[1].body, { status: 'approved' });
+  fail = true;
+  assert.equal((await setItemsStatus([{ table: 'catalog_work_awards', ids: ['a1'] }], 'rejected')).ok, false);
+});

@@ -139,7 +139,7 @@ export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onCl
                 ))}
                 <button role="tab" aria-selected={terms} type="button" onClick={() => { setTerms(true); setMsg(null); }} className={`px-3 py-1 rounded-full text-xs font-semibold border ${terms ? 'bg-[#2e5934] text-white border-[#2e5934]' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}>Classification</button>
               </div>
-              {terms && <TermReview workId={work.id} onMsg={setMsg} />}
+              {terms && <TermReview workId={work.id} bookPublished={work.status === 'published'} onMsg={setMsg} />}
               {!terms && shown && (kind === 'book_description' || kind === 'author_bio' || kind === 'rating') && (
                 <button type="button" disabled={busy} className={`${btn} w-full border-[#e3d7c3] dark:border-[#382f25]`} onClick={() => void act(async () => {
                   const text = kind === 'book_description' ? shown.summary : kind === 'author_bio' ? shown.authorBio : undefined;

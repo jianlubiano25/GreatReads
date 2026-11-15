@@ -56,3 +56,20 @@ export async function setItemStatus(item: Pick<ClassItem, 'table' | 'ids'>, stat
   const r = await rest(`${item.table}?id=in.(${item.ids.map(i => encodeURIComponent(i)).join(',')})`, { method: 'PATCH', body: { status } });
   return r.ok ? { ok: true } : { ok: false, error: r.error };
 }
+
+/** Approve or reject several items at once: one request per table. Stops at the first failure and says which. */
+export async function setItemsStatus(items: readonly Pick<ClassItem, 'table' | 'ids'>[], status: ClassStatus): Promise<{ ok: boolean; error?: string; count: number }> {
+  const byTable = new Map<ClassTable, string[]>();
+  for (const it of items) byTable.set(it.table, [...(byTable.get(it.table) || []), ...it.ids]);
+  for (const [table, ids] of byTable) {
+    for (let i = 0; i < ids.length; i += 100) { // a short address per request
+      const r = await setItemStatus({ table, ids: ids.slice(i, i + 100) }, status);
+      if (!r.ok) return { ok: false, error: r.error, count: 0 };
+    }
+  }
+  return { ok: true, count: items.length };
+}
+
+/** The words the owner sees: approved = published (readers see it), candidate = not published yet. */
+export const STATUS_LABEL: Record<ClassStatus, string> = { approved: 'Published', candidate: 'Not published', rejected: 'Rejected' };
+export const countByStatus = (items: readonly Pick<ClassItem, 'status'>[]) => ({ approved: items.filter(i => i.status === 'approved').length, candidate: items.filter(i => i.status === 'candidate').length, rejected: items.filter(i => i.status === 'rejected').length });
