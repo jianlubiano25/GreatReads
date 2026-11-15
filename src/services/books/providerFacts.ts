@@ -7,6 +7,7 @@
  */
 
 import type { Provider } from './providers';
+import { registerClearableKey } from './cache';
 export type FactProvider = Provider;
 export interface ProviderFacts {
   provider: FactProvider;
@@ -42,6 +43,19 @@ const memo = new Map<string, ProviderFacts>();
  * the user's library, never synced, and a full or blocked localStorage just means "memory only". Trimmed facts only (no raw responses).
  */
 const STORE_KEY = 'readlife.providerfacts1';
+registerClearableKey(STORE_KEY); // "clear saved data" empties it too
+/** The device's saved-data budget is about 5 MB for everything: this memory may use at most ~300 KB, newest first. The 40 newest keep their description/bio text; older ones keep only the labels and ratings. */
+const BUDGET = 300_000, FULL_TEXT_FOR = 40;
+export function persistable(all: readonly ProviderFacts[], budget = BUDGET): ProviderFacts[] {
+  const out: ProviderFacts[] = []; let bytes = 2;
+  for (let i = all.length - 1; i >= 0; i--) {
+    const keep = out.length < FULL_TEXT_FOR ? all[i] : (({ description, authorBio, ...rest }) => rest as ProviderFacts)(all[i]);
+    const n = JSON.stringify(keep).length + 1;
+    if (bytes + n > budget) break;
+    bytes += n; out.push(keep);
+  }
+  return out.reverse();
+}
 let gate: (() => boolean) | undefined;
 let hydrated = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -68,7 +82,10 @@ function hydrate(): void {
 export function flushProviderFacts(): void {
   if (timer) { clearTimeout(timer); timer = undefined; }
   if (!gate?.()) return;
-  try { localStorage.setItem(STORE_KEY, JSON.stringify([...memo.values()])); } catch { /* full or blocked: memory only */ }
+  let list = persistable([...memo.values()]);
+  for (let i = 0; i < 3; i++) { // full: keep the newest half and try again, then give up (memory only)
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(list)); return; } catch { list = list.slice(Math.floor(list.length / 2)); if (!list.length) return; }
+  }
 }
 function persistSoon(): void {
   if (timer || !gate?.()) return;
