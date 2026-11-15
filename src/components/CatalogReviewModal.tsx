@@ -41,7 +41,7 @@ export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onCl
   const [cands, setCands] = useState<Candidate[]>([]);
   const [kind, setKind] = useState<Candidate['kind']>('cover');
   const [idx, setIdx] = useState(0);
-  const [terms, setTerms] = useState(false); // the Terms tab (genres, subgenres, subjects, collections from the providers)
+  const [terms, setTerms] = useState(false); // the Classification tab (genres, subgenres, subjects, collections, keywords, awards from the providers)
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -137,7 +137,7 @@ export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onCl
                     {k.label} ({cands.filter(c => c.kind === k.kind).length})
                   </button>
                 ))}
-                <button role="tab" aria-selected={terms} type="button" onClick={() => { setTerms(true); setMsg(null); }} className={`px-3 py-1 rounded-full text-xs font-semibold border ${terms ? 'bg-[#2e5934] text-white border-[#2e5934]' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}>Terms</button>
+                <button role="tab" aria-selected={terms} type="button" onClick={() => { setTerms(true); setMsg(null); }} className={`px-3 py-1 rounded-full text-xs font-semibold border ${terms ? 'bg-[#2e5934] text-white border-[#2e5934]' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}>Classification</button>
               </div>
               {terms && <TermReview workId={work.id} onMsg={setMsg} />}
               {!terms && shown && (kind === 'book_description' || kind === 'author_bio' || kind === 'rating') && (

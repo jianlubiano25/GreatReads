@@ -150,3 +150,4 @@ Files: `services/store/{refresh,refreshAll,shelves,dynamic,goodreadsChoice,bests
 - 2026-11-09: E1 finished: term tables (already live, file now in repo) + awards tables applied; scratch check; no app change.
 - 2026-11-16: Review catalog Terms tab (approve/reject term candidates).
 - 2026-11-16: admin check no longer remembers a failure as "not admin"; review screen explains why and re-checks.
+- 2026-11-16: Review catalog Classification tab (terms, keywords & tags, awards).
