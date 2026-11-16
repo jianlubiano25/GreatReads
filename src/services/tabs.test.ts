@@ -183,7 +183,9 @@ test('Book info: one control (Add to My Library, or your status once it is yours
   assert.ok(html.indexOf('Add to My Library') < about, 'and the Add to My Library button stays above it');
   const withMore = renderToStaticMarkup(h(AppleBookDetailModal, { book: awarded, inLibrary: false, onRate: noop, onMoreLikeThis: noop, onClose: noop, onOpenLibrarySheet: noop }));
   assert.ok(withMore.indexOf('About this book') < withMore.indexOf('Rate this book') && withMore.indexOf('Rate this book') < withMore.indexOf('More like this'), 'About, then Rate this book, then (after the author and the keywords) More like this');
-  assert.ok(withMore.indexOf('Awards &amp; honors') < withMore.indexOf('About this book'), 'the classification comes before About');
+  assert.ok(withMore.indexOf('About this book') < withMore.indexOf('Awards &amp; honors'), 'About comes first, then the classification (genres, collections, awards)');
+  assert.ok(withMore.indexOf('Rate this book') < withMore.indexOf('Book classification'), 'ratings come before the classification');
+  assert.ok(withMore.indexOf('Awards &amp; honors') < withMore.indexOf('More like this') && withMore.indexOf('More like this') < withMore.indexOf('>Information</h4>'), 'More like this, then the book facts (Information) last');
   // the same title size: both headings use the same size, weight and letter-spacing classes (Honors also lays its trophy icon out with flex)
   const heading = (name: string) => html.slice(html.lastIndexOf('<h4', html.indexOf(name)), html.indexOf(name)).match(/class="([^"]*)"/)![1];
   const SIZE = 'text-xs font-bold uppercase tracking-wider';

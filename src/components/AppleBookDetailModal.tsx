@@ -391,38 +391,6 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           </div>
         </div>
 
-        {/* BOOK CLASSIFICATION (before About the Author): genres, subgenres, subjects & themes, collections, awards & honors */}
-        {(classGroups.length > 0 || prizeAwards.length > 0 || shownAwards.chips.length > 0 || (isOwner && unpublishedCount > 0)) && (
-          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25]" data-testid="book-classification">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] mb-3">Book classification</h4>
-            {classGroups.map(g => <ChipGroup key={g.name} group={g} />)}
-            {(prizeAwards.length > 0 || shownAwards.chips.length > 0) && (
-              <div className="mb-2 last:mb-0">
-                <GroupTitle icon={Award} title="Awards &amp; honors" tone="gold" />
-                <div className="flex flex-wrap gap-2">
-                  {prizeAwards.map((aw, idx) => (
-                    <span key={idx} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${TONE.gold}`}>
-                      <span>{aw.type === 'w' ? '🏆' : '🎖️'}</span>
-                      <span>{aw.label}</span>
-                    </span>
-                  ))}
-                  {shownAwards.chips.map(c => (
-                    <span key={c.label} title={`${c.published ? '' : 'Not published yet (only you see this). '}${c.sources.map(x => (isProvider(x) ? PROVIDER_LABEL[x] : 'Your library')).join(', ')}`} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${TONE.gold} ${c.published ? '' : 'border-dashed opacity-70'}`}>
-                      <span>🏆</span>
-                      <span>{c.label}</span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {isOwner && unpublishedCount > 0 && (
-              <button type="button" onClick={() => setShowDraft(v => !v)} className="mt-2 text-[11px] underline text-[#706256] dark:text-[#a89a8a]" data-testid="show-unpublished">
-                {showDraft ? `Hide the ${unpublishedCount} not published (only you see these)` : `Show ${unpublishedCount} not published (only you see these)`}
-              </button>
-            )}
-          </div>
-        )}
-
         {/* Synopsis / Description Section */}
         <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25]">
           <div className="flex items-center justify-between mb-2">
@@ -505,6 +473,70 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25] text-sm text-[#706256] dark:text-[#a89a8a]" role="status" aria-live="polite">Loading ratings…</div>
         ) : null}
 
+        {/* BOOK CLASSIFICATION (after Ratings): genres, subgenres, subjects & themes, collections, awards & honors */}
+        {(classGroups.length > 0 || prizeAwards.length > 0 || shownAwards.chips.length > 0 || (isOwner && unpublishedCount > 0)) && (
+          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25]" data-testid="book-classification">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] mb-3">Book classification</h4>
+            {classGroups.map(g => <ChipGroup key={g.name} group={g} />)}
+            {(prizeAwards.length > 0 || shownAwards.chips.length > 0) && (
+              <div className="mb-2 last:mb-0">
+                <GroupTitle icon={Award} title="Awards &amp; honors" tone="gold" />
+                <div className="flex flex-wrap gap-2">
+                  {prizeAwards.map((aw, idx) => (
+                    <span key={idx} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${TONE.gold}`}>
+                      <span>{aw.type === 'w' ? '🏆' : '🎖️'}</span>
+                      <span>{aw.label}</span>
+                    </span>
+                  ))}
+                  {shownAwards.chips.map(c => (
+                    <span key={c.label} title={`${c.published ? '' : 'Not shown to readers yet (only you see this). '}${c.sources.map(x => (isProvider(x) ? PROVIDER_LABEL[x] : 'Your library')).join(', ')}`} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${TONE.gold} ${c.published ? '' : 'border-dashed opacity-70'}`}>
+                      <span>🏆</span>
+                      <span>{c.label}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {isOwner && unpublishedCount > 0 && (
+              <button type="button" onClick={() => setShowDraft(v => !v)} className="mt-2 text-[11px] underline text-[#706256] dark:text-[#a89a8a]" data-testid="show-unpublished">
+                {showDraft ? `Hide the ${unpublishedCount} not shown to readers (only you see these)` : `Show ${unpublishedCount} not shown to readers (only you see these)`}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Keywords & tags: right below Book classification, then About the Author */}
+        {tagGroup && (
+          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25]" data-testid="book-keywords">
+            <ChipGroup group={tagGroup} />
+          </div>
+        )}
+
+        {/* About the Author */}
+        {!book.authorBio && loading.text && (
+          <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25] text-sm text-[#706256] dark:text-[#a89a8a]" role="status" aria-live="polite">Loading author info…</div>
+        )}
+        {book.authorBio && !book.authorBio.startsWith('No author') && (
+          <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25]">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="font-serif-display text-lg text-[#201a15] dark:text-[#f0e6d6]">About the Author</h4>
+              {devBtn('author_bio', 'author bio')}
+            </div>
+            <p className="text-[17px] leading-[1.65] text-[#201a15]/80 dark:text-[#f0e6d6]/80">
+              {book.authorBio}
+            </p>
+          </div>
+        )}
+
+        {/* More books like this one sits below About the Author */}
+        {onMoreLikeThis && moreLikeThis(book) && (
+          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25] flex justify-center">
+            <button type="button" onClick={onMoreLikeThis} className="min-h-[44px] px-5 py-2 rounded-full border border-[#2e5934] dark:border-[#86b880] text-sm font-semibold text-[#2e5934] dark:text-[#86b880] hover:bg-[#e8efe7] dark:hover:bg-[#243422]">
+              More like this
+            </button>
+          </div>
+        )}
+
         {/* For books on your list, your reading dates and pages */}
         {inLibrary && onEditHistory && (
           <YourReading
@@ -535,38 +567,6 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
             </div>
           ))}
         </div>
-
-        {/* About the Author */}
-        {!book.authorBio && loading.text && (
-          <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25] text-sm text-[#706256] dark:text-[#a89a8a]" role="status" aria-live="polite">Loading author info…</div>
-        )}
-        {book.authorBio && !book.authorBio.startsWith('No author') && (
-          <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25]">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="font-serif-display text-lg text-[#201a15] dark:text-[#f0e6d6]">About the Author</h4>
-              {devBtn('author_bio', 'author bio')}
-            </div>
-            <p className="text-[17px] leading-[1.65] text-[#201a15]/80 dark:text-[#f0e6d6]/80">
-              {book.authorBio}
-            </p>
-          </div>
-        )}
-
-        {/* Keywords & tags: immediately below About the Author, then More like this */}
-        {tagGroup && (
-          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25]" data-testid="book-keywords">
-            <ChipGroup group={tagGroup} />
-          </div>
-        )}
-
-        {/* More books like this one sits below Keywords & tags */}
-        {onMoreLikeThis && moreLikeThis(book) && (
-          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25] flex justify-center">
-            <button type="button" onClick={onMoreLikeThis} className="min-h-[44px] px-5 py-2 rounded-full border border-[#2e5934] dark:border-[#86b880] text-sm font-semibold text-[#2e5934] dark:text-[#86b880] hover:bg-[#e8efe7] dark:hover:bg-[#243422]">
-              More like this
-            </button>
-          </div>
-        )}
 
         {/* Reading Tools / Highlights quick access if currently reading */}
         <div className="px-6 py-4 bg-[#f5f0e6]/40 dark:bg-[#181410]/40 flex items-center justify-between">

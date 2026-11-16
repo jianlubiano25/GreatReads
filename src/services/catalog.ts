@@ -501,10 +501,12 @@ export async function storedClassification(book: { title: string; author?: strin
   const grp = (t: T): StoredLabel['group'] => (t && KIND_GROUP[t.kind]) || 'Keywords & tags';
   // rejected rows are not shown, and the same label is never put back from the providers' live data
   const reject = (...names: (string | undefined | null)[]) => { for (const n of names) if (n) out.rejected.push(normLabel(n)); };
-  if (labels.ok) for (const l of labels.data) { if (l.status === 'rejected') { reject(l.label, l.catalog_terms?.name); continue; } out.labels.push({ group: grp(l.catalog_terms), label: l.catalog_terms?.name || l.label, source: l.source, published: l.status === 'approved' }); }
-  if (terms.ok) for (const t of terms.data) if (t.catalog_terms) { if (t.status === 'rejected') { reject(t.catalog_terms.name); continue; } out.labels.push({ group: grp(t.catalog_terms), label: t.catalog_terms.name, source: t.source, published: t.status === 'approved' }); }
+  if (labels.ok) for (const l of labels.data) { if (l.status === 'rejected') { reject(l.label, l.catalog_terms?.name); continue; } out.labels.push({ group: grp(l.catalog_terms), label: l.catalog_terms?.name || l.label, source: l.source, published: shownByDefault(l.status, l.source) }); }
+  if (terms.ok) for (const t of terms.data) if (t.catalog_terms) { if (t.status === 'rejected') { reject(t.catalog_terms.name); continue; } out.labels.push({ group: grp(t.catalog_terms), label: t.catalog_terms.name, source: t.source, published: shownByDefault(t.status, t.source) }); }
   if (awards.ok) for (const a of awards.data) if (a.catalog_awards) { const label = a.award_year ? `${a.catalog_awards.name} ${a.award_year}` : a.catalog_awards.name; if (a.status === 'rejected') { reject(label, a.catalog_awards.name); continue; } out.awards.push({ label, source: a.source, published: a.status === 'approved' }); }
   if (labels.ok && terms.ok && awards.ok) classMemo.set(key, { at: Date.now(), v: out }); // a failed read is not remembered
   return out;
 }
+/** What readers see (mirrors the database read rule): approved rows, and rows nobody has reviewed yet unless Hardcover said them; rejected rows never. */
+export const shownByDefault = (status: string, source: string): boolean => status === 'approved' || (status === 'candidate' && source !== 'hardcover');
 export const resetClassificationForTests = () => classMemo.clear();

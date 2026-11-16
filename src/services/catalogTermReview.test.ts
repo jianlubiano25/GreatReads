@@ -29,9 +29,9 @@ test('one approved row makes the item approved; a label that already has a vocab
 
 import { countByStatus, setItemsStatus, STATUS_LABEL } from './catalogTermReview';
 
-test('owner wording and counts: approved = Published, candidate = Not published', () => {
+test('owner wording and counts: approved = Published, candidate = Not reviewed', () => {
   assert.equal(STATUS_LABEL.approved, 'Published');
-  assert.equal(STATUS_LABEL.candidate, 'Not published');
+  assert.equal(STATUS_LABEL.candidate, 'Not reviewed');
   const items = toItems([term('1', 'approved', 'app', 'genre', 'Mystery'), term('2', 'candidate', 'apple', 'subject', 'Murder'), term('3', 'rejected', 'google', 'subject', 'Suburbs')], [], []);
   assert.deepEqual(countByStatus(items), { approved: 1, candidate: 1, rejected: 1 });
 });

@@ -70,6 +70,6 @@ export async function setItemsStatus(items: readonly Pick<ClassItem, 'table' | '
   return { ok: true, count: items.length };
 }
 
-/** The words the owner sees: approved = published (readers see it), candidate = not published yet. */
-export const STATUS_LABEL: Record<ClassStatus, string> = { approved: 'Published', candidate: 'Not published', rejected: 'Rejected' };
+/** The words the owner sees: approved = published (reviewed), candidate = not reviewed yet (readers see it by default, except Hardcover's), rejected = hidden. */
+export const STATUS_LABEL: Record<ClassStatus, string> = { approved: 'Published', candidate: 'Not reviewed', rejected: 'Rejected' };
 export const countByStatus = (items: readonly Pick<ClassItem, 'status'>[]) => ({ approved: items.filter(i => i.status === 'approved').length, candidate: items.filter(i => i.status === 'candidate').length, rejected: items.filter(i => i.status === 'rejected').length });
