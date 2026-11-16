@@ -159,7 +159,8 @@ function factsOf(item: CaptureItem): { facts: ProviderFacts[]; pending: string[]
   return { facts, pending: marks.filter(m => !doneSet().has(m)) };
 }
 /** A book with provider facts missing gets one look-up round (providerLookup.ts), then is marked so it is not asked again. */
-const lookupMark = (item: CaptureItem) => `p|${coverKey({ title: item.title, author: item.author })}`;
+// The mark is per month: a round that found little (a provider timed out) or whose answers this phone later lost is tried again next month, while books whose providers are all known are never asked (missingProviders).
+const lookupMark = (item: CaptureItem) => `p|${coverKey({ title: item.title, author: item.author })}|${new Date().toISOString().slice(0, 7)}`;
 const lookupPending = (item: CaptureItem): boolean => providerLookupsOn() && lookupBudgetLeft() && !!item.title?.trim() && !doneSet().has(lookupMark(item)) && missingProviders({ id: item.bookId, title: item.title, author: item.author, identity: item.identity }).length > 0;
 const needsSending = (item: CaptureItem): boolean => rowsFor(item, 'x').some(r => !doneSet().has(r.id)) || idPending(item) || factsOf(item).pending.length > 0 || lookupPending(item);
 
