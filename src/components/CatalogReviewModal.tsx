@@ -3,9 +3,10 @@ import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { TermReview } from './TermReview';
 import { useModalA11y } from '../hooks/useModalA11y';
-import { ensureWork, getWork, listWorks, loadCandidates, publishCandidate, rejectCandidate, setWorkStatus, storeRating, storeText, syncCatalog, type Candidate, type WorkRow } from '../services/catalog';
+import { ensureWork, getWork, listWorks, loadCandidates, publishCandidate, rejectCandidate, saveFactsToCatalog, setWorkStatus, storeRating, storeText, syncCatalog, type Candidate, type WorkRow } from '../services/catalog';
 import { authVersion, checkAdmin, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
 import { isCoverAdminOn } from '../services/books';
+import { providerFactsFor } from '../services/books/providerFacts';
 import type { SourceRating } from '../services/books';
 
 /**
@@ -24,7 +25,7 @@ const btn = 'py-2 px-3 rounded-xl text-xs font-semibold border active:scale-95 t
 /** What Book Info shows right now for the book (so it can be stored as a version) */
 export type ShownInfo = { summary?: string; authorBio?: string; ratings?: Array<Pick<SourceRating, 'average' | 'count'> & { source: string }> };
 
-export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onClose: () => void; book?: { title: string; author?: string }; initialKind?: Candidate['kind']; shown?: ShownInfo }) {
+export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onClose: () => void; book?: { title: string; author?: string; id?: string | number; identity?: { gbVolume?: string; olWork?: string } & Record<string, any>; genre?: string }; initialKind?: Candidate['kind']; shown?: ShownInfo }) {
   useModalA11y(onClose);
   useSyncExternalStore(subscribeAuth, authVersion, authVersion);
   const owner = useAdminUi();
@@ -43,6 +44,8 @@ export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onCl
   const [idx, setIdx] = useState(0);
   const [terms, setTerms] = useState(false); // the Classification tab (genres, subgenres, subjects, collections, keywords, awards from the providers)
   const [busy, setBusy] = useState(false);
+  const [termsKey, setTermsKey] = useState(0); // bumps to reload the Classification tab after sending
+  const [sendNote, setSendNote] = useState('');
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
@@ -141,7 +144,24 @@ export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onCl
                 ))}
                 <button role="tab" aria-selected={terms} type="button" onClick={() => { setTerms(true); setMsg(null); }} className={`px-3 py-1 rounded-full text-xs font-semibold border ${terms ? 'bg-[#2e5934] text-white border-[#2e5934]' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}>Classification</button>
               </div>
-              {terms && <TermReview workId={work.id} bookPublished={work.status === 'published'} onMsg={setMsg} />}
+              {terms && book && (
+                <div className="space-y-1.5">
+                  <button type="button" disabled={busy} className={`${btn} w-full border-[#e3d7c3] dark:border-[#382f25]`} onClick={async () => {
+                    setBusy(true); setSendNote('');
+                    // Book Information shows what THIS device remembers for the book; this list shows what the catalog holds. Send the device's labels now (fill-only, nothing is overwritten) and say what happened.
+                    const facts = providerFactsFor({ id: book.id === undefined ? undefined : String(book.id), title: book.title, author: book.author, identity: book.identity });
+                    if (!facts.length) setSendNote('This device remembers no provider details for this book yet. Open Book Information and let it load, then try again.');
+                    else {
+                      const r = await saveFactsToCatalog(work.id, { id: book.id === undefined ? '' : String(book.id), identity: book.identity as any, genre: book.genre ?? '', title: book.title, author: book.author }, facts);
+                      setSendNote(`${r.saved.length ? `Saved: ${r.saved.join(', ')}.` : 'Nothing new to save (the catalog already has these).'}${r.skipped.length ? ` Skipped: ${r.skipped.slice(0, 4).join('; ')}.` : ''}${r.retry ? ' Some requests failed: try again.' : ''}`);
+                      setTermsKey(k => k + 1);
+                    }
+                    setBusy(false);
+                  }}>Send what this device knows about this book</button>
+                  {sendNote && <p className="text-[11px] text-[#706256] dark:text-[#a89a8a]">{sendNote}</p>}
+                </div>
+              )}
+              {terms && <TermReview key={termsKey} workId={work.id} bookPublished={work.status === 'published'} onMsg={setMsg} />}
               {!terms && shown && (kind === 'book_description' || kind === 'author_bio' || kind === 'rating') && (
                 <button type="button" disabled={busy} className={`${btn} w-full border-[#e3d7c3] dark:border-[#382f25]`} onClick={() => void act(async () => {
                   const text = kind === 'book_description' ? shown.summary : kind === 'author_bio' ? shown.authorBio : undefined;
