@@ -1,5 +1,5 @@
 /**
- * Provider labels -> vocabulary terms, kept as CANDIDATES (`catalog_work_terms`, status candidate, with the provider, the raw label and the receipt it came from).
+ * Provider labels -> vocabulary terms (`catalog_work_terms`, with the provider, the raw label and the receipt it came from). A label that maps to a term of the owner's approved vocabulary is saved APPROVED (published, owner decision 2026-11-16: the owner only rejects what is wrong); a label with no term stays a plain tag (shown by default).
  * The meaning of a label lives in data (`catalog_term_aliases`, editable without a deploy), with the term names themselves as the fallback; an unknown label maps to nothing
  * here (it stays in the provider-label candidates). A parent genre is added only when the context agrees (the alias `requires_genre` is one of the work's genres). Never published, never replaces
  * a genre or honor on the work: `genres` / `honors` stay the read model. Owner only (the database refuses anyone else). All four providers go through the same function.
@@ -65,14 +65,14 @@ export async function saveTermCandidates(workId: string, facts: ProviderFacts[],
   for (const f of facts) {
     for (const c of mapLabelsToTerms(f.provider, [...(f.genres || []), ...(f.subjects || [])], workGenres, vocab)) {
       const receipt = receiptIds.get(`${f.provider}:${f.recordId}`);
-      const r = await rest('catalog_work_terms', { method: 'POST', body: { work_id: workId, term_id: c.term_id, source: c.source, status: 'candidate', raw_label: c.raw_label.slice(0, 120), ...(receipt ? { provider_record_id: receipt } : {}) } });
+      const r = await rest('catalog_work_terms', { method: 'POST', body: { work_id: workId, term_id: c.term_id, source: c.source, status: 'approved', raw_label: c.raw_label.slice(0, 120), ...(receipt ? { provider_record_id: receipt } : {}) } });
       if (r.ok) kept++; else if (r.status !== 409) { skipped.push(`terms: ${r.error}`); if (r.status === 0 || r.status === 429 || r.status >= 500) retry = true; } // 409 = this work already has this term from this source
     }
   }
   return { kept, skipped, retry };
 }
 
-export interface LabelRow { work_id: string; source: string; label: string; label_norm: string; label_kind: 'genre' | 'subject' | 'tag'; term_id: string | null; status: 'candidate'; provider_record_id?: string }
+export interface LabelRow { work_id: string; source: string; label: string; label_norm: string; label_kind: 'genre' | 'subject' | 'tag'; term_id: string | null; status: 'candidate' | 'approved'; provider_record_id?: string }
 
 /** One row per work + provider + label for EVERY label the providers gave (mapped to a term or not), so nothing a provider said is lost (pure). */
 export function labelRowsFor(workId: string, facts: readonly ProviderFacts[], vocab: Vocab | null, receiptIds: Map<string, string>): LabelRow[] {
@@ -86,7 +86,7 @@ export function labelRowsFor(workId: string, facts: readonly ProviderFacts[], vo
         const key = `${f.provider}|${n}`;
         if (out.has(key)) continue;
         const term = vocab?.terms.find(t => t.status !== 'inactive' && KINDS.has(t.kind) && norm(t.name) === n);
-        out.set(key, { work_id: workId, source: f.provider, label, label_norm: n, label_kind: kind, term_id: term?.id ?? null, status: 'candidate', ...(receipt ? { provider_record_id: receipt } : {}) });
+        out.set(key, { work_id: workId, source: f.provider, label, label_norm: n, label_kind: kind, term_id: term?.id ?? null, status: term ? 'approved' : 'candidate', ...(receipt ? { provider_record_id: receipt } : {}) });
       }
     };
     for (const g of f.genres || []) add(g, 'genre');

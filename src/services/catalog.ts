@@ -507,6 +507,6 @@ export async function storedClassification(book: { title: string; author?: strin
   if (labels.ok && terms.ok && awards.ok) classMemo.set(key, { at: Date.now(), v: out }); // a failed read is not remembered
   return out;
 }
-/** What readers see (mirrors the database read rule): approved rows, and rows nobody has reviewed yet unless Hardcover said them; rejected rows never. */
-export const shownByDefault = (status: string, source: string): boolean => status === 'approved' || (status === 'candidate' && source !== 'hardcover');
+/** What readers see (mirrors the database read rule): approved rows and rows nobody has reviewed yet, from any provider; rejected rows never. */
+export const shownByDefault = (status: string, _source?: string): boolean => status === 'approved' || status === 'candidate';
 export const resetClassificationForTests = () => classMemo.clear();

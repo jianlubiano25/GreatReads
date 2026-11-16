@@ -53,7 +53,7 @@ test('storedClassification reads the work\'s labels, terms and awards and groups
     const v = await storedClassification({ title: 'Dune Test Book', author: 'Frank Herbert' });
     assert.deepEqual(v.labels.map(l => `${l.group}:${l.label}`).sort(), ['Genres:Fantasy', 'Keywords & tags:Desert planets', 'Subgenres:Epic fantasy']);
     assert.deepEqual(v.awards, [{ label: 'Hugo Award 1966', source: 'openlibrary', published: false }]);
-    assert.deepEqual(v.labels.filter(l => l.published).map(l => l.label), ['Desert planets', 'Fantasy'], 'approved and not-yet-reviewed rows are shown to readers, a Hardcover one is not');
+    assert.deepEqual(v.labels.filter(l => l.published).map(l => l.label), ['Desert planets', 'Fantasy', 'Epic fantasy'], 'approved and not-yet-reviewed rows are shown to readers, from any provider');
   } finally { (globalThis as any).fetch = realFetch; resetClassificationForTests(); }
 });
 
@@ -76,10 +76,10 @@ test('storedClassification keeps rejected rows out of the chips but returns thei
 });
 
 import { shownByDefault } from '../catalog';
-test('what readers see by default: approved, and unreviewed rows unless Hardcover said them; rejected never', () => {
+test('what readers see by default: approved and unreviewed rows from any provider; rejected never', () => {
   assert.equal(shownByDefault('approved', 'hardcover'), true);
   assert.equal(shownByDefault('candidate', 'apple'), true);
   assert.equal(shownByDefault('candidate', 'openlibrary'), true);
-  assert.equal(shownByDefault('candidate', 'hardcover'), false);
+  assert.equal(shownByDefault('candidate', 'hardcover'), true);
   assert.equal(shownByDefault('rejected', 'apple'), false);
 });
