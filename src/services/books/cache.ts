@@ -52,6 +52,8 @@ export const registerClearableKey = (key: string) => { clearableKeys.add(key); }
 export const NEVER_CLEAR: readonly string[] = ['readlife.nameChoices1'];
 /** Saved shelf lists: kept when the device is merely out of storage (clearing them sent every shelf back to its starting books). "Refresh everything" still clears them. */
 export const KEEP_WHEN_STORAGE_FULL: readonly string[] = ['readlife.dynseeds1', 'readlife.dynstatus1', 'readlife.dynreset1'];
+/** Saved by the owner's device, can be built again (a mark that something was already sent, remembered provider facts), never cleared on a new build: freed only when a save fails and everything else is gone. */
+export const LAST_RESORT_KEYS: readonly string[] = ['readlife.captured1', 'readlife.providerfacts1'];
 export const clearableKeysWhenStorageFull = (): string[] => clearableCacheKeys().filter(k => !KEEP_WHEN_STORAGE_FULL.includes(k));
 
 /**

@@ -45,17 +45,34 @@ const OFF_KEY = 'readlife.captureOff1';
 const BACKFILL_KEY = 'readlife.captureBackfill2'; // 2: the first upload now also publishes
 const PUB_OFF_KEY = 'readlife.capturePubOff1';
 const MAX_QUEUE = 3000;
-const MAX_DONE = 60000;
+const MAX_DONE = 25000; // marks are ~17 characters each now (was ~40), so this stays near 0.4 MB at the most
 const GAP_MS = 80;
 const RATING_SRC: Record<string, string> = RATING_SOURCE;
 
 /* ---------------- what was already sent (so nothing is sent twice) ---------------- */
 
-let done: Set<string> | undefined;
+/** A sent-mark is kept as a short fingerprint (~15 characters) instead of the long text it came from: the marks were the biggest thing the app saved on the owner's phone
+ * (0.65 MB of a 2.6 MB limit, which is what made "storage full" appear). A fingerprint starting with "~" is never hashed again, so marks saved by older versions are
+ * shortened the first time they are read. Two independent 32-bit hashes make a false "already sent" practically impossible. */
+export function shortMark(m: string): string {
+  if (m.startsWith('~')) return m;
+  let a = 5381, b = 52711;
+  for (let i = 0; i < m.length; i++) { const c = m.charCodeAt(i); a = ((a << 5) + a + c) | 0; b = (Math.imul(b, 33) ^ c) | 0; }
+  return '~' + (a >>> 0).toString(36) + (b >>> 0).toString(36) + m.length.toString(36);
+}
+class Marks {
+  private s: Set<string>;
+  constructor(items: Iterable<string> = []) { this.s = new Set([...items].map(shortMark)); }
+  has(m: string): boolean { return this.s.has(shortMark(m)); }
+  add(m: string): this { this.s.add(shortMark(m)); return this; }
+  get size(): number { return this.s.size; }
+  [Symbol.iterator](): Iterator<string> { return this.s[Symbol.iterator](); }
+}
+let done: Marks | undefined;
 let dirty = false;
-const doneSet = (): Set<string> => {
+const doneSet = (): Marks => {
   if (!done) {
-    try { const r = JSON.parse(localStorage.getItem(DONE_KEY) || '[]'); done = new Set(Array.isArray(r) ? r.filter((x: unknown) => typeof x === 'string') : []); } catch { done = new Set(); }
+    try { const r = JSON.parse(localStorage.getItem(DONE_KEY) || '[]'); done = new Marks(Array.isArray(r) ? r.filter((x: unknown) => typeof x === 'string') : []); } catch { done = new Marks(); }
   }
   return done;
 };
@@ -64,7 +81,7 @@ const saveDone = () => {
   dirty = false;
   try {
     const s = doneSet();
-    if (s.size > MAX_DONE) { const keep = [...s].slice(s.size - MAX_DONE / 2); done = new Set(keep); }
+    if (s.size > MAX_DONE) { const keep = [...s].slice(s.size - MAX_DONE / 2); done = new Marks(keep); }
     localStorage.setItem(DONE_KEY, JSON.stringify([...doneSet()]));
   } catch {}
 };
@@ -341,4 +358,4 @@ export const backfillDone = (): boolean => { try { return localStorage.getItem(B
 export const markBackfillDone = (): void => { try { localStorage.setItem(BACKFILL_KEY, '1'); } catch {} };
 
 /** Tests only. */
-export const resetCaptureForTests = (): void => { queue.length = 0; works.clear(); blocked.clear(); worksLoaded = false; done = new Set(); dirty = false; running = undefined; touched.clear(); status = { on: false, running: false, queued: 0, sent: 0, published: 0, total: 0 }; };
+export const resetCaptureForTests = (): void => { queue.length = 0; works.clear(); blocked.clear(); worksLoaded = false; done = new Marks(); dirty = false; running = undefined; touched.clear(); status = { on: false, running: false, queued: 0, sent: 0, published: 0, total: 0 }; };
