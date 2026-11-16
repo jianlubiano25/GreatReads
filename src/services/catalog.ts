@@ -135,11 +135,23 @@ export async function publishCoverToCatalog(book: { title: string; author?: stri
 export type WorkRow = { id: string; canonical_title: string; canonical_author: string | null; status: string; updated_at: string };
 export type Candidate = { id: string; table: 'catalog_cover_candidates' | 'catalog_content_versions' | 'catalog_rating_candidates'; kind: 'cover' | 'book_description' | 'author_bio' | 'rating'; status: string; selected: boolean; text: string; source: string; at: string };
 
+/** The words to search a title/author for. The search filter cannot carry commas, brackets, % or *, and the stored title keeps them (\"Set Boundaries, Find Peace\"), so a
+ * term with those turned into spaces never matched its own book. Search the longest piece between them instead. */
+export function worksSearchTerm(q: string): string {
+  const pieces = q.split(/[%*,()]/).map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  return pieces.sort((a, b) => b.length - a.length)[0] || '';
+}
 export async function listWorks(q: string): Promise<{ ok: true; data: WorkRow[] } | { ok: false; error: string }> {
-  const term = q.trim().replace(/[%*,()]/g, ' ');
+  const term = worksSearchTerm(q);
   const filter = term ? `&or=(canonical_title.ilike.*${encodeURIComponent(term)}*,canonical_author.ilike.*${encodeURIComponent(term)}*)` : '';
   const r = await rest<WorkRow[]>(`catalog_works?select=id,canonical_title,canonical_author,status,updated_at&order=updated_at.desc&limit=60${filter}`);
   return r.ok ? { ok: true, data: r.data } : { ok: false, error: r.error };
+}
+
+/** One work by its id (what the review modal needs once the work is known: no title search that a comma or bracket can break). */
+export async function getWork(id: string): Promise<{ ok: true; data: WorkRow | null } | { ok: false; error: string }> {
+  const r = await rest<WorkRow[]>(`catalog_works?id=eq.${encodeURIComponent(id)}&select=id,canonical_title,canonical_author,status,updated_at&limit=1`);
+  return r.ok ? { ok: true, data: r.data[0] ?? null } : { ok: false, error: r.error };
 }
 
 /** Every version stored for one book, newest first, grouped by kind by the caller. */

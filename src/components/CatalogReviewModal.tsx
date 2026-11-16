@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { TermReview } from './TermReview';
 import { useModalA11y } from '../hooks/useModalA11y';
-import { ensureWork, listWorks, loadCandidates, publishCandidate, rejectCandidate, setWorkStatus, storeRating, storeText, syncCatalog, type Candidate, type WorkRow } from '../services/catalog';
+import { ensureWork, getWork, listWorks, loadCandidates, publishCandidate, rejectCandidate, setWorkStatus, storeRating, storeText, syncCatalog, type Candidate, type WorkRow } from '../services/catalog';
 import { authVersion, checkAdmin, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
 import { isCoverAdminOn } from '../services/books';
 import type { SourceRating } from '../services/books';
@@ -52,10 +52,12 @@ export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onCl
       const w = await ensureWork(book);
       if (!live) return;
       if (!w.ok) return setMsg({ ok: false, text: w.error });
-      const found = await listWorks(book.title);
-      const row = found.ok ? found.data.find(x => x.id === w.id) : undefined;
+      const found = await getWork(w.id);
       if (!live) return;
-      if (row) { setWork(row); setKind(initialKind || 'cover'); const r = await loadCandidates(w.id); if (live && r.ok) setCands(r.data); }
+      if (!found.ok) return setMsg({ ok: false, text: found.error });
+      const row = found.data;
+      if (!row) return setMsg({ ok: false, text: 'This book is not in the catalog yet, so there is nothing to review.' });
+      { setWork(row); setKind(initialKind || 'cover'); const r = await loadCandidates(w.id); if (live && r.ok) setCands(r.data); }
     })();
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
