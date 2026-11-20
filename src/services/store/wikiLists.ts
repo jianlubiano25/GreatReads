@@ -93,6 +93,7 @@ export function cleanWiki(raw: string, keepBreaks = false): string {
   s = s.replace(/\[https?:\/\/[^\s\]]+\s*([^\]]*)\]/g, '$1').replace(/'{2,}/g, '');
   s = s.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&ndash;|&mdash;/g, '–');
   s = s.replace(/\[\d+\]|\[[a-z]\]/g, '').replace(/[†‡*]+\s*$/g, '');
+  s = s.replace(/\[\[|\]\]/g, ''); // a link the rules above could not read (nested or half-open, seen on the Hugo shelf) must not leak its brackets
   return s.replace(/\s+/g, ' ').replace(/\s+,/g, ',').replace(/^[,\s]+|[,\s]+$/g, '').trim();
 }
 
@@ -256,7 +257,9 @@ const NUMBERED_VALUE = /(^|\s)\d{1,2}\s*=\s*(?=\S)/g;
 export const stripNumberedValues = (s: string) => s.replace(NUMBERED_VALUE, '$1').replace(/\s+/g, ' ').trim();
 
 export function cleanTitle(raw: string): string {
-  const s = stripNumberedValues(String(raw ?? '')).normalize('NFC').replace(INVISIBLE, ' ').replace(/<!--[\s\S]*?-->/g, ' ').replace(/\[[^\]]*\]/g, ' ').replace(/[†‡§¶*#^↑]+\s*$/g, ' ');
+  const s = stripNumberedValues(String(raw ?? '')).normalize('NFC').replace(INVISIBLE, ' ').replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/\[\[([^\]|]*)\|([^\]]*)\]\]/g, '$2').replace(/\[\[([^\]]*)\]\]/g, '$1') // keep a wiki link's words, drop its brackets
+    .replace(/\[[^\]]*\]/g, ' ').replace(/\[\[|\]\]|[\[\]]/g, '').replace(/[†‡§¶*#^↑]+\s*$/g, ' ');
   return s.replace(/\s+/g, ' ').trim();
 }
 

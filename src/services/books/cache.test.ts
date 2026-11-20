@@ -32,3 +32,32 @@ test('the real app caches are all registered (curated2, top15, appleCharts1, res
   }
   assert.ok(!keys.includes('readlife.v2') && !keys.includes('readlife.storeprefs1'), 'your own data and settings must never be on the cleanup list');
 });
+
+import { freeSpaceThenRun } from './cache';
+test('storage full: a failed cache save keeps the newest half; freeing space removes the biggest non-cover key first and stops when the save works', async () => {
+  const data = new Map<string, string>();
+  let limit = 1000;
+  const used = () => [...data.entries()].reduce((n, [k, v]) => n + k.length + v.length, 0);
+  (globalThis as any).localStorage = {
+    getItem: (k: string) => data.get(k) ?? null,
+    setItem: (k: string, v: string) => { const before = (data.get(k) ?? '').length; if (used() - before + v.length + k.length > limit) throw new Error('QuotaExceededError'); data.set(k, v); },
+    removeItem: (k: string) => void data.delete(k), key: (i: number) => [...data.keys()][i] ?? null, get length() { return data.size; },
+  };
+  const { persistentCache, flushPersistentCaches } = await import('./cache');
+  const c = persistentCache<string>('readlife.quotatest1', { ttl: 1e9, max: 100 });
+  for (let i = 0; i < 40; i++) c.set('k' + i, 'x'.repeat(20));
+  limit = 1200; // 40 entries (about 2000 chars) do not fit any more, 20 do
+  flushPersistentCaches();
+  const kept = Object.keys(JSON.parse(data.get('readlife.quotatest1') || '{}'));
+  assert.ok(kept.length > 0 && kept.length < 40, 'trimmed, not lost');
+  assert.ok(kept.includes('k39'), 'the newest entries are the ones kept');
+
+  data.clear(); limit = 200;
+  data.set('readlife.big', 'b'.repeat(120)); data.set('readlife.resolved3', 'r'.repeat(60));
+  let tries = 0;
+  const ok = freeSpaceThenRun(() => { tries++; localStorage.setItem('readlife.v2', 'u'.repeat(50)); }, ['readlife.big', 'readlife.resolved3']);
+  assert.equal(ok, true);
+  assert.equal(data.has('readlife.big'), false, 'the big ordinary cache goes first');
+  assert.equal(data.has('readlife.resolved3'), true, 'cover memory is kept when that was enough');
+  assert.equal(tries, 1);
+});

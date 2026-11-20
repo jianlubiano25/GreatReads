@@ -1,8 +1,12 @@
+import { useAdminUi } from '../services/adminUi';
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { TermReview } from './TermReview';
 import { useModalA11y } from '../hooks/useModalA11y';
-import { ensureWork, listWorks, loadCandidates, publishCandidate, rejectCandidate, setWorkStatus, storeRating, storeText, syncCatalog, type Candidate, type WorkRow } from '../services/catalog';
-import { authVersion, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
+import { ensureWork, getWork, listWorks, loadCandidates, publishCandidate, rejectCandidate, saveFactsToCatalog, setWorkStatus, storeRating, storeText, syncCatalog, type Candidate, type WorkRow } from '../services/catalog';
+import { authVersion, checkAdmin, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
+import { isCoverAdminOn } from '../services/books';
+import { providerFactsFor } from '../services/books/providerFacts';
 import type { SourceRating } from '../services/books';
 
 /**
@@ -19,19 +23,29 @@ const pill = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-black/5 dark
 const btn = 'py-2 px-3 rounded-xl text-xs font-semibold border active:scale-95 transition-all disabled:opacity-40';
 
 /** What Book Info shows right now for the book (so it can be stored as a version) */
-export type ShownInfo = { summary?: string; authorBio?: string; ratings?: SourceRating[] };
+export type ShownInfo = { summary?: string; authorBio?: string; ratings?: Array<Pick<SourceRating, 'average' | 'count'> & { source: string }> };
 
-export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onClose: () => void; book?: { title: string; author?: string }; initialKind?: Candidate['kind']; shown?: ShownInfo }) {
+export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onClose: () => void; book?: { title: string; author?: string; id?: string | number; identity?: { gbVolume?: string; olWork?: string } & Record<string, any>; genre?: string }; initialKind?: Candidate['kind']; shown?: ShownInfo }) {
   useModalA11y(onClose);
   useSyncExternalStore(subscribeAuth, authVersion, authVersion);
-  const owner = !!currentUser() && isAdminKnown() === true;
+  const owner = useAdminUi();
+  // Why the owner tools are not on, said exactly: not signed in / developer mode off / access not confirmed yet (asked again here) / not on the admin list
+  const signedIn = !!currentUser();
+  const adminState = isAdminKnown();
+  const devOn = isCoverAdminOn();
+  const [checking, setChecking] = useState(false);
+  const recheck = () => { setChecking(true); void checkAdmin().finally(() => setChecking(false)); };
+  useEffect(() => { if (signedIn && adminState !== true) recheck(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [signedIn]);
   const [q, setQ] = useState('');
   const [works, setWorks] = useState<WorkRow[] | null>(null);
   const [work, setWork] = useState<WorkRow | null>(null);
   const [cands, setCands] = useState<Candidate[]>([]);
   const [kind, setKind] = useState<Candidate['kind']>('cover');
   const [idx, setIdx] = useState(0);
+  const [terms, setTerms] = useState(false); // the Classification tab (genres, subgenres, subjects, collections, keywords, awards from the providers)
   const [busy, setBusy] = useState(false);
+  const [termsKey, setTermsKey] = useState(0); // bumps to reload the Classification tab after sending
+  const [sendNote, setSendNote] = useState('');
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
@@ -41,10 +55,12 @@ export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onCl
       const w = await ensureWork(book);
       if (!live) return;
       if (!w.ok) return setMsg({ ok: false, text: w.error });
-      const found = await listWorks(book.title);
-      const row = found.ok ? found.data.find(x => x.id === w.id) : undefined;
+      const found = await getWork(w.id);
       if (!live) return;
-      if (row) { setWork(row); setKind(initialKind || 'cover'); const r = await loadCandidates(w.id); if (live && r.ok) setCands(r.data); }
+      if (!found.ok) return setMsg({ ok: false, text: found.error });
+      const row = found.data;
+      if (!row) return setMsg({ ok: false, text: 'This book is not in the catalog yet, so there is nothing to review.' });
+      { setWork(row); setKind(initialKind || 'cover'); const r = await loadCandidates(w.id); if (live && r.ok) setCands(r.data); }
     })();
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -86,7 +102,20 @@ export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onCl
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 space-y-3">
-          {!owner && <p className="text-sm text-[#706256] dark:text-[#a89a8a] py-4">Sign in as the owner first: Profile → Account.</p>}
+          {!owner && (
+            <div className="text-sm text-[#706256] dark:text-[#a89a8a] py-4 space-y-2">
+              {!signedIn ? <p>Sign in as the owner first: Profile → Account.</p>
+                : checking ? <p>Checking your owner access…</p>
+                : adminState !== true ? (
+                  <>
+                    <p>{adminState === false ? 'This account is not on the admin list.' : 'Could not confirm your owner access (the check did not get an answer).'}</p>
+                    <button type="button" className={`${btn} border-[#e3d7c3] dark:border-[#382f25]`} onClick={recheck}>Check again</button>
+                  </>
+                )
+                : !devOn ? <p>Developer mode is off. Tap your name five times quickly to switch the owner tools on.</p>
+                : <p>Opening…</p>}
+            </div>
+          )}
           {!work && owner && !book && (
             <>
               <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search title or author" aria-label="Search the catalog" className="w-full px-3 py-2 rounded-xl text-sm bg-white dark:bg-[#1a1511] border border-[#e3d7c3] dark:border-[#382f25]" />
@@ -109,20 +138,39 @@ export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onCl
             <>
               <div className="flex gap-1.5 flex-wrap" role="tablist">
                 {KINDS.map(k => (
-                  <button key={k.kind} role="tab" aria-selected={kind === k.kind} type="button" onClick={() => { setKind(k.kind); setIdx(0); }} className={`px-3 py-1 rounded-full text-xs font-semibold border ${kind === k.kind ? 'bg-[#2e5934] text-white border-[#2e5934]' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}>
+                  <button key={k.kind} role="tab" aria-selected={!terms && kind === k.kind} type="button" onClick={() => { setKind(k.kind); setIdx(0); setTerms(false); }} className={`px-3 py-1 rounded-full text-xs font-semibold border ${!terms && kind === k.kind ? 'bg-[#2e5934] text-white border-[#2e5934]' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}>
                     {k.label} ({cands.filter(c => c.kind === k.kind).length})
                   </button>
                 ))}
+                <button role="tab" aria-selected={terms} type="button" onClick={() => { setTerms(true); setMsg(null); }} className={`px-3 py-1 rounded-full text-xs font-semibold border ${terms ? 'bg-[#2e5934] text-white border-[#2e5934]' : 'border-[#e3d7c3] dark:border-[#382f25]'}`}>Classification</button>
               </div>
-              {shown && (kind === 'book_description' || kind === 'author_bio' || kind === 'rating') && (
+              {terms && book && (
+                <div className="space-y-1.5">
+                  <button type="button" disabled={busy} className={`${btn} w-full border-[#e3d7c3] dark:border-[#382f25]`} onClick={async () => {
+                    setBusy(true); setSendNote('');
+                    // Book Information shows what THIS device remembers for the book; this list shows what the catalog holds. Send the device's labels now (fill-only, nothing is overwritten) and say what happened.
+                    const facts = providerFactsFor({ id: book.id === undefined ? undefined : String(book.id), title: book.title, author: book.author, identity: book.identity });
+                    if (!facts.length) setSendNote('This device remembers no provider details for this book yet. Open Book Information and let it load, then try again.');
+                    else {
+                      const r = await saveFactsToCatalog(work.id, { id: book.id === undefined ? '' : String(book.id), identity: book.identity as any, genre: book.genre ?? '', title: book.title, author: book.author }, facts);
+                      setSendNote(`${r.saved.length ? `Saved: ${r.saved.join(', ')}.` : 'Nothing new to save (the catalog already has these).'}${r.skipped.length ? ` Skipped: ${r.skipped.slice(0, 4).join('; ')}.` : ''}${r.retry ? ' Some requests failed: try again.' : ''}`);
+                      setTermsKey(k => k + 1);
+                    }
+                    setBusy(false);
+                  }}>Send what this device knows about this book</button>
+                  {sendNote && <p className="text-[11px] text-[#706256] dark:text-[#a89a8a]">{sendNote}</p>}
+                </div>
+              )}
+              {terms && <TermReview key={termsKey} workId={work.id} bookPublished={work.status === 'published'} onMsg={setMsg} />}
+              {!terms && shown && (kind === 'book_description' || kind === 'author_bio' || kind === 'rating') && (
                 <button type="button" disabled={busy} className={`${btn} w-full border-[#e3d7c3] dark:border-[#382f25]`} onClick={() => void act(async () => {
                   const text = kind === 'book_description' ? shown.summary : kind === 'author_bio' ? shown.authorBio : undefined;
                   if (kind === 'rating') { let n = 0; for (const r of shown.ratings || []) if (await storeRating(work.id, r, false)) n++; return n ? { ok: true } : { ok: false, error: 'No ratings to store.' }; }
                   return (await storeText(work.id, kind, text || '')) ? { ok: true } : { ok: false, error: 'Nothing usable to store (too short or empty).' };
                 }, 'Stored as a version. Publish it below when you are happy with it.')}>Store what Book Info shows now as a version</button>
               )}
-              {!cur && <p className="text-sm text-[#706256] dark:text-[#a89a8a] py-6 text-center">No versions stored for this yet.</p>}
-              {cur && (
+              {!terms && !cur && <p className="text-sm text-[#706256] dark:text-[#a89a8a] py-6 text-center">No versions stored for this yet.</p>}
+              {!terms && cur && (
                 <div className="rounded-xl border border-[#e3d7c3] dark:border-[#382f25] p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <button type="button" aria-label="Previous version" disabled={idx <= 0} onClick={() => setIdx(i => i - 1)} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 disabled:opacity-30"><ChevronLeft className="w-5 h-5" /></button>
@@ -144,7 +192,7 @@ export function CatalogReviewModal({ onClose, book, initialKind, shown }: { onCl
                 </div>
               )}
               <div className="flex items-center justify-between text-[11px]">
-                <button type="button" className="underline text-[#706256] dark:text-[#a89a8a]" onClick={() => { setWork(null); setWorks(null); setCands([]); setMsg(null); }}>All books</button>
+                <button type="button" className="underline text-[#706256] dark:text-[#a89a8a]" onClick={() => { setWork(null); setWorks(null); setCands([]); setMsg(null); setTerms(false); }}>All books</button>
                 <button type="button" disabled={busy} className="underline text-[#706256] dark:text-[#a89a8a]" onClick={() => void act(() => setWorkStatus(work.id, work.status === 'published' ? 'draft' : 'published').then(r => { if (r.ok) setWork({ ...work, status: work.status === 'published' ? 'draft' : 'published' }); return r; }), work.status === 'published' ? 'Hidden from readers.' : 'Visible to readers.')}>
                   {work.status === 'published' ? 'Hide this book from readers' : 'Publish this book'}
                 </button>

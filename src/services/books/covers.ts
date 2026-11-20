@@ -10,3 +10,4 @@ export * from './coverAnalysis';
 export * from './coverCandidates';
 export * from './coverLookup';
 export * from './coverPicks';
+export * from './bookView';

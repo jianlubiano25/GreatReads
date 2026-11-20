@@ -21,7 +21,7 @@ import { timed } from './perf';
  */
 
 export type RatingSourceId = NonNullable<Book['ratingSource']>;
-export const RATING_SOURCE_LABEL: Record<RatingSourceId, string> = { openlibrary: 'Open Library', google: 'Google', apple: 'Apple', library: 'Library' };
+export const RATING_SOURCE_LABEL: Record<RatingSourceId, string> = { openlibrary: 'Open Library', google: 'Google', apple: 'Apple', hardcover: 'Hardcover', library: 'Library' };
 
 export interface RatingPair {
   average: number;
@@ -32,7 +32,7 @@ export interface RatingPair {
 
 /** One site's own rating of a book (shown next to the others in the book info; never combined with them). */
 export interface SourceRating extends RatingPair {
-  source: Exclude<RatingSourceId, 'library'>;
+  source: Exclude<RatingSourceId, 'library' | 'hardcover'>; // the three sites that are compared side by side; a Hardcover rating is a stand-alone gap filler (never in the ladder)
 }
 
 /** Fewer ratings than this is "thin": a preferred source that is thin yields to a lower step that has more. */

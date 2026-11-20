@@ -36,7 +36,7 @@ export function AnalogClock({ weather, large, live }: { weather: WeatherData; la
   const now = useMinuteTick(live);
   const m = now.getMinutes(), h = (now.getHours() % 12) + m / 60;
   const hand = (deg: number, len: number, w: number) => <line x1={0} y1={0} x2={0} y2={-len} stroke={look.led} strokeWidth={w} strokeLinecap="round" transform={`rotate(${deg})`} />;
-  const spoken = `${now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}, ${weather.description}`;
+  const spoken = `${now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}, ${weather.description}`;
   return (
     <button
       type="button"

@@ -1,3 +1,4 @@
+import { bump } from '../perf';
 import { dedupeInflight, getJsonDetailed, pool } from '../http';
 import { persistentCache } from '../cache';
 import { cleanIsbn, isbnPair } from '../identity';
@@ -71,6 +72,16 @@ export function parseNytList(data: any): NytEntry[] {
     .sort((a, b) => a.rank - b.rank);
 }
 
+/**
+ * A list whose own edition date is older than this has been discontinued (the NYT retired its old monthly Science, Travel, Crime & Punishment... lists but can
+ * still answer for the name). It is treated as "not published any more", never shown as a current best-seller list. Weekly lists are days old, monthly ones weeks.
+ */
+export const NYT_DEAD_AFTER_MS = 120 * 24 * 60 * 60 * 1000;
+export function isDeadNytList(entries: Pick<NytEntry, 'publishedDate'>[], now = Date.now()): boolean {
+  const at = Date.parse(entries[0]?.publishedDate || '');
+  return Number.isFinite(at) && now - at > NYT_DEAD_AFTER_MS;
+}
+
 /** Forget a saved list (used by tests, and handy when switching lists). */
 export const forgetNytList = (list: string) => cache.delete(list);
 
@@ -103,7 +114,7 @@ export const NYT_FAILURE_TEXT: Record<NytFailure, string> = {
   unauthorized: 'the NYT rejected the key (enable the Books API for it in the NYT developer portal)',
   rate_limited: 'the NYT rate limit was hit; it will retry later',
   no_function: '/api/nyt returned a web page: the Pages Function is not deployed (needs a Git-connected Pages project, not a plain upload)',
-  list_unavailable: 'the NYT Books API does not publish this list name (any more); this shelf stays hidden (run npm run check:nyt to see the names it does publish)',
+  list_unavailable: 'the NYT Books API does not publish a current list under this name (it was removed, renamed or discontinued); this shelf stays hidden (run npm run check:nyt to see the names it does publish)',
   upstream_error: 'the NYT API had an error (run npm run check:nyt to verify the list names)',
   offline: 'no network',
   empty: 'the NYT list came back empty',
@@ -149,17 +160,20 @@ export async function loadNytList(list: string, opts: CallOpts & { force?: boole
       }
     }
     const entries = r.data ? parseNytList(r.data) : [];
-    if (entries.length) {
+    const dead = entries.length > 0 && isDeadNytList(entries); // answered, but with an edition from years ago
+    if (entries.length && !dead) {
       cache.set(list, entries);
       gone.delete(list);
       lastFailure.delete(list);
       return { entries, stale: false };
     }
     if (opts.signal?.aborted) return { entries: null, stale: false, failure: 'offline' as const };
-    const failure: NytFailure = r.data ? 'empty' : classifyNytFailure(r);
+    const failure: NytFailure = dead ? 'list_unavailable' : r.data ? 'empty' : classifyNytFailure(r);
     if (failure === 'list_unavailable') gone.set(list, true);
     lastFailure.set(list, failure);
+    bump(`nyt.failed.${list}.${failure}`); // shows in Copy diagnostics: which list failed and why
     warnOnce(list, failure);
+    if (dead) cache.delete(list); // a saved copy of a dead list is not a "last good list"
     const old = cache.peek(list);
     return old ? { entries: old.value, stale: true, failure } : { entries: null, stale: false, failure };
   });

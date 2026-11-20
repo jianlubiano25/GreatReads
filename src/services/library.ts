@@ -3,6 +3,7 @@ import { DEFAULT_BOOKS } from '../data/defaultBooks';
 import { bookKey, isUnknownAuthor, mergeBooks, sameWork } from './books';
 import { stampStatus } from './bookHistory';
 import { dateKey } from './dates';
+import { withEdits } from './editTimes';
 
 export type AddDestination = 'device' | 'library' | 'now' | 'next';
 /** Where in your reading a book sits when you add it: Reading Now, Up Next, or just on your list */
@@ -53,7 +54,7 @@ export function applyAddBook(prev: ReadingState, incoming: Book, destination: Ad
 
   const newStatus: BookStatus = chosen ?? (destination === 'now' || destination === 'next' ? destination : (prev.status[idKey] || 'list'));
 
-  return {
+  const next: ReadingState = {
     ...prev,
     // The day it joined your list (and the day you started it, if it goes straight to Reading now)
     history: { ...prev.history, [idKey]: stampStatus(prev.history?.[idKey], prev.status[idKey], newStatus, dateKey(), Date.now()) },
@@ -68,4 +69,11 @@ export function applyAddBook(prev: ReadingState, incoming: Book, destination: Ad
       [idKey]: newStatus,
     },
   };
+  // Stamp only what really changed, so re-adding a book never overrides a newer edit made on another device
+  let stamped = next;
+  if (prev.status[idKey] !== newStatus) stamped = withEdits(stamped, 'status', [idKey]);
+  if (ratings !== prev.ratings) stamped = withEdits(stamped, 'rating', [idKey]);
+  // A removed catalog book is only hidden: adding it back must show it again (and upload it), not leave it hidden
+  if (stamped.hiddenBookIds?.[idKey]) { const { [idKey]: _shown, ...stillHidden } = stamped.hiddenBookIds; stamped = withEdits({ ...stamped, hiddenBookIds: stillHidden }, 'hidden', [idKey]); }
+  return stamped;
 }

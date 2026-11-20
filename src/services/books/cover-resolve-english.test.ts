@@ -25,7 +25,6 @@ const olWork = (workId: string, title: string, author: string, cover: number) =>
 const olEditions = (workId: string, entries: any[]) => (u: URL) => (isOl(u) && u.pathname === `/works/${workId}/editions.json` ? { body: { entries } } : undefined);
 const eng = { languages: [{ key: '/languages/eng' }] };
 const spa = { languages: [{ key: '/languages/spa' }] };
-const ol = (id: number) => `https://covers.openlibrary.org/b/id/${id}-M.jpg`;
 
 test('a Google volume in another language does not lend its jacket: the English Open Library edition\'s cover is shown', async () => {
   forgetEditionsForTests();

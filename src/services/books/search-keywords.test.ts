@@ -95,7 +95,7 @@ test('a mood is also asked as its mapped phrase (one extra phrase, subject searc
   await searchBooksLive('cozy', { local: false });
   const subjects = seen.map(u => u.searchParams.get('subject')).filter(Boolean);
   assert.ok(subjects.includes('cozy') && subjects.includes('cozy mystery'), `asked for: ${subjects.join(', ')}`);
-  assert.equal(seen.length, 7); // + the subject asked most-read first
+  assert.equal(seen.length, 5); // cozy is a genre word: subject searches only (ol, ol-popular, google, + the mapped phrase on both), no plain title searches
   assert.ok(seen.some(u => u.searchParams.get('subject') === 'cozy' && u.searchParams.get('sort') === 'readinglog'), 'the most-read list is asked for too');
 });
 

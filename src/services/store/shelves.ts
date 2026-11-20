@@ -33,6 +33,10 @@ export interface ShelfSource {
   refresh?: () => Promise<RefreshResult>;
 }
 
+export class InsufficientShelfError extends Error {
+  constructor() { super('not enough books qualify for this shelf'); }
+}
+
 export const SHELF_TTL = 6 * 60 * 60 * 1000;
 /**
  * Finished dynamic shelves (Trending). Curated shelves have their own, longer-lived cache (see curated.ts).

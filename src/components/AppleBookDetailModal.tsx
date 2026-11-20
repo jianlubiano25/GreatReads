@@ -1,3 +1,4 @@
+import { useAdminUi } from '../services/adminUi';
 import { moreLikeThis } from '../services/books/genreRank';
 import React, { Suspense, lazy, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
@@ -6,13 +7,21 @@ import type { HistoryPatch } from '../services/bookHistory';
 import { RateThisBook, YourReading } from './BookJourney';
 import { DIFFICULTY_LABELS, SHELF_LABELS } from '../data/defaultBooks';
 import { useBookInfo } from '../hooks/useBookInfo';
-import { saveBookToCatalog } from '../services/catalog';
+import { saveBookToCatalog, storedClassification, type StoredClassification } from '../services/catalog';
 import { CatalogReviewModal } from './CatalogReviewModal';
 import { authVersion, currentUser, isAdminKnown, subscribeAuth } from '../services/supabase';
-import { unlinkAuthorGroup, displayBook, nameAlternates, nameChoiceOf, setNameChoice, subscribeNames, mainRating, otherRatings, RATING_SOURCE_LABEL, isCoverAdminOn, subscribeCoverAdmin, type SourceRating } from '../services/books';
+import { hardcoverRating } from '../services/books/sources/hardcover';
+import { unlinkAuthorGroup, displayBook, nameAlternates, nameChoiceOf, setNameChoice, subscribeNames, mainRating, otherRatings, RATING_SOURCE_LABEL, isCoverAdminOn, subscribeCoverAdmin } from '../services/books';
 import { CoverFace, StarRating, compactCount, honorsListFor } from './BookMeta';
 import { X, BookOpen, Star, Award, ChevronDown, Check, Bookmark, Image as ImageIcon, RefreshCw, Code, Languages } from 'lucide-react';
+import { displayGenre } from '../services/books/catalogFill';
 import { ensureBookInfo, resetInfoWaits, type InfoField } from '../services/books/infoStore';
+import { providerFactsFor } from '../services/books/providerFacts';
+import { labelGroups, providerAwards, visibleGroups, visibleChips, withCollectionHonors } from '../services/books/labelGroups';
+import { ChipGroup, GroupTitle, TONE } from './LabelChips';
+import { PROVIDER_LABEL, isProvider } from '../services/books/providers';
+import { getVocab, type Vocab } from '../services/catalogTerms';
+import { coverBackdrop } from '../services/books/placeholderCover';
 
 // The cover viewer is only fetched the first time someone opens it
 const CoverPickerModal = lazy(() => import('./CoverPickerModal').then(m => ({ default: m.CoverPickerModal })));
@@ -72,7 +81,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [showCovers, setShowCovers] = useState(false);
   useSyncExternalStore(subscribeAuth, authVersion, authVersion);
-  const isOwner = !!currentUser() && isAdminKnown() === true;
+  const isOwner = useAdminUi();
   const alts = isOwner ? nameAlternates(book) : { titles: [], authors: [] };
   const picked = nameChoiceOf(book);
   const [catalogNote, setCatalogNote] = useState('');
@@ -118,9 +127,51 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
   const main = mainRating(book, siteRatings); // Library -> Apple -> Open Library -> Google; the other sites are listed beside it
   const mainSource = main?.source;
   const otherSites = otherRatings(siteRatings, mainSource);
+  // Hardcover's own rating, asked once when the book opens (the server function caches a day and backs off when it is not set up); listed beside the others, never blended
+  const [hcRating, setHcRating] = useState<{ average: number; count: number } | null>(null);
+  useEffect(() => {
+    let live = true;
+    setHcRating(null);
+    if (book.title) void hardcoverRating(book.title, book.author || '').then(r => { if (live && r && r.average >= 1 && r.count > 0) setHcRating(r); }).catch(() => {});
+    return () => { live = false; };
+  }, [book.title, book.author]);
+  const hcRow = hcRating && mainSource !== 'hardcover' ? hcRating : null;
+  const shownRatings = hcRating ? [...siteRatings, { source: 'hardcover', average: hcRating.average, count: hcRating.count }] : siteRatings;
   const ratingsText = (r: { count?: number }) => (r.count ? `${compactCount(r.count)} ${r.count === 1 ? 'rating' : 'ratings'}` : '');
 
   const awards = honorsListFor(book);
+  // Genre, sub-genre, subjects and tags: every label the providers gave this book (on this device), grouped by what the vocabulary says each one is
+  const [vocab, setVocab] = useState<Vocab | null>(null);
+  useEffect(() => { let live = true; void getVocab().then(v => { if (live) setVocab(v); }).catch(() => {}); return () => { live = false; }; }, []);
+  // ...and what the catalog already holds for this book (read from the database; the owner sees candidates, everyone else only approved ones)
+  const [stored, setStored] = useState<StoredClassification | null>(null);
+  useEffect(() => {
+    let live = true; setStored(null);
+    if (book.title) void storedClassification({ title: book.title, author: book.author, identity: book.identity }).then(v => { if (live) setStored(v); }).catch(() => {});
+    return () => { live = false; };
+  }, [book.title, book.author]);
+  const rejectedLabels = useMemo(() => new Set(stored?.rejected || []), [stored]);
+  const labelSets = useMemo(
+    () => withCollectionHonors(labelGroups(book.genre && book.genre !== 'N/A' ? [displayGenre(book.genre) || book.genre] : [], providerFactsFor({ ...book, id: String(book.id) }), vocab, stored?.labels, rejectedLabels), honorsListFor(book)),
+    // hcRating changes when Hardcover's facts arrive
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [book.id, book.title, book.author, book.genre, vocab, hcRating, stored, rejectedLabels],
+  );
+  const providerAwardChips = useMemo(
+    () => providerAwards(providerFactsFor({ ...book, id: String(book.id) }), stored?.awards, rejectedLabels),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [book.id, book.title, book.author, hcRating, stored, rejectedLabels],
+  );
+  // Readers see only what is published (the database decides). The owner sees everything the providers suggested that is not rejected, dashed when not published yet, and adjusts it in the <> Review catalog (Classification tab)
+  const [showDraft, setShowDraft] = useState(true);
+  const draftOn = isOwner && showDraft;
+  const prizeAwards = (awards || []).filter(a => a.type !== 'c'); // book-club picks and other lists are shown under Collections
+  const awardChipsAll = providerAwardChips.filter(c => !(awards || []).some(aw => aw.label.toLowerCase().includes(c.label.toLowerCase())));
+  const shownLabels = visibleGroups(labelSets, draftOn);
+  const shownAwards = visibleChips(awardChipsAll, draftOn);
+  const unpublishedCount = labelSets.reduce((n, g) => n + g.chips.filter(c => !c.published).length, 0) + awardChipsAll.filter(c => !c.published).length;
+  const classGroups = shownLabels.groups.filter(g => g.name !== 'Keywords & tags');
+  const tagGroup = shownLabels.groups.find(g => g.name === 'Keywords & tags');
   const displayPages = propTotalPages || book.pageCount || 0;
   const shelfInfo = SHELF_LABELS[book.shelf] || { label: book.genre || 'Book', emoji: '📖', color: book.spineColor || '#2e5934' };
   // Under the genre: the curated shelf (🧠 Heal) — or where a store book came from.
@@ -206,7 +257,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           <div className="relative shrink-0">
             <div
               className="book-cover-modal-3d w-[150px] h-[222px] sm:w-[170px] sm:h-[250px] flex flex-col justify-between p-4 text-white overflow-hidden relative shadow-lg"
-              style={{ backgroundColor: book.spineColor || shelfInfo.color }}
+              style={{ background: coverBackdrop(book) }}
             >
               <CoverFace book={book} size="xl" imgSize="M" badge={false} eager={true} />
             </div>
@@ -316,7 +367,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           <div className="flex flex-col items-center justify-center p-1 sm:px-3 sm:flex-1 border-r border-[#e3d7c3]/60 dark:border-[#382f25]">
             <span className="text-[10px] sm:text-[11px] uppercase font-bold tracking-wider text-[#706256] dark:text-[#a89a8a]">Genre</span>
             <span className="font-bold text-sm sm:text-base text-[#201a15] dark:text-[#f0e6d6] truncate max-w-[85px] sm:max-w-none my-0.5">
-              {book.genre && book.genre !== 'Book' ? book.genre : book.shelf === 'mine' ? dash('genre') : shelfInfo.label}
+              {displayGenre(book.genre) || dash('genre')}
             </span>
             <span className="text-[10px] sm:text-[11px] text-[#706256] dark:text-[#a89a8a] truncate max-w-[80px] sm:max-w-none">
               {shelfSubLabel}
@@ -339,27 +390,6 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
             <span className="text-[10px] sm:text-[11px] text-[#706256] dark:text-[#a89a8a]">Pages</span>
           </div>
         </div>
-
-        {/* Awards Section if available */}
-        {awards && awards.length > 0 && (
-          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25] bg-[#f5f0e6]/50 dark:bg-[#181410]/50">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] mb-2 flex items-center gap-1.5">
-              <Award className="w-3.5 h-3.5 text-amber-500" />
-              <span>Honors &amp; Awards</span>
-            </h4>
-            <div className="flex flex-wrap gap-2">
-              {awards.map((aw, idx) => (
-                <span
-                  key={idx}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-[#e8efe7] dark:bg-[#243422] text-[#2e5934] dark:text-[#86b880] border border-[#2e5934]/20"
-                >
-                  <span>{aw.type === 'w' ? '🏆' : aw.type === 'c' ? '📖' : '🎖️'}</span>
-                  <span>{aw.label}</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Synopsis / Description Section */}
         <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25]">
@@ -385,15 +415,6 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
           )}
         </div>
 
-        {/* More books like this one sits right below the About section, then your own rating */}
-        {onMoreLikeThis && moreLikeThis(book) && (
-          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25] flex justify-center">
-            <button type="button" onClick={onMoreLikeThis} className="min-h-[44px] px-5 py-2 rounded-full border border-[#2e5934] dark:border-[#86b880] text-sm font-semibold text-[#2e5934] dark:text-[#86b880] hover:bg-[#e8efe7] dark:hover:bg-[#243422]">
-              More like this
-            </button>
-          </div>
-        )}
-
         {onRate && <RateThisBook title={book.title} value={userRating} onRate={onRate} />}
 
         {/* Ratings: the main rating (one site's average + count) and, beside it, what the other sites say */}
@@ -417,7 +438,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
               </button>
               </span>
             </div>
-            {!main && !otherSites.length ? <p className="text-sm text-[#706256] dark:text-[#a89a8a]">No ratings found yet.</p> : null}
+            {!main && !otherSites.length && !hcRow ? <p className="text-sm text-[#706256] dark:text-[#a89a8a]">No ratings found yet.</p> : null}
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
               {main ? (
                 <div className="flex items-center gap-4">
@@ -428,7 +449,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
                   </div>
                 </div>
               ) : null}
-              {otherSites.length ? (
+              {otherSites.length || hcRow ? (
                 <ul className="flex flex-col gap-1 text-xs text-[#706256] dark:text-[#a89a8a]" aria-label="Ratings from other sites">
                   {otherSites.map(r => (
                     <li key={r.source} className="flex items-center gap-1.5">
@@ -437,6 +458,13 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
                       <span>{r.average.toFixed(1)}{r.count ? ` · ${ratingsText(r)}` : ''}</span>
                     </li>
                   ))}
+                  {hcRow ? (
+                    <li key="hardcover" className="flex items-center gap-1.5">
+                      <span className="font-semibold">{RATING_SOURCE_LABEL.hardcover}</span>
+                      <StarRating value={hcRow.average} className="text-xs" />
+                      <span>{hcRow.average.toFixed(1)}{` · ${ratingsText(hcRow)}`}</span>
+                    </li>
+                  ) : null}
                 </ul>
               ) : null}
             </div>
@@ -444,6 +472,70 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
         ) : loading.ratings ? (
           <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25] text-sm text-[#706256] dark:text-[#a89a8a]" role="status" aria-live="polite">Loading ratings…</div>
         ) : null}
+
+        {/* BOOK CLASSIFICATION (after Ratings): genres, subgenres, subjects & themes, collections, awards & honors */}
+        {(classGroups.length > 0 || prizeAwards.length > 0 || shownAwards.chips.length > 0 || (isOwner && unpublishedCount > 0)) && (
+          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25]" data-testid="book-classification">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[#706256] dark:text-[#a89a8a] mb-3">Book classification</h4>
+            {classGroups.map(g => <ChipGroup key={g.name} group={g} />)}
+            {(prizeAwards.length > 0 || shownAwards.chips.length > 0) && (
+              <div className="mb-2 last:mb-0">
+                <GroupTitle icon={Award} title="Awards &amp; honors" tone="gold" />
+                <div className="flex flex-wrap gap-2">
+                  {prizeAwards.map((aw, idx) => (
+                    <span key={idx} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${TONE.gold}`}>
+                      <span>{aw.type === 'w' ? '🏆' : '🎖️'}</span>
+                      <span>{aw.label}</span>
+                    </span>
+                  ))}
+                  {shownAwards.chips.map(c => (
+                    <span key={c.label} title={`${c.published ? '' : 'Not shown to readers yet (only you see this). '}${c.sources.map(x => (isProvider(x) ? PROVIDER_LABEL[x] : 'Your library')).join(', ')}`} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${TONE.gold} ${c.published ? '' : 'border-dashed opacity-70'}`}>
+                      <span>🏆</span>
+                      <span>{c.label}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {isOwner && unpublishedCount > 0 && (
+              <button type="button" onClick={() => setShowDraft(v => !v)} className="mt-2 text-[11px] underline text-[#706256] dark:text-[#a89a8a]" data-testid="show-unpublished">
+                {showDraft ? `Hide the ${unpublishedCount} not shown to readers (only you see these)` : `Show ${unpublishedCount} not shown to readers (only you see these)`}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Keywords & tags: right below Book classification, then About the Author */}
+        {tagGroup && (
+          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25]" data-testid="book-keywords">
+            <ChipGroup group={tagGroup} />
+          </div>
+        )}
+
+        {/* About the Author */}
+        {!book.authorBio && loading.text && (
+          <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25] text-sm text-[#706256] dark:text-[#a89a8a]" role="status" aria-live="polite">Loading author info…</div>
+        )}
+        {book.authorBio && !book.authorBio.startsWith('No author') && (
+          <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25]">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="font-serif-display text-lg text-[#201a15] dark:text-[#f0e6d6]">About the Author</h4>
+              {devBtn('author_bio', 'author bio')}
+            </div>
+            <p className="text-[17px] leading-[1.65] text-[#201a15]/80 dark:text-[#f0e6d6]/80">
+              {book.authorBio}
+            </p>
+          </div>
+        )}
+
+        {/* More books like this one sits below About the Author */}
+        {onMoreLikeThis && moreLikeThis(book) && (
+          <div className="px-6 py-4 border-b border-[#e3d7c3] dark:border-[#382f25] flex justify-center">
+            <button type="button" onClick={onMoreLikeThis} className="min-h-[44px] px-5 py-2 rounded-full border border-[#2e5934] dark:border-[#86b880] text-sm font-semibold text-[#2e5934] dark:text-[#86b880] hover:bg-[#e8efe7] dark:hover:bg-[#243422]">
+              More like this
+            </button>
+          </div>
+        )}
 
         {/* For books on your list, your reading dates and pages */}
         {inLibrary && onEditHistory && (
@@ -465,7 +557,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
             ['Author', book.author],
             ['Published', book.year && book.year !== 'N/A' ? book.year : ''],
             [book.identity?.isbn13 ? 'ISBN-13' : 'ISBN-10', book.identity?.isbn13 || book.identity?.isbn10 || ''],
-            ['Genre', book.genre],
+            ['Genre', displayGenre(book.genre)],
             ['Length', displayPages ? `${displayPages} pages` : ''],
             ['Level', book.difficulty ? DIFFICULTY_LABELS[book.difficulty] : ''],
           ] as [string, string][]).filter(r => r[1]).map(([k, v]) => (
@@ -475,22 +567,6 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
             </div>
           ))}
         </div>
-
-        {/* About the Author */}
-        {!book.authorBio && loading.text && (
-          <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25] text-sm text-[#706256] dark:text-[#a89a8a]" role="status" aria-live="polite">Loading author info…</div>
-        )}
-        {book.authorBio && !book.authorBio.startsWith('No author') && (
-          <div className="px-6 py-5 border-b border-[#e3d7c3] dark:border-[#382f25]">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="font-serif-display text-lg text-[#201a15] dark:text-[#f0e6d6]">About the Author</h4>
-              {devBtn('author_bio', 'author bio')}
-            </div>
-            <p className="text-[17px] leading-[1.65] text-[#201a15]/80 dark:text-[#f0e6d6]/80">
-              {book.authorBio}
-            </p>
-          </div>
-        )}
 
         {/* Reading Tools / Highlights quick access if currently reading */}
         <div className="px-6 py-4 bg-[#f5f0e6]/40 dark:bg-[#181410]/40 flex items-center justify-between">
@@ -541,7 +617,7 @@ export const AppleBookDetailModal: React.FC<AppleBookDetailModalProps> = ({
         </div>
       </div>
     </div>
-    {coverTools && review && <CatalogReviewModal onClose={() => setReview(null)} book={book} initialKind={review} shown={{ summary: book.summary, authorBio: book.authorBio, ratings: siteRatings }} />}
+    {coverTools && review && <CatalogReviewModal onClose={() => setReview(null)} book={book} initialKind={review} shown={{ summary: book.summary, authorBio: book.authorBio, ratings: shownRatings }} />}
     {catalogNote && <div role="status" aria-live="polite" className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] max-w-[90vw] px-3 py-2 rounded-xl text-xs bg-[#201a15] text-white shadow-lg" onClick={() => setCatalogNote('')}>{catalogNote}</div>}
     {coverTools && showCovers && (
       <Suspense fallback={null}>

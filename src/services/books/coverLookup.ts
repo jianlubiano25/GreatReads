@@ -6,8 +6,8 @@ import { type Book } from '../../types';
 import { clearCaches, COVER_CACHE_KEYS, registerClearableKey } from './cache';
 import { dedupeInflight, mapPool, transientFailureCount } from './http';
 import { olCoverById } from './sources/openLibrary';
-import { coverKey, inspectCover, isWeakCover, probeImage } from './coverAnalysis';
-import { imageKey, loadCoverCandidates, rankCandidates, type CoverCandidate } from './coverCandidates';
+import { coverKey, flatKey, inspectCover, isWeakCover, probeImage } from './coverAnalysis';
+import { loadCoverCandidates, rankCandidates, type CoverCandidate } from './coverCandidates';
 import { syncSharedCovers } from './coverPicks';
 import { isCoverRejected } from './rejectedCovers';
 
@@ -270,14 +270,14 @@ async function search(b: MissingBook): Promise<string> {
   const tryList = async (list: CoverCandidate[]): Promise<string> => {
     const usable = rankCandidates(list)
       .filter(c => !(c.foreign && hasOwn)) // foreign ones are last: a book with a cover of its own is not given another language's
-      .filter(c => !(ownUrl && imageKey(c.url) === imageKey(ownUrl))) // the cover it already has is the one that failed
+      .filter(c => !(ownUrl && flatKey(c.url) === flatKey(ownUrl))) // the cover it already has is the one that failed
       .map(c => (c.source === 'openlibrary' ? c.url.replace(/-L\.jpg/, '-M.jpg') : c.url)) // a shelf card is drawn from the medium size (the viewer shows the large one)
-      .filter(u => !tried.has(imageKey(u)));
+      .filter(u => !tried.has(flatKey(u)));
     // The first few are checked TOGETHER (one slow picture no longer holds up the rest), then taken in rank order
     const checked = await Promise.all(usable.slice(0, 4).map(u => probeImage(u, 5000, true)));
     for (let i = 0; i < usable.length; i++) {
       const url = usable[i];
-      tried.add(imageKey(url));
+      tried.add(flatKey(url));
       if (i < checked.length ? !checked[i] : !(await probeImage(url, 5000, true))) continue;
       if ((await inspectCover(url)) === 'render') { renders.push(url); continue; }
       return url;
@@ -291,7 +291,7 @@ async function search(b: MissingBook): Promise<string> {
   const seen = new Set<string>();
   const onEarly = (list: CoverCandidate[]) => {
     for (const c of rankCandidates(list)) {
-      if (c.foreign || c.source === 'openlibrary' || seen.has(c.url) || (ownUrl && imageKey(c.url) === imageKey(ownUrl))) continue;
+      if (c.foreign || c.source === 'openlibrary' || seen.has(c.url) || (ownUrl && flatKey(c.url) === flatKey(ownUrl))) continue;
       seen.add(c.url);
       void (async () => {
         if (!(await probeImage(c.url, 5000, true))) return;
@@ -415,10 +415,11 @@ export async function repairMissingCovers(opts: { includeNotFound?: boolean; onP
  * Touches only the two cover caches: Library, history, notes, settings, shelves and offline data are left alone.
  * Returns how many saved repairs were forgotten.
  */
-export function refreshBookCovers(): number {
+export function refreshBookCovers(opts: { keepShelfCovers?: boolean } = {}): number {
   const count = Object.keys(fixes).length;
   // The saved answers a cover is chosen from: each book's resolved result, the shelves built from them and the cover viewer's lists. (Ratings are looked up again with them.)
-  clearCaches([COVER_CACHE_KEYS.resolved, COVER_CACHE_KEYS.shelves, COVER_CACHE_KEYS.candidates]);
+  // (`keepShelfCovers`: a new build keeps the shelves' saved covers, so the Store never starts from placeholders)
+  clearCaches([COVER_CACHE_KEYS.resolved, ...(opts.keepShelfCovers ? [] : [COVER_CACHE_KEYS.shelves]), COVER_CACHE_KEYS.candidates]);
   fixes = {};
   try { localStorage.removeItem(FIX_KEY); localStorage.removeItem(NONE_KEY); } catch {}
   inflight.clear();
@@ -434,8 +435,8 @@ export function refreshBookCovers(): number {
  * keeps them for 12 hours and would hand the same old answer back), and fetch the covers published for everyone right now. Your own picks and your data are untouched.
  * Pictures already on the device stay: a new choice is a different picture, and an unchanged one need not be downloaded again. The caller reloads the page afterwards.
  */
-export async function refreshAllCovers(): Promise<number> {
-  const count = refreshBookCovers();
+export async function refreshAllCovers(opts: { keepShelfCovers?: boolean } = {}): Promise<number> {
+  const count = refreshBookCovers(opts);
   try { await (globalThis as any).caches?.delete('rl-api-v1'); } catch {}
   await syncSharedCovers({ force: true }).catch(() => false);
   return count;

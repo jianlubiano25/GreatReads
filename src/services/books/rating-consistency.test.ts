@@ -29,7 +29,6 @@ const isOl = (u: URL) => u.hostname === 'openlibrary.org';
 const isGoogle = (u: URL) => u.hostname === 'www.googleapis.com';
 const olSearch = (body: unknown) => (u: URL) => (isOl(u) && u.pathname === '/search.json' ? { body } : undefined);
 const olNoSummary = (u: URL) => (isOl(u) ? { body: { summary: {} } } : undefined);
-const noOl = (u: URL) => (isOl(u) ? { body: { docs: [], summary: {} } } : undefined);
 const apple = (title: string, author: string, average?: number, count?: number) => (u: URL) =>
   u.hostname === 'itunes.apple.com' ? { body: { results: [{ trackId: 9, trackName: title, artistName: author, artworkUrl100: 'https://a/100x100bb.jpg', averageUserRating: average, userRatingCount: count }] } } : undefined;
 const noApple = (u: URL) => (u.hostname === 'itunes.apple.com' ? { body: { results: [] } } : undefined);

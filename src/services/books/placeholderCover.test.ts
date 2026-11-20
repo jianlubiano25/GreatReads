@@ -49,3 +49,29 @@ test('title type is about 20% larger than before in each length band, and the wh
   }
   assert.ok(titleSizeCqw('The Girl with the Dragon Tattoo') >= 15, 'a mid-length title is not smaller than before');
 });
+
+import { readFileSync } from 'node:fs';
+test('one stand-in cover only: the Apple-style one; no fade that would show the grey colour behind it, no pulsing grey blocks in the Store skeleton', () => {
+  const meta = readFileSync(new URL('../../components/BookMeta.tsx', import.meta.url), 'utf8');
+  const shelf = readFileSync(new URL('../../components/StoreShelf.tsx', import.meta.url), 'utf8');
+  assert.equal((meta.match(/function PlaceholderCover/g) || []).length, 1);
+  assert.equal(/transition-opacity/.test(meta.replace(/\/\*[^]*?\*\//g, '')), false);
+  assert.equal(/animate-pulse|e3d7c3\]\/60/.test(shelf), false);
+  assert.match(shelf, /PLACEHOLDER_STYLES/);
+});
+
+import { coverBackdrop } from './placeholderCover';
+test('the box behind every cover has the stand-in colour (never the spine colour), and a remembered cover is eager and waits a short grace before the stand-in shows', () => {
+  const b = { title: 'Dune', author: 'Frank Herbert' };
+  const st = placeholderStyleFor(b);
+  assert.match(coverBackdrop(b), new RegExp(st.bg.replace('#', '#')));
+  for (const f of ['cards.tsx', 'StoreShelf.tsx', 'BookSearch.tsx', 'AppleBookDetailModal.tsx', 'ReadingScene.tsx']) {
+    const t = readFileSync(new URL(`../../components/${f}`, import.meta.url), 'utf8');
+    assert.equal(/backgroundColor: (b|book)\.spineColor/.test(t), false, f);
+    assert.equal(/background: (b|book)\.spineColor/.test(t), false, f);
+    assert.match(t, /coverBackdrop\(/, f);
+  }
+  const meta = readFileSync(new URL('../../components/BookMeta.tsx', import.meta.url), 'utf8');
+  assert.match(meta, /size === 'xl' \|\| wasKnown;/, 'remembered covers are eager at once, not after the scroll check');
+  assert.match(meta, /!isReady && graceOver/);
+});

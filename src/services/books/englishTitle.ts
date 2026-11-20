@@ -24,6 +24,8 @@ export const englishTitleNow = (title = ''): string => {
   } catch { return ''; }
 };
 
+import { stampSetting } from '../settingsTimes';
+
 /* ---- "show this name instead" (owner only in the UI): a display choice for ONE book on this device, like a cover pick. The saved title / author are never touched. ---- */
 export interface NameChoice { title?: 'original'; author?: string }
 const choices = persistentCache<NameChoice>('readlife.nameChoices1', { ttl: 5 * 365 * 24 * 60 * 60 * 1000, max: 300, validate: v => !!v && typeof v === 'object' && (v.title === undefined || v.title === 'original') && (v.author === undefined || typeof v.author === 'string') });
@@ -31,6 +33,21 @@ const choiceKey = (b: Pick<Book, 'title' | 'originalTitle'>): string => titleKey
 const listeners = new Set<() => void>();
 /** Called when a name choice changes (so lists redraw). Returns the unsubscribe. */
 export const subscribeNames = (fn: () => void): (() => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
+/** Every saved name choice with the time it was made (for sync and backups). */
+export const exportNameChoices = (): Record<string, { v: NameChoice; t: number }> => {
+  try { return Object.fromEntries((choices.entries?.() || []).map(e => [e.key, { v: e.value, t: e.at }])); } catch { return {}; }
+};
+/** Is this a usable name choice (the same check the saved cache uses)? */
+export const isNameChoice = (v: any): v is NameChoice => !!v && typeof v === 'object' && !Array.isArray(v) && (v.title === undefined || v.title === 'original') && (v.author === undefined || typeof v.author === 'string') && !!(v.title || v.author);
+/** The cloud or a backup changed the name choices: make the saved set exactly this one (keeping each choice's own time) without counting it as a new edit. */
+export function replaceNameChoices(next: Record<string, { v: NameChoice; t: number }>): void {
+  try {
+    const have = new Set((choices.entries?.() || []).map(e => e.key));
+    for (const k of have) if (!next[k]) choices.delete(k);
+    for (const [k, e] of Object.entries(next)) if (isNameChoice(e.v)) choices.set(k, e.v, e.t);
+  } catch {}
+  listeners.forEach(fn => { try { fn(); } catch {} });
+}
 export const nameChoiceOf = (b: Pick<Book, 'title' | 'originalTitle'>): NameChoice => { try { return choices.get(choiceKey(b)) || {}; } catch { return {}; } };
 
 /** Remember (or, with `{}`, forget) which title / author to show for this book. `title: 'original'` shows the catalogue title instead of the English one. */
@@ -40,6 +57,7 @@ export function setNameChoice(b: Pick<Book, 'title' | 'originalTitle'>, choice: 
     if (!k) return;
     if (choice.title || choice.author) choices.set(k, { ...(choice.title ? { title: choice.title } : {}), ...(choice.author ? { author: choice.author } : {}) });
     else choices.delete(k);
+    stampSetting('nameChoices');
   } catch {}
   listeners.forEach(fn => { try { fn(); } catch {} });
 }

@@ -11,6 +11,7 @@ import { MoonPhase, moonPhase, MOON_PHASE_NAMES, MOON_PHASE_EMOJI } from './Moon
 import { buildVine, vineLeaves, type VineGeometry } from '../services/vinePath';
 import { goalDaysFor, vineForDays } from '../services/garden';
 import { VineLayer, ClassicVineLayer } from './VineOverlay';
+import { coverBackdrop } from '../services/books/placeholderCover';
 
 interface Props {
   books: Book[];
@@ -506,7 +507,7 @@ export function ReadingScene({
                     maxWidth: SPINE_W,
                     aspectRatio: '2/3',
                     borderRadius: 2,
-                    background: b.spineColor || '#2e5934',
+                    background: coverBackdrop(b),
                     boxShadow: '1px 0 2px rgba(0,0,0,.35)',
                     transform: i === 0 && Number(b.id) % 5 === 0 ? 'rotate(-4deg)' : 'none',
                   }}

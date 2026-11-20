@@ -1,4 +1,4 @@
-/* My Reading Life — service worker
+/* GreatReads — service worker
  *
  *  App shell + built files ... precached at install, cache-first (hashed files never change)
  *  index.html (navigation) ... network-first with a short timeout, cached copy as offline fallback

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 const store = new Map<string, string>();
 (globalThis as any).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
 
-import { imageKey, loadCoverCandidates, type CoverCandidate } from './covers';
+import { flatKey, loadCoverCandidates, type CoverCandidate } from './covers';
 import { routeFetch } from '../store/testkit';
 
 const isOl = (u: URL) => u.hostname === 'openlibrary.org';
@@ -102,11 +102,11 @@ test('an aborted caller stops hearing about covers but the lookup finishes and i
 });
 
 test('the same picture at another size is the same cover', () => {
-  assert.equal(imageKey('https://covers.openlibrary.org/b/id/5-S.jpg'), imageKey('https://covers.openlibrary.org/b/id/5-L.jpg'));
-  assert.notEqual(imageKey('https://covers.openlibrary.org/b/id/5-L.jpg'), imageKey('https://covers.openlibrary.org/b/id/6-L.jpg'));
-  assert.equal(imageKey('https://is1-ssl.mzstatic.com/image/thumb/P/a/200x300bb.jpg'), imageKey('https://is1-ssl.mzstatic.com/image/thumb/P/a/600x900bb.jpg'));
-  assert.equal(imageKey('https://books.google.com/books/content?id=1&zoom=1'), imageKey('https://books.google.com/books/content?id=1&zoom=2'));
-  assert.notEqual(imageKey('https://books.google.com/books/content?id=1&zoom=1'), imageKey('https://books.google.com/books/content?id=2&zoom=1'));
+  assert.equal(flatKey('https://covers.openlibrary.org/b/id/5-S.jpg'), flatKey('https://covers.openlibrary.org/b/id/5-L.jpg'));
+  assert.notEqual(flatKey('https://covers.openlibrary.org/b/id/5-L.jpg'), flatKey('https://covers.openlibrary.org/b/id/6-L.jpg'));
+  assert.equal(flatKey('https://is1-ssl.mzstatic.com/image/thumb/P/a/200x300bb.jpg'), flatKey('https://is1-ssl.mzstatic.com/image/thumb/P/a/600x900bb.jpg'));
+  assert.equal(flatKey('https://books.google.com/books/content?id=1&zoom=1'), flatKey('https://books.google.com/books/content?id=1&zoom=2'));
+  assert.notEqual(flatKey('https://books.google.com/books/content?id=1&zoom=1'), flatKey('https://books.google.com/books/content?id=2&zoom=1'));
 });
 
 import { rankCandidates } from './covers';

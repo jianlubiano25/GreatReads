@@ -24,7 +24,7 @@ export interface PrefetchedRecord {
   /** Each site's OWN rating as [average, count] (never combined), for the book info. Only valid pairs are saved. */
   sources?: Partial<Record<Exclude<RatingSourceId, 'library'>, [number, number]>>;
   /** The sites that were asked and answered (a pair, or really none): the book info does not ask those again. */
-  checked?: Exclude<RatingSourceId, 'library'>[];
+  checked?: Exclude<RatingSourceId, 'library' | 'hardcover'>[];
 }
 
 export function toPrefetchedRecord(title: string, r: Resolved | null): PrefetchedRecord {
@@ -35,7 +35,7 @@ export function toPrefetchedRecord(title: string, r: Resolved | null): Prefetche
   else if (b.coverId) rec.coverId = b.coverId;
   // ONE source's average + count together, as chosen by the ladder in ratings.ts
   const pair = externalRating(b);
-  if (pair && b.ratingSource && b.ratingSource !== 'library') {
+  if (pair && b.ratingSource && b.ratingSource !== 'library' && b.ratingSource !== 'hardcover') {
     rec.ratingAverage = pair.average;
     rec.ratingCount = pair.count;
     rec.ratingSource = b.ratingSource;

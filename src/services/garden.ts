@@ -373,5 +373,8 @@ export function movePlant(garden: GardenState, plantId: string, areaId: string, 
   target.splice(at, 0, from);
   renumber(areaId, target.map(p => p.plantId));
   if (!sameArea) renumber(from.areaId, lists[from.areaId].filter(p => p.plantId !== plantId).map(p => p.plantId));
-  return { ...garden, placements };
+  // Every plant whose spot changed is stamped (strictly later than its previous stamp), so the move can win on the other device
+  const now = Date.now(), placementTimes = { ...(garden.placementTimes || {}) };
+  for (const [id, spot] of Object.entries(placements)) { const before = garden.placements[id]; if (!before || before.areaId !== spot.areaId || before.slot !== spot.slot) placementTimes[id] = Math.max(now, (placementTimes[id] ?? 0) + 1); }
+  return { ...garden, placements, placementTimes };
 }

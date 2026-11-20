@@ -5,6 +5,7 @@ import { bestsellerSource } from './bestsellers';
 import { NYT_EXTRA_SHELVES, NYT_GENRE_SHELVES } from './lists';
 import { SHELF_BY_ID } from './registry';
 import type { ShelfSource } from './shelves';
+import { mostReadSource } from './genreRows';
 
 const slug = (label: string) => label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const own = new Map<string, { id: string; source: ShelfSource }>();
@@ -44,7 +45,13 @@ export function genrePopular(g: SearchGenre): { id: string; source: ShelfSource 
   if (!g.popular) return null;
   if (popular.has(g.label)) return popular.get(g.label)!;
   const shelf = [...NYT_GENRE_SHELVES, ...NYT_EXTRA_SHELVES].find(s => s.id === g.popular);
-  const hit = shelf ? { id: shelf.id, source: bestsellerSource(shelf) } : null;
+  let hit: { id: string; source: ShelfSource } | null = null;
+  if (shelf) {
+    const nyt = bestsellerSource(shelf);
+    const most = mostReadSource(g);
+    // The official list when the NYT answers; otherwise the genre's most-read books, so the row never just disappears
+    hit = { id: shelf.id, source: { ...nyt, cached: () => nyt.cached() ?? most.cached(), load: async onUpdate => { try { return await nyt.load(onUpdate); } catch { return most.load(onUpdate); } } } };
+  }
   popular.set(g.label, hit);
   return hit;
 }

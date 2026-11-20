@@ -56,6 +56,7 @@ export function diversify<T extends Pick<Book, 'author'>>(list: readonly T[], pe
 const GENRE_OF_QUERY: Map<string, { genre: SearchGenre; query: string }> = new Map();
 for (const g of SEARCH_GENRES) { const k = normQ(g.query); if (!GENRE_OF_QUERY.has(k)) GENRE_OF_QUERY.set(k, { genre: g, query: g.query }); }
 for (const g of SEARCH_GENRES) for (const s of g.subgenres) { const k = normQ(s.query); if (!GENRE_OF_QUERY.has(k)) GENRE_OF_QUERY.set(k, { genre: g, query: s.query }); }
+for (const g of SEARCH_GENRES) for (const a of g.aliases ?? []) { const k = normQ(a); if (!GENRE_OF_QUERY.has(k)) GENRE_OF_QUERY.set(k, { genre: g, query: g.query }); }
 for (const g of SEARCH_GENRES) { const k = normQ(g.label); if (!GENRE_OF_QUERY.has(k)) GENRE_OF_QUERY.set(k, { genre: g, query: g.query }); }
 
 export const genreForQuery = (text: string): { genre: SearchGenre; query: string } | undefined => GENRE_OF_QUERY.get(normQ(text));

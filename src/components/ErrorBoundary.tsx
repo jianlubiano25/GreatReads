@@ -30,7 +30,7 @@ export class ErrorBoundary extends Component<Props, State> {
       const url = URL.createObjectURL(new Blob([raw], { type: 'application/json' }));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `my-reading-life-data-${new Date().toLocaleDateString('en-CA')}.json`;
+      a.download = `greatreads-data-${new Date().toLocaleDateString('en-CA')}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

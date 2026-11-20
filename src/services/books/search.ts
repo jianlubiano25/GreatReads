@@ -1,21 +1,26 @@
+import { persistentCache } from './cache';
+import { recordSearch } from './perf';
 import type { Book } from '../../types';
 import { dedupeBooks } from './merge';
 import { hasRealSummary, isKnownGenre, shrunkRating } from './model';
 import { searchGoogle } from './sources/googleBooks';
 import { searchOpenLibrary } from './sources/openLibrary';
+import { readShared, writeShared } from '../store/sharedDiscovery';
 import type { Hit } from './sources/types';
 import { englishEditionQueries, isUnknownAuthor, sameWork, titleKey } from './identity';
 import { isBlocked } from './quality';
 import { titleLooksForeign } from './language';
 import { rememberExcluded } from './eligibility';
 import { localMatches, rememberSeen } from './localIndex';
-import { contentTokens, normQ, parseQuery, tokenHits, type ParsedQuery, type SearchScope } from './query';
+import { authorWords, contentTokens, normQ, parseQuery, tokenHits, type ParsedQuery, type SearchScope } from './query';
 import { keywordGroups, keywordPhrases, stem } from './keywords';
 import { coverBonus } from './covers';
-import { diversify, kindAdjust, kindOfQuery, thinRecord } from './genreRank';
+import { isAccessory, NOT_THE_BOOK } from './notTheBook';
+import { catalogSearchCandidates } from './catalogCandidates';
+import { intentAdjust, intentOf } from './searchIntent';
+import { diversify, genreForQuery, kindAdjust, kindOfQuery, thinRecord } from './genreRank';
 
-/** Editions that are about a book, not the book ("Study Guide", "Summary of ...", boxed sets): ranked far down unless that is what was asked for. */
-const NOT_THE_BOOK = /\b(study guide|summary of|summary and analysis|sparknotes|cliffsnotes|workbook|analysis of|box(?:ed)? set|trivia|conversation starters|lesson plans?|teacher'?s? guide|readers? guide|large print|annotated|omnibus|graphic novel adaptation|import and export market|world forecasts?|market (?:research|report|forecast)s?|industry report|(?:19|20)\d\d (?:import|world|global|forecast))\b/i;
+/** Editions that are about a book, not the book (`notTheBook.ts`): ranked far down unless that is what was asked for. */
 
 /**
  * Books ABOUT a method or a field of study (proceedings, monographs, bibliographies, handbooks of ...): on a broad one-word search they
@@ -55,7 +60,7 @@ export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial =
   const a = normQ(b.author || '');
   const qTokens = q.split(' ').filter(Boolean);
   const tWords = t.split(' ').filter(Boolean);
-  const aWords = a.split(' ').filter(Boolean);
+  const aWords = authorWords(b.author || '');
   const need = contentTokens(qTokens);
   const lastNeed = need[need.length - 1];
   let score = 0;
@@ -90,7 +95,8 @@ export function searchRelevance(b: Book, qTitle: string, qAuthor = '', partial =
     if (!titleOnly && need.length && authorHits.every(h => h > 0)) {
       const fullName = need.length >= 2 && authorHits.every(h => h === 1);
       // "Threshing": a machinery report with "Threshing" in its title AND in its author name must not beat the book called "Threshing"
-      if (fullName) score += AUTHOR_FULL_NAME;
+      // initials count too ("j.k. rowling": content words alone are just "rowling")
+      if (fullName || (qTokens.length >= 2 && qTokens.every(w => tokenHits(w, aWords, false) === 1))) score += AUTHOR_FULL_NAME;
       else if (tier < 55) score += AUTHOR_PARTIAL;
     }
   }
@@ -168,7 +174,7 @@ function inScope(b: Book, q: ParsedQuery): boolean {
   }
   if (q.scope === 'author') {
     const qa = q.author.split(' ').filter(Boolean);
-    const words = normQ(b.author).split(' ').filter(Boolean);
+    const words = authorWords(b.author);
     return qa.every((w, i) => tokenHits(w, words, i === qa.length - 1) > 0);
   }
   return true;
@@ -179,10 +185,10 @@ function inScope(b: Book, q: ParsedQuery): boolean {
  * carries, worth up to 60. A word counts through its mapping too (keywords.ts: "cozy" also finds "heartwarming", "classics" also finds an old, widely
  * read book), and "classics" meets "classic". Ranking by this comes AFTER a strong title / author match and next to popularity, never before.
  */
-function keywordFit(b: Book, q: ParsedQuery): number {
+function keywordFit(b: Book, q: ParsedQuery, titleCounts = true): number {
   const groups = keywordGroups(contentTokens(q.tokens));
   if (!groups.length) return 0;
-  const about = new Set(normQ(`${isKnownGenre(b.genre) ? b.genre : ''} ${hasRealSummary(b.summary) ? b.summary : ''} ${b.title || ''}`).split(' ').map(stem));
+  const about = new Set(normQ(`${isKnownGenre(b.genre) ? b.genre : ''} ${hasRealSummary(b.summary) ? b.summary : ''} ${titleCounts ? b.title || '' : ''}`).split(' ').map(stem));
   const lastGroup = groups[groups.length - 1];
   const hits = groups.reduce((n, g) => {
     if (g.words.some(w => about.has(w)) || (g.classic && classicish(b))) return n + 1;
@@ -205,6 +211,21 @@ export function popularityBonus(b: Partial<Pick<Book, 'popularRank' | 'year'>>, 
   return place + recent;
 }
 
+/**
+ * A genre search ("manga", "humor", "cozy", "chick lit") wants books OF that genre. A book that only has the word in its title ("Manga University", "The Humor Code Workbook")
+ * is not that, so its title does not count towards the genre fit and it ranks lower, unless it is also truly popular or highly rated (then it is welcome).
+ */
+export const TITLE_ONLY_PENALTY = 30;
+export function wellKnown(b: Pick<Book, 'popularRank' | 'ratingAverage' | 'ratingCount'>): boolean {
+  return (b.popularRank !== undefined && b.popularRank < 15) || (Number(b.ratingAverage) >= 4 && Number(b.ratingCount) >= 500);
+}
+export function titleOnlyMatch(b: Pick<Book, 'title'>, q: ParsedQuery): number {
+  const groups = keywordGroups(contentTokens(q.tokens));
+  if (!groups.length) return 0;
+  const title = new Set(normQ(b.title || '').split(' ').map(stem));
+  return groups.some(g => g.words.some(w => title.has(w))) ? 1 : 0; // the word is in the title: that alone says nothing about the genre (a summary that repeats the word, like "The Cultural Politics of Chick Lit", does not make it a chick-lit novel)
+}
+
 /** `skip`: books an earlier page already showed (a later page never repeats them). */
 export function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly Book[] = [], skip: readonly Book[] = []): Book[] {
   // A broad search (ONE word, no author, no ISBN: "chess") ranks the widely read books ahead of obscure ones that merely contain the word.
@@ -213,15 +234,19 @@ export function rank(books: Book[], q: ParsedQuery, limit: number, own: readonly
   const popular = q.scope !== 'author' && !q.author && !q.isbn && !q.full && q.tokens.length > 0 && (q.tokens.length === 1 || byKeywords); // keyword / mood searches are broad by nature, whatever their length
   // A genre search (the Search tab's genres, and their sub-genres) knows what kind of book it wants: fiction or non-fiction
   const wantKind = byKeywords ? kindOfQuery(q.text) : undefined;
-  const sorted = dedupeBooks(books)
-    .filter(b => inScope(b, q) && !(skip.length && skip.some(x => x === b || sameWork(x, b))))
+  const isGenreSearch = byKeywords && !!genreForQuery(q.text);
+  const deduped = dedupeBooks(books);
+  const dom = intentOf(deduped, q); // title / series intent: the author most of the matching titles belong to
+  const sorted = deduped
+    .filter(b => inScope(b, q) && !(skip.length && skip.some(x => x === b || sameWork(x, b))) && !(isGenreSearch && isAccessory(b.title)))
     .map((book, order) => ({
       book,
       order,
       // "Death by Water" was split into a title and an author: the better of the two readings counts
       score: Math.max(searchRelevance(book, q.text, q.author, q.partial, q.scope === 'title' || q.scope === 'keywords', popular, byKeywords), q.full ? searchRelevance(book, q.full, '', q.partial, q.scope === 'title') : -Infinity)
-        + (byKeywords ? keywordFit(book, q) + thinRecord(book) + kindAdjust(book, wantKind) + popularityBonus(book) : 0)
+        + (byKeywords ? keywordFit(book, q, !isGenreSearch) + (isGenreSearch && titleOnlyMatch(book, q) && !wellKnown(book) ? -TITLE_ONLY_PENALTY : 0) + (isGenreSearch && Number(book.ratingAverage) >= 4 && Number(book.ratingCount) >= 100 ? 10 : 0) + thinRecord(book) + kindAdjust(book, wantKind) + popularityBonus(book) : 0)
         - (titleLooksForeign(book.title) && !titleLooksForeign(q.text) && !titleLooksForeign(q.full) ? FOREIGN_TITLE_PENALTY : 0) // English editions first, unless a foreign title was typed
+        + intentAdjust(book, q, dom)
         + (own.length && own.some(o => o === book || sameWork(o, book)) ? OWN_BONUS : 0),
     }))
     .sort((x, y) => y.score - x.score || x.order - y.order)
@@ -242,9 +267,9 @@ type Task = { name: string; run: (candidates: number, signal?: AbortSignal) => P
 export function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
   // `report`: whether this request's own count is the number shown as "of N" (the main requests only, never the narrower extra ones)
   const ol = (params: Record<string, string>, n: number, signal?: AbortSignal, report = true) =>
-    searchOpenLibrary(io.page > 1 ? { ...params, page: String(io.page) } : params, n, { signal, onTotal: report ? t => io.onTotal('ol', t) : undefined });
+    searchOpenLibrary(io.page > 1 ? { ...params, page: String(io.page) } : params, n, { signal, priority: 'fg', onTotal: report ? t => io.onTotal('ol', t) : undefined, onFailure: () => io.onFailure?.('Open Library') });
   const google = (query: string, n: number, signal?: AbortSignal, report = true) =>
-    searchGoogle(query, n, { signal, start: io.page > 1 ? (io.page - 1) * Math.min(40, n) : 0, onTotal: report ? t => io.onTotal('google', t) : undefined });
+    searchGoogle(query, n, { signal, start: io.page > 1 ? (io.page - 1) * Math.min(40, n) : 0, onTotal: report ? t => io.onTotal('google', t) : undefined, onFailure: () => io.onFailure?.('Google Books') });
   if (q.isbn) {
     return [
       { name: 'ol', run: (n, signal) => ol({ isbn: q.isbn }, n, signal) },
@@ -266,9 +291,13 @@ export function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
       // sorted by relevance, which fills a genre with old and obscure books. Each book keeps its place in this list (popularRank) for the ranking.
       { name: 'ol-popular', run: async (n, signal) => (await ol({ subject: text, sort: 'readinglog' }, n, signal, false)).map((h, i) => ({ ...h, book: { ...h.book, popularRank: i } })) },
       { name: 'google', run: (n, signal) => google(`subject:${text.includes(' ') ? `"${text}"` : text}`, n, signal) },
-      { name: 'ol-keyword', run: (n, signal) => ol({ q: wild }, n, signal, false) },
-      { name: 'google-keyword', run: (n, signal) => google(text, n, signal, false) },
     ];
+    // The two plain-text searches (title / description contains the word) find books that only have the word in their title ("Sports in Society", "How to Draw Manga"):
+    // fine for a topic ("dragons"), wrong for a genre word, where the subject searches above are the genre.
+    if (!genreForQuery(q.text)) {
+      tasks.push({ name: 'ol-keyword', run: (n, signal) => ol({ q: wild }, n, signal, false) });
+      tasks.push({ name: 'google-keyword', run: (n, signal) => google(text, n, signal, false) });
+    }
     if (more) {
       tasks.push({ name: 'ol-mapped', run: (n, signal) => ol({ subject: more }, n, signal, false) });
       tasks.push({ name: 'google-mapped', run: (n, signal) => google(more, n, signal, false) });
@@ -280,6 +309,10 @@ export function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
     return [
       { name: 'ol', run: (n, signal) => ol({ title: wild }, n, signal) },
       { name: 'google', run: (n, signal) => google(text, n, signal) },
+      ...(final && text ? [
+        { name: 'ol-title-popular', run: async (n: number, signal?: AbortSignal) => (await ol({ title: text, sort: 'readinglog' }, n, signal, false)).map((h, i) => ({ ...h, book: { ...h.book, popularRank: i } })) },
+        { name: 'google-phrase', run: (n: number, signal?: AbortSignal) => google(`intitle:"${text}"`, n, signal, false) },
+      ] : []),
     ];
   }
   if (q.author && !text) {
@@ -305,11 +338,17 @@ export function tasksFor(q: ParsedQuery, final: boolean, io: TaskIo): Task[] {
   if (q.full) tasks.push({ name: 'google-full', run: (n, signal) => google(q.full, n, signal, false) }); // "x by y" read as one title too
   tasks.push(...english);
   if (final && q.tokens.length > 1) tasks.push({ name: 'ol-title', run: (n, signal) => ol({ title: wild }, n, signal, false) }); // titles only: far fewer unrelated hits
+  // A submitted title search also asks for the books people actually read with those words in the TITLE, and for the exact title phrase: a plain relevance
+  // page of "dark matter" is research records, so the novel never reached the ranking (it was on page 2). Candidates only; ranking decides the order.
+  if (final && !q.isbn && q.tokens.length > 0 && q.scope !== 'author') {
+    tasks.push({ name: 'ol-title-popular', run: async (n, signal) => (await ol({ title: text, sort: 'readinglog' }, n, signal, false)).map((h, i) => ({ ...h, book: { ...h.book, popularRank: i } })) }); // its place in Open Library's most-read order is kept (popularRank): readers that Open Library does not count as ratings
+    tasks.push({ name: 'google-phrase', run: (n, signal) => google(`intitle:\"${text}\"`, n, signal, false) });
+  }
   return tasks;
 }
 
 /** Paging and the "N books match" count, shared by the requests of one search. */
-interface TaskIo { page: number; onTotal: (source: 'ol' | 'google', n: number) => void }
+interface TaskIo { page: number; onTotal: (source: 'ol' | 'google', n: number) => void; onFailure?: (source: string) => void }
 
 /**
  * The author a query names, read from what the first sources returned: two to four words, every one of them a whole word of one result's author
@@ -320,7 +359,7 @@ function authorNamed(q: ParsedQuery, hits: Hit[]): string {
   const last = q.tokens[q.tokens.length - 1];
   for (const h of hits) {
     if (isUnknownAuthor(h.book.author)) continue;
-    const words = normQ(h.book.author).split(' ').filter(Boolean);
+    const words = authorWords(h.book.author);
     if (q.tokens.every(t => tokenHits(t, words, q.partial && t === last) > 0) && q.tokens.filter(t => tokenHits(t, words, false) === 1).length >= q.tokens.length - 1) return h.book.author;
   }
   return '';
@@ -349,6 +388,8 @@ export interface SearchProgress {
   from: string;
   /** How many books the catalog says match in all (Open Library's count, else Google's); 0 until a source has said */
   total: number;
+  /** Providers that failed during this search; an empty list means they answered successfully. */
+  failedSources?: string[];
 }
 
 export interface LiveSearchOptions {
@@ -391,6 +432,17 @@ export function searchLocal(title: string, author = '', limit = 10, known?: read
  * search from a moment ago, if there is one; (3) the merged, ranked list again each time Open Library or Google Books answers. The returned promise
  * resolves with the final list. Explicit, satanic and demonic books are left out (quality.ts). Either source being down never hides the other.
  */
+/**
+ * The last good answer of each finished search, kept on the device for a week. It is shown the moment the same search is made again (also after the app
+ * was closed) while the sources are asked for a fresh one, and it stays when every source fails: a search is never emptied by a rate limit or an
+ * offline moment. Searches cancelled by the next keystroke, pages after the first and the reader's own-library mixes are not saved.
+ */
+const DAY_MS = 24 * 60 * 60 * 1000;
+const lastGood = persistentCache<Book[]>('readlife.searchlast1', { ttl: 7 * DAY_MS, max: 40, keepStale: 30 * DAY_MS, validate: Array.isArray });
+
+/** The "N books match" count Open Library last gave for a search: shown while (or when) it does not answer, so a busy moment never turns "of 524" into "of 26". */
+const lastTotals = persistentCache<number>('readlife.searchtotal1', { ttl: 7 * DAY_MS, max: 80, keepStale: 30 * DAY_MS, validate: (v: unknown): v is number => typeof v === 'number' });
+
 export async function searchBooksLive(title: string, o: LiveSearchOptions = {}): Promise<Book[]> {
   const limit = o.limit ?? 10;
   const scope = o.scope ?? 'all';
@@ -401,16 +453,23 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   const useLocal = o.local !== false && page === 1;
   let olTotal = 0;
   let googleTotal = 0;
-  const totalNow = () => olTotal || googleTotal;
-  const emit = (books: Book[], from: string, done: boolean, total = totalNow()) => { if (!o.signal?.aborted) o.onUpdate?.(books, { done, from, total }); };
-  const io: TaskIo = { page, onTotal: (source, n) => { if (source === 'ol') olTotal = n; else googleTotal = n; } };
+  const totalNow = () => olTotal || (page === 1 ? lastTotals.peek(q.key)?.value : 0) || googleTotal;
+  const failedSources = new Set<string>();
+  let sawLive = false;
+  const emit = (books: Book[], from: string, done: boolean, total = totalNow()) => { if (from !== 'local' && from !== 'saved' && from !== 'shared') sawLive = true; if (!o.signal?.aborted) o.onUpdate?.(books, { done, from, total, failedSources: [...failedSources] }); };
+  const io: TaskIo = { page, onTotal: (source, n) => { if (source === 'ol') olTotal = n; else googleTotal = n; }, onFailure: source => failedSources.add(source) };
 
   const mine = useLocal && o.known?.length ? localMatches(q, limit, o.known) : [];
   const seenHere = useLocal ? localMatches(q, limit) : [];
-  const local = [...mine, ...seenHere];
+  const fromCatalog = useLocal ? catalogSearchCandidates(q, limit) : []; // published catalog works fit by title / author (device copy, no network) join the candidates; never remembered as seen
+  const local = [...mine, ...seenHere, ...fromCatalog];
   if (local.length) emit(rank(local, q, limit, mine), 'local', false, 0);
 
   const memoKey = q.key;
+  const savable = useLocal && !o.known?.length && !o.exclude?.length; // a search cancelled by the next keystroke returns before it can be saved, so only settled searches are kept
+  const saved = savable ? lastGood.peek(memoKey)?.value : undefined;
+  if (saved?.length && !local.length) emit(saved.slice(0, limit), 'saved', false, 0); // instant, while the sources are asked again
+  if (savable && !saved?.length && !local.length && !o.final) void readShared('search', memoKey).then(b => { if (b?.length && !sawLive) emit(b.slice(0, limit), 'shared', false, 0); }); // the shared answer, if the live ones are not in yet
   const memo = useLocal && !o.final ? recent.get(memoKey) : undefined;
   if (memo && Date.now() - memo.at < RECENT_MS) {
     emit(memo.books.slice(0, limit), 'cache', true, memo.total);
@@ -422,9 +481,13 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   const candidates = limit <= 1 ? 10 : Math.min(40, Math.max(16, limit * 2));
   const gathered: Hit[] = [];
   let latest: Book[] = local.length ? rank(local, q, limit, mine) : [];
+  const t0 = Date.now();
+  const trace: { name: string; n: number; ms: number }[] = [];
   const runTask = async (t: Task) => {
     let hits: Hit[] = [];
-    try { hits = await t.run(candidates, o.signal); } catch { hits = []; } // a failed source is an empty answer, never an error
+    const ts = Date.now();
+    try { hits = await t.run(candidates, o.signal); } catch { hits = []; failedSources.add(t.name.startsWith('ol') ? 'Open Library' : 'Google Books'); }
+    if (!o.signal?.aborted) trace.push({ name: t.name, n: hits.length, ms: Date.now() - ts });
     if (o.signal?.aborted) return;
     gathered.push(...hits);
     if (!hits.length) return;
@@ -438,20 +501,25 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
   const name = !o.signal?.aborted && page === 1 && scope === 'all' ? authorNamed(q, gathered) : '';
   if (name) {
     await Promise.all([
-      runTask({ name: 'ol-author', run: (n, signal) => searchOpenLibrary({ author: name }, n, { signal }) }),
+      runTask({ name: 'ol-author', run: (n, signal) => searchOpenLibrary({ author: name }, n, { signal, priority: 'fg' }) }),
       runTask({ name: 'google-author', run: (n, signal) => searchGoogle(`inauthor:"${name}"`, n, { signal }) }),
     ]);
   }
   const topic = !name && !o.signal?.aborted && page === 1 && scope === 'all' ? topicNamed(q, gathered) : '';
   if (topic) {
     await Promise.all([
-      runTask({ name: 'ol-subject', run: (n, signal) => searchOpenLibrary({ subject: topic }, n, { signal }) }),
+      runTask({ name: 'ol-subject', run: (n, signal) => searchOpenLibrary({ subject: topic }, n, { signal, priority: 'fg' }) }),
       runTask({ name: 'google-subject', run: (n, signal) => searchGoogle(`subject:${topic}`, n, { signal }) }),
     ]);
   }
   if (o.signal?.aborted) return [];
 
-  const finalList = rank([...withoutBlocked(gathered, q), ...local], q, limit, mine, skip);
+  let finalList = rank([...withoutBlocked(gathered, q), ...local], q, limit, mine, skip);
+  const usedSaved = !finalList.length && !!saved?.length && failedSources.size > 0;
+  if (usedSaved) finalList = saved!.slice(0, limit);
+  recordSearch({ at: t0, q: title, ms: Date.now() - t0, shown: finalList.length, failed: [...failedSources], usedSaved, sources: trace });
+  // // every source failed: keep the last good answer
+  if (savable && gathered.length && finalList.length && (!failedSources.size || !saved?.length || finalList.length >= saved.length)) { lastGood.set(memoKey, finalList.slice(0, 20)); if (!failedSources.size) void writeShared('search', memoKey, finalList.slice(0, 20)); } // a thinner answer (one source down) never replaces a fuller one
   if (useLocal && finalList.length) {
     rememberSeen(rank([...withoutBlocked(gathered, q), ...seenHere], q, 20)); // the best few of what the sources and earlier searches gave; never the reader's own books
     if (gathered.length) { // a search that every source failed (offline) is never remembered as "the answer"
@@ -460,6 +528,7 @@ export async function searchBooksLive(title: string, o: LiveSearchOptions = {}):
       if (recent.size > RECENT_MAX) recent.delete(recent.keys().next().value as string);
     }
   }
+  if (olTotal > 0 && !o.exclude?.length) lastTotals.set(q.key, olTotal);
   emit(finalList, 'done', true);
   return finalList;
 }
@@ -475,4 +544,4 @@ export async function searchBooks(title: string, author = '', limit = 10, signal
 }
 
 /** Tests only: forget the memory of recent searches. */
-export const forgetRecentSearchesForTests = () => recent.clear();
+export const forgetRecentSearchesForTests = () => { recent.clear(); lastGood.clear(); lastTotals.clear(); };

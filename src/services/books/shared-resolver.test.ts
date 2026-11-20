@@ -27,7 +27,6 @@ const appleHit = (title: string, author: string, average?: number, count?: numbe
 const apple = (...results: any[]) => (u: URL) => (isApple(u) ? { body: { results } } : undefined);
 const appleDown = (u: URL) => (isApple(u) ? { status: 503, body: {} } : undefined);
 const settle = () => new Promise(r => setTimeout(r, 520)); // persistentCache writes to storage 400 ms after a change
-const hosts = (calls: string[], pred: (u: URL) => boolean) => calls.filter(c => pred(new URL(c, 'https://x.test'))).length;
 const pairOf = (b: any) => [b?.ratingAverage, b?.ratingCount, b?.ratingSource];
 const mainPair = (r: any) => [r?.average, r?.count, r?.source];
 

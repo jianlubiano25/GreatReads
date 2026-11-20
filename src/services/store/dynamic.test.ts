@@ -357,3 +357,11 @@ test('Open Library discovery shelves (genres, Top Fiction, New) ask for 40 books
   assert.ok(!/sort=/.test(calls[1]));
   assert.ok(calls.every(u => /limit=40(&|$)/.test(u)));
 });
+
+test('rankDiscovery leaves out exam guides and workbooks (Educart CBSE Class 10 Science on New in 2026) and prefers widely rated books', () => {
+  const hit = (title: string, count: number, author = `Author ${title}`) => ({ book: { id: title, title, author, coverUrl: 'https://x.test/c.jpg', ratingCount: count, ratingAverage: 4.2, year: '2026' }, flags: {} }) as any;
+  const hits = [hit('Educart CBSE Class 10 Science Question Bank 2026', 900), hit('NCERT Sample Papers for Class 12', 500), hit('Great Novel', 400), ...Array.from({ length: 11 }, (_, i) => hit(`Book ${i}`, 50 + i))];
+  const seeds = rankDiscovery(hits, { year: 2026, limit: 12, minRatings: 15 });
+  assert.ok(seeds.some(s => s[0] === 'Great Novel'));
+  assert.ok(!seeds.some(s => /educart|ncert/i.test(s[0])));
+});

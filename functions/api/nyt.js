@@ -17,16 +17,29 @@ const KEEP_MS = 10 * 24 * 60 * 60 * 1000;
 const savedKey = list => new Request(`https://greatreads-nyt-saved.invalid/${list}`);
 const savedStore = () => { try { return typeof caches !== 'undefined' ? caches.default : null; } catch { return null; } };
 
-/** The list names the NYT currently publishes (list_name_encoded), or null when they cannot be read. Only a successful answer is cached at the edge. */
+/**
+ * The lists the NYT names (list_name_encoded -> { updated: 'WEEKLY' | 'MONTHLY', newest: date of its latest edition }), or null when they cannot be read.
+ * Only a successful answer is cached at the edge. A name can still be listed long after the NYT stopped publishing it (the old monthly Science, Travel and
+ * Crime & Punishment lists): `newest` is what tells those apart.
+ */
 async function publishedNames(key) {
   try {
     const res = await fetch(`https://api.nytimes.com/svc/books/v3/lists/names.json?api-key=${encodeURIComponent(key)}`, { cf: { cacheEverything: true, cacheTtlByStatus: { '200-299': 21600, '400-599': -1 } } });
     if (!res.ok) return null;
-    const names = ((await res.json())?.results || []).map(n => n && n.list_name_encoded).filter(Boolean);
-    return names.length ? names : null;
+    const names = new Map();
+    for (const n of (await res.json())?.results || []) if (n && n.list_name_encoded) names.set(n.list_name_encoded, { updated: String(n.updated || ''), newest: String(n.newest_published_date || '') });
+    return names.size ? names : null;
   } catch {
     return null;
   }
+}
+
+/** A listed name whose latest edition is long past its own schedule (weekly: 45 days, anything else: 120) has been discontinued. No date = cannot tell = not stale. */
+export function listIsStale(info, now = Date.now()) {
+  const at = Date.parse(info && info.newest);
+  if (!Number.isFinite(at)) return false;
+  const days = String(info.updated || '').toUpperCase() === 'WEEKLY' ? 45 : 120;
+  return now - at > days * 24 * 60 * 60 * 1000;
 }
 
 export async function onRequestGet({ request, env, waitUntil }) {
@@ -72,11 +85,13 @@ export async function onRequestGet({ request, env, waitUntil }) {
   // renamed (the shelf should hide, not retry); if it is, the 404 is something else (a routing or upstream fault). The key never appears in a response.
   if (res.status === 404) {
     const names = await publishedNames(env.NYT_API_KEY);
-    if (names && !names.includes(list)) {
+    if (names && !names.has(list)) {
       const words = list.split('-').filter(w => w.length > 3);
-      const suggestions = names.filter(n => words.some(w => n.includes(w))).slice(0, 8);
+      const suggestions = [...names.keys()].filter(n => words.some(w => n.includes(w))).slice(0, 8);
       return json({ error: 'list_not_found', upstream: 404, published: false, suggestions }, 404);
     }
+    // Listed, but its latest edition is old: the NYT stopped publishing it. Same answer as a missing name (the shelf hides and is not asked again), with the date.
+    if (names && listIsStale(names.get(list))) return json({ error: 'list_not_found', upstream: 404, published: true, discontinued: true, newest: names.get(list).newest }, 404);
     return json({ error: 'upstream_error', upstream: 404, published: names ? true : null }, 502);
   }
   const error = res.status === 401 || res.status === 403 ? 'unauthorized' : res.status === 429 ? 'rate_limited' : 'upstream_error';

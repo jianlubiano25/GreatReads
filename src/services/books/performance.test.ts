@@ -163,3 +163,17 @@ test('the request counters count per host and keep failures without the API key'
   assert.equal(snap.counters['test.counter'], 2);
   assert.ok(snap.failures.every(f => !JSON.stringify(f).includes('key=')));
 });
+
+test('Copy diagnostics lists the shelves that failed (id, reason, tries) and drops one that loaded again', async () => {
+  const { recordShelfFailure, clearShelfFailure, diagnosticsText, resetPerf } = await import('./perf');
+  resetPerf();
+  recordShelfFailure('nyt-travel', new Error('NYT list stopped'), 2);
+  recordShelfFailure('hugo', 'timeout', 0);
+  let out = JSON.parse(diagnosticsText());
+  assert.deepEqual(out.shelvesFailing.map((x: { shelf: string }) => x.shelf), ['nyt-travel', 'hugo']);
+  assert.equal(out.shelvesFailing[0].tries, 2);
+  clearShelfFailure('hugo');
+  out = JSON.parse(diagnosticsText());
+  assert.deepEqual(out.shelvesFailing.map((x: { shelf: string }) => x.shelf), ['nyt-travel']);
+  resetPerf();
+});

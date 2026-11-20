@@ -19,4 +19,8 @@ export interface CallOpts {
   start?: number;
   /** Search only: how many books the source says match in all (not just the ones returned) */
   onTotal?: (n: number) => void;
+  /** Open Library and Apple: 'fg' = the user is waiting for this answer (typed search), 'bg' (default) = background work. See olGate in openLibrary.ts. */
+  priority?: 'fg' | 'bg';
+  /** Called when this provider could not answer, as distinct from a successful empty result. */
+  onFailure?: () => void;
 }
