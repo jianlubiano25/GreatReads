@@ -54,6 +54,8 @@ export interface Resolved {
   retry?: { at: number; tries: number };
   /** Which cover rule chose `book`'s cover (see COVER_RULE). Results saved before the rule existed have none. */
   cv?: number;
+  /** Storage only: `flags.description` was the same text as `book.summary` and was left out of the saved copy (put back when read, see unpackResolved). */
+  ds?: 1;
 }
 
 /**
@@ -63,7 +65,23 @@ export interface Resolved {
  */
 export const COVER_RULE = 2;
 
-const cache = persistentCache<Resolved | null>(COVER_CACHE_KEYS.resolved, { ttl: 14 * 24 * 60 * 60 * 1000, keepStale: 90 * 24 * 60 * 60 * 1000, max: 250, validate: v => v === null || (!!v && typeof v === 'object' && !!v.book && typeof v.book.title === 'string') });
+/**
+ * The saved copy of a resolved book (lossless): the description used to be saved twice (the book's summary and the content flags' description, the same text),
+ * and the category words often repeat. Both are rebuilt exactly when the cache is read, so nothing that reads a result can tell the difference.
+ */
+export function packResolved(v: Resolved | null): Resolved | null {
+  if (!v || typeof v !== 'object') return v;
+  let out: Resolved = v;
+  if (v.flags?.description && v.flags.description === v.book?.summary) { const { description: _d, ...flags } = v.flags; out = { ...out, flags, ds: 1 }; }
+  if (v.words && new Set(v.words).size < v.words.length) out = { ...out, words: [...new Set(v.words)] };
+  return out;
+}
+export function unpackResolved(v: Resolved | null): Resolved | null {
+  if (!v || typeof v !== 'object' || !v.ds) return v;
+  const { ds: _ds, ...rest } = v;
+  return { ...rest, flags: { ...rest.flags, description: rest.book.summary } };
+}
+const cache = persistentCache<Resolved | null>(COVER_CACHE_KEYS.resolved, { store: packResolved, restore: unpackResolved, ttl: 14 * 24 * 60 * 60 * 1000, keepStale: 90 * 24 * 60 * 60 * 1000, max: 250, validate: v => v === null || (!!v && typeof v === 'object' && !!v.book && typeof v.book.title === 'string') });
 /**
  * Books no source could place. Remembered only briefly: "not found" is often a dropped connection or a rate limit, and a miss
  * that lasted two weeks (as saved results do) left covers blank long after the network was fine again.
