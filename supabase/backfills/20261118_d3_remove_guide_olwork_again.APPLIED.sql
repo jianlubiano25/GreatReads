@@ -1,4 +1,4 @@
--- DRAFT FOR OWNER APPROVAL, NOT APPLIED (D3, 2026-11-18). The Scholastic literature guide's Open Library id OL31306243W was removed from Work e3f8a77e (HP and the Sorcerer's Stone)
+-- APPLIED 2026-11-18 with owner go (migration d3_remove_guide_olwork_again; verified: no work holds the guide id, 1 audit note) (D3). The Scholastic literature guide's Open Library id OL31306243W was removed from Work e3f8a77e (HP and the Sorcerer's Stone)
 -- on 2026-10-30 (supabase/backfills/20261030_fix_hp_sorcerers_stone_wrong_olwork.sql) and a device wrote it back. The app now refuses it (NOT_THE_BOOK_IDS in books/catalogIdentity.ts).
 -- This removes it again. One transaction, idempotent (does nothing if it is gone), nothing deleted: other identifiers (alt_keys, ...) stay, an audit note keeps the snapshot.
 -- Undo: update catalog_works set identifiers = identifiers || '{"olWork":"OL31306243W"}'::jsonb where id = 'e3f8a77e-7cb8-4e4a-be3e-f1a8da694980';
