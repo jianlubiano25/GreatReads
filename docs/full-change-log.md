@@ -2,6 +2,7 @@
 
 Moved out of HANDOFF.md / docs/handoff-reference.md on 2026-11-01 in one batch, text unchanged. HANDOFF.md keeps only the last 5-8 one-liners; when it grows past 8, move the oldest here (add at the TOP of this list).
 
+- 2026-11-16: Review catalog `<>` found nothing for titles with a comma: it now reads the work by id and the title search keeps the comma. Build 79. (full text: full log)
 - 2026-11-16: vocabulary terms auto-published incl. Hardcover (`20261116000002` applied: 2,774 term links + 4,028 labels; undo via backup table `catalog_backup_20261116_autopublish`); capture saves term-mapped labels approved. Build 78. (full text: full log)
 - 2026-11-16: Book Information: folds removed, owner sees everything not rejected, rejected labels stay hidden, main genre star, book-club picks under Collections, new section order. Build 76. (full text: full log)
 - 2026-11-16: capture: the "already looked up" mark per book (`p|key`) is now per month, so a book whose provider lookup found little (a provider timed out) or whose remembered facts the phone lost (`providerfacts1`: owner-device memory, <= 300 KB, clearable, first to go when a save fails) is looked up again next month; books whose providers are all known are never asked again. Answer given to the owner: the extra Hunger Games chips came from live provider lookups kept in that device memory; "Send and publish everything on this device" runs the same capture (terms, labels, awards) but can only send what the phone remembers at that moment; tests pass; BUILD_NUMBER 82.

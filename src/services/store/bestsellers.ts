@@ -33,7 +33,7 @@ export const SHOW_STALE_MS: Record<Mode, number> = { nyt: 10 * 24 * 60 * 60 * 10
 const saved = persistentCache<Saved>('readlife.top15', { ttl: 14 * 24 * 60 * 60 * 1000, max: 20 });
 
 /** The heading for a shelf: the official title, or marked as GreatReads' own when it is the collated fallback. */
-export const shelfHeading = (shelf: Pick<NytShelf, 'title'>, mode: Mode | null) => (mode === 'collated' ? `GreatReads · ${shelf.title}` : shelf.title);
+export const shelfHeading = (shelf: Pick<NytShelf, 'title'>, mode: Mode | null) => (mode === 'collated' ? `GreatReads · ${shelf.title.replace(/^NYT · /, '')}` : shelf.title);
 
 const refining = new Set<string>();
 
