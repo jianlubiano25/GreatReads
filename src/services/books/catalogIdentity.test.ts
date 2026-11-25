@@ -193,3 +193,13 @@ test('save: a known edition of this book gets a newly learned id filled in; exis
   assert.equal(editions.length, 1);
   assert.deepEqual([editions[0].isbn13, editions[0].google_volume_id], [G13, 'iXn5U2IzVH0C']);
 });
+
+test('a known study guide id is never offered to the catalog (D3): work, edition and ISBN of the Scholastic literature guide are rejected, the novel\'s own ids are kept', async () => {
+  const { catalogIdsFrom } = await import('./catalogIdentity');
+  const bad = catalogIdsFrom({ olWork: 'OL31306243W', olEdition: 'OL7510988M', isbn13: '9780439211161', isbn10: '0439211166' });
+  assert.deepEqual(bad.ids, {});
+  assert.equal(bad.rejected.length, 3);
+  assert.ok(bad.rejected.every(r => /literature guide/.test(r)));
+  const good = catalogIdsFrom({ olWork: 'OL82563W', isbn13: '9780747532743' });
+  assert.deepEqual(good.ids, { olWork: 'OL82563W', isbn13: '9780747532743' });
+});

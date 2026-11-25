@@ -81,6 +81,12 @@ export function persistentCache<T>(storageKey: string, opts: {
    * instead of crashing a screen or being trusted. The other entries, and everything outside this cache, are left as they are.
    */
   validate?: (value: any) => boolean;
+  /**
+   * Lossless slimming of what is WRITTEN to storage (memory keeps the full value for the session): `store` removes what can be rebuilt, `restore` rebuilds it when the cache is read.
+   * Used where the same text is saved twice in one entry (the saved-data budget is about 5 MB for everything).
+   */
+  store?: (value: T) => T;
+  restore?: (value: T) => T;
   /** Also keep a safety copy in IndexedDB (see durableCopy.ts) that is put back before the app draws if the browser dropped localStorage. */
   durable?: boolean;
 }): Cache<T> {
@@ -98,10 +104,11 @@ export function persistentCache<T>(storageKey: string, opts: {
         const text = localStorage.getItem(storageKey) || '{}';
         bump(`cache.${storageKey}.loadBytes`, text.length);
         const raw = JSON.parse(text);
-        if (raw && typeof raw === 'object' && !Array.isArray(raw)) for (const [k, e] of Object.entries<any>(raw)) if (e && typeof e.t === 'number' && usable(e.v)) mem.set(k, e);
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) for (const [k, e] of Object.entries<any>(raw)) if (e && typeof e.t === 'number') { const v = opts.restore ? safeRestore(e.v) : e.v; if (usable(v)) mem.set(k, { t: e.t, v }); }
       });
     } catch {}
   };
+  const safeRestore = (v: any) => { try { return opts.restore!(v); } catch { return v; } };
   const usable = (v: unknown) => { try { return !opts.validate || opts.validate(v); } catch { return false; } };
   let timer: ReturnType<typeof setTimeout> | undefined;
   let dirty = false;
@@ -110,7 +117,7 @@ export function persistentCache<T>(storageKey: string, opts: {
     const keys = [...mem.keys()];
     if (keys.length > opts.max) keys.slice(0, keys.length - opts.max).forEach(k => mem.delete(k));
     timed(`cache.${storageKey}.save`, () => {
-      const text = JSON.stringify(Object.fromEntries(mem));
+      const text = JSON.stringify(Object.fromEntries(opts.store ? [...mem].map(([k, e]) => [k, { t: e.t, v: opts.store!(e.v) }]) : mem));
       lastBytes = text.length;
       bump(`cache.${storageKey}.saveBytes`, text.length);
       localStorage.setItem(storageKey, text);

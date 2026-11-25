@@ -7,6 +7,7 @@
  * NOT touched: your library, reading history, notes, highlights, settings, cover picks, and the owner's title/author choices (see NEVER_CLEAR in books/cache.ts).
  * The caller reloads the page afterwards. Needs a connection: with none the saved copy would be deleted and nothing fetched, so it is refused.
  */
+import { APP_LINE } from './versionString';
 import { clearCaches, clearableCacheKeys, expireCaches, KEEP_ACROSS_BUILDS, LAST_GOOD_KEYS } from './books/cache';
 import { refreshAllCovers } from './books/coverLookup';
 import { EXTRA_CLEARABLE } from '../hooks/useReadingLife';
@@ -42,8 +43,10 @@ export async function refreshEverything(): Promise<boolean> {
  * cover placeholders and made one-time resets run again).
  */
 export const DATA_EPOCH = 'e3-2026-11-06';
+/** What a device compares: DATA_EPOCH, plus the release line once it moves past 0.1 (a major update, see versionString.ts). On the 0.1 line it equals DATA_EPOCH, so nobody refreshes for this change. */
+export const dataEpochFor = (line: string = APP_LINE, epoch: string = DATA_EPOCH): string => (line === '0.1' ? epoch : `${epoch}|${line}`);
 const EPOCH_KEY = 'readlife.dataEpoch1'; // one tiny control record; not a cache, so no cleanup clears it
-export function refreshDataForNewBuild(build: string, epoch: string = DATA_EPOCH): boolean {
+export function refreshDataForNewBuild(build: string, epoch: string = dataEpochFor()): boolean {
   if (!build || build === 'dev') return false;
   try { if (localStorage.getItem(EPOCH_KEY) === epoch) return false; localStorage.setItem(EPOCH_KEY, epoch); } catch { return false; }
   try { clearCaches([...clearableCacheKeys().filter(k => !KEEP_ACROSS_BUILDS.includes(k) && !LAST_GOOD_KEYS.includes(k)), ...EXTRA_CLEARABLE]); expireCaches(LAST_GOOD_KEYS); } catch {}

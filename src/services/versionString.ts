@@ -19,8 +19,10 @@ export function branchCode(branch: string | undefined): string {
   return b.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 12) || 'branch';
 }
 
+/** The release line, the "0.1" in `GreatReads 0.1.83...`. Raise it (0.2, 0.3 ...) for a MAJOR update: every device then refreshes its downloaded data once, by itself (refreshApp.ts). */
+export const APP_LINE = '0.1';
 export function formatVersion(p: { build?: string | number; sha?: string; branch?: string }): string {
   const build = String(p.build ?? '').trim().match(/^\d+$/) ? String(p.build).trim() : '0';
   const sha = (p.sha || '').trim().toLowerCase().replace(/[^0-9a-f]/g, '').slice(0, 7) || 'nosha';
-  return `GreatReads 0.1.${build}.${sha}.${branchCode(p.branch)}`;
+  return `GreatReads ${APP_LINE}.${build}.${sha}.${branchCode(p.branch)}`;
 }

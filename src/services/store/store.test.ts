@@ -187,7 +187,7 @@ test('Top 15 with the NYT available: the official list, in NYT order, labelled a
   const src = bestsellerSource({ ...nytFiction, id: 'top-ok' });
   const books = await src.load(() => {});
   assert.deepEqual(books.map(b => b.title), ['Space Tale', 'Quiet House', 'Cold Case']);
-  assert.equal(src.label?.(), 'Top 15 this week · Fiction');
+  assert.equal(src.label?.(), 'NYT · Top 15 this week · Fiction');
   assert.ok(books.every(b => /NYT bestseller/.test(b.awardLabel || '')));
 });
 
@@ -221,7 +221,7 @@ test('Top 15 returns to the official NYT list as soon as it is available again',
     const again = bestsellerSource(shelf);
     const books = await again.load(() => {});
     assert.deepEqual(books.map(b => b.title), ['Space Tale', 'Quiet House', 'Cold Case']);
-    assert.equal(again.label?.(), 'Top 15 this week · Fiction');
+    assert.equal(again.label?.(), 'NYT · Top 15 this week · Fiction');
   } finally {
     Date.now = realNow;
   }

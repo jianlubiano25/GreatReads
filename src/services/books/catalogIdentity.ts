@@ -24,19 +24,34 @@ export function validIsbn10(raw = ''): string {
   return /^\d{9}[\dX]$/.test(s) && validIsbn(s) ? s : '';
 }
 
+/**
+ * Ids known to belong to a book ABOUT a book (a study guide, a literature guide), never the book itself: they are never written to the catalog, whichever device holds them.
+ * One line per case, with who it is. (D3: OL31306243W is Scholastic's "Literature Guide: Harry Potter and the Sorcerer's Stone (Grades 4-8)", edition OL7510988M, ISBN 9780439211161;
+ * a device that had once matched it wrote it back onto the novel after the owner had removed it.)
+ */
+export const NOT_THE_BOOK_IDS: { olWork: Record<string, string>; olEdition: Record<string, string>; isbn13: Record<string, string> } = {
+  olWork: { OL31306243W: 'Scholastic literature guide for Harry Potter and the Sorcerer\'s Stone, not the novel' },
+  olEdition: { OL7510988M: 'Scholastic literature guide for Harry Potter and the Sorcerer\'s Stone, not the novel' },
+  isbn13: { '9780439211161': 'Scholastic literature guide for Harry Potter and the Sorcerer\'s Stone, not the novel' },
+};
+
 /** Check what a book says about itself. Invalid or self-contradicting values are dropped and named in `rejected`; nothing is guessed or filled in. */
 export function catalogIdsFrom(identity: BookIdentity | undefined): { ids: CatalogIds; rejected: string[] } {
   const ids: CatalogIds = {};
   const rejected: string[] = [];
   const src = identity || {};
-  if (src.olWork) /^OL\d+W$/.test(src.olWork) ? (ids.olWork = src.olWork) : rejected.push('olWork');
-  if (src.olEdition) /^OL\d+M$/.test(src.olEdition) ? (ids.olEdition = src.olEdition) : rejected.push('olEdition');
+  if (src.olWork && NOT_THE_BOOK_IDS.olWork[src.olWork]) rejected.push(`olWork ${src.olWork} (${NOT_THE_BOOK_IDS.olWork[src.olWork]})`);
+  else if (src.olWork) /^OL\d+W$/.test(src.olWork) ? (ids.olWork = src.olWork) : rejected.push('olWork');
+  if (src.olEdition && NOT_THE_BOOK_IDS.olEdition[src.olEdition]) rejected.push(`olEdition ${src.olEdition} (${NOT_THE_BOOK_IDS.olEdition[src.olEdition]})`);
+  else if (src.olEdition) /^OL\d+M$/.test(src.olEdition) ? (ids.olEdition = src.olEdition) : rejected.push('olEdition');
   if (src.gbVolume) /^[A-Za-z0-9_-]{6,24}$/.test(src.gbVolume) ? (ids.gbVolume = src.gbVolume) : rejected.push('gbVolume');
   const i13 = src.isbn13 ? validIsbn13(src.isbn13) : '';
   const i10 = src.isbn10 ? validIsbn10(src.isbn10) : '';
   if (src.isbn13 && !i13) rejected.push('isbn13');
   if (src.isbn10 && !i10) rejected.push('isbn10');
-  if (i13 && i10 && isbn10to13(i10) !== i13) { rejected.push('isbn10/isbn13 disagree'); } // two different books' numbers: keep neither
+  const guide = (i13 && NOT_THE_BOOK_IDS.isbn13[i13]) || (i10 && NOT_THE_BOOK_IDS.isbn13[isbn10to13(i10)]) || '';
+  if (guide) rejected.push(`isbn ${i13 || i10} (${guide})`);
+  else if (i13 && i10 && isbn10to13(i10) !== i13) { rejected.push('isbn10/isbn13 disagree'); } // two different books' numbers: keep neither
   else { if (i13) ids.isbn13 = i13; if (i10) ids.isbn10 = i10; }
   return { ids, rejected };
 }
