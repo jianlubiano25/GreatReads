@@ -67,3 +67,10 @@ test('an update keeps the downloads (genre lists, provider answers); they are fo
   assert.equal(pools.peek('fantasy')?.value[0].title, 'Dune', 'but still shown meanwhile');
   assert.equal(refreshDataForNewBuild('build-ddd', 'epoch-2'), false);
 });
+
+test('a major update (the release line moves past 0.1) refreshes downloaded data once by itself; on 0.1 nothing changes', async () => {
+  const { dataEpochFor, DATA_EPOCH } = await import('../refreshApp');
+  assert.equal(dataEpochFor('0.1'), DATA_EPOCH);
+  assert.equal(dataEpochFor('0.2'), `${DATA_EPOCH}|0.2`);
+  assert.notEqual(dataEpochFor('0.2'), dataEpochFor('0.3'));
+});
